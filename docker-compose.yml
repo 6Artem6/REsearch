@@ -1,0 +1,83 @@
+# Knowledge Engine — в Docker только SearXNG.
+# Ollama и Python-приложение — нативно на macOS (Metal GPU, без VM RAM).
+#
+#   docker compose up -d searxng
+#   ./knowledge_engine/scripts/setup-host-ollama.sh
+#   ./knowledge_engine/scripts/setup-host-python.sh
+#   ./knowledge_engine/scripts/dev-native.sh
+#
+# Опционально API в контейнере (CI/prod-like):
+#   docker compose --profile api up -d knowledge-api
+
+name: knowledge-engine-stack
+
+x-ke-python-image: &ke-python-image
+  build:
+    context: .
+    dockerfile: knowledge_engine/docker/knowledge-engine/Dockerfile
+
+x-ke-python-env: &ke-python-env
+  SEARXNG_BASE_URL: http://searxng:8080
+  OLLAMA_BASE_URL: http://host.docker.internal:11434
+  GEMINI_BROWSER_HEADLESS: "true"
+  PYTHONPATH: /app
+
+x-ke-app-volumes: &ke-app-volumes
+  - ke_python_venv:/app/.venv
+  - ke_playwright_cache:/root/.cache/ms-playwright
+  - ./knowledge_engine:/app/knowledge_engine
+  - ./.env:/app/.env:ro
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: ke-searxng
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./knowledge_engine/docker/searxng:/etc/searxng:rw
+    environment:
+      SEARXNG_BASE_URL: http://localhost:8080/
+      SEARXNG_SETTINGS__server__limiter: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
+      interval: 20s
+      timeout: 15s
+      retries: 10
+      start_period: 30s
+
+  knowledge-api:
+    <<: *ke-python-image
+    container_name: ke-api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      searxng:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *ke-python-env
+      KE_API_HOST: "0.0.0.0"
+      KE_API_PORT: "8765"
+      KE_API_RELOAD: "false"
+      KE_TRACE_STDOUT: "true"
+      KE_LOG_PLAIN: "true"
+    volumes: *ke-app-volumes
+    ports:
+      - "${KE_API_PORT:-8765}:8765"
+    command: ["python", "-m", "knowledge_engine.api"]
+    profiles:
+      - api
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+volumes:
+  ke_python_venv:
+  ke_playwright_cache:

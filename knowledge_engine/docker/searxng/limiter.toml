@@ -1,0 +1,25 @@
+# Локальный SearXNG: без rate-limit, без требования proxy headers для внутренних клиентов.
+# https://docs.searxng.org/admin/searx.limiter.html
+
+[botdetection]
+
+trusted_proxies = [
+  "127.0.0.0/8",
+  "::1",
+  "10.0.0.0/8",
+  "172.16.0.0/12",
+  "192.168.0.0/16",
+  "fd00::/8",
+]
+
+[botdetection.ip_limit]
+link_token = false
+
+[botdetection.ip_lists]
+# Приватный стек (не public_instance): без проверки bot UA / proxy headers
+pass_ip = [
+  "0.0.0.0/0",
+  "::/0",
+]
+
+pass_searxng_org = true

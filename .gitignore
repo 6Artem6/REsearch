@@ -1,0 +1,68 @@
+# Секреты и локальная конфигурация
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Инструменты и IDE
+.cursor/
+.vscode/
+.idea/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# Окружения
+.venv/
+.venv-host/
+knowledge_engine/.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Логи и локальные данные runtime
+*.log
+**/.runs/
+**/.lancedb/
+**/.lancedb.bak*/
+knowledge_engine/.domain_trust/
+knowledge_engine/.source_archive/
+
+# Playwright / браузерные профили (Consensus, fetch)
+**/.browser_state/
+**/playwright-browsers/
+ms-playwright/
+
+# Node (если появится фронт-сборка)
+node_modules/
+
+# Docker локальные override (не секреты, но часто персональные)
+docker-compose.override.yml

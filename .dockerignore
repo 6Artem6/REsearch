@@ -1,0 +1,11 @@
+.git
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+knowledge_engine/.lancedb
+knowledge_engine/.browser_state
+knowledge_engine/.runs
+*.log
+.DS_Store

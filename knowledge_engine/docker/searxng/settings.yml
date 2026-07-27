@@ -1,0 +1,55 @@
+# SearXNG для Knowledge Engine — Bing + Google + IT/science engines (v0.6).
+# https://docs.searxng.org/admin/settings/settings.html#use-default-settings
+
+use_default_settings:
+  engines:
+    keep_only:
+      - bing
+      - google
+      - github
+      - hackernews
+      - stackoverflow
+      - arxiv
+      - google scholar
+
+server:
+  secret_key: "knowledge-engine-searxng-dev-secret-change-in-prod"
+  bind_address: "0.0.0.0"
+  port: 8080
+  limiter: false
+  public_instance: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  formats:
+    - html
+    - json
+
+outgoing:
+  request_timeout: 12.0
+  max_request_timeout: 15.0
+
+engines:
+  - name: bing
+    disabled: false
+    weight: 0.8
+  - name: google
+    inactive: false
+    weight: 0.8
+  - name: hackernews
+    disabled: false
+    weight: 1.35
+  - name: github
+    disabled: false
+    weight: 1.25
+  - name: arxiv
+    disabled: false
+    weight: 1.2
+  - name: stackoverflow
+    disabled: false
+    weight: 1.15
+  - name: google scholar
+    disabled: false
+    weight: 1.1

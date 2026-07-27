@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="monokai-pro">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Knowledge Engine</title>
+    <link rel="stylesheet" href="/app/static/themes/themes.css" />
+    <link rel="stylesheet" href="/app/static/app.css?v=20260727i" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
+      crossorigin="anonymous"
+    />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">Knowledge Engine</div>
+        <div class="brand-sub">v0.8 Consensus · FastAPI</div>
+        <div class="theme-picker">
+          <label for="theme-select">Тема</label>
+          <select id="theme-select" aria-label="Цветовая тема">
+            <option value="monokai-pro">Monokai Pro</option>
+            <option value="classic">Classic</option>
+          </select>
+        </div>
+        <div class="toc-title">Оглавление</div>
+        <nav id="toc-nav" class="toc-nav"></nav>
+        <div class="toc-title toc-title-after-toc">Вопросы системе</div>
+        <nav id="questions-nav" class="questions-nav" aria-label="История вопросов"></nav>
+        <p class="muted" style="margin-top: 2rem; font-size: 0.8rem">
+          <a href="/docs" class="ext-link">OpenAPI</a>
+        </p>
+      </aside>
+      <main class="main">
+        <header class="hero">
+          <h1>Исследовательский анализ</h1>
+          <p class="muted">
+          Consensus → валидация → Gemini Flash L2a–L2c → Reasoner. Источники с кликабельными
+          DOI и URL. Выделите фрагмент в ответе → кнопка «Объяснить».
+          </p>
+          <form id="query-form" class="query-form">
+            <div class="retrieval-mode-row">
+              <label for="retrieval-mode-select">Режим поиска</label>
+              <select id="retrieval-mode-select" aria-label="Режим поиска">
+                <option value="fast" selected>Fast — Reasoner + Light RAG</option>
+                <option value="consensus">Consensus — полный цикл с L2</option>
+              </select>
+            </div>
+            <textarea
+              id="query-input"
+              placeholder="IT/CS вопрос…"
+              required
+            ></textarea>
+            <button type="submit" id="submit-btn">Запустить анализ</button>
+          </form>
+          <div id="status-bar" class="status-bar"></div>
+        </header>
+        <div id="empty-state" class="muted">
+          Результат появится здесь. Прогоны сохраняются локально в
+          <code>knowledge_engine/.runs/v07_runs.json</code> (ответ Reasoner, L2, источники).
+          Ссылка с <code>?run=&lt;id&gt;</code> — для повторного открытия после ожидания.
+        </div>
+        <div id="content"></div>
+      </main>
+    </div>
+    <div id="explain-toolbar" class="explain-toolbar hidden" role="toolbar" aria-label="Пояснение">
+      <button type="button" id="explain-open-btn" class="explain-toolbar-btn">Объяснить</button>
+    </div>
+    <div id="explain-backdrop" class="explain-backdrop hidden" aria-hidden="true"></div>
+    <aside
+      id="explain-dialog"
+      class="explain-dialog hidden"
+      role="dialog"
+      aria-labelledby="explain-dialog-title"
+      aria-modal="true"
+    >
+      <header class="explain-dialog-header">
+        <h2 id="explain-dialog-title">Пояснение</h2>
+        <button type="button" id="explain-close-btn" class="explain-icon-btn" aria-label="Закрыть">
+          ×
+        </button>
+      </header>
+      <div class="explain-dialog-actions">
+        <button type="button" id="explain-default-btn" class="explain-primary-btn">
+          Объясни, что это значит?
+        </button>
+      </div>
+      <blockquote id="explain-selection" class="explain-selection"></blockquote>
+      <div class="explain-suggest-block">
+        <div class="explain-label">Подсказки к выделению</div>
+        <div id="explain-suggest-list" class="explain-suggest-list" aria-label="Подсказки"></div>
+      </div>
+      <label class="explain-label" for="explain-question-input">Свой вопрос</label>
+      <textarea
+        id="explain-question-input"
+        class="explain-question-input"
+        rows="2"
+        placeholder="Поясни подробнее, почему так…"
+      ></textarea>
+      <button type="button" id="explain-submit-btn" class="explain-secondary-btn">Спросить</button>
+      <div id="explain-thread" class="explain-thread"></div>
+    </aside>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <script src="/app/static/app.js?v=20260727j" defer></script>
+  </body>
+</html>

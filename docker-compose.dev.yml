@@ -1,0 +1,49 @@
+# Опциональный dev API в Docker (Ollama на хосте через host.docker.internal).
+# Рекомендуемый dev: ./knowledge_engine/scripts/dev-native.sh (uvicorn на macOS).
+
+services:
+  knowledge-api-dev:
+    extends:
+      file: docker-compose.yml
+      service: knowledge-api
+    container_name: ke-api-dev
+    profiles:
+      - dev
+    environment:
+      KE_API_RELOAD: "true"
+    stdin_open: true
+    tty: true
+    develop:
+      watch:
+        - path: ./knowledge_engine/api
+          action: sync
+          target: /app/knowledge_engine/api
+        - path: ./knowledge_engine/graph
+          action: sync
+          target: /app/knowledge_engine/graph
+        - path: ./knowledge_engine/services
+          action: sync
+          target: /app/knowledge_engine/services
+        - path: ./knowledge_engine/nodes
+          action: sync
+          target: /app/knowledge_engine/nodes
+        - path: ./knowledge_engine/ui
+          action: sync
+          target: /app/knowledge_engine/ui
+        - path: ./knowledge_engine/schemas.py
+          action: sync
+          target: /app/knowledge_engine/schemas.py
+        - path: ./knowledge_engine/config.py
+          action: sync
+          target: /app/knowledge_engine/config.py
+        - path: ./knowledge_engine/main.py
+          action: sync
+          target: /app/knowledge_engine/main.py
+        - path: ./knowledge_engine/llm.py
+          action: sync
+          target: /app/knowledge_engine/llm.py
+        - path: ./knowledge_engine/llm_locale.py
+          action: sync
+          target: /app/knowledge_engine/llm_locale.py
+        - path: ./knowledge_engine/requirements.txt
+          action: rebuild

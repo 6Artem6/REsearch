@@ -1,0 +1,129 @@
+/**
+ * Knowledge Engine themes — tokens aligned with VS Code/Cursor color keys.
+ *
+ * Switch: <html data-theme="monokai-pro"> (see themes.css + sidebar picker).
+ * Monokai Pro values from monokai.theme-monokai-pro-vscode (Monokai Pro.json).
+ */
+
+/* --- Monokai Pro (matches Cursor «Monokai Pro») --- */
+[data-theme="monokai-pro"],
+:root {
+  color-scheme: dark;
+
+  /* Workbench surfaces */
+  --ke-body-bg: #2d2a2e; /* editor.background */
+  --ke-body-bg-rgb: 45, 42, 46;
+  --ke-sidebar-bg: #221f22; /* sideBar.background */
+  --ke-chrome-bg: #19181a; /* activityBar.background */
+  --ke-surface-elevated: #403e41; /* panel.background, widgets */
+  --ke-surface-3: #5b595c; /* button.hoverBackground */
+
+  --ke-body-color: #fcfcfa; /* editor.foreground */
+  --ke-secondary-color: #939293; /* sideBar.foreground */
+  --ke-text-subtle: #727072; /* description, comments */
+  --ke-text-dim: #5b595c; /* inactive tabs, line numbers */
+
+  --ke-border-color: #19181a; /* sideBar.border */
+  --ke-border-subtle: #403e41; /* indent guides */
+
+  /* Syntax / UI accents (Monokai Pro palette) */
+  --ke-heading-color: #ffd866; /* markup.heading, tab.active */
+  --ke-primary: #ffd866;
+  --ke-primary-rgb: 255, 216, 102;
+  --ke-on-primary: #2d2a2e;
+
+  --ke-link: #ffd866; /* textLink.foreground */
+  --ke-link-hover: #fcfcfa; /* textLink.activeForeground */
+  --ke-link-code: #a9dc76; /* markup.underline.link */
+
+  --ke-accent-cyan: #78dce8;
+  --ke-accent-green: #a9dc76;
+  --ke-accent-pink: #ff6188;
+  --ke-accent-purple: #ab9df2;
+  --ke-accent-orange: #fc9867;
+
+  --ke-success: #a9dc76;
+  --ke-warning: #fc9867;
+  --ke-danger: #ff6188;
+
+  --ke-nav-active-fg: #ffd866; /* list.activeSelectionForeground */
+  --ke-brand-color: #ffd866;
+
+  --ke-code-bg: #403e41; /* textCodeBlock.background */
+  --ke-input-bg: #2d2a2e; /* input.background */
+  --ke-input-border: #5b595c; /* input.border */
+
+  --ke-button-bg: #403e41;
+  --ke-button-hover-bg: #5b595c;
+  --ke-button-fg: #fcfcfa;
+
+  --ke-hover-bg: rgba(252, 252, 250, 0.05); /* list.hoverBackground */
+  --ke-selection-bg: rgba(193, 192, 192, 0.15);
+  --ke-focus-ring: rgba(114, 112, 114, 0.55); /* focusBorder #727072 */
+
+  --ke-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui,
+    sans-serif;
+  --ke-font-mono: "JetBrains Mono", "Fira Code", ui-monospace, Menlo, monospace;
+}
+
+/* --- Classic (blue-gray, pre-Monokai UI) --- */
+[data-theme="classic"] {
+  color-scheme: dark;
+
+  --ke-body-bg: #0f1419;
+  --ke-body-bg-rgb: 15, 20, 25;
+  --ke-sidebar-bg: #1a2332;
+  --ke-chrome-bg: #0a0f14;
+  --ke-surface-elevated: #222d3d;
+  --ke-surface-3: #2a3648;
+
+  --ke-body-color: #e8eef4;
+  --ke-secondary-color: #8b9cb3;
+  --ke-text-subtle: #6d7d92;
+  --ke-text-dim: #5a6a7e;
+
+  --ke-border-color: #2d3a4f;
+  --ke-border-subtle: #2d3a4f;
+
+  --ke-heading-color: #e8eef4;
+  --ke-primary: #5b9fd4;
+  --ke-primary-rgb: 91, 159, 212;
+  --ke-on-primary: #0a0f14;
+
+  --ke-link: #5b9fd4;
+  --ke-link-hover: #7eb8e8;
+  --ke-link-code: #5b9fd4;
+
+  --ke-accent-cyan: #5b9fd4;
+  --ke-accent-green: #3dba8c;
+  --ke-accent-pink: #e85d5d;
+  --ke-accent-purple: #9b8fd4;
+  --ke-accent-orange: #e8a838;
+
+  --ke-success: #3dba8c;
+  --ke-warning: #e8a838;
+  --ke-danger: #e85d5d;
+
+  --ke-nav-active-fg: #5b9fd4;
+  --ke-brand-color: #5b9fd4;
+
+  --ke-code-bg: #0a0f14;
+  --ke-input-bg: #0f1419;
+  --ke-input-border: #2d3a4f;
+
+  --ke-button-bg: #5b9fd4;
+  --ke-button-hover-bg: #7eb8e8;
+  --ke-button-fg: #0a0f14;
+
+  --ke-hover-bg: rgba(91, 159, 212, 0.12);
+  --ke-selection-bg: rgba(91, 159, 212, 0.2);
+  --ke-focus-ring: rgba(91, 159, 212, 0.4);
+
+  --ke-font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --ke-font-mono: ui-monospace, "Cascadia Code", monospace;
+}
+
+[data-theme="monokai-pro"] .katex,
+[data-theme="classic"] .katex {
+  color: var(--ke-body-color);
+}

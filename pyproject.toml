@@ -1,0 +1,36 @@
+[project]
+name = "research-knowledge-engine"
+version = "0.8.0"
+description = "Knowledge Engine — локальный архитектурный анализ (Consensus / Fast RAG)"
+readme = "knowledge_engine/README.md"
+requires-python = ">=3.10"
+
+[tool.black]
+line-length = 88
+target-version = ["py310", "py311", "py312"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  \.venv
+  | \.git
+  | __pycache__
+  | knowledge_engine/\.runs
+  | knowledge_engine/\.lancedb
+  | knowledge_engine/\.browser_state
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 88
+known_first_party = ["knowledge_engine"]
+skip_gitignore = false
+extend_skip_glob = [
+    ".venv/*",
+    "knowledge_engine/.runs/*",
+    "knowledge_engine/.lancedb/*",
+    "knowledge_engine/.browser_state/*",
+]
+
+[tool.flake8]
+# Конфиг дублируется в .flake8 (flake8 не читает [tool.flake8] без плагина)

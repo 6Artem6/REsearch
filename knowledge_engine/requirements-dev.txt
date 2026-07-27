@@ -1,0 +1,6 @@
+-r requirements.txt
+black>=24.0,<26
+isort>=5.13,<7
+flake8>=7.0,<8
+flake8-bugbear>=24.0,<25
+autoflake>=2.0,<3
