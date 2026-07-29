@@ -6,9 +6,9 @@ import json
 from typing import Any, Dict, List
 
 from knowledge_engine.src.processors.source_anchors import strip_source_anchor_tags
+from knowledge_engine.services.llm_markdown_service import llm_markdown_to_html
 from knowledge_engine.web.linkify import (
     linkify_references,
-    markdown_document_html,
     paragraphs_html,
 )
 from knowledge_engine.web.source_present import document_source_li, scholarly_paper_li
@@ -243,7 +243,7 @@ def build_ui_view(result: Dict[str, Any]) -> dict[str, Any]:
         add_section(
             "final_answer",
             "Ответ (Gemini Reasoner)",
-            markdown_document_html(final_answer, registry),
+            llm_markdown_to_html(final_answer, registry),
             level=1,
         )
 

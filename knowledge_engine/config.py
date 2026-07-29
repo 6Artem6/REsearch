@@ -53,6 +53,12 @@ def get_graph_version() -> str:
 
 _load_dotenv()
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.lower() in ("1", "true", "yes")
+
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 ROUTER_MODEL: str = "qwen2.5-coder:1.5b"
 MAIN_MODEL: str = "qwen2.5-coder:7b"
@@ -87,28 +93,71 @@ OLLAMA_STRUCTURE_NUM_PREDICT: int = int(
 )
 GRAPH_VERSION: str = get_graph_version()
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
-GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-# v0.7 analytics: Lite = chunking, Flash = L2a–L2c
-GEMINI_LITE_MODEL: str = os.getenv("GEMINI_LITE_MODEL", "gemini-2.0-flash-lite")
-GEMINI_FLASH_MODEL: str = os.getenv("GEMINI_FLASH_MODEL", GEMINI_MODEL)
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+# v0.7 analytics: Lite = chunking/step_analysis, Flash = L2a–L2c / tutor
+GEMINI_LITE_MODEL: str = os.getenv("GEMINI_LITE_MODEL", "gemini-3.1-flash-lite")
+# Частые вызовы (v0.7 L2): Lite, не 3.5 Flash (5 RPM)
+GEMINI_FLASH_MODEL: str = os.getenv("GEMINI_FLASH_MODEL", GEMINI_LITE_MODEL)
+# Node Deep-Dive / тьютор / dense в панели — Lite + high-quota fallbacks (не GEMINI_MODEL)
+GEMINI_TUTOR_MODEL: str = os.getenv("GEMINI_TUTOR_MODEL", GEMINI_LITE_MODEL)
+# Резерв с большим free-tier RPD (например gemma-4-31b)
+GEMINI_HIGH_QUOTA_MODEL: str = os.getenv("GEMINI_HIGH_QUOTA_MODEL", "gemma-4-31b-it")
 
 
-def _gemini_fallback_models() -> tuple[str, ...]:
-    raw = os.getenv(
-        "GEMINI_FALLBACK_MODELS",
-        os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash"),
-    )
+def _parse_model_list_env(key: str, default: str) -> tuple[str, ...]:
+    raw = os.getenv(key, default)
     return tuple(m.strip() for part in raw.split(",") for m in [part.strip()] if m)
 
 
+# Основной поток / fallback при 429 (15 RPM Lite tier)
+GEMINI_LITE_FALLBACK_MODELS: tuple[str, ...] = _parse_model_list_env(
+    "GEMINI_LITE_FALLBACK_MODELS",
+    "gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemma-4-26b-a4b-it,gemma-4-31b-it",
+)
+
+# Только reasoner / curriculum (5 RPM Flash tier)
+GEMINI_REASONER_FALLBACK_MODELS: tuple[str, ...] = _parse_model_list_env(
+    "GEMINI_REASONER_FALLBACK_MODELS",
+    "gemini-3.6-flash,gemini-3.5-flash,gemini-3-flash-preview",
+)
+
+
+def _gemini_fallback_models() -> tuple[str, ...]:
+    """Legacy env: по умолчанию Lite chain (не тянуть 3.6 в общий поток)."""
+    raw = os.getenv("GEMINI_FALLBACK_MODELS") or os.getenv("GEMINI_FALLBACK_MODEL") or ""
+    if raw.strip():
+        return tuple(m.strip() for part in raw.split(",") for m in [part.strip()] if m)
+    return GEMINI_LITE_FALLBACK_MODELS
+
+
 GEMINI_FALLBACK_MODELS: tuple[str, ...] = _gemini_fallback_models()
+
+
+def _gemini_tutor_fallback_models() -> tuple[str, ...]:
+    raw = os.getenv("GEMINI_TUTOR_FALLBACK_MODELS", "")
+    if raw.strip():
+        return _parse_model_list_env("GEMINI_TUTOR_FALLBACK_MODELS", raw)
+    return GEMINI_LITE_FALLBACK_MODELS
+
+
+GEMINI_TUTOR_FALLBACK_MODELS: tuple[str, ...] = _gemini_tutor_fallback_models()
+# Макс. длительность одного HTTP-запроса к API (не «пауза»). Reasoner / curriculum.
 GEMINI_API_TIMEOUT_SEC: float = float(os.getenv("GEMINI_API_TIMEOUT_SEC", "120"))
+# Тьютор / Skill Tree — короче, чтобы быстрее падать при зависании API.
+GEMINI_TUTOR_TIMEOUT_SEC: float = float(os.getenv("GEMINI_TUTOR_TIMEOUT_SEC", "45"))
+# Быстрый ping перед основным запросом (переключение chain без полного payload).
+GEMINI_PROBE_BEFORE_USE: bool = _env_bool("GEMINI_PROBE_BEFORE_USE", False)
+GEMINI_PROBE_TIMEOUT_SEC: float = float(os.getenv("GEMINI_PROBE_TIMEOUT_SEC", "12"))
 GEMINI_RETRY_BACKOFF_SEC: tuple[float, ...] = tuple(
     float(x.strip())
-    for x in os.getenv("GEMINI_RETRY_BACKOFF_SEC", "2,4,8").split(",")
+    for x in os.getenv("GEMINI_RETRY_BACKOFF_SEC", "2,4,8,16").split(",")
     if x.strip()
 )
 GEMINI_RPM_PAUSE_SEC: float = float(os.getenv("GEMINI_RPM_PAUSE_SEC", "1.5"))
+GEMINI_RPM_JITTER_SEC: float = float(os.getenv("GEMINI_RPM_JITTER_SEC", "2"))
+# Локальная пауза после 429 без RPD (минутный лимит)
+GEMINI_RPM_BLOCK_SEC: float = float(os.getenv("GEMINI_RPM_BLOCK_SEC", "45"))
+KE_RAG_TIMEOUT_SEC: float = float(os.getenv("KE_RAG_TIMEOUT_SEC", "45"))
 UNPAYWALL_EMAIL: str = os.getenv(
     "UNPAYWALL_EMAIL",
     "dev@knowledge-engine.local",
@@ -121,16 +170,19 @@ MIN_PAGE_CHARS_FOR_EXTRACTION: int = int(
 )
 
 
-def _env_bool(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.lower() in ("1", "true", "yes")
 
 
 # Docker / API: логи в stdout (docker compose logs), без Rich Live-панели
 KE_TRACE_STDOUT: bool = _env_bool("KE_TRACE_STDOUT", False)
 KE_LOG_PLAIN: bool = _env_bool("KE_LOG_PLAIN", False)
+
+REDIS_URL: str = (os.getenv("REDIS_URL") or "").strip()
+KE_USE_REDIS: bool = _env_bool(
+    "KE_USE_REDIS", bool(REDIS_URL)
+) and bool(REDIS_URL)
+KE_REDIS_LOGS: bool = _env_bool("KE_REDIS_LOGS", KE_USE_REDIS)
+KE_TASKS_CHANNEL: str = os.getenv("KE_TASKS_CHANNEL", "ke:tasks")
+KE_REDIS_LOG_MAX_LINES: int = int(os.getenv("KE_REDIS_LOG_MAX_LINES", "20000"))
 
 
 def _init_gemini_client() -> Any | None:
@@ -271,8 +323,8 @@ CONSENSUS_REUSE_BROWSER_SESSION: bool = _env_bool(
 )
 # Каждый анализ — новый тред на Consensus; RETRY внутри прогона — тот же тред.
 CONSENSUS_NEW_THREAD_EACH_RUN: bool = _env_bool("CONSENSUS_NEW_THREAD_EACH_RUN", True)
-# Reasoner (Gemini Flash 3.6 / основной автор ответа)
-GEMINI_REASONER_MODEL: str = os.getenv("GEMINI_REASONER_MODEL", GEMINI_FLASH_MODEL)
+# Reasoner / Heavy (флагман; по умолчанию GEMINI_MODEL)
+GEMINI_REASONER_MODEL: str = os.getenv("GEMINI_REASONER_MODEL", GEMINI_MODEL)
 
 AI_CHAT_START_URL: str = "https://gemini.google.com/app"
 AI_CHAT_PROVIDER_NAME: str = "Gemini"
@@ -336,6 +388,14 @@ SEMANTIC_SCHOLAR_TIMEOUT_SEC: float = float(
 SEMANTIC_SCHOLAR_ENABLED: bool = _env_bool("SEMANTIC_SCHOLAR_ENABLED", False)
 LIGHT_RAG_MIN_COSINE_SIM: float = float(os.getenv("LIGHT_RAG_MIN_COSINE_SIM", "0.42"))
 LIGHT_RAG_PROFILE_LIMIT: int = int(os.getenv("LIGHT_RAG_PROFILE_LIMIT", "5"))
+# Модуль 3 — Directional RAG Gateway (без LLM)
+RAG_CROSS_ENCODER_MODEL: str = os.getenv(
+    "RAG_CROSS_ENCODER_MODEL", "BAAI/bge-reranker-v2-m3"
+)
+RAG_DEFAULT_MIN_RELEVANCE: float = float(os.getenv("RAG_DEFAULT_MIN_RELEVANCE", "0.75"))
+RAG_DEFAULT_MAX_FACTS: int = int(os.getenv("RAG_DEFAULT_MAX_FACTS", "4"))
+RAG_RETRIEVAL_PER_DIRECTION: int = int(os.getenv("RAG_RETRIEVAL_PER_DIRECTION", "5"))
+RAG_LATENCY_WARN_MS: float = float(os.getenv("RAG_LATENCY_WARN_MS", "100"))
 ARXIV_API_URL: str = "http://export.arxiv.org/api/query"
 CROSSREF_API_URL: str = "https://api.crossref.org/works"
 HABR_API_URL: str = "https://habr.com/kairos/v1/articles"
@@ -349,6 +409,16 @@ SEARCH_ACTIVE_PROVIDERS: tuple[str, ...] = (
     "arxiv",
     "crossref",
 )
+
+# Search-First curriculum (предпоиск перед Flash)
+CURRICULUM_SEARCH_TARGET_HITS: int = int(os.getenv("CURRICULUM_SEARCH_TARGET_HITS", "15"))
+CURRICULUM_SEARCH_MIN_HITS: int = int(os.getenv("CURRICULUM_SEARCH_MIN_HITS", "8"))
+CURRICULUM_SEARCH_PROBE_URLS: bool = _env_bool("CURRICULUM_SEARCH_PROBE_URLS", True)
+CURRICULUM_SEARCH_FIRST_ENABLED: bool = _env_bool("CURRICULUM_SEARCH_FIRST_ENABLED", True)
+CURRICULUM_USE_V08_CONSENSUS: bool = _env_bool("CURRICULUM_USE_V08_CONSENSUS", False)
+# Legacy: игнорируется, режим задаётся UI generation_mode (fast | consensus)
+CURRICULUM_CONSENSUS_PRIMARY: bool = _env_bool("CURRICULUM_CONSENSUS_PRIMARY", False)
+CURRICULUM_V08_MAX_PAPERS: int = int(os.getenv("CURRICULUM_V08_MAX_PAPERS", "10"))
 
 MAX_SEARCH_ITERATIONS: int = 3
 MAX_AI_DIALOGUE_TURNS: int = int(os.getenv("MAX_AI_DIALOGUE_TURNS", "3"))
@@ -416,3 +486,4 @@ URL_PRIORITY_SUBSTR: tuple[str, ...] = (
 )
 RAG_HYBRID_LIMIT: int = int(os.getenv("RAG_HYBRID_LIMIT", "3"))
 RAG_MIN_RELEVANT_HITS: int = int(os.getenv("RAG_MIN_RELEVANT_HITS", "2"))
+LECTURE_RAG_TOP_K: int = int(os.getenv("LECTURE_RAG_TOP_K", "3"))

@@ -2,23 +2,18 @@
 
 from __future__ import annotations
 
-import concurrent.futures
 import uuid
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from knowledge_engine.services.v07_run_service import run_v07_job
+from knowledge_engine.api.helpers.work_enqueue import require_worker_or_inline
 from knowledge_engine.services.v07_run_store import V07RunStatus, v07_run_store
 from knowledge_engine.ui.run_log import trace
 from knowledge_engine.web.present import build_ui_view
 
 router = APIRouter(prefix="/v07/runs", tags=["v07-web"])
-
-_executor = concurrent.futures.ThreadPoolExecutor(
-    max_workers=2, thread_name_prefix="ke-v07"
-)
 
 
 class V07RunCreate(BaseModel):
@@ -86,7 +81,12 @@ def create_v07_run(body: V07RunCreate) -> dict[str, Any]:
         retrieval_mode=body.retrieval_mode,
     )
     trace(f"API ▶ POST /v07/runs id={run.id} mode={run.retrieval_mode}")
-    _executor.submit(run_v07_job, run.id)
+    require_worker_or_inline()
+    from knowledge_engine.services.redis_client import redis_enabled
+    from knowledge_engine.services.redis_tasks import publish_v07_run
+
+    if redis_enabled():
+        publish_v07_run(run.id)
     return {
         "run": V07RunResponse(
             id=run.id,

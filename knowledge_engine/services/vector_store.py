@@ -135,6 +135,50 @@ class VectorStore:
             )
         return summaries
 
+    def fetch_summaries_by_urls(
+        self,
+        urls: list[str],
+        limit: int = 8,
+    ) -> list[DocumentSummary]:
+        """Конспекты LanceDB для URL из маршрута / registry (Consensus, скачанные)."""
+        want: set[str] = set()
+        for raw in urls:
+            u = (raw or "").strip()
+            if u.startswith("http"):
+                want.add(u.rstrip("/").lower())
+        if not want or TABLE_NAME not in self._db.table_names():
+            return []
+        table = self._table()
+        if table.count_rows() == 0:
+            return []
+        summaries: list[DocumentSummary] = []
+        seen: set[str] = set()
+        try:
+            rows = table.to_arrow().to_pylist()
+        except Exception:
+            rows = []
+        for row in rows:
+            url = (row.get("url") or "").strip()
+            key = url.rstrip("/").lower()
+            if key not in want or key in seen:
+                continue
+            seen.add(key)
+            summaries.append(
+                DocumentSummary(
+                    title=row.get("title") or "",
+                    url=url,
+                    cs_concepts=json.loads(row.get("cs_concepts") or "[]"),
+                    key_takeaways=json.loads(row.get("key_takeaways") or "[]"),
+                    failure_modes=json.loads(row.get("failure_modes") or "[]"),
+                    diagram_descriptions=json.loads(
+                        row.get("diagram_descriptions") or "[]"
+                    ),
+                )
+            )
+            if len(summaries) >= limit:
+                break
+        return summaries
+
     def _nodes_table(self):
         if NODES_TABLE not in self._db.table_names():
             return None

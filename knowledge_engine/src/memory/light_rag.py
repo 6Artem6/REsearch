@@ -230,3 +230,119 @@ class LightRAG:
         if not hits:
             return ""
         return "\n".join(f"- {t}" for _, t in hits)
+
+    def _search_rows_sync(
+        self,
+        vector: List[float],
+        limit: int,
+        *,
+        kinds: frozenset[str],
+        min_cosine: float | None = None,
+    ) -> List[tuple[float, str, dict]]:
+        """Семантический поиск: (cosine_sim, text, meta)."""
+        floor = min_cosine if min_cosine is not None else LIGHT_RAG_MIN_COSINE_SIM
+        if self._table_name not in self._db.table_names():
+            return []
+        table = self._db.open_table(self._table_name)
+        if table.count_rows() == 0:
+            return []
+        try:
+            hits = table.search(vector).limit(max(limit * 4, 12)).to_list()
+        except Exception:
+            return []
+        scored: List[tuple[float, str, dict]] = []
+        for row in hits:
+            doc_id = str(row.get("doc_id") or "")
+            meta_raw = row.get("meta_json") or "{}"
+            try:
+                meta = json.loads(meta_raw)
+                if not isinstance(meta, dict):
+                    meta = {}
+            except Exception:
+                meta = {}
+            kind = meta.get("kind", "")
+            if not kind:
+                kind = "profile" if doc_id.startswith(PROFILE_DOC_PREFIX) else "fact"
+            if kind not in kinds:
+                continue
+            text = str(row.get("text") or "").strip()
+            existing = row.get("vector")
+            if not text or existing is None:
+                continue
+            sim = _cosine_similarity(vector, existing)
+            if sim >= floor:
+                scored.append((sim, text, meta))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        out: List[tuple[float, str, dict]] = []
+        seen: set[str] = set()
+        for sim, text, meta in scored:
+            if text in seen:
+                continue
+            seen.add(text)
+            out.append((sim, text, meta))
+            if len(out) >= limit:
+                break
+        return out
+
+    async def vector_search(
+        self,
+        query: str,
+        limit: int = 5,
+        *,
+        kinds: frozenset[str] | None = None,
+        min_cosine: float | None = None,
+    ) -> List[tuple[float, str, dict]]:
+        """Направленный поиск для RAG Gateway (Модуль 3)."""
+        q = (query or "").strip()
+        if not q:
+            return []
+        use_kinds = kinds or frozenset({"profile", "fact"})
+        vector = await self._embed(q)
+        return await run_under_uma_lock(
+            self._search_rows_sync,
+            vector,
+            limit,
+            kinds=use_kinds,
+            min_cosine=min_cosine,
+        )
+
+    async def save_user_fact(
+        self,
+        fact_text: str,
+        category: str,
+        node_id: str,
+    ) -> int:
+        """Индексация личного факта/пробела для будущих сессий (Модуль 3 write)."""
+        clean = (fact_text or "").strip()
+        if len(clean) < 12:
+            return 0
+        meta = {
+            "kind": "fact",
+            "category": (category or "").strip()[:200],
+            "node_id": (node_id or "").strip()[:80],
+        }
+        vector = await self._embed(clean)
+        row = {
+            "chunk_id": uuid.uuid4().hex[:16],
+            "doc_id": FACT_DOC_ID,
+            "text": clean[:12_000],
+            "vector": vector,
+            "meta_json": json.dumps(meta, ensure_ascii=False),
+        }
+        await run_under_uma_lock(self._ingest_rows_sync, [row])
+        trace(
+            f"Light RAG ✓ save_user_fact | node={meta['node_id']} "
+            f"category={meta['category']}"
+        )
+        return 1
+
+    def count_indexed_rows_sync(self) -> int:
+        if self._table_name not in self._db.table_names():
+            return 0
+        try:
+            return int(self._db.open_table(self._table_name).count_rows())
+        except Exception:
+            return 0
+
+    async def count_indexed_rows(self) -> int:
+        return await run_under_uma_lock(self.count_indexed_rows_sync)

@@ -29,6 +29,18 @@ x-ke-app-volumes: &ke-app-volumes
   - ./.env:/app/.env:ro
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: ke-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   searxng:
     image: searxng/searxng:latest
     container_name: ke-searxng

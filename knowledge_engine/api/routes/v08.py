@@ -18,7 +18,7 @@ from knowledge_engine.src.processors.selection_prompts import (
     suggest_selection_questions,
 )
 from knowledge_engine.ui.run_log import trace
-from knowledge_engine.web.linkify import markdown_document_html
+from knowledge_engine.services.llm_markdown_service import llm_markdown_to_html
 
 router = APIRouter(prefix="/v08", tags=["v08-explainer"])
 
@@ -96,7 +96,7 @@ def post_contextual_explain(body: ExplainRequest) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     registry = (run.result or {}).get("source_registry") if run.result else []
-    explanation_html = markdown_document_html(result.explanation, registry)
+    explanation_html = llm_markdown_to_html(result.explanation, registry)
 
     return ExplainResponse(
         explanation=result.explanation,

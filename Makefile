@@ -1,6 +1,6 @@
 # Knowledge Engine — быстрые команды (из корня REsearch)
 
-.PHONY: infra ollama python dev api sync-venv setup smoke-v07 v08 format lint check
+.PHONY: infra ollama python dev api worker sync-venv setup smoke-v07 v08 format lint check skill-tree-ui ship
 
 PYTHON ?= ./.venv/bin/python
 BLACK ?= ./.venv/bin/black
@@ -20,6 +20,9 @@ python:
 
 dev:
 	./knowledge_engine/scripts/dev-native.sh
+
+worker:
+	$(PYTHON) -m knowledge_engine.worker
 
 api:
 	docker compose --profile api up -d knowledge-api
@@ -55,3 +58,14 @@ check:
 
 dev-deps:
 	./.venv/bin/pip install -q -r knowledge_engine/requirements-dev.txt
+
+skill-tree-ui:
+	./knowledge_engine/scripts/build-skill-tree-ui.sh
+
+# git add . + commit + push origin main
+# Пример: make ship MSG="fix: redis worker pubsub"
+ship:
+	@test -n "$(MSG)" || (echo 'Usage: make ship MSG="your commit message"'; exit 1)
+	git add .
+	git commit -m "$(MSG)"
+	git push origin main

@@ -1,0 +1,17 @@
+{
+  "name": "ke-skill-tree-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild main.js --bundle --format=esm --outfile=skill-tree.bundle.js --platform=browser --target=es2020"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^1.1.4",
+    "@xyflow/react": "^12.3.6",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2"
+  }
+}

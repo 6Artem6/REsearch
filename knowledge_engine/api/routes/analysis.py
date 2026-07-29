@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import concurrent.futures
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from knowledge_engine.api.dependencies import get_job_store
+from knowledge_engine.api.helpers.work_enqueue import require_worker_or_inline
 from knowledge_engine.api.schemas.requests import (
     AnalyzeCreate,
     ClarifySubmit,
@@ -24,14 +24,6 @@ from knowledge_engine.services.analysis_service import (
 from knowledge_engine.services.job_store import JobStatus, JobStore
 
 router = APIRouter(prefix="/analyses", tags=["analysis"])
-
-_executor = concurrent.futures.ThreadPoolExecutor(
-    max_workers=2, thread_name_prefix="ke-analysis"
-)
-
-
-def _submit(fn, *args) -> None:
-    _executor.submit(fn, *args)
 
 
 @router.post(
@@ -52,10 +44,15 @@ def create_analysis(
     trace(f"API ▶ POST /analyses job={job.id} async={body.async_mode}")
 
     if body.async_mode:
-        _submit(run_analysis_job, job.id)
+        require_worker_or_inline()
+        from knowledge_engine.services.redis_client import redis_enabled
+        from knowledge_engine.services.redis_tasks import publish_analysis_job
+
+        if redis_enabled():
+            publish_analysis_job(job.id)
         return AnalyzeCreatedResponse(
             job=AnalysisJobResponse.from_job(job),
-            message="Анализ запущен в фоне. GET /analyses/{id} для статуса.",
+            message="Анализ в worker. GET /analyses/{id}/wait",
         )
 
     run_analysis_job(job.id)
@@ -116,7 +113,18 @@ def submit_clarification(
     if not job.clarify_question:
         raise HTTPException(status_code=400, detail="Нет активного вопроса для clarify")
 
-    _submit(run_analysis_job, job_id, body.answer)
+    require_worker_or_inline()
+    store.update(
+        job_id,
+        pending_clarify_answer=body.answer,
+        status=JobStatus.PENDING,
+        clarify_question=None,
+    )
+    from knowledge_engine.services.redis_client import redis_enabled
+    from knowledge_engine.services.redis_tasks import publish_analysis_job
+
+    if redis_enabled():
+        publish_analysis_job(job_id, body.answer)
     updated = store.get(job_id)
     return AnalysisJobResponse.from_job(updated or job)
 
@@ -163,8 +171,14 @@ def unravel_option(
         return AnalysisJobResponse.from_job(job)
 
     if body.async_mode:
-        _submit(run_unravel_for_job, job_id, body.option_id)
-        return AnalysisJobResponse.from_job(job)
+        require_worker_or_inline()
+        store.update(job_id, pending_unravel_option_id=body.option_id)
+        from knowledge_engine.services.redis_client import redis_enabled
+        from knowledge_engine.services.redis_tasks import publish_analysis_unravel
+
+        if redis_enabled():
+            publish_analysis_unravel(job_id, body.option_id)
+        return AnalysisJobResponse.from_job(store.get(job_id) or job)
 
     run_unravel_for_job(job_id, body.option_id)
     updated = store.get(job_id)

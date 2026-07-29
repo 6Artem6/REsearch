@@ -12,8 +12,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 from knowledge_engine.config import GRAPH_THREAD_ID, PACKAGE_ROOT
+from knowledge_engine.services.redis_client import get_redis, redis_enabled
 
 _JOB_STORE_PATH: Path = (PACKAGE_ROOT / ".runs" / "job_store.json").resolve()
+_RKEY_ANALYSIS = "ke:analysis:job:"
 
 
 class JobStatus(str, Enum):
@@ -41,6 +43,8 @@ class AnalysisJob:
     error: Optional[str] = None
     log_path: Optional[str] = None
     clarify_question: Optional[str] = None
+    pending_clarify_answer: Optional[str] = None
+    pending_unravel_option_id: Optional[int] = None
 
 
 def _dt_parse(raw: str) -> datetime:
@@ -64,6 +68,8 @@ def _job_to_dict(job: AnalysisJob) -> dict[str, Any]:
         "error": job.error,
         "log_path": job.log_path,
         "clarify_question": job.clarify_question,
+        "pending_clarify_answer": job.pending_clarify_answer,
+        "pending_unravel_option_id": job.pending_unravel_option_id,
     }
 
 
@@ -84,6 +90,8 @@ def _job_from_dict(data: dict[str, Any]) -> AnalysisJob:
         error=data.get("error"),
         log_path=data.get("log_path"),
         clarify_question=data.get("clarify_question"),
+        pending_clarify_answer=data.get("pending_clarify_answer"),
+        pending_unravel_option_id=data.get("pending_unravel_option_id"),
     )
 
 
@@ -91,7 +99,23 @@ class JobStore:
     def __init__(self) -> None:
         self._jobs: dict[str, AnalysisJob] = {}
         self._lock = threading.Lock()
-        self._load_from_disk()
+        if not redis_enabled():
+            self._load_from_disk()
+
+    def _redis_key(self, job_id: str) -> str:
+        return f"{_RKEY_ANALYSIS}{job_id}"
+
+    def _redis_save(self, job: AnalysisJob) -> None:
+        get_redis().set(
+            self._redis_key(job.id),
+            json.dumps(_job_to_dict(job), ensure_ascii=False),
+        )
+
+    def _redis_get(self, job_id: str) -> Optional[AnalysisJob]:
+        raw = get_redis().get(self._redis_key(job_id))
+        if not raw:
+            return None
+        return _job_from_dict(json.loads(raw))
 
     def _load_from_disk(self) -> None:
         if not _JOB_STORE_PATH.is_file():
@@ -101,14 +125,22 @@ class JobStore:
             items = raw.get("jobs") if isinstance(raw, dict) else raw
             if not isinstance(items, list):
                 return
+            loaded: dict[str, AnalysisJob] = {}
             for item in items:
                 job = _job_from_dict(item)
-                self._jobs[job.id] = job
+                loaded[job.id] = job
+            self._jobs = loaded
         except Exception:
             # Повреждённый файл — не блокируем API
             return
 
+    def _reload_from_disk(self) -> None:
+        with self._lock:
+            self._load_from_disk()
+
     def _persist(self) -> None:
+        if redis_enabled():
+            return
         try:
             _JOB_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
             jobs = [_job_to_dict(j) for j in self._jobs.values()]
@@ -140,14 +172,31 @@ class JobStore:
         )
         with self._lock:
             self._jobs[job_id] = job
+        if redis_enabled():
+            self._redis_save(job)
+        else:
             self._persist()
         return job
 
     def get(self, job_id: str) -> Optional[AnalysisJob]:
+        if redis_enabled():
+            return self._redis_get(job_id)
+        self._reload_from_disk()
         with self._lock:
             return self._jobs.get(job_id)
 
     def update(self, job_id: str, **fields: Any) -> Optional[AnalysisJob]:
+        if redis_enabled():
+            job = self._redis_get(job_id)
+            if not job:
+                return None
+            for key, val in fields.items():
+                if hasattr(job, key):
+                    setattr(job, key, val)
+            job.updated_at = datetime.now(timezone.utc)
+            self._redis_save(job)
+            return job
+        self._reload_from_disk()
         with self._lock:
             job = self._jobs.get(job_id)
             if not job:
@@ -163,6 +212,74 @@ class JobStore:
         with self._lock:
             jobs = sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)
             return jobs[:limit]
+
+    def claim_next_pending_work(self) -> Optional[AnalysisJob]:
+        if redis_enabled():
+            return None
+        self._reload_from_disk()
+        with self._lock:
+            candidates: list[AnalysisJob] = []
+            for job in self._jobs.values():
+                if job.pending_unravel_option_id is not None:
+                    candidates.append(job)
+                elif job.status == JobStatus.PENDING:
+                    candidates.append(job)
+            if not candidates:
+                return None
+            job = min(candidates, key=lambda j: j.created_at)
+            job.status = JobStatus.RUNNING
+            job.updated_at = datetime.now(timezone.utc)
+            self._persist()
+            return job
+
+    def try_claim_analysis(self, job_id: str) -> Optional[AnalysisJob]:
+        if not redis_enabled():
+            return None
+        r = get_redis()
+        lock = r.lock(f"ke:lock:analysis:{job_id}", timeout=30, blocking_timeout=5)
+        if not lock.acquire(blocking=False):
+            return None
+        try:
+            job = self._redis_get(job_id)
+            if not job:
+                return None
+            if job.pending_unravel_option_id is not None:
+                return None
+            if job.status != JobStatus.PENDING:
+                return None
+            job.status = JobStatus.RUNNING
+            job.updated_at = datetime.now(timezone.utc)
+            self._redis_save(job)
+            return job
+        finally:
+            try:
+                lock.release()
+            except Exception:
+                pass
+
+    def try_claim_unravel(self, job_id: str, option_id: int) -> Optional[AnalysisJob]:
+        if not redis_enabled():
+            return None
+        r = get_redis()
+        lock = r.lock(f"ke:lock:analysis:{job_id}", timeout=30, blocking_timeout=5)
+        if not lock.acquire(blocking=False):
+            return None
+        try:
+            job = self._redis_get(job_id)
+            if not job:
+                return None
+            if job.pending_unravel_option_id != option_id:
+                return None
+            job.status = JobStatus.RUNNING
+            job.pending_unravel_option_id = None
+            job.updated_at = datetime.now(timezone.utc)
+            self._redis_save(job)
+            return job
+        finally:
+            try:
+                lock.release()
+            except Exception:
+                pass
 
 
 job_store = JobStore()

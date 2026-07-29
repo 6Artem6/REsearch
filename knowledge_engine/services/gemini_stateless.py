@@ -3,24 +3,38 @@
 from __future__ import annotations
 
 import json
+import random
 import re
 import time
 from typing import Any, Callable, Type, TypeVar, Union
 
 from pydantic import BaseModel
 
+from pydantic import BaseModel
+
 from knowledge_engine.config import (
     GEMINI_API_KEY,
+    GEMINI_API_TIMEOUT_SEC,
     GEMINI_CLIENT,
-    GEMINI_FALLBACK_MODELS,
+    GEMINI_LITE_FALLBACK_MODELS,
+    GEMINI_LITE_MODEL,
     GEMINI_MODEL,
+    GEMINI_REASONER_FALLBACK_MODELS,
     GEMINI_RETRY_BACKOFF_SEC,
+    GEMINI_RPM_JITTER_SEC,
     GEMINI_RPM_PAUSE_SEC,
+    GEMINI_TUTOR_MODEL,
+    GEMINI_TUTOR_TIMEOUT_SEC,
+    GEMINI_PROBE_BEFORE_USE,
+    GEMINI_PROBE_TIMEOUT_SEC,
     SKIP_GEMINI,
 )
 from knowledge_engine.ui.run_log import trace
 
 T = TypeVar("T", bound=BaseModel)
+
+# Optional import for chat-isolated calls (node deep dive).
+ChatSessionManagerType = Any
 
 
 class GeminiUnavailableError(RuntimeError):
@@ -31,17 +45,38 @@ class GeminiQuotaExhaustedError(RuntimeError):
     """Все модели в цепочке исчерпали квоту."""
 
 
+_clients_by_timeout_ms: dict[int, Any] = {}
+
+
+def _make_client(timeout_sec: float) -> Any:
+    from google import genai
+    from google.genai import types
+
+    timeout_ms = max(1, int(timeout_sec * 1000))
+    if timeout_ms in _clients_by_timeout_ms:
+        return _clients_by_timeout_ms[timeout_ms]
+    client = genai.Client(
+        api_key=GEMINI_API_KEY,
+        http_options=types.HttpOptions(timeout=timeout_ms),
+    )
+    _clients_by_timeout_ms[timeout_ms] = client
+    return client
+
+
 def is_gemini_available() -> bool:
     return bool(GEMINI_API_KEY) and not SKIP_GEMINI and GEMINI_CLIENT is not None
 
 
-def _client() -> Any:
+def _client(timeout_sec: float | None = None) -> Any:
     if not is_gemini_available():
         raise GeminiUnavailableError(
             "Gemini недоступен: задайте GEMINI_API_KEY, установите google-genai "
             "или не используйте SKIP_GEMINI=true."
         )
-    return GEMINI_CLIENT
+    t = float(timeout_sec if timeout_sec is not None else GEMINI_API_TIMEOUT_SEC)
+    if abs(t - GEMINI_API_TIMEOUT_SEC) < 0.01 and GEMINI_CLIENT is not None:
+        return GEMINI_CLIENT
+    return _make_client(t)
 
 
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
@@ -113,23 +148,100 @@ def _is_hard_quota_exhausted(exc: BaseException) -> bool:
     return code == 429 or "resource_exhausted" in msg
 
 
-def gemini_model_chain() -> list[str]:
+def _is_heavy_flash_model(model: str) -> bool:
+    m = (model or "").lower()
+    if "flash-lite" in m or "flash_lite" in m:
+        return False
+    if "gemma" in m:
+        return False
+    if "3.6-flash" in m or "3.5-flash" in m:
+        return True
+    if "flash-preview" in m:
+        return True
+    return False
+
+
+def _dedupe_model_chain(names: tuple[str, ...] | list[str]) -> list[str]:
     chain: list[str] = []
-    for name in (GEMINI_MODEL, *GEMINI_FALLBACK_MODELS):
+    for name in names:
         m = (name or "").strip()
         if m and m not in chain:
             chain.append(m)
     return chain
+
+
+def gemini_lite_model_chain(primary: str | None = None) -> list[str]:
+    """Основной поток: Lite tier + fallback (15 RPM / 500 RPD)."""
+    return _dedupe_model_chain(
+        (
+            (primary or GEMINI_LITE_MODEL),
+            GEMINI_LITE_MODEL,
+            *GEMINI_LITE_FALLBACK_MODELS,
+        )
+    )
+
+
+def gemini_reasoner_model_chain(primary: str | None = None) -> list[str]:
+    """Reasoner / curriculum: 3.6 / 3.5 Flash (5 RPM / 20 RPD)."""
+    from knowledge_engine.config import GEMINI_REASONER_MODEL
+
+    return _dedupe_model_chain(
+        (
+            (primary or GEMINI_REASONER_MODEL),
+            GEMINI_REASONER_MODEL,
+            GEMINI_MODEL,
+            *GEMINI_REASONER_FALLBACK_MODELS,
+        )
+    )
+
+
+def gemini_model_chain() -> list[str]:
+    return gemini_reasoner_model_chain()
 
 
 def gemini_model_chain_for(primary: str) -> list[str]:
-    """Primary (LITE/FLASH) → GEMINI_MODEL → GEMINI_FALLBACK_MODELS, без дубликатов."""
-    chain: list[str] = []
-    for name in (primary, GEMINI_MODEL, *GEMINI_FALLBACK_MODELS):
-        m = (name or "").strip()
-        if m and m not in chain:
-            chain.append(m)
-    return chain
+    p = (primary or "").strip()
+    if _is_heavy_flash_model(p):
+        return gemini_reasoner_model_chain(p)
+    return gemini_lite_model_chain(p)
+
+
+def gemini_tutor_model_chain(primary: str | None = None) -> list[str]:
+    return gemini_lite_model_chain(primary or GEMINI_TUTOR_MODEL)
+
+
+def default_rpm_limit_for_model(model: str) -> int:
+    m = (model or "").lower()
+    if "gemma" in m:
+        return 30
+    if "flash-lite" in m or "flash_lite" in m:
+        return 15
+    if "3.6-flash" in m or "3.5-flash" in m:
+        return 5
+    return 10
+
+
+def gemini_min_interval_sec(model: str) -> float:
+    rpm = max(1, default_rpm_limit_for_model(model))
+    return max(60.0 / rpm, 4.0)
+
+
+def _sleep_with_jitter(seconds: float) -> None:
+    time.sleep(max(0.0, seconds) + random.uniform(0, GEMINI_RPM_JITTER_SEC))
+
+
+def _rpm_pause_for_model(model: str) -> None:
+    m = (model or "").strip()
+    if not m:
+        return
+    base = max(GEMINI_RPM_PAUSE_SEC, gemini_min_interval_sec(m))
+    wait = base + random.uniform(0, GEMINI_RPM_JITTER_SEC)
+    if wait > GEMINI_RPM_PAUSE_SEC + 0.1:
+        trace(
+            f"GEMINI RPM spacing {wait:.1f}s | model={m} "
+            f"(ориентир {default_rpm_limit_for_model(m)} RPM)"
+        )
+    time.sleep(wait)
 
 
 def _extract_status_code(exc: BaseException) -> int | None:
@@ -157,11 +269,12 @@ def _is_retryable(exc: BaseException) -> bool:
 
 
 def _generate_once(
-    client: Any,
     model: str,
     combined_user: str,
     system_instruction: str,
     response_schema: Type[T] | None,
+    log_label: str = "",
+    http_timeout_sec: float | None = None,
 ) -> str:
     from google.genai import types
 
@@ -172,20 +285,31 @@ def _generate_once(
         config_kwargs["response_mime_type"] = "application/json"
         config_kwargs["response_schema"] = response_schema
 
+    lab = (log_label or "generate_content").strip()
+    tout = float(http_timeout_sec if http_timeout_sec is not None else GEMINI_API_TIMEOUT_SEC)
+    trace(
+        f"GEMINI HTTP ▶ {lab} | model={model} | "
+        f"лимит HTTP={tout:.0f}s (не пауза; нормально ~2–20s) | payload≈{len(combined_user)} sym"
+    )
+    t0 = time.perf_counter()
+    client = _client(tout)
     response = client.models.generate_content(
         model=model,
         contents=combined_user,
         config=types.GenerateContentConfig(**config_kwargs),
     )
+    elapsed = time.perf_counter() - t0
     text = (response.text or "").strip()
     if not text:
         raise RuntimeError("Gemini stateless: пустой ответ")
+    trace(
+        f"GEMINI HTTP ✓ {lab} | model={model} | {elapsed:.1f}s | ответ {len(text)} sym"
+    )
     return text
 
 
 def _rpm_pause() -> None:
-    if GEMINI_RPM_PAUSE_SEC > 0:
-        time.sleep(GEMINI_RPM_PAUSE_SEC)
+    _rpm_pause_for_model(GEMINI_LITE_MODEL)
 
 
 def _generate_multimodal_once(
@@ -232,16 +356,148 @@ def _parse_structured(
         raise RuntimeError(f"Gemini JSON не прошёл валидацию ({label}): {exc}") from exc
 
 
+def _combine_anchor(global_anchor: str, body: str) -> str:
+    return (
+        f"GLOBAL ANCHOR (задача и контекст, не игнорировать):\n{global_anchor.strip()}\n\n"
+        f"{body.strip()}"
+    )
+
+
+def probe_gemini_model(model: str, label: str = "probe") -> tuple[bool, str]:
+    """Минимальный запрос: модель отвечает? Не трогает chat history."""
+    m = (model or "").strip()
+    if not m:
+        return False, "empty model id"
+    t0 = time.perf_counter()
+    trace(f"GEMINI probe ▶ {m} | {label}")
+    try:
+        _generate_once(
+            m,
+            "ping",
+            "Reply with exactly one word: OK",
+            None,
+            f"probe/{label}",
+            GEMINI_PROBE_TIMEOUT_SEC,
+        )
+        trace(f"GEMINI probe ✓ {m} | {label} | {time.perf_counter() - t0:.1f}s")
+        return True, ""
+    except Exception as exc:
+        err = f"{type(exc).__name__}: {str(exc)[:240]}"
+        trace(f"GEMINI probe ✗ {m} | {label} | {err}")
+        return False, err
+
+
+def _reorder_models_after_probe(
+    model_list: list[str],
+    label: str,
+    track_quota: bool,
+    record_gemini_error: Callable[[str, BaseException], None] | None,
+) -> list[str]:
+    if not GEMINI_PROBE_BEFORE_USE or len(model_list) <= 1:
+        if not GEMINI_PROBE_BEFORE_USE and len(model_list) > 1:
+            trace(
+                f"GEMINI probe off | {label} | локальный RPD + fallback при ошибке API"
+            )
+        return model_list
+    for i, m in enumerate(model_list):
+        ok, err = probe_gemini_model(m, label)
+        if ok:
+            if track_quota and record_gemini_error is not None:
+                from knowledge_engine.services.gemini_quota_store import record_gemini_success
+
+                record_gemini_success(m)
+            if i > 0:
+                trace(
+                    f"GEMINI probe | {label} | переключение на {m} "
+                    f"(в chain не отвечает: {model_list[0]})"
+                )
+            return [m] + [x for x in model_list if x != m]
+        if track_quota and record_gemini_error is not None:
+            record_gemini_error(m, RuntimeError(err or "probe failed"))
+    return []
+
+
+def _sync_chat_session_primary_model(
+    chat_mgr: ChatSessionManagerType | None,
+    chat_label: str,
+    model_list: list[str],
+    handoff_summary: str,
+    label: str,
+) -> None:
+    if chat_mgr is None or not chat_label or not model_list:
+        return
+    primary = model_list[0]
+    stored = chat_mgr.resolve_for_model(chat_label, primary, handoff_summary)
+    trace(
+        f"GEMINI chat bind | {label} | label={chat_label} | "
+        f"model={stored.model_name} | context={stored.context_type}"
+    )
+
+
 def _call_with_model_fallback(
     label: str,
     generate_for_model: Callable[[str], str],
     rpm_pause: bool = False,
     models: list[str] | None = None,
+    chat_manager: ChatSessionManagerType | None = None,
+    chat_label: str = "",
+    handoff_summary: str = "",
+    session_registry: ChatSessionManagerType | None = None,
 ) -> str:
-    if rpm_pause:
-        _rpm_pause()
+    trace(f"GEMINI ▶ chain start | {label}")
 
     model_list = models or gemini_model_chain()
+    trace(
+        f"GEMINI chain prep | {label} | requested "
+        + " → ".join(model_list[:6])
+        + (" …" if len(model_list) > 6 else "")
+    )
+    from knowledge_engine.services.gemini_quota_store import (
+        filter_models_for_quota,
+        quota_tracking_enabled,
+        record_gemini_error,
+        record_gemini_success,
+    )
+
+    track_quota = quota_tracking_enabled()
+    if track_quota:
+        trace(f"GEMINI chain prep | {label} | локальный quota filter…")
+        raw_list = list(model_list)
+        model_list = filter_models_for_quota(model_list)
+        skipped = [m for m in raw_list if m not in model_list]
+        if skipped:
+            trace(
+                f"GEMINI RPD skip | {label} | локальный счётчик / RPM: "
+                + ", ".join(skipped)
+            )
+        if not model_list:
+            raise GeminiQuotaExhaustedError(
+                f"Локальный счётчик RPD исчерпан для всех моделей в chain ({label}). "
+                "Сброс RPD: Pacific midnight (~12:00 UTC+5). "
+                "Или удалите knowledge_engine/.runs/gemini_quota_state.json"
+            )
+    trace(f"GEMINI chain prep | {label} | probe reorder (off={not GEMINI_PROBE_BEFORE_USE})…")
+    model_list = _reorder_models_after_probe(
+        model_list,
+        label,
+        track_quota,
+        record_gemini_error if track_quota else None,
+    )
+    if not model_list:
+        raise GeminiUnavailableError(
+            f"Нет доступных моделей в chain ({label}). "
+            "Проверьте GEMINI_API_KEY, квоты и GEMINI_LITE_FALLBACK_MODELS."
+        )
+    trace(
+        f"GEMINI chain ready | {label} | "
+        + " → ".join(model_list[:6])
+        + (" …" if len(model_list) > 6 else "")
+    )
+    reg = session_registry if session_registry is not None else chat_manager
+    trace(f"GEMINI chain prep | {label} | chat session bind…")
+    _sync_chat_session_primary_model(
+        reg, chat_label, model_list, handoff_summary, label
+    )
     delays = list(GEMINI_RETRY_BACKOFF_SEC)
     last_exc: BaseException | None = None
     quota_models: list[str] = []
@@ -253,7 +509,21 @@ def _call_with_model_fallback(
     )
 
     for model_index, model in enumerate(model_list):
+        if (
+            chat_manager is not None
+            and chat_label
+            and model_index > 0
+            and model_list[model_index - 1] != model
+        ):
+            chat_manager.create_new_session(
+                model,
+                chat_label,
+                handoff_summary,
+                "Summary",
+            )
         trace(f"GEMINI stateless ▶ {label} | model={model}")
+        if rpm_pause or GEMINI_RPM_PAUSE_SEC > 0:
+            _rpm_pause_for_model(model)
         attempt = 0
         rpm_waits = 0
         while True:
@@ -265,8 +535,12 @@ def _call_with_model_fallback(
                         f"(after {model_list[0]})"
                     )
                 trace(f"GEMINI stateless ✓ {label} | model={model} | {len(text)} sym")
+                if track_quota:
+                    record_gemini_success(model)
                 return text
             except Exception as exc:
+                if track_quota:
+                    record_gemini_error(model, exc)
                 last_exc = exc
                 if not _is_retryable(exc):
                     raise
@@ -301,9 +575,9 @@ def _call_with_model_fallback(
                         rpm_waits += 1
                     trace(
                         f"GEMINI wait {wait:.0f}s ({wait_src}) | "
-                        f"{label} | model={model} | {exc}"
+                        f"{label} | model={model} | причина: {type(exc).__name__}"
                     )
-                    time.sleep(wait)
+                    _sleep_with_jitter(wait)
                     if google_wait is not None:
                         continue
                     attempt += 1
@@ -357,7 +631,7 @@ def run_stateless_gemini(
 
     def _gen(model: str) -> str:
         return _generate_once(
-            client, model, combined_user, system_instruction, response_schema
+            model, combined_user, system_instruction, response_schema, label
         )
 
     text = _call_with_model_fallback(label, _gen, rpm_pause=rpm_pause)
@@ -372,21 +646,55 @@ def run_gemini_structured_with_chain(
     response_schema: Type[T],
     label: str,
     rpm_pause: bool = False,
+    chat_manager: ChatSessionManagerType | None = None,
+    chat_label: str = "",
+    delta_user_message: str = "",
+    handoff_summary: str = "",
+    models: list[str] | None = None,
+    http_timeout_sec: float | None = None,
+    session_registry: ChatSessionManagerType | None = None,
 ) -> T:
     """Structured JSON с retry (503/5xx) и fallback: primary → GEMINI_MODEL → FALLBACKS."""
-    combined_user = (
-        f"GLOBAL ANCHOR (задача и контекст, не игнорировать):\n{global_anchor.strip()}\n\n"
-        f"{user_payload.strip()}"
-    )
-    client = _client()
-    models = gemini_model_chain_for(primary_model)
+    static_body = user_payload.strip()
+    full_context = _combine_anchor(global_anchor, static_body)
+    tout = http_timeout_sec
+    client = _client(tout)
+    model_list = models or gemini_model_chain_for(primary_model)
+    lab = (chat_label or label).strip()
 
     def _gen(model: str) -> str:
+        if chat_manager is not None:
+            message = chat_manager.build_user_payload(
+                lab, full_context, delta_user_message
+            )
+            return chat_manager.send_chat_message(
+                client,
+                lab,
+                model,
+                message,
+                system_instruction,
+                response_schema,
+                handoff_summary,
+            )
         return _generate_once(
-            client, model, combined_user, system_instruction, response_schema
+            model,
+            full_context,
+            system_instruction,
+            response_schema,
+            label,
+            tout,
         )
 
-    text = _call_with_model_fallback(label, _gen, rpm_pause=rpm_pause, models=models)
+    text = _call_with_model_fallback(
+        label,
+        _gen,
+        rpm_pause=rpm_pause,
+        models=model_list,
+        chat_manager=chat_manager,
+        chat_label=lab,
+        handoff_summary=handoff_summary,
+        session_registry=session_registry,
+    )
     return _parse_structured(text, response_schema, label)
 
 
@@ -406,7 +714,7 @@ def run_gemini_text_with_chain(
     models = gemini_model_chain_for(primary_model)
 
     def _gen(model: str) -> str:
-        return _generate_once(client, model, combined_user, system_instruction, None)
+        return _generate_once(model, combined_user, system_instruction, None, label)
 
     text = _call_with_model_fallback(label, _gen, rpm_pause=rpm_pause, models=models)
     return text.strip()

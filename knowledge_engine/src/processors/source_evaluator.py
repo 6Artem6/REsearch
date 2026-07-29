@@ -1,4 +1,4 @@
-"""Re-Act аудит источников в ответе Reasoner (Gemini Lite)."""
+"""Re-Act аудит источников в ответе Reasoner (Gemini Lite Source Evaluator)."""
 
 from __future__ import annotations
 
@@ -7,51 +7,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
+from knowledge_engine.src.source_evaluator.evaluator import evaluate_source as evaluate_source_url
 from knowledge_engine.ui.run_log import trace
 
 _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
 _SOURCE_TAG_RE = re.compile(r"\[S(\d+)\]", re.I)
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+")
-
-SOURCE_EVALUATOR_PROMPT = """Ты — Строгий Аудитор Технической Литературы.
-Твоя задача — проверить источник (ссылку, блог, авторов), который предлагает использовать модель-архитектор для подтверждения факта.
-
-ВХОДНЫЕ ДАННЫЕ:
-- Утверждение/Тезис: {statement}
-- Предложенный источник/ссылка: {source_info}
-
-КРИТЕРИИ ОЦЕНКИ:
-1. **Авторитетность (Authority)**: Входит ли источник в белый список (Microsoft Learn `learn.microsoft.com`, Cloudflare Blog `blog.cloudflare.com`, MDN `developer.mozilla.org`, Martin Fowler `martinfowler.com`, AWS Architecture, Uber/Netflix Eng)? Или это поверхностная статья/SEO-мусор?
-2. **Глубина (Technical Depth)**: Содержит ли источник конкретные технические детали, схемы, протоколы или бенчмарки?
-3. **Релевантность**: Подтверждает ли источник именно данный тезис?
-
-ФОРМАТ ОТВЕТА (СТРОГО JSON):
-Если источник качественный:
-{{
-  "status": "APPROVED",
-  "reason": "Источник авторитетен и содержит глубокий разбор механики."
-}}
-
-Если источник слабый или сомнительный:
-{{
-  "status": "REJECTED",
-  "reason": "Источник плоховат: это поверхностный материал без разбора подкапотной механики. Замени на авторитетный блог из белого списка (Cloudflare/Microsoft/MDN/Martin Fowler) или сформулируй ответ на базе фундаментальных принципов CS без этой ссылки."
-}}
-"""
-
-SOURCE_EVALUATOR_SYSTEM = (
-    f"{RUSSIAN_OUTPUT_RULE}\n"
-    "Отвечай строго на русском языке в поле reason. "
-    "status только APPROVED или REJECTED.\n\n"
-    "Ты — Строгий Аудитор Технической Литературы. "
-    "Проверяешь источник, который архитектор хочет использовать для подтверждения факта.\n\n"
-    "КРИТЕРИИ ОЦЕНКИ:\n"
-    "1. Авторитетность: белый список — Microsoft Learn, Cloudflare Blog, MDN, Martin Fowler, "
-    "AWS Architecture, Uber/Netflix Eng; не SEO-мусор.\n"
-    "2. Глубина: конкретные технические детали, схемы, протоколы, бенчмарки.\n"
-    "3. Релевантность: источник подтвержает именно данный тезис.\n"
-)
 
 MAX_REACT_SOURCE_ITERATIONS = 2
 _MAX_CITATIONS_PER_PASS = 8
@@ -60,16 +21,19 @@ _MAX_CITATIONS_PER_PASS = 8
 class SourceEvaluationResult(BaseModel):
     status: Literal["APPROVED", "REJECTED"]
     reason: str = ""
+    confidence_score: float = 0.0
+    suggested_action: str = "KEEP"
+    whitelist_match: bool = False
 
 
 class SourceCitationCandidate(BaseModel):
     statement: str
     source_info: str
     url: str = ""
+    excerpt: str = ""
 
 
 def _sentence_with_match(text: str, match_start: int) -> str:
-    """Ближайшее предложение вокруг позиции ссылки."""
     if not text:
         return ""
     left = text[:match_start]
@@ -86,7 +50,6 @@ def extract_source_citation_candidates(
     answer: str,
     registry: list[dict[str, Any]] | None = None,
 ) -> list[SourceCitationCandidate]:
-    """Извлечь пары «тезис + источник» из markdown-ссылок и тегов [Sx]."""
     text = (answer or "").strip()
     if not text:
         return []
@@ -113,6 +76,7 @@ def extract_source_citation_candidates(
                 statement=statement,
                 source_info=f"{title} | {url}",
                 url=url,
+                excerpt=title,
             )
         )
 
@@ -135,6 +99,7 @@ def extract_source_citation_candidates(
                 statement=statement,
                 source_info=f"[{sid}] {title} | {url or '—'}",
                 url=url,
+                excerpt=title,
             )
         )
 
@@ -146,39 +111,39 @@ def evaluate_source(
     source_info: str,
     global_anchor: str,
 ) -> SourceEvaluationResult:
-    """Один вызов Gemini Lite — оценка авторитетности источника."""
-    from knowledge_engine.src.analytics.gemini_v07 import run_gemini_lite_structured
-
-    st = (statement or "").strip()[:800]
-    info = (source_info or "").strip()[:1200]
-    user_payload = (
-        f"Утверждение/Тезис:\n{st}\n\n"
-        f"Предложенный источник/ссылка:\n{info}\n\n"
-        "Верни JSON с полями status и reason."
-    )
-    trace(f"SOURCE_EVAL ▶ Lite | {info[:80]}…")
-    result = run_gemini_lite_structured(
-        SOURCE_EVALUATOR_SYSTEM,
-        user_payload,
+    """Оценка пары тезис+источник (адаптер для Reasoner Re-Act)."""
+    info = (source_info or "").strip()
+    url = ""
+    excerpt = ""
+    if "|" in info:
+        excerpt, url_part = info.split("|", 1)
+        excerpt = excerpt.strip()
+        url = url_part.strip()
+    else:
+        url = info
+    if not url.startswith("http"):
+        link_m = re.search(r"(https?://[^\s)]+)", info)
+        if link_m:
+            url = link_m.group(1)
+    raw = evaluate_source_url(
+        url or info,
+        (statement or "").strip(),
+        excerpt,
         global_anchor,
-        SourceEvaluationResult,
-        "source_evaluator",
     )
-    status = (result.status or "REJECTED").strip().upper()
-    if status not in ("APPROVED", "REJECTED"):
-        status = "REJECTED"
-    trace(f"SOURCE_EVAL ✓ {status} | {result.reason[:100]}")
-    return SourceEvaluationResult(status=status, reason=(result.reason or "").strip())
+    return SourceEvaluationResult(
+        status=raw.get("status", "REJECTED"),
+        reason=str(raw.get("reason") or ""),
+        confidence_score=float(raw.get("confidence_score") or 0.0),
+        suggested_action=str(raw.get("suggested_action") or "KEEP"),
+        whitelist_match=bool(raw.get("whitelist_match")),
+    )
 
 
 def build_react_feedback(
     candidates: list[SourceCitationCandidate],
     global_anchor: str,
 ) -> str:
-    """
-    Проверить источники; собрать текст отклонений для Re-Act коррекции Reasoner.
-    Пустая строка — все источники прошли аудит или нечего проверять.
-    """
     if not candidates:
         return ""
     lines: list[str] = []
@@ -186,8 +151,14 @@ def build_react_feedback(
         ev = evaluate_source(cand.statement, cand.source_info, global_anchor)
         if ev.status == "REJECTED":
             src = cand.url or cand.source_info[:120]
+            action_hint = ""
+            if ev.suggested_action == "RETRY_WITH_NEW_SOURCE":
+                action_hint = " Замени ссылку на источник из Whitelist Matrix."
+            elif ev.suggested_action == "REMOVE_LINK":
+                action_hint = " Убери ссылку и объясни тезис без неё."
             lines.append(
-                f"[Системный отклик: Источник отклонён ({src}). Причина: {ev.reason}]"
+                f"[Системный отклик: Источник отклонён ({src}). "
+                f"Причина: {ev.reason}.{action_hint}]"
             )
     return "\n".join(lines)
 
@@ -197,7 +168,6 @@ def audit_answer_sources_react(
     registry: list[dict[str, Any]] | None,
     global_anchor: str,
 ) -> str:
-    """Re-Act шаг: аудит всех цитируемых источников в черновике ответа."""
     candidates = extract_source_citation_candidates(answer, registry)
     if not candidates:
         trace("SOURCE_EVAL ⊘ нет ссылок для аудита в ответе")

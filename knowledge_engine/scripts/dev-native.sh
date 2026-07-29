@@ -18,8 +18,10 @@ export KE_API_PORT="${KE_API_PORT:-8765}"
 export SEARXNG_BASE_URL="${SEARXNG_BASE_URL:-http://localhost:8080}"
 export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"
 
-echo "==> SearXNG (Docker)"
-docker compose up -d searxng
+echo "==> SearXNG + Redis (Docker)"
+docker compose up -d searxng redis
+
+export REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379/0}"
 
 if [ ! -x "${ROOT}/.venv/bin/python" ]; then
   echo "==> Нет .venv — setup-host-python.sh"
@@ -35,6 +37,18 @@ fi
 if ! curl -sf "${OLLAMA_BASE_URL}/api/tags" >/dev/null 2>&1; then
   echo "WARN: Ollama не отвечает на ${OLLAMA_BASE_URL} — запустите setup-host-ollama.sh"
 fi
+
+echo ""
+echo "==> KE Worker (Gemini / граф / Skill Tree)"
+if pgrep -f "[-m ]knowledge_engine\\.worker" >/dev/null 2>&1; then
+  echo "    WARN: останавливаем старые процессы knowledge_engine.worker"
+  pkill -f "[-m ]knowledge_engine\\.worker" 2>/dev/null || true
+  sleep 0.6
+fi
+"${ROOT}/.venv/bin/python" -m knowledge_engine.worker &
+WORKER_PID=$!
+echo "    worker pid=$WORKER_PID (логи WORKER ▶ в этом терминале)"
+trap 'kill "$WORKER_PID" 2>/dev/null || true' EXIT INT TERM
 
 echo ""
 echo "==> Native API reload → http://${KE_API_HOST}:${KE_API_PORT}/docs"

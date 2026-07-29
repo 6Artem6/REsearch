@@ -13,10 +13,16 @@ from knowledge_engine.api.http_errors import api_error_payload, format_any_error
 from knowledge_engine.api.routes import (
     analysis,
     analysis_wait,
+    curriculum,
     health,
+    node_deep_dive,
+    node_skill,
+    rag_gateway,
+    skill_tree,
     search,
     v07,
     v08,
+    work_jobs,
 )
 from knowledge_engine.ui.run_log import trace
 
@@ -89,6 +95,12 @@ def create_app() -> FastAPI:
     app.include_router(analysis_wait.router, prefix="/api/v1")
     app.include_router(v07.router, prefix="/api/v1")
     app.include_router(v08.router, prefix="/api/v1")
+    app.include_router(curriculum.router, prefix="/api/v1")
+    app.include_router(node_deep_dive.router, prefix="/api/v1")
+    app.include_router(node_skill.router, prefix="/api/v1")
+    app.include_router(rag_gateway.router, prefix="/api/v1")
+    app.include_router(skill_tree.router, prefix="/api/v1")
+    app.include_router(work_jobs.router, prefix="/api/v1")
 
     if _WEB_STATIC.is_dir():
         app.mount(
@@ -96,6 +108,14 @@ def create_app() -> FastAPI:
             StaticFiles(directory=str(_WEB_STATIC)),
             name="ke-web-static",
         )
+
+    @app.get("/app/skill-tree", tags=["ui"])
+    @app.get("/app/skill-tree/", tags=["ui"])
+    def skill_tree_app() -> FileResponse:
+        path = _WEB_STATIC / "skill-tree" / "index.html"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Skill Tree UI not found")
+        return FileResponse(path)
 
     @app.get("/app", tags=["ui"])
     @app.get("/app/", tags=["ui"])
@@ -115,6 +135,9 @@ def create_app() -> FastAPI:
             "health": "/api/v1/health",
             "v07_runs": "/api/v1/v07/runs",
             "v08_explain": "/api/v1/v08/explain",
+            "curriculum_generate": "/api/v1/curriculum/generate",
+            "node_deep_dive": "/api/v1/node-deep-dive/interact",
+            "rag_gateway_query": "/api/v1/rag-gateway/query",
         }
 
     return app

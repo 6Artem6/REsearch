@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Knowledge Engine</title>
     <link rel="stylesheet" href="/app/static/themes/themes.css" />
-    <link rel="stylesheet" href="/app/static/app.css?v=20260727i" />
+    <link rel="stylesheet" href="/app/static/app.css?v=20260727l" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -16,6 +16,10 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
       crossorigin="anonymous"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/styles/atom-one-dark.min.css"
     />
   </head>
   <body>
@@ -35,6 +39,8 @@
         <div class="toc-title toc-title-after-toc">Вопросы системе</div>
         <nav id="questions-nav" class="questions-nav" aria-label="История вопросов"></nav>
         <p class="muted" style="margin-top: 2rem; font-size: 0.8rem">
+          <a href="/app/skill-tree" class="ext-link">AI Skill Tree</a>
+          ·
           <a href="/docs" class="ext-link">OpenAPI</a>
         </p>
       </aside>
@@ -117,6 +123,8 @@
       src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
       crossorigin="anonymous"
     ></script>
-    <script src="/app/static/app.js?v=20260727j" defer></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+    <script src="/app/static/codeHighlightGlobal.js"></script>
+    <script src="/app/static/app.js?v=20260727m" defer></script>
   </body>
 </html>

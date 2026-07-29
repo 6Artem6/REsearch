@@ -61,8 +61,7 @@ knowledge_engine/.source_archive/
 **/playwright-browsers/
 ms-playwright/
 
-# Node (если появится фронт-сборка)
-node_modules/
+**/skill-tree/node_modules/
 
 # Docker локальные override (не секреты, но часто персональные)
 docker-compose.override.yml

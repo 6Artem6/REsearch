@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from contextlib import asynccontextmanager
 from functools import wraps
 from typing import Any, AsyncIterator, Callable, TypeVar
 
-uma_resource_lock = asyncio.Lock()
+# asyncio.Lock deadlock в worker: asyncio.run + sync Gemini/LanceDB в одном процессе.
+_uma_thread_lock = threading.RLock()
+# Legacy export (threading lock, не asyncio.Lock).
+uma_resource_lock = _uma_thread_lock
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -18,11 +22,11 @@ async def staged_uma_lock() -> AsyncIterator[None]:
     Serialize heavy Ollama 7B inference and LanceDB index/search.
     Rule: never call Ollama inside LanceDB blocks without this lock.
     """
-    await uma_resource_lock.acquire()
+    _uma_thread_lock.acquire()
     try:
         yield
     finally:
-        uma_resource_lock.release()
+        _uma_thread_lock.release()
 
 
 def staged_uma_lock_decorator(fn: F) -> F:

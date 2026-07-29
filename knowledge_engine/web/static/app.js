@@ -443,6 +443,9 @@ function renderMathInContent(root) {
     throwOnError: false,
     ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"],
   });
+  if (typeof window.keHighlightCodeInRoot === "function") {
+    window.keHighlightCodeInRoot(root);
+  }
 }
 
 const SECTION_DEFAULT_COLLAPSED = new Set(["sources", "scholarly_papers"]);

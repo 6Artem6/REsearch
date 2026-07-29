@@ -14,6 +14,8 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     searxng_ok: bool
     searxng_message: str
+    worker_ok: bool = False
+    redis_ok: bool = False
 
 
 class ConfigResponse(BaseModel):

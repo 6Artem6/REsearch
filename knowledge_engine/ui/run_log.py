@@ -15,6 +15,7 @@ RUN_LOG_DIR: Path = (PACKAGE_ROOT / ".runs").resolve()
 
 _lock = Lock()
 _log_path: Path | None = None
+_log_redis_id: str | None = None
 _node_stack: list[tuple[str, float]] = []
 
 
@@ -25,22 +26,32 @@ def _slug(text: str, max_len: int = 36) -> str:
 
 
 def init_run_log(title: str) -> Path:
-    """Создать новый лог-файл для прогона analyze."""
-    global _log_path, _node_stack
+    """Создать лог прогона (Redis list или файл .runs)."""
+    global _log_path, _node_stack, _log_redis_id
     from knowledge_engine.ui.logger import begin_run_tracking
 
     begin_run_tracking()
     RUN_LOG_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    _log_path = RUN_LOG_DIR / f"{stamp}-{_slug(title)}.log"
+    log_id = f"{stamp}-{_slug(title)}"
+    _log_redis_id = log_id
+    _log_path = RUN_LOG_DIR / f"{log_id}.log"
     _node_stack = []
     header = (
         f"Knowledge Engine run — {datetime.now().isoformat(timespec='seconds')}\n"
         f"Task: {title}\n"
-        f"Log file: {_log_path}\n"
+        f"Log id: {log_id}\n"
         "---\n"
     )
-    _log_path.write_text(header, encoding="utf-8")
+    from knowledge_engine.services.redis_run_log import (
+        init_log,
+        redis_logs_enabled,
+    )
+
+    if redis_logs_enabled():
+        init_log(log_id, header)
+    else:
+        _log_path.write_text(header, encoding="utf-8")
     return _log_path
 
 
@@ -49,14 +60,20 @@ def get_run_log_path() -> Path | None:
 
 
 def trace(message: str) -> None:
-    """Файл .runs; при KE_TRACE_STDOUT — также stdout (docker logs)."""
+    """Redis или файл .runs; при KE_TRACE_STDOUT — stdout."""
     from knowledge_engine.config import KE_TRACE_STDOUT
+    from knowledge_engine.services.redis_run_log import (
+        append_line,
+        redis_logs_enabled,
+    )
 
     line = f"{datetime.now().strftime('%H:%M:%S')} | {message}"
     if KE_TRACE_STDOUT:
         print(line, flush=True)
+    if _log_redis_id and redis_logs_enabled():
+        append_line(_log_redis_id, line)
     path = _log_path
-    if path is None:
+    if path is None or redis_logs_enabled():
         return
     with _lock:
         with path.open("a", encoding="utf-8") as f:

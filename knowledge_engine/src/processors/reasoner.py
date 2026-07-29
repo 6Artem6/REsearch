@@ -10,6 +10,7 @@ from knowledge_engine.config import GEMINI_REASONER_MODEL, GEMINI_RPM_PAUSE_SEC
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.gemini_stateless import (
     GeminiUnavailableError,
+    gemini_reasoner_model_chain,
     is_gemini_available,
     run_gemini_structured_with_chain,
 )
@@ -18,6 +19,7 @@ from knowledge_engine.src.processors.source_anchors import (
     format_registry_for_prompt,
     format_valid_docs_for_reasoner,
 )
+from knowledge_engine.src.source_evaluator.evaluator import format_whitelist_for_reasoner_prompt
 from knowledge_engine.src.processors.source_evaluator import (
     MAX_REACT_SOURCE_ITERATIONS,
     audit_answer_sources_react,
@@ -41,14 +43,7 @@ FOLLOW_UP_RULES = """
 
 FAST_MODE_REASONER_PROMPT = """Ты — Главный Системный Архитектор. Твоя задача — объяснить архитектурную концепцию или паттерн доступным, наглядным и фактологичным языком.
 
-БЕЛЫЙ СПИСОК АВТОРИТЕТНЫХ ИСТОЧНИКОВ (WHITELIST):
-Опирайся на концепции и материалы из следующих источников:
-1. **Microsoft Learn / Architecture Center** (`learn.microsoft.com`)
-2. **Cloudflare Blog** (`blog.cloudflare.com`)
-3. **Martin Fowler** (`martinfowler.com`)
-4. **MDN Web Docs / Mozilla** (`developer.mozilla.org`)
-5. **AWS Architecture Center & Tech Blogs**
-6. **Uber / Netflix / Stripe Engineering Blogs**
+{whitelist_block}
 
 ПРАВИЛА ОФОРМЛЕНИЯ И НАВИГАЦИИ:
 1. **Ссылки на материалы**: Вплетай по тексту ссылки на статьи из белого списка в формате Markdown: `[Название статьи](https://...)`.
@@ -62,13 +57,13 @@ FAST_MODE_REASONER_PROMPT = """Ты — Главный Системный Арх
 - ⚖️ **Компромиссы и когда применять**: Плюсы, минусы, узкие места и альтернативы.
 - 📚 **Эталонные материалы**: Список из 2-4 конкретных статей/разделов из белого списка для чтения.
 - 🧭 **Исследовательские векторы (Следующие шаги)**: 3 вопроса (Шаг вглубь, Шаг в сторону, Шаг назад).
-"""
+""".format(whitelist_block=format_whitelist_for_reasoner_prompt())
 
 REASONER_REACT_CORRECTION_RULES = """
 КОРРЕКЦИЯ ПО РЕЗУЛЬТАТАМ АУДИТА ИСТОЧНИКОВ (Re-Act):
-Ниже — системные отклики аудитора по отклонённым ссылкам. Перепиши только проблемные фрагменты:
-- замени слабые источники на материалы из белого списка (Microsoft Learn, Cloudflare, MDN, Martin Fowler, AWS, Uber/Netflix Eng);
-- либо убери ссылку и объясни тезис через фундаментальные принципы CS без сомнительного URL.
+Ниже — системные отклики Source Evaluator (Gemini Lite) по отклонённым ссылкам. Перепиши только проблемные фрагменты:
+- замени слабые источники на материалы из Whitelist Matrix (practitioners, ai_pioneers_labs, engineering_blogs, foundational_docs);
+- либо убери ссылку (REMOVE_LINK) и объясни тезис через фундаментальные принципы CS.
 Сохрани структуру ответа и русский язык. Не добавляй менеджерских рекомендаций.
 """
 
@@ -128,6 +123,7 @@ def _invoke_reasoner_structured(
         FinalResponsePayload,
         label,
         rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
+        models=gemini_reasoner_model_chain(),
     )
 
 
