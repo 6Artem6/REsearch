@@ -92,7 +92,21 @@ OLLAMA_STRUCTURE_NUM_PREDICT: int = int(
     os.getenv("OLLAMA_STRUCTURE_NUM_PREDICT", "3072")
 )
 GRAPH_VERSION: str = get_graph_version()
-GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
+
+
+def _gemini_api_key_pool() -> tuple[str, ...]:
+    """GEMINI_API_KEYS (comma-separated) или один GEMINI_API_KEY / GOOGLE_API_KEY."""
+    raw = (os.getenv("GEMINI_API_KEYS") or "").strip()
+    if raw:
+        keys = tuple(k.strip() for part in raw.split(",") for k in [part.strip()] if k)
+        if keys:
+            return keys
+    single = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
+    return (single,) if single else ()
+
+
+GEMINI_API_KEYS: tuple[str, ...] = _gemini_api_key_pool()
+GEMINI_API_KEY: str = GEMINI_API_KEYS[0] if GEMINI_API_KEYS else ""
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 # v0.7 analytics: Lite = chunking/step_analysis, Flash = L2a–L2c / tutor
 GEMINI_LITE_MODEL: str = os.getenv("GEMINI_LITE_MODEL", "gemini-3.1-flash-lite")
@@ -384,6 +398,10 @@ SEMANTIC_SCHOLAR_LIMIT: int = int(os.getenv("SEMANTIC_SCHOLAR_LIMIT", "7"))
 SEMANTIC_SCHOLAR_TIMEOUT_SEC: float = float(
     os.getenv("SEMANTIC_SCHOLAR_TIMEOUT_SEC", "20")
 )
+# SS API: 1 request/s cumulative across endpoints (official limit)
+SEMANTIC_SCHOLAR_MIN_INTERVAL_SEC: float = float(
+    os.getenv("SEMANTIC_SCHOLAR_MIN_INTERVAL_SEC", "1.05")
+)
 # SS API часто 429/503 — по умолчанию выключен; v0.7 → arXiv, v0.8 → только карточки Consensus
 SEMANTIC_SCHOLAR_ENABLED: bool = _env_bool("SEMANTIC_SCHOLAR_ENABLED", False)
 LIGHT_RAG_MIN_COSINE_SIM: float = float(os.getenv("LIGHT_RAG_MIN_COSINE_SIM", "0.42"))
@@ -396,7 +414,7 @@ RAG_DEFAULT_MIN_RELEVANCE: float = float(os.getenv("RAG_DEFAULT_MIN_RELEVANCE", 
 RAG_DEFAULT_MAX_FACTS: int = int(os.getenv("RAG_DEFAULT_MAX_FACTS", "4"))
 RAG_RETRIEVAL_PER_DIRECTION: int = int(os.getenv("RAG_RETRIEVAL_PER_DIRECTION", "5"))
 RAG_LATENCY_WARN_MS: float = float(os.getenv("RAG_LATENCY_WARN_MS", "100"))
-ARXIV_API_URL: str = "http://export.arxiv.org/api/query"
+ARXIV_API_URL: str = "https://export.arxiv.org/api/query"
 CROSSREF_API_URL: str = "https://api.crossref.org/works"
 HABR_API_URL: str = "https://habr.com/kairos/v1/articles"
 
@@ -419,6 +437,98 @@ CURRICULUM_USE_V08_CONSENSUS: bool = _env_bool("CURRICULUM_USE_V08_CONSENSUS", F
 # Legacy: игнорируется, режим задаётся UI generation_mode (fast | consensus)
 CURRICULUM_CONSENSUS_PRIMARY: bool = _env_bool("CURRICULUM_CONSENSUS_PRIMARY", False)
 CURRICULUM_V08_MAX_PAPERS: int = int(os.getenv("CURRICULUM_V08_MAX_PAPERS", "10"))
+CURRICULUM_GEMINI_GROUNDING_ENABLED: bool = _env_bool(
+    "CURRICULUM_GEMINI_GROUNDING_ENABLED", False
+)
+CURRICULUM_GEMINI_GROUNDING_MAX_URLS: int = int(
+    os.getenv("CURRICULUM_GEMINI_GROUNDING_MAX_URLS", "8")
+)
+# Playwright gemini.google.com (отдельный профиль .browser_state, не ручной Chrome)
+CURRICULUM_GEMINI_WEB_HARVEST_ENABLED: bool = _env_bool(
+    "CURRICULUM_GEMINI_WEB_HARVEST_ENABLED", True
+)
+CURRICULUM_GEMINI_WEB_HARVEST_TIMEOUT_SEC: float = float(
+    os.getenv("CURRICULUM_GEMINI_WEB_HARVEST_TIMEOUT_SEC", "120")
+)
+CURRICULUM_GEMINI_WEB_RESPONSE_MAX_SEC: float = float(
+    os.getenv("CURRICULUM_GEMINI_WEB_RESPONSE_MAX_SEC", "90")
+)
+CURRICULUM_GEMINI_WEB_RESPONSE_FIRST_TIMEOUT_SEC: float = float(
+    os.getenv("CURRICULUM_GEMINI_WEB_RESPONSE_FIRST_TIMEOUT_SEC", "45")
+)
+CURRICULUM_GEMINI_WEB_URL_RETRY_MAX: int = int(
+    os.getenv("CURRICULUM_GEMINI_WEB_URL_RETRY_MAX", "3")
+)
+CURRICULUM_URL_VALIDATE_TIMEOUT_SEC: float = float(
+    os.getenv("CURRICULUM_URL_VALIDATE_TIMEOUT_SEC", "10")
+)
+# Google Custom Search (практические блоги)
+GOOGLE_CSE_API_KEY: str = os.getenv("GOOGLE_CSE_API_KEY", "")
+GOOGLE_CSE_ID: str = os.getenv("GOOGLE_CSE_ID", "")
+# По умолчанию выкл. (GCP Custom Search часто требует billing card)
+CURRICULUM_GOOGLE_CSE_ENABLED: bool = _env_bool(
+    "CURRICULUM_GOOGLE_CSE_ENABLED", False
+)
+GOOGLE_CSE_DAILY_LIMIT: int = int(os.getenv("GOOGLE_CSE_DAILY_LIMIT", "100"))
+SEMANTIC_SCHOLAR_DAILY_LIMIT: int = int(os.getenv("SEMANTIC_SCHOLAR_DAILY_LIMIT", "100"))
+CURRICULUM_API_QUOTA_TRACK: bool = _env_bool("CURRICULUM_API_QUOTA_TRACK", True)
+CURRICULUM_PRACTICAL_CSE_LIMIT: int = int(os.getenv("CURRICULUM_PRACTICAL_CSE_LIMIT", "8"))
+CURRICULUM_PRACTICAL_DDGS_LIMIT: int = int(os.getenv("CURRICULUM_PRACTICAL_DDGS_LIMIT", "5"))
+CURRICULUM_PRACTICAL_DDGS_ENABLED: bool = _env_bool(
+    "CURRICULUM_PRACTICAL_DDGS_ENABLED", False
+)
+CURRICULUM_PRACTICAL_SEARXNG_LIMIT: int = int(
+    os.getenv("CURRICULUM_PRACTICAL_SEARXNG_LIMIT", "12")
+)
+CURRICULUM_PRACTICAL_SEARXNG_QUERIES: int = int(
+    os.getenv("CURRICULUM_PRACTICAL_SEARXNG_QUERIES", "6")
+)
+CURRICULUM_LITE_BATCH_EVAL_FALLBACK_N: int = int(
+    os.getenv("CURRICULUM_LITE_BATCH_EVAL_FALLBACK_N", "3")
+)
+# Дублирует Lite Search Query Architect (build_search_queries); по умолчанию выключен.
+CURRICULUM_LITE_SITE_SUGGEST_ENABLED: bool = (
+    os.getenv("CURRICULUM_LITE_SITE_SUGGEST_ENABLED", "false").lower()
+    in ("1", "true", "yes", "on")
+)
+CURRICULUM_PRACTICAL_SNIPPET_MIN_CHARS: int = int(
+    os.getenv("CURRICULUM_PRACTICAL_SNIPPET_MIN_CHARS", "300")
+)
+CURRICULUM_ACADEMIC_SS_LIMIT: int = int(os.getenv("CURRICULUM_ACADEMIC_SS_LIMIT", "5"))
+CURRICULUM_ACADEMIC_ARXIV_LIMIT: int = int(os.getenv("CURRICULUM_ACADEMIC_ARXIV_LIMIT", "3"))
+CURRICULUM_ACADEMIC_ABSTRACT_MIN_CHARS: int = int(
+    os.getenv("CURRICULUM_ACADEMIC_ABSTRACT_MIN_CHARS", "300")
+)
+# Search grounding (Google Search tool). gemini-2.5-flash-lite — неверное имя API (404).
+_GROUNDING_MODEL_ALIASES: dict[str, str] = {
+    "gemini-2.5-flash-lite": "gemini-2.5-flash",
+}
+
+
+def _normalize_grounding_model_id(model: str) -> str:
+    m = (model or "").strip()
+    if not m:
+        return m
+    return _GROUNDING_MODEL_ALIASES.get(m.lower(), m)
+
+
+def _grounding_model_from_env(key: str, default: str) -> str:
+    return _normalize_grounding_model_id(os.getenv(key, default))
+
+
+GEMINI_GROUNDING_MODEL: str = _grounding_model_from_env(
+    "GEMINI_GROUNDING_MODEL", "gemini-2.5-flash"
+)
+CURRICULUM_GEMINI_GROUNDING_MODEL: str = _normalize_grounding_model_id(
+    os.getenv("CURRICULUM_GEMINI_GROUNDING_MODEL", GEMINI_GROUNDING_MODEL)
+)
+CURRICULUM_GEMINI_GROUNDING_FALLBACK_MODELS: tuple[str, ...] = tuple(
+    _normalize_grounding_model_id(m)
+    for m in _parse_model_list_env(
+        "CURRICULUM_GEMINI_GROUNDING_FALLBACK_MODELS",
+        "gemini-3.1-flash-lite,gemini-1.5-flash",
+    )
+)
 
 MAX_SEARCH_ITERATIONS: int = 3
 MAX_AI_DIALOGUE_TURNS: int = int(os.getenv("MAX_AI_DIALOGUE_TURNS", "3"))
