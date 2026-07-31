@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from knowledge_engine.config import (
     GUARDRAILS_OLLAMA_MODEL,
-    OLLAMA_STRUCTURE_NUM_PREDICT,
+    OLLAMA_GUARDRAILS_NUM_PREDICT,
 )
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.local_llm_stateless import run_local_structured
@@ -52,7 +52,7 @@ def _generate_personal_context_sync(
         anchor,
         "personal_context / PersonalContext",
         temperature=0.1,
-        num_predict=OLLAMA_STRUCTURE_NUM_PREDICT,
+        num_predict=OLLAMA_GUARDRAILS_NUM_PREDICT,
     )
     trace(f"PERSONAL CONTEXT ✓ | arch={len(ctx.target_architecture)}")
     return ctx

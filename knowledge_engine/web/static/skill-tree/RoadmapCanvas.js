@@ -36,6 +36,7 @@ function RoadmapFlowInner({
   onNodeClick,
   tutorBusyNodeId,
   sessions,
+  layoutEpoch = 0,
 }) {
   const { fitView, getNodesBounds } = useReactFlow();
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
@@ -74,7 +75,7 @@ function RoadmapFlowInner({
   useEffect(() => {
     const t = window.setTimeout(() => fitMapToView(), 50);
     return () => window.clearTimeout(t);
-  }, [curriculum?.curriculum_id, nodes.length, fitMapToView]);
+  }, [curriculum?.curriculum_id, nodes.length, layoutEpoch, fitMapToView]);
 
   return React.createElement(
     "div",

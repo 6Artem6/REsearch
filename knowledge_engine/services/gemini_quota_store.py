@@ -426,7 +426,6 @@ def get_quota_summary() -> dict[str, Any]:
 
 
 def quota_tracking_enabled() -> bool:
-    import os
+    from knowledge_engine.config import GEMINI_QUOTA_TRACK
 
-    raw = os.getenv("GEMINI_QUOTA_TRACK", "true").lower()
-    return raw in ("1", "true", "yes")
+    return GEMINI_QUOTA_TRACK

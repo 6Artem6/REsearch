@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -11,7 +10,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
-from knowledge_engine.config import PACKAGE_ROOT
+from knowledge_engine.config import PACKAGE_ROOT, KE_WORKER_STALE_RUNNING_SEC
 from knowledge_engine.services.redis_client import get_redis, redis_enabled
 from knowledge_engine.services.redis_tasks import publish_work_job
 
@@ -22,6 +21,7 @@ _RKEY_JOB = "ke:work:job:"
 
 class WorkJobKind(str, Enum):
     CURRICULUM_GENERATE = "curriculum_generate"
+    CURRICULUM_EXPAND = "curriculum_expand"
     NODE_DEEP_DIVE = "node_deep_dive"
 
 
@@ -168,7 +168,7 @@ class WorkJobStore:
     def try_claim(self, job_id: str) -> Optional[WorkJob]:
         if not redis_enabled():
             return None
-        stale_sec = float(os.getenv("KE_WORKER_STALE_RUNNING_SEC", "300"))
+        stale_sec = KE_WORKER_STALE_RUNNING_SEC
         now = datetime.now(timezone.utc)
         r = get_redis()
         lock = r.lock(f"ke:lock:work:{job_id}", timeout=10, blocking_timeout=5)
@@ -182,6 +182,15 @@ class WorkJobStore:
                 age = (now - job.updated_at).total_seconds()
                 if age <= stale_sec:
                     return None
+                try:
+                    from knowledge_engine.services.worker_busy import (
+                        worker_busy_for_reload,
+                    )
+
+                    if worker_busy_for_reload():
+                        return None
+                except Exception:
+                    pass
                 job.status = WorkJobStatus.PENDING
             if job.status != WorkJobStatus.PENDING:
                 return None
@@ -200,13 +209,22 @@ class WorkJobStore:
             return None
         self._reload_from_disk()
         with self._lock:
-            stale_sec = float(os.getenv("KE_WORKER_STALE_RUNNING_SEC", "300"))
+            stale_sec = KE_WORKER_STALE_RUNNING_SEC
             now = datetime.now(timezone.utc)
             for j in self._jobs.values():
                 if j.status != WorkJobStatus.RUNNING:
                     continue
                 age = (now - j.updated_at).total_seconds()
                 if age > stale_sec:
+                    try:
+                        from knowledge_engine.services.worker_busy import (
+                            worker_busy_for_reload,
+                        )
+
+                        if worker_busy_for_reload():
+                            continue
+                    except Exception:
+                        pass
                     j.status = WorkJobStatus.PENDING
                     j.updated_at = now
             pending = [
@@ -264,11 +282,48 @@ class WorkJobStore:
 work_job_store = WorkJobStore()
 
 
+def count_running_work_jobs(max_age_sec: float | None = None) -> int:
+    """Число work jobs в RUNNING (не stale) — для dev reload defer."""
+    stale_sec = max_age_sec
+    if stale_sec is None:
+        stale_sec = KE_WORKER_STALE_RUNNING_SEC
+    now = datetime.now(timezone.utc)
+    n = 0
+    if redis_enabled():
+        r = get_redis()
+        for key in r.scan_iter(match=f"{_RKEY_JOB}*"):
+            try:
+                raw = r.get(key)
+                if not raw:
+                    continue
+                data = json.loads(raw)
+                if data.get("status") != WorkJobStatus.RUNNING.value:
+                    continue
+                updated = data.get("updated_at")
+                if updated:
+                    dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+                    if (now - dt).total_seconds() > stale_sec:
+                        continue
+                n += 1
+            except Exception:
+                continue
+        return n
+    work_job_store._reload_from_disk()
+    with work_job_store._lock:
+        for j in work_job_store._jobs.values():
+            if j.status != WorkJobStatus.RUNNING:
+                continue
+            age = (now - j.updated_at).total_seconds()
+            if age <= stale_sec:
+                n += 1
+    return n
+
+
 def recover_stale_running_work_jobs() -> int:
     """Пометить зависшие running jobs как failed (после краша/kill worker)."""
     if not redis_enabled():
         return 0
-    stale_sec = float(os.getenv("KE_WORKER_STALE_RUNNING_SEC", "300"))
+    stale_sec = KE_WORKER_STALE_RUNNING_SEC
     now = datetime.now(timezone.utc)
     recovered = 0
     r = get_redis()

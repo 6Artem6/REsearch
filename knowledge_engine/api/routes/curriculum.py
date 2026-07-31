@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from knowledge_engine.api.helpers.work_enqueue import enqueue_curriculum_generate
+from knowledge_engine.api.helpers.work_enqueue import enqueue_curriculum_generate, enqueue_curriculum_expand
 from knowledge_engine.services.work_job_store import WorkJobStatus, work_job_store
 from knowledge_engine.src.curriculum.schemas import CurriculumGraph
 from knowledge_engine.ui.run_log import trace
@@ -21,7 +21,11 @@ class CurriculumGenerateRequest(BaseModel):
     depth_level: str = Field(default="Standard", max_length=40)
     generation_mode: str = Field(
         default="fast",
-        description="fast | consensus (UI селектор)",
+        description="legacy fast | consensus",
+    )
+    source_policy: str = Field(
+        default="hybrid",
+        description="hybrid | practical_only | academic_only",
     )
 
 
@@ -29,6 +33,17 @@ class CurriculumGenerateAccepted(BaseModel):
     job_id: str
     status: str = "pending"
     message: str = "Генерация в worker. GET /work-jobs/{id}/wait"
+
+
+@router.post(
+    "/create",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=CurriculumGenerateAccepted,
+)
+def post_create_curriculum(body: CurriculumGenerateRequest) -> dict[str, Any]:
+    """Новый граф с нуля (alias generate: Consensus + Grounding по mode)."""
+    trace(f"API ▶ POST /curriculum/create | {body.target_goal[:60]}…")
+    return post_generate_curriculum(body)
 
 
 @router.post(
@@ -49,14 +64,25 @@ def post_generate_curriculum(body: CurriculumGenerateRequest) -> dict[str, Any]:
         gen_mode = "consensus"
     else:
         gen_mode = "fast"
+    from knowledge_engine.src.curriculum.source_policy import (
+        normalize_source_policy,
+        resolve_source_policy,
+    )
+
+    src_policy = resolve_source_policy(
+        body.source_policy,
+        gen_mode,
+        default="hybrid",
+    )
     inp = {
         "target_goal": body.target_goal.strip(),
         "user_level": (body.user_level or "Intermediate/Advanced").strip(),
         "depth_level": depth,
         "generation_mode": gen_mode,
+        "source_policy": src_policy,
     }
     trace(
-        f"API ▶ POST /curriculum/generate (queue) | mode={gen_mode} "
+        f"API ▶ POST /curriculum/generate (queue) | policy={src_policy} mode={gen_mode} "
         f"{inp['target_goal'][:60]}…"
     )
     job_id = enqueue_curriculum_generate(inp)
@@ -87,3 +113,73 @@ def get_curriculum_generate_result(job_id: str) -> dict[str, Any]:
     if job.status != WorkJobStatus.COMPLETED or not job.result:
         raise HTTPException(status_code=409, detail=f"status={job.status.value}")
     return job.result
+
+
+class CurriculumExpandRequest(BaseModel):
+    curriculum_id: str = Field(min_length=4, max_length=80)
+    expansion_prompt: str = Field(min_length=8, max_length=4000)
+    generation_mode: str = Field(
+        default="fast",
+        description="legacy fast | consensus",
+    )
+    source_policy: str = Field(
+        default="practical_only",
+        description="hybrid | practical_only | academic_only",
+    )
+
+
+class CurriculumExpandAccepted(BaseModel):
+    job_id: str
+    status: str = "pending"
+    message: str = "Расширение в worker. GET /work-jobs/{id}/wait"
+
+
+@router.post(
+    "/expand",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=CurriculumExpandAccepted,
+)
+def post_expand_curriculum(body: CurriculumExpandRequest) -> dict[str, Any]:
+    """Достроить ветку: Lite → Grounding → Flash patch."""
+    gen_mode = (body.generation_mode or "fast").strip().lower()
+    if gen_mode in ("deep", "consensus"):
+        gen_mode = "consensus"
+    else:
+        gen_mode = "fast"
+    from knowledge_engine.src.curriculum.source_policy import (
+        normalize_source_policy,
+        resolve_source_policy,
+    )
+
+    src_policy = resolve_source_policy(
+        body.source_policy,
+        gen_mode,
+        default="practical_only",
+    )
+    src_policy = normalize_source_policy(src_policy, default="practical_only")
+    inp = {
+        "curriculum_id": body.curriculum_id.strip(),
+        "expansion_prompt": body.expansion_prompt.strip(),
+        "generation_mode": gen_mode,
+        "source_policy": src_policy,
+    }
+    trace(
+        f"API ▶ POST /curriculum/expand (queue) | {inp['curriculum_id']} | "
+        f"policy={src_policy} {inp['expansion_prompt'][:60]}…"
+    )
+    job_id = enqueue_curriculum_expand(inp)
+    job = work_job_store.get(job_id)
+    if job and job.status == WorkJobStatus.COMPLETED and job.result:
+        return {
+            "job_id": job_id,
+            "status": "completed",
+            "message": "inline",
+            "graph": job.result,
+        }
+    if job and job.status == WorkJobStatus.FAILED:
+        raise HTTPException(status_code=503, detail=job.error or "expand failed")
+    return {
+        "job_id": job_id,
+        "status": "pending",
+        "message": "GET /api/v1/work-jobs/{job_id}/wait",
+    }

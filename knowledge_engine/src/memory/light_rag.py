@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
@@ -26,6 +27,7 @@ from knowledge_engine.ui.run_log import trace
 LIGHT_RAG_TABLE = "light_rag_facts"
 PROFILE_DOC_PREFIX = "profile_segment"
 FACT_DOC_ID = "fact_nugget"
+_PROFILE_SYNC_HASH_FILE = LANCE_DB_PATH / ".light_rag_profile_sha256"
 _PROFILE_SECTION_RE = re.compile(r"^##\s+", re.MULTILINE)
 
 
@@ -336,6 +338,19 @@ class LightRAG:
         )
         return 1
 
+    def count_profile_segments_sync(self) -> int:
+        if self._table_name not in self._db.table_names():
+            return 0
+        try:
+            table = self._db.open_table(self._table_name)
+            doc_ids = table.to_arrow().column("doc_id").to_pylist()
+            return sum(1 for d in doc_ids if str(d).startswith(PROFILE_DOC_PREFIX))
+        except Exception:
+            return 0
+
+    async def count_profile_segments(self) -> int:
+        return await run_under_uma_lock(self.count_profile_segments_sync)
+
     def count_indexed_rows_sync(self) -> int:
         if self._table_name not in self._db.table_names():
             return 0
@@ -346,3 +361,68 @@ class LightRAG:
 
     async def count_indexed_rows(self) -> int:
         return await run_under_uma_lock(self.count_indexed_rows_sync)
+
+
+def _user_profile_content_hash() -> str:
+    path = USER_PROFILE_PATH
+    if not path.is_file():
+        return ""
+    raw = path.read_bytes()
+    if len(raw.strip()) < 40:
+        return ""
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _read_stored_profile_hash() -> str:
+    try:
+        if _PROFILE_SYNC_HASH_FILE.is_file():
+            return _PROFILE_SYNC_HASH_FILE.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return ""
+
+
+async def sync_profile_from_markdown_if_needed() -> bool:
+    """
+    Индексирует user_profile.md в LanceDB, если файл новый/изменён
+    или сегменты профиля ещё не в таблице.
+    """
+    current_hash = _user_profile_content_hash()
+    if not current_hash:
+        trace(
+            "[PERSONAL_RAG] user_profile.md missing or too short — skip profile sync"
+        )
+        return False
+
+    rag = LightRAG()
+    stored_hash = _read_stored_profile_hash()
+    profile_segments = await rag.count_profile_segments()
+    total_rows = await rag.count_indexed_rows()
+
+    need_sync = stored_hash != current_hash or profile_segments == 0
+    if not need_sync:
+        trace(
+            f"[PERSONAL_RAG] profile index up-to-date | "
+            f"segments={profile_segments} total_rows={total_rows}"
+        )
+        return False
+
+    reason = "hash_changed" if stored_hash != current_hash else "no_profile_segments"
+    trace(
+        f"[PERSONAL_RAG] profile sync needed | reason={reason} "
+        f"segments={profile_segments} total_rows={total_rows}"
+    )
+    n_seg = await rag.sync_profile_from_markdown("")
+    if n_seg <= 0:
+        trace(
+            "[PERSONAL_RAG] profile sync produced no segments — "
+            "hash not updated (check ## sections and min chunk length)"
+        )
+        return False
+    try:
+        LANCE_DB_PATH.mkdir(parents=True, exist_ok=True)
+        _PROFILE_SYNC_HASH_FILE.write_text(current_hash, encoding="utf-8")
+    except Exception as exc:
+        trace(f"[PERSONAL_RAG] profile hash write skip | {exc}")
+    trace(f"[PERSONAL_RAG] Syncing profile facts: OK | segments={n_seg}")
+    return True

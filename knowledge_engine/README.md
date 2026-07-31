@@ -4,7 +4,7 @@
 
 Локальный CLI для архитектурного анализа: декомпозиция на CS-абстракции, поиск по **трём горизонтам** (SOTA / Infra / Prod), Trade-off матрица и точечная раскрутка выбранного варианта (графы 0.4–0.7).
 
-Подробно: [docs/SEARCH_HORIZONS.md](docs/SEARCH_HORIZONS.md) · **legacy 0.4–0.6:** [docs/V0_6_CURRENT_SOLUTION.md](docs/V0_6_CURRENT_SOLUTION.md)
+Подробно: [docs/SEARCH_HORIZONS.md](docs/SEARCH_HORIZONS.md) · **Skill Tree / Tutor пайплайны:** [docs/TUTOR_PIPELINES.md](docs/TUTOR_PIPELINES.md) · **legacy 0.4–0.6:** [docs/V0_6_CURRENT_SOLUTION.md](docs/V0_6_CURRENT_SOLUTION.md)
 
 **История изменений и архитектурные решения:** [CHANGELOG.md](CHANGELOG.md)
 

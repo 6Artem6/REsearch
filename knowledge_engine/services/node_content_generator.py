@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from knowledge_engine.config import GEMINI_RPM_PAUSE_SEC, GEMINI_TUTOR_MODEL, GEMINI_TUTOR_TIMEOUT_SEC
-from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.chat_session_manager import ChatSessionManager
 from knowledge_engine.services.gemini_stateless import (
     gemini_tutor_model_chain,
@@ -18,51 +17,13 @@ from knowledge_engine.src.node_deep_dive.tiered_memory import (
     build_handoff_summary,
     format_matrix_for_llm,
 )
+from knowledge_engine.src.node_deep_dive.tutor_prompt_builder import build_dense_system
 
 from knowledge_engine.services.lecture_rag_context import build_lecture_generation_payload
-from knowledge_engine.src.processors.source_anchors import REASONER_SOURCE_ATTRIBUTION_PROMPT
-from knowledge_engine.src.source_evaluator.evaluator import format_whitelist_for_reasoner_prompt
-
-_DENSE_SYSTEM = (
-    f"{RUSSIAN_OUTPUT_RULE}\n\n"
-    "Ты — генератор плотного учебного материала для одной ноды графа.\n"
-    "Не задавай Сократовских вопросов.\n\n"
-    "lecture_body (ОБЯЗАТЕЛЬНО): полноценная лекция для чата — от 400 слов. "
-    "Главный базис — ФУНДАМЕНТАЛЬНЫЙ ИСТОЧНИК из user payload и LanceDB. "
-    "summary: структурированная выжимка «суть механики» для панели UI — дополняет lecture_body, "
-    "не заменяет его. Edge cases, короткие примеры кода.\n"
-    "В summary после ключевых фактов ставь [S1], [S2]… — порядок = порядок в references (1-й ref = [S1]).\n"
-    "diagram: Mermaid в fence ```mermaid с переводами строк (НЕ одна строка). "
-    "После sequenceDiagram/graph TD/flowchart — новая строка. "
-    "Каждый participant, rect, loop, end, Note и каждая стрелка (->>, -->>) — отдельная строка. "
-    "Алиасы participant с / или () — в кавычках. loop с пробелами — в кавычках.\n"
-    "references: 2–4 RichReference — НЕ сухие URL. Для каждой:\n"
-    "  title, source_name, url, why_read (зачем читать), key_focus (на что смотреть), "
-    "read_time_minutes (целое, минуты).\n"
-    "code_snippets: 0–3 коротких блоков с разбором подводных камней.\n"
-    "bridge_to_next: логический мост к смежной теме в графе.\n"
-    "checkpoint_prompt: ОДИН короткий вопрос самопроверки (не допрос).\n\n"
-    f"{REASONER_SOURCE_ATTRIBUTION_PROMPT}\n\n"
-    f"{format_whitelist_for_reasoner_prompt()}\n"
-    "references и primary_whitelist_source маршрута — только из Whitelist.\n"
-)
-
-_TARGETED_LECTURE_SYSTEM_APPEND = (
-    "\n\nРежим **targeted_lecture** (ФОКУСНАЯ лекция):\n"
-    "Пользователь запросил ПОДРОБНУЮ ФОКУСНУЮ ЛЕКЦИЮ.\n"
-    "1. lecture_body — не менее 400 слов, ПОЛНОСТЬЮ про СПЕЦИФИЧЕСКИЙ ФОКУС из payload "
-    "(user_focus / user_query), не про всю ноду.\n"
-    "2. ЗАПРЕЩЕНО вводный пересказ всей темы ноды — сразу углубленный разбор механизма/паттерна.\n"
-    "3. Архитектура: схемы работы, узкие места, failure modes, примеры кода/конфигураций.\n"
-    "4. checkpoint_prompt — ОДИН глубокий вопрос строго по прочитанному фокусному материалу.\n"
-    "summary/diagram для панели — тоже вокруг фокуса, не общий обзор ноды.\n"
-)
 
 
 def _dense_system_instruction(lecture_scope: str) -> str:
-    if lecture_scope == "targeted_lecture":
-        return _DENSE_SYSTEM + _TARGETED_LECTURE_SYSTEM_APPEND
-    return _DENSE_SYSTEM
+    return build_dense_system(targeted=lecture_scope == "targeted_lecture")
 
 
 def generate_dense_material(

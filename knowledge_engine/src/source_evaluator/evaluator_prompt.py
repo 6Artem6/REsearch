@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from knowledge_engine.src.source_evaluator.whitelist import APPROVED_SOURCES_WHITELIST
+from knowledge_engine.src.source_evaluator.whitelist import format_whitelist_compact
 
 
 def format_whitelist_matrix_for_prompt() -> str:
-    lines: list[str] = []
-    for category, entries in APPROVED_SOURCES_WHITELIST.items():
-        lines.append(f"- {category}: {', '.join(entries)}")
-    return "\n".join(lines)
+    return format_whitelist_compact()
 
 
 EVALUATOR_SYSTEM_PROMPT = """

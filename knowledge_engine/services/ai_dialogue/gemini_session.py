@@ -37,8 +37,26 @@ _URL_RE = re.compile(r"https?://[^\s\]<\"')]+")
 class BrowserGeminiSession:
     """Persistent context → gemini.google.com/app."""
 
-    def __init__(self, headless: bool = GEMINI_BROWSER_HEADLESS) -> None:
+    def __init__(
+        self,
+        headless: bool = GEMINI_BROWSER_HEADLESS,
+        *,
+        response_max_sec: float | None = None,
+        response_first_timeout_sec: float | None = None,
+        min_response_chars: int | None = None,
+    ) -> None:
         self.headless = headless
+        self._response_max_sec = float(
+            response_max_sec if response_max_sec is not None else GEMINI_RESPONSE_MAX_SEC
+        )
+        self._response_first_timeout_sec = float(
+            response_first_timeout_sec
+            if response_first_timeout_sec is not None
+            else GEMINI_RESPONSE_FIRST_TIMEOUT_SEC
+        )
+        self._min_response_chars = int(
+            min_response_chars if min_response_chars is not None else GEMINI_MIN_RESPONSE_CHARS
+        )
         self._playwright: Optional[Playwright] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
@@ -109,8 +127,8 @@ class BrowserGeminiSession:
         """Ждать завершения стриминга Gemini (не снимать текст на первом чанке)."""
         set_status(f"[Dialogue: {AI_CHAT_PROVIDER_NAME}] жду начало ответа…")
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + GEMINI_RESPONSE_MAX_SEC
-        first_deadline = loop.time() + GEMINI_RESPONSE_FIRST_TIMEOUT_SEC
+        deadline = loop.time() + self._response_max_sec
+        first_deadline = loop.time() + self._response_first_timeout_sec
 
         while loop.time() < first_deadline:
             text = await self._read_last_response_text(page)
@@ -120,7 +138,8 @@ class BrowserGeminiSession:
         else:
             raise RuntimeError(
                 "Gemini: нет ответа в течение "
-                f"{GEMINI_RESPONSE_FIRST_TIMEOUT_SEC}s — проверьте чат в браузере."
+                f"{self._response_first_timeout_sec}s — проверьте чат в браузере Playwright "
+                "(профиль knowledge_engine/.browser_state, не вкладка Chrome вручную)."
             )
 
         stable_rounds = 0
@@ -155,7 +174,7 @@ class BrowserGeminiSession:
 
         text = await self._read_last_response_text(page)
         set_status(
-            f"[Dialogue: {AI_CHAT_PROVIDER_NAME}] таймаут {GEMINI_RESPONSE_MAX_SEC}s, "
+            f"[Dialogue: {AI_CHAT_PROVIDER_NAME}] таймаут {self._response_max_sec}s, "
             f"снимаю {len(text)} симв."
         )
         return text
@@ -223,7 +242,7 @@ class BrowserGeminiSession:
         await self._fill_input(page, input_box, prompt)
         await self._submit_prompt(page)
 
-        min_chars = GEMINI_MIN_RESPONSE_CHARS if len(prompt) > 900 else 60
+        min_chars = self._min_response_chars if len(prompt) > 900 else 60
         text = await self._wait_for_complete_response(
             page, min_response_chars=min_chars
         )
@@ -247,9 +266,21 @@ class BrowserGeminiSession:
 class BrowserGeminiDialogueSession(BaseAIDialogueSession):
     """Sync API для ai_react_loop_node (внутри asyncio.run на каждый send — сессия живёт между вызовами)."""
 
-    def __init__(self, headless: bool = GEMINI_BROWSER_HEADLESS) -> None:
+    def __init__(
+        self,
+        headless: bool = GEMINI_BROWSER_HEADLESS,
+        *,
+        response_max_sec: float | None = None,
+        response_first_timeout_sec: float | None = None,
+        min_response_chars: int | None = None,
+    ) -> None:
         super().__init__()
-        self._session = BrowserGeminiSession(headless=headless)
+        self._session = BrowserGeminiSession(
+            headless=headless,
+            response_max_sec=response_max_sec,
+            response_first_timeout_sec=response_first_timeout_sec,
+            min_response_chars=min_response_chars,
+        )
         self._loop = asyncio.new_event_loop()
         self._ready = False
 

@@ -128,6 +128,70 @@ function ensureSequenceInit(inner) {
   );
 }
 
+function ensureFlowchartInit(inner) {
+  const head = inner.trimStart();
+  if (!/^(flowchart\b|graph\s+(?:TD|LR|BT|RL)\b)/im.test(head)) return inner;
+  if (/%%\s*\{init:/i.test(inner)) return inner;
+  return (
+    "%%{init: {" +
+    '"flowchart": {"htmlLabels": true, "useMaxWidth": false, "padding": 28, "nodeSpacing": 56, "rankSpacing": 64, "curve": "basis"}, ' +
+    '"themeVariables": {"fontSize": "14px", "fontFamily": "system-ui, sans-serif"}' +
+    "}}%%\n" +
+    inner
+  );
+}
+
+/** Длинные подписи в узлах flowchart → кавычки + переносы. */
+function quoteFlowchartNodeLabels(inner) {
+  return inner
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("%%")) return line;
+      if (/^(subgraph|end|classDef|class |linkStyle|style )/i.test(trimmed)) {
+        return line;
+      }
+      const bracket = trimmed.match(
+        /^([A-Za-z0-9_]+)\[([^\]]+)\](.*)$/,
+      );
+      if (bracket) {
+        let label = bracket[2].trim().replace(/^"|"$/g, "");
+        if (label.startsWith('"')) return line;
+        if (label.length <= 14) return line;
+        label = wrapLongLabel(label.replace(/"/g, "'"), 20);
+        const safe = `"${label}"`;
+        return line.replace(
+          bracket[0],
+          `${bracket[1]}[${safe}]${bracket[3] || ""}`,
+        );
+      }
+      const round = trimmed.match(/^([A-Za-z0-9_]+)\(([^)]+)\)(.*)$/);
+      if (round) {
+        let label = round[2].trim().replace(/^"|"$/g, "");
+        if (label.startsWith('"')) return line;
+        if (label.length <= 14) return line;
+        label = wrapLongLabel(label.replace(/"/g, "'"), 20);
+        return line.replace(
+          round[0],
+          `${round[1]}("${label}")${round[3] || ""}`,
+        );
+      }
+      const diamond = trimmed.match(/^([A-Za-z0-9_]+)\{([^}]+)\}(.*)$/);
+      if (diamond) {
+        let label = diamond[2].trim().replace(/^"|"$/g, "");
+        if (label.startsWith('"')) return line;
+        if (label.length <= 12) return line;
+        label = wrapLongLabel(label.replace(/"/g, "'"), 18);
+        return line.replace(
+          diamond[0],
+          `${diamond[1]}{"${label}"}${diamond[3] || ""}`,
+        );
+      }
+      return line;
+    })
+    .join("\n");
+}
+
 /** Узел flowchart: пробелы/скобки → id + подпись при необходимости. */
 function mermaidNodeId(raw) {
   const t = (raw || "").trim();
@@ -227,6 +291,8 @@ export function formatMermaidInner(inner) {
   let s = quoteSubgraphTitles(repairLlMText(inner).trim());
   if (!s) return s;
   s = ensureSequenceInit(s);
+  s = ensureFlowchartInit(s);
+  s = quoteFlowchartNodeLabels(s);
 
   s = s.replace(/^(sequenceDiagram(?:\s+autonumber)?)\s+/i, "$1\n");
   s = s.replace(/^(graph\s+(?:TD|LR|BT|RL))\s+/i, "$1\n");

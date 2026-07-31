@@ -11,6 +11,13 @@ from knowledge_engine.config import PACKAGE_ROOT
 from knowledge_engine.src.node_deep_dive.schemas import NodeContentBlock, NodeStatus
 from knowledge_engine.src.node_deep_dive.memory_schemas import SessionMemory
 from knowledge_engine.web.llm_text_repair import repair_diagram_markdown
+from knowledge_engine.src.node_deep_dive.dialog_ids import (
+    MSG_ID_KEY,
+    clean_dialog_rows,
+    ensure_msg_ids,
+    max_msg_id,
+    reconcile_dialog_history,
+)
 from knowledge_engine.src.node_deep_dive.tiered_memory import memory_from_blob, memory_to_blob
 
 _STORE_PATH = PACKAGE_ROOT / ".runs" / "node_deep_dive_sessions.json"
@@ -28,113 +35,36 @@ def _session_key(curriculum_id: str, node_id: str) -> str:
 def normalize_dialog_history(
     history: list[dict[str, str]] | None,
 ) -> list[dict[str, str]]:
-    """Исправляет legacy-порядок tutor→user на user→tutor в каждом обмене."""
-    cleaned: list[dict[str, str]] = []
-    for item in history or []:
-        role = str(item.get("role") or "").strip()
-        content = str(item.get("content") or "").strip()
-        if not content:
-            continue
-        if role not in ("user", "tutor"):
-            role = "tutor"
-        cleaned.append({"role": role, "content": content})
-    fixed: list[dict[str, str]] = []
-    i = 0
-    while i < len(cleaned):
-        if (
-            i + 1 < len(cleaned)
-            and i > 0
-            and cleaned[i]["role"] == "tutor"
-            and cleaned[i + 1]["role"] == "user"
-        ):
-            fixed.append(cleaned[i + 1])
-            fixed.append(cleaned[i])
-            i += 2
-        else:
-            fixed.append(cleaned[i])
-            i += 1
-    return fixed
+    """Очистка полей; порядок реплик не меняется (хронология — reconcile / active_window)."""
+    return clean_dialog_rows(history)
 
 
-def _history_key(m: dict[str, str]) -> tuple[str, str]:
-    return (m["role"], m["content"])
-
-
-def _history_severely_corrupt(hist: list[dict[str, str]]) -> bool:
-    if len(hist) < 3:
-        return False
-    consec = 0
-    last_role: str | None = None
-    for h in hist:
-        r = h["role"]
-        if r == last_role:
-            consec += 1
-            if consec >= 2:
-                return True
-        else:
-            consec = 1
-            last_role = r
-    users_run = 0
-    for h in hist:
-        if h["role"] == "user":
-            users_run += 1
-            if users_run >= 3:
-                return True
-        else:
-            users_run = 0
-    tutors_run = 0
-    for h in hist:
-        if h["role"] == "tutor":
-            tutors_run += 1
-            if tutors_run >= 3:
-                return True
-        else:
-            tutors_run = 0
-    return False
+def _repair_memory_dialog_ids(memory: SessionMemory | None) -> None:
+    if memory is None:
+        return
+    seq = max(int(memory.dialog_seq or 0), max_msg_id(memory.active_window))
+    window, seq = ensure_msg_ids(memory.active_window, start_seq=seq)
+    memory.active_window = window
+    memory.dialog_seq = max(int(memory.dialog_seq or 0), seq)
 
 
 def repair_history_with_memory(
     history: list[dict[str, str]] | None,
     memory: SessionMemory | None,
 ) -> list[dict[str, str]]:
-    """Синхронизирует history с active_window без «prefix+window» (ломал порядок)."""
-    hist = normalize_dialog_history(history)
+    """Синхронизирует history с active_window: порядок + msg_id."""
+    hist = clean_dialog_rows(history)
     if not memory or not memory.active_window:
-        return hist
-    window = normalize_dialog_history(memory.active_window)
-    if not window:
-        return hist
-
-    hk = [_history_key(h) for h in hist]
-    wk = [_history_key(w) for w in window]
-
-    if len(wk) <= len(hk) and hk[-len(wk):] == wk:
-        return hist
-
-    best_overlap = 0
-    for i in range(1, min(len(hk), len(wk)) + 1):
-        if hk[-i:] == wk[:i]:
-            best_overlap = i
-
-    if best_overlap:
-        merged = hist[:-best_overlap] + window
-        return normalize_dialog_history(merged)
-
-    if _history_severely_corrupt(hist):
-        intro: list[dict[str, str]] = []
-        if (
-            hist
-            and hist[0]["role"] == "tutor"
-            and window
-            and window[0]["role"] != "tutor"
-        ):
-            intro = [hist[0]]
-        return normalize_dialog_history(intro + window)
-
-    if hk and wk and hk[-1] == wk[0] and len(wk) > 1:
-        return normalize_dialog_history(hist + window[1:])
-
-    return normalize_dialog_history(hist + window)
+        repaired, seq = reconcile_dialog_history(hist, None, start_seq=0)
+        if memory is not None:
+            memory.dialog_seq = max(int(memory.dialog_seq or 0), seq)
+        return repaired
+    _repair_memory_dialog_ids(memory)
+    window = clean_dialog_rows(memory.active_window)
+    start = max(int(memory.dialog_seq or 0), max_msg_id(hist))
+    merged, seq = reconcile_dialog_history(hist, window, start_seq=start)
+    memory.dialog_seq = max(int(memory.dialog_seq or 0), seq, max_msg_id(merged))
+    return merged
 
 
 class _SessionRecord:
@@ -189,8 +119,10 @@ def get_session(curriculum_id: str, node_id: str) -> _SessionRecord:
                 "diagram": repair_diagram_markdown(content.diagram),
             }
         )
-    history = normalize_dialog_history(blob.get("history") or [])
+    history = clean_dialog_rows(blob.get("history") or [])
     memory = memory_from_blob(blob.get("memory"))
+    if memory is not None:
+        _repair_memory_dialog_ids(memory)
     history = repair_history_with_memory(history, memory)
     status = _normalize_status(str(blob.get("node_status") or "in_progress"))
     return _SessionRecord(
@@ -239,8 +171,8 @@ def save_session(
         }
         if mem_blob:
             entry["memory"] = mem_blob
-        if source_registry:
-            entry["source_registry"] = source_registry[:12]
+        if source_registry is not None:
+            entry["source_registry"] = list(source_registry)[:12]
         all_data[key] = entry
         _save_all(all_data)
     return key

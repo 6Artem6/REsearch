@@ -82,6 +82,22 @@ function historyItemHtml(item) {
   return String(item.content_html || item.contentHtml || "").trim();
 }
 
+/** Парсит msg_id / id (включая pending-<timestamp>). */
+export function dialogMsgId(item) {
+  const raw = item?.msg_id ?? item?.id;
+  if (raw == null || raw === "") return null;
+  const s = String(raw).trim();
+  const pending = /^pending-(\d+)$/i.exec(s);
+  if (pending) return Number(pending[1]);
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Хронология = порядок в массиве (msg_id только для ключей, не для сортировки UI). */
+export function sortDialogMessages(messages) {
+  return [...(messages || [])];
+}
+
 export function normalizeDialogHistory(history) {
   const cleaned = [];
   for (const item of history || []) {
@@ -92,43 +108,35 @@ export function normalizeDialogHistory(history) {
       role: role === "user" || role === "tutor" ? role : "tutor",
       content,
     };
+    const mid = String(item.msg_id ?? item.id ?? "").trim();
+    if (mid) row.msg_id = mid;
     const html = historyItemHtml(item);
     if (html) row.content_html = html;
     cleaned.push(row);
   }
-  const fixed = [];
-  let i = 0;
-  while (i < cleaned.length) {
-    if (
-      i + 1 < cleaned.length &&
-      i > 0 &&
-      cleaned[i].role === "tutor" &&
-      cleaned[i + 1].role === "user"
-    ) {
-      fixed.push(cleaned[i + 1]);
-      fixed.push(cleaned[i]);
-      i += 2;
-    } else {
-      fixed.push(cleaned[i]);
-      i += 1;
-    }
-  }
-  return fixed;
+  return cleaned;
 }
 
 export function historyToMessages(history) {
-  return normalizeDialogHistory(history).map((h) => ({
-    role: h.role || "tutor",
-    content: h.content || "",
-    contentHtml: historyItemHtml(h),
-  }));
+  return normalizeDialogHistory(history).map((h, idx) => {
+    const mid = String(h.msg_id || h.id || "").trim() || String(idx + 1);
+    return {
+      role: h.role || "tutor",
+      content: h.content || "",
+      contentHtml: historyItemHtml(h),
+      msg_id: mid,
+    };
+  });
 }
 
 export function tutorMessageFromApi(res) {
+  const last = Array.isArray(res.history) ? res.history[res.history.length - 1] : null;
+  const mid = last?.msg_id ?? last?.id ?? "";
   return {
     role: "tutor",
     content: repairLlMText(res.tutor_message || ""),
     contentHtml: String(res.tutor_message_html || "").trim(),
+    msg_id: mid,
   };
 }
 
@@ -143,12 +151,8 @@ export function mergeHistoryWithPendingUser(messages, userMsg) {
   if (last?.role === "user" && (last.content || "").trim() === u) {
     return copy;
   }
-  if (last?.role === "tutor") {
-    copy.splice(copy.length - 1, 0, { role: "user", content: u });
-    return copy;
-  }
-  copy.push({ role: "user", content: u });
-  return copy;
+  copy.push({ role: "user", content: u, msg_id: `pending-${Date.now()}` });
+  return sortDialogMessages(copy);
 }
 
 export function hydrateSessionsFromServer(sessions) {
@@ -180,18 +184,55 @@ export function mergeNodeStatuses(curriculum, serverStatuses) {
   return out;
 }
 
-export async function generateCurriculum(targetGoal, mode) {
-  const generation_mode = mode === "consensus" ? "consensus" : "fast";
+export async function createCurriculum(targetGoal, sourcePolicy) {
+  const policy = sourcePolicy || "practical_only";
   const depth =
-    generation_mode === "consensus" ? "Deep Mechanics" : "Standard";
-  const r = await fetch(`${API}/curriculum/generate`, {
+    policy === "hybrid" || policy === "academic_only"
+      ? "Deep Mechanics"
+      : "Standard";
+  const r = await fetch(`${API}/curriculum/create`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       target_goal: targetGoal,
       user_level: "Intermediate/Advanced",
       depth_level: depth,
-      generation_mode,
+      source_policy: policy,
+      generation_mode: policy === "academic_only" ? "consensus" : "fast",
+    }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  const data = await r.json();
+  if (data.graph) return data.graph;
+  if (data.job_id) {
+    const job = await waitWorkJob(data.job_id);
+    return job.result;
+  }
+  return data;
+}
+
+/** @deprecated alias — используйте createCurriculum */
+export async function generateCurriculum(targetGoal, sourcePolicy) {
+  return createCurriculum(targetGoal, sourcePolicy);
+}
+
+export async function expandCurriculum(
+  curriculumId,
+  expansionPrompt,
+  sourcePolicy,
+) {
+  const policy = sourcePolicy || "practical_only";
+  const r = await fetch(`${API}/curriculum/expand`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      curriculum_id: curriculumId,
+      expansion_prompt: expansionPrompt,
+      source_policy: policy,
+      generation_mode: policy === "academic_only" ? "consensus" : "fast",
     }),
   });
   if (!r.ok) {
@@ -327,5 +368,6 @@ export function toNodeDataInput(node) {
     source_ref: node.source_ref || null,
     node_curriculum_breakdown: node.node_curriculum_breakdown || null,
     primary_source_id: node.primary_source_id || "",
+    resource_urls: node.resource_urls || [],
   };
 }

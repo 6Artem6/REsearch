@@ -36,13 +36,34 @@ class CoreConceptRecord(BaseModel):
     mastery_score: int = Field(default=0, ge=0, le=100)
 
 
+class DialogueFactManifest(BaseModel):
+    """Структурированная память диалога (вместо прозаического rolling_compress)."""
+
+    agreed_concepts: list[str] = Field(default_factory=list, max_length=24)
+    rejected_options: list[str] = Field(default_factory=list, max_length=16)
+    open_bottlenecks: list[str] = Field(default_factory=list, max_length=16)
+    stack_mentions: list[str] = Field(default_factory=list, max_length=24)
+    current_subtopic: str = Field(default="", max_length=400)
+
+
 class SessionMemory(BaseModel):
     """Двухуровневая память сессии для контекста LLM."""
 
     rag_profile_compressed: str = Field(default="", max_length=4000)
     concepts_matrix: list[CoreConceptRecord] = Field(default_factory=list, max_length=12)
-    rolling_dialogue_summary: str = Field(default="", max_length=8000)
+    rolling_dialogue_summary: str = Field(
+        default="",
+        max_length=8000,
+        description="Legacy; не в hot path тьютора — используй fact_manifest",
+    )
+    fact_manifest: DialogueFactManifest = Field(default_factory=DialogueFactManifest)
+    anchor_turn: dict[str, str] = Field(default_factory=dict)
     active_window: list[dict[str, str]] = Field(default_factory=list, max_length=8)
+    dialog_seq: int = Field(
+        default=0,
+        ge=0,
+        description="Монотонный счётчик msg_id для истории диалога",
+    )
     topic_mastery_score: int = Field(default=0, ge=0, le=100)
     learning_phase: LearningPhase = "intro_assessment"
     learning_mode: LearningMode = "lecture"

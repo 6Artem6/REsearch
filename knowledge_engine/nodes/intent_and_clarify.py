@@ -18,6 +18,7 @@ from knowledge_engine.schemas import (
 )
 from knowledge_engine.services.context_manager import rolling_summarize_dialogue
 from knowledge_engine.services.gemini_research_session import ask_gemini_research
+from knowledge_engine.src.processors.question_formation_rules import QUESTION_FORMATION_RULES
 from knowledge_engine.ui.logger import set_status
 from knowledge_engine.ui.run_log import node_end, node_start
 
@@ -63,7 +64,8 @@ def intent_and_clarify_node(state: EngineGraphState) -> dict[str, Any]:
             "needs_clarification=false. "
             "clarification_question: конкретный вопрос с реальными терминами из задачи "
             "(LanceDB, invalidation, tail latency). Никогда не пиши букву «X» или шаблоны. "
-            "Пользователя interrupt только для бизнес-контекста (SLA, объём продукта)."
+            "Пользователя interrupt только для бизнес-контекста (SLA, объём продукта).\n\n"
+            f"{QUESTION_FORMATION_RULES}"
         )
     )
     human = HumanMessage(

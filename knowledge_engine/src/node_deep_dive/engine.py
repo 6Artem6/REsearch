@@ -10,6 +10,8 @@ from knowledge_engine.config import (
     GEMINI_TUTOR_MODEL,
     GEMINI_TUTOR_TIMEOUT_SEC,
     KE_RAG_TIMEOUT_SEC,
+    RAG_DEFAULT_MAX_FACTS,
+    RAG_DEFAULT_MIN_RELEVANCE,
 )
 from knowledge_engine.services.gemini_stateless import (
     GeminiUnavailableError,
@@ -17,9 +19,9 @@ from knowledge_engine.services.gemini_stateless import (
     is_gemini_available,
     run_gemini_structured_with_chain,
 )
-from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.chat_session_manager import ChatSessionManager
 from knowledge_engine.services.llm_markdown_service import enrich_node_deep_dive_response
+from knowledge_engine.src.curriculum.schemas import CurriculumNode
 from knowledge_engine.src.node_deep_dive.memory_schemas import SessionMemory, UserIntent
 from knowledge_engine.src.node_deep_dive.schemas import (
     DeepDiveLLMOutput,
@@ -33,7 +35,9 @@ from knowledge_engine.src.node_deep_dive.schemas import (
 )
 from knowledge_engine.services.node_content_generator import generate_dense_material
 from knowledge_engine.services.lecture_rag_context import retrieve_lecture_rag_context
-from knowledge_engine.services.node_source_registry import build_registry_from_references
+from knowledge_engine.services.node_source_registry import (
+    build_session_source_registry,
+)
 from knowledge_engine.src.node_deep_dive.lecture_scope import (
     dialogue_focus_text,
     resolve_lecture_scope,
@@ -46,23 +50,32 @@ from knowledge_engine.src.node_deep_dive.learning_loop import (
 from knowledge_engine.src.node_deep_dive.session_store import (
     get_all_sessions_for_curriculum,
     get_session,
-    normalize_dialog_history,
     repair_history_with_memory,
     save_session,
 )
+from knowledge_engine.src.node_deep_dive.dialog_context import (
+    build_anchor_and_manifest,
+    build_dynamic_suffix,
+    build_static_prefix,
+    set_dialogue_anchor,
+)
+from knowledge_engine.src.node_deep_dive.dialog_ids import sync_session_history_turns
 from knowledge_engine.src.node_deep_dive.step_pipeline import (
+    build_tutor_behavior_state_block,
     process_user_message_pipeline,
     rotate_window_after_message,
-    tutor_behavior_hint,
 )
 from knowledge_engine.src.node_deep_dive.tiered_memory import (
     append_to_active_window,
     build_handoff_summary,
     build_tiered_context_payload,
-    build_tiered_static_context,
     derive_node_status,
-    format_window_for_llm,
     init_session_memory,
+)
+from knowledge_engine.src.node_deep_dive.tutor_prompt_builder import (
+    INTRO_ASSESSMENT_SYSTEM,
+    build_dialogue_system,
+    build_lecture_chat_system,
 )
 from knowledge_engine.src.rag_gateway.gateway import (
     query_directional_rag,
@@ -77,55 +90,6 @@ from knowledge_engine.ui.run_log import trace
 from knowledge_engine.services.curriculum_whitelist_prompt import (
     enrich_node_learning_materials_from_graph,
     format_node_curriculum_context_for_tutor,
-)
-from knowledge_engine.src.source_evaluator.evaluator import format_whitelist_for_reasoner_prompt
-
-_DEEP_DIVE_SYSTEM = (
-    f"{RUSSIAN_OUTPUT_RULE}\n\n"
-    "Ты — Flash-маршрутизатор учебной ноды. Режим **lecture_dense** (только при INTENT_EXPLAIN "
-    "или явном запросе лекции / [mode:lecture]).\n"
-    "В режиме lecture_dense / INTENT_EXPLAIN / learning_mode=lecture + запрос материала:\n"
-    "  - tutor_message ДОЛЖЕН содержать развёрнутую лекцию (300–600 слов) в теле ответа.\n"
-    "  - ЗАПРЕЩЕНО ограничиваться кратким резюме и фразами «материал перед вами», "
-    "«материал в панели», «смотрите справа» без полного текста лекции в tutor_message.\n"
-    "  - Поля summary/diagram/references дополняют лекцию, не заменяют её.\n"
-    "В режиме lecture_dense: НЕ задавай цепочку уточняющих вопросов. "
-    "Максимум ОДИН короткий вопрос самопроверки после лекции, если learning_mode=socratic_point.\n"
-    "Аналитику mastery не пиши в tutor_message — она в панели UI.\n"
-    "Следуй detected_user_intent, learning_phase, learning_mode и tutor_behavior_rules.\n\n"
-    f"{format_whitelist_for_reasoner_prompt()}\n\n"
-    "references только как RichReference (why_read, key_focus, read_time_minutes).\n"
-    "При pathway_decision: предложи 2–3 кнопки-варианты в tutor_message без допроса.\n"
-)
-
-_TUTOR_DIALOGUE_SYSTEM = (
-    f"{RUSSIAN_OUTPUT_RULE}\n\n"
-    "Ты — Senior IT-Архитектор и требовательный, но вовлекающий Тьютор.\n"
-    "Режим: **mode:dialogue_feedback** — связный диалог, НЕ лекция и НЕ реферат.\n\n"
-    "ЗАПРЕЩЕНО:\n"
-    "- генерировать реферативные статьи и пересказывать определения из википедии;\n"
-    "- игнорировать последнее сообщение пользователя;\n"
-    "- повторять базовую теорию (REST/GraphQL/gRPC «что это»), если тема уже обсуждалась "
-    "в rolling_summary или active_window;\n"
-    "- блоки «Самопроверка» / списки абстрактных вопросов в конце.\n"
-    "Строго опирайся на контекст предыдущих сообщений пользователя и тьютора.\n"
-    "Если в payload есть user_focus_topic — разбор и deep dive только вокруг него, "
-    "без обзора всей ноды.\n\n"
-    "ФОРМАТ tutor_message — СТРОГО 3 ЧАСТИ (markdown, русский):\n\n"
-    "1. 🎯 РЕЦЕНЗИЯ НА ОТВЕТ ПОЛЬЗОВАТЕЛЯ (Feedback First):\n"
-    "   Прямо оцени аргументы: что верно, где ошибка или недосказанность.\n\n"
-    "2. 🚀 ГЛУБОКИЙ АРХИТЕКТУРНЫЙ РАЗБОР (Deep Dive):\n"
-    "   НЕ повторяй базовые определения — пользователь их уже знает.\n"
-    "   Уходи в узкие дебри: N+1 и DataLoader, Federation, BFF+gRPC, DoS через AST-depth, "
-    "edge cases, отказоустойчивость, перформанс — по теме реплики пользователя.\n\n"
-    "3. ❓ ПРОВОКАЦИОННЫЙ / СОКРАТОВСКИЙ ВОПРОС:\n"
-    "   ОДИН глубокий практический вопрос в контексте беседы (не абстрактная самопроверка).\n\n"
-    "Поля summary/diagram/references в JSON — только если реально нужны для панели; "
-    "не дублируй tutor_message рефератом.\n"
-    "Аналитику mastery не пиши в tutor_message.\n"
-    "Следуй detected_user_intent, learning_phase, learning_mode и tutor_behavior_rules.\n\n"
-    f"{format_whitelist_for_reasoner_prompt()}\n\n"
-    "references только как RichReference при необходимости.\n"
 )
 
 _LECTURE_STUB_MARKERS = (
@@ -203,8 +167,8 @@ def _tutor_system_instruction(
     user_msg: str,
 ) -> str:
     if _is_dialogue_feedback_mode(intent, learning_mode, user_msg):
-        return _TUTOR_DIALOGUE_SYSTEM
-    return _DEEP_DIVE_SYSTEM
+        return build_dialogue_system()
+    return build_lecture_chat_system()
 
 
 def _tutor_message_is_lecture_stub(text: str) -> bool:
@@ -250,6 +214,87 @@ def _ensure_lecture_in_tutor_message(
     return (merged or fallback)[:12_000]
 
 
+def _merge_node_data_from_graph(
+    req: NodeDeepDiveRequest,
+    node: CurriculumNode,
+) -> NodeDeepDiveRequest:
+    nd = req.node_data
+    return req.model_copy(
+        update={
+            "node_data": nd.model_copy(
+                update={
+                    "mapped_source_ids": list(node.mapped_source_ids or []),
+                    "primary_source_id": (node.primary_source_id or "")[:16],
+                    "source_ref": node.source_ref,
+                    "node_curriculum_breakdown": node.node_curriculum_breakdown,
+                    "learning_goal": (node.learning_goal or nd.learning_goal or "")[
+                        :600
+                    ],
+                }
+            )
+        }
+    )
+
+
+async def _apply_lazy_grounding_for_init(req: NodeDeepDiveRequest) -> NodeDeepDiveRequest:
+    from knowledge_engine.config import CURRICULUM_TARGETED_NODE_GROUNDING_ENABLED
+    if not CURRICULUM_TARGETED_NODE_GROUNDING_ENABLED:
+        return req
+
+    from knowledge_engine.services.skill_tree_store import (
+        get_curriculum_graph,
+        get_curriculum_meta,
+        save_curriculum_record,
+    )
+    from knowledge_engine.src.curriculum.schemas import CurriculumGraph
+    from knowledge_engine.src.curriculum.source_policy import resolve_source_policy
+    from knowledge_engine.src.curriculum.targeted_node_grounding import (
+        lazy_ground_deep_node_on_demand,
+    )
+
+    raw = get_curriculum_graph(req.curriculum_id)
+    if not raw:
+        return req
+    graph = CurriculumGraph.model_validate(raw)
+    node = next((n for n in graph.nodes if n.node_id == req.node_data.node_id), None)
+    if not node:
+        return req
+
+    if node.node_risk_kind != "DEEP":
+        return _merge_node_data_from_graph(req, node)
+
+    status = (node.grounding_status or "").strip()
+    if status == "grounded" and node.source_ref:
+        return _merge_node_data_from_graph(req, node)
+    if status != "pending_grounding":
+        return _merge_node_data_from_graph(req, node)
+
+    meta = get_curriculum_meta(req.curriculum_id) or {}
+    target_goal = str(meta.get("target_goal") or graph.description or "").strip()
+    source_policy = resolve_source_policy(
+        meta.get("source_policy"),
+        str(meta.get("generation_mode") or "fast"),
+        default="hybrid",
+    )
+    anchor = f"lazy:{req.curriculum_id}:{node.node_id}"
+    graph, node = await lazy_ground_deep_node_on_demand(
+        graph,
+        node,
+        target_goal=target_goal,
+        source_policy=source_policy,
+        anchor=anchor,
+    )
+    save_curriculum_record(
+        graph,
+        target_goal=target_goal,
+        generation_mode=str(meta.get("generation_mode") or "fast"),
+        depth_level=str(meta.get("depth_level") or "Standard"),
+        user_level=str(meta.get("user_level") or "Intermediate/Advanced"),
+        source_policy=source_policy,
+    )
+    return _merge_node_data_from_graph(req, node)
+
+
 def _anchor(curriculum_id: str, node_id: str) -> str:
     return f"node_deep_dive:{curriculum_id}:{node_id}"
 
@@ -285,9 +330,18 @@ def _build_rag_request(node: NodeDataInput) -> DirectionalRAGQuery:
             + (f"Суть: {summary}. " if summary else "")
             + "Только факты про опыт, стек или пробелы по этой теме."
         ),
-        max_facts=4,
-        min_relevance_threshold=0.75,
+        max_facts=RAG_DEFAULT_MAX_FACTS,
+        min_relevance_threshold=RAG_DEFAULT_MIN_RELEVANCE,
     )
+
+
+def _rag_fact_preview(text: str, max_len: int = 72) -> str:
+    clean = " ".join((text or "").split())
+    if not clean:
+        return ""
+    if len(clean) <= max_len:
+        return clean
+    return clean[: max_len - 1].rstrip() + "…"
 
 
 def _format_rag_facts(facts: list) -> str:
@@ -310,11 +364,7 @@ def _invoke_intro_assessment(
     anchor: str,
     chat_mgr: ChatSessionManager,
 ) -> IntroAssessmentOutput:
-    system = (
-        f"{RUSSIAN_OUTPUT_RULE}\n\n"
-        "Шаг 1 — экспресс-срез: задай ОДИН практический вопрос или мини-кейс.\n"
-        "Без лекции, без схемы, без ссылок. tutor_message ≤ 400 символов.\n"
-    )
+    system = INTRO_ASSESSMENT_SYSTEM
     trace(
         f"NODE_DIVE этап 2/2 intro ▶ экспресс-вопрос | chain: "
         f"{' → '.join(gemini_tutor_model_chain()[:4])} | "
@@ -352,7 +402,6 @@ def _invoke_tutor(
     node: NodeDataInput,
     intent: str,
     action: str,
-    behavior: str,
     user_msg: str,
     anchor: str,
     label: str,
@@ -361,46 +410,47 @@ def _invoke_tutor(
     curriculum_id: str = "",
 ) -> DeepDiveLLMOutput:
     node_for_tutor = enrich_node_learning_materials_from_graph(node, curriculum_id)
-    static = build_tiered_static_context(
-        memory, node_for_tutor, intent, action, behavior
-    )
     node_ctx = format_node_curriculum_context_for_tutor(node_for_tutor, curriculum_id)
-    if node_ctx.strip():
-        static += f"\n### node_curriculum_from_graph\n{node_ctx}\n"
     dlg_focus = dialogue_focus_text(user_msg, memory)
+    behavior_block = build_tutor_behavior_state_block(
+        intent,
+        action,
+        memory.learning_mode,
+        memory.learning_phase,
+        user_msg,
+        has_user_focus=bool(dlg_focus),
+    )
+    static_prefix = build_static_prefix(
+        memory, node_for_tutor, intent, action, node_ctx
+    )
     if dlg_focus:
-        static += (
-            f"\n### user_focus_topic\n{dlg_focus}\n"
-            "### dialogue_mode_note\n"
-            "Разбор строго вокруг user_focus_topic (mini-lecture в диалоге). "
-            "ЗАПРЕЩЕНО сбрасывать на общий обзор всей ноды.\n"
-        )
-    tutor_label = "node_deep_dive/tutor"
-    stored = chat_mgr.get(tutor_label)
-    if stored is None or stored.turns == 0:
-        window = format_window_for_llm(memory.active_window)
-        if window and "не начат" not in window:
-            static += f"\n### layer_4_active_dialogue_window\n{window}\n"
-    user_block = (user_msg or "").strip()
-    if user_block:
-        static += f"\n### current_user_message\n{user_block}\n"
+        static_prefix += f"\n### user_focus_topic\n{dlg_focus}\n"
+    static_body = "\n\n".join(
+        [
+            static_prefix,
+            build_anchor_and_manifest(memory),
+            behavior_block,
+        ]
+    )
+    dynamic = build_dynamic_suffix(memory, user_msg)
     system = _tutor_system_instruction(
         intent,
         memory.learning_mode,
         user_msg,
     )
+    tutor_label = "node_deep_dive/tutor"
     return run_gemini_structured_with_chain(
         GEMINI_TUTOR_MODEL,
         system,
-        static,
+        static_body,
         anchor,
         DeepDiveLLMOutput,
         label,
         rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
-        chat_manager=None,
+        chat_manager=chat_mgr,
         chat_label=tutor_label,
         handoff_summary=handoff,
-        session_registry=chat_mgr,
+        delta_user_message=dynamic,
         models=gemini_tutor_model_chain(),
         http_timeout_sec=GEMINI_TUTOR_TIMEOUT_SEC,
     )
@@ -466,13 +516,21 @@ def _ensure_memory(session, node: NodeDataInput, rag_text: str):
     return mem
 
 
-async def prepare_node_init_rag(
+async def fetch_node_init_rag_facts(
     req: NodeDeepDiveRequest,
-) -> tuple[str, str, ChatSessionManager, int, list[str]]:
-    """Этап 1 init: RAG + memory (async). Gemini — после asyncio.run, без Lance loop."""
+) -> tuple[str, int, list[str]]:
+    """Directional RAG только (без intro payload) — можно overlap с lazy grounding."""
+    from knowledge_engine.src.memory.light_rag import sync_profile_from_markdown_if_needed
+
     node = req.node_data
-    anchor = _anchor(req.curriculum_id, node.node_id)
-    session = get_session(req.curriculum_id, node.node_id)
+    await sync_profile_from_markdown_if_needed()
+
+    threshold = RAG_DEFAULT_MIN_RELEVANCE
+    node_title = (node.title or node.node_id).strip()
+    trace(
+        f"[PERSONAL_RAG] Querying facts for node '{node_title}'… "
+        f"threshold={threshold:.2f}"
+    )
     trace(
         f"NODE_DIVE этап 1/2 RAG ▶ | {req.curriculum_id}/{node.node_id} "
         "(векторный поиск + cross-encoder, без LLM)"
@@ -484,11 +542,32 @@ async def prepare_node_init_rag(
     )
     rag_facts_text = _format_rag_facts(rag_resp.facts)
     rag_facts_count = len(rag_resp.facts)
-    rag_fact_labels = [f.direction for f in rag_resp.facts][:8]
+    rag_fact_labels = [
+        _rag_fact_preview(f.fact) for f in rag_resp.facts if _rag_fact_preview(f.fact)
+    ][:8]
+    dir_tags = sorted({(f.direction or "").strip() for f in rag_resp.facts if f.direction})
+    trace(
+        f"[PERSONAL_RAG] Querying facts for node '{node_title}'… "
+        f"Found {rag_facts_count} facts above threshold {threshold:.2f}"
+        + (f" | axes={', '.join(dir_tags)}" if dir_tags else "")
+    )
     trace(
         f"NODE_DIVE этап 1/2 RAG ✓ | facts={rag_facts_count} "
         f"(кандидатов в gateway см. RAG_GATEWAY) | latency={rag_resp.latency_ms:.0f}ms"
     )
+    return rag_facts_text, rag_facts_count, rag_fact_labels
+
+
+async def finalize_node_init_after_grounding(
+    req: NodeDeepDiveRequest,
+    rag_facts_text: str,
+    rag_facts_count: int,
+    rag_fact_labels: list[str],
+) -> tuple[str, str, ChatSessionManager, int, list[str]]:
+    """Intro payload после merge grounding (source_ref в node_data)."""
+    node = req.node_data
+    anchor = _anchor(req.curriculum_id, node.node_id)
+    session = get_session(req.curriculum_id, node.node_id)
     session.history = []
     session.memory = init_session_memory(node, rag_facts_text)
     chat_mgr = ChatSessionManager.from_memory_blob(anchor, session.memory.chat_sessions)
@@ -498,10 +577,21 @@ async def prepare_node_init_rag(
         node,
         "ANSWER",
         "init",
-        "intro_assessment: один вопрос.",
+        build_tutor_behavior_state_block(
+            "ANSWER",
+            "init",
+            session.memory.learning_mode,
+            session.memory.learning_phase,
+            "",
+        ),
         "",
     )
     session.memory.chat_sessions = chat_mgr.to_memory_blob()
+    init_registry = build_session_source_registry(
+        req.curriculum_id,
+        list(node.mapped_source_ids or []),
+        [],
+    )
     save_session(
         req.curriculum_id,
         node.node_id,
@@ -510,9 +600,22 @@ async def prepare_node_init_rag(
         [],
         rag_fact_labels=rag_fact_labels,
         memory=session.memory,
-        source_registry=[],
+        source_registry=init_registry,
     )
     return intro_payload, anchor, chat_mgr, rag_facts_count, rag_fact_labels
+
+
+async def prepare_node_init_rag(
+    req: NodeDeepDiveRequest,
+) -> tuple[str, str, ChatSessionManager, int, list[str]]:
+    """Этап 1 init: RAG + memory (async). Gemini — после asyncio.run, без Lance loop."""
+    rag_facts_text, rag_facts_count, rag_fact_labels = await fetch_node_init_rag_facts(req)
+    return await finalize_node_init_after_grounding(
+        req,
+        rag_facts_text,
+        rag_facts_count,
+        rag_fact_labels,
+    )
 
 
 def complete_node_init_gemini(
@@ -559,6 +662,8 @@ async def _finish_init_after_intro(
             f"Один практический кейс по «{node.title}»: "
             "опишите главный риск или механику в 3–5 предложений."
         )
+    if session.memory:
+        set_dialogue_anchor(session.memory, node, tutor)
     content = NodeContentBlock()
     llm_out = DeepDiveLLMOutput(
         node_status="in_progress",
@@ -601,10 +706,20 @@ async def _finalize_node_deep_dive(
         rotate_window_after_message(memory, anchor)
 
     if action in ("chat", "verify"):
-        session.history.append(
-            {"role": "user", "content": (req.user_message or "").strip()}
+        session.history = sync_session_history_turns(
+            session.history,
+            memory,
+            user_message=(req.user_message or "").strip(),
+            tutor_message=tutor,
         )
-    session.history.append({"role": "tutor", "content": tutor})
+    else:
+        session.history = sync_session_history_turns(
+            session.history,
+            memory,
+            tutor_message=tutor,
+        )
+
+    session.history = repair_history_with_memory(session.history, memory)
 
     gap = (llm_out.new_gap_to_record or "").strip() or pipeline_gap or None
     if gap:
@@ -629,19 +744,18 @@ async def _finalize_node_deep_dive(
         )
         labels_for_store = list(prev_blob.get("rag_fact_labels") or [])
 
-    source_registry = build_registry_from_references(content.references)
-    if not source_registry:
-        prev_blob = get_all_sessions_for_curriculum(req.curriculum_id).get(
-            node.node_id, {}
-        )
-        source_registry = list(prev_blob.get("source_registry") or [])
+    source_registry = build_session_source_registry(
+        req.curriculum_id,
+        list(node.mapped_source_ids or []),
+        content.references,
+    )
 
     key = save_session(
         req.curriculum_id,
         node.node_id,
         status,
         content,
-        normalize_dialog_history(session.history),
+        session.history,
         rag_fact_labels=labels_for_store,
         memory=memory,
         source_registry=source_registry,
@@ -695,8 +809,13 @@ async def run_node_deep_dive(req: NodeDeepDiveRequest) -> NodeDeepDiveResponse:
     pipeline_gap: str | None = None
 
     if action == "init":
+        trace("NODE_DIVE init parallel ▶ | lazy_grounding ∥ directional RAG")
+        grounded_req, rag_facts = await asyncio.gather(
+            _apply_lazy_grounding_for_init(req),
+            asyncio.wait_for(fetch_node_init_rag_facts(req), timeout=KE_RAG_TIMEOUT_SEC),
+        )
         intro_payload, anchor, chat_mgr, rag_facts_count, rag_fact_labels = (
-            await prepare_node_init_rag(req)
+            await finalize_node_init_after_grounding(grounded_req, *rag_facts)
         )
         intro_out = await asyncio.to_thread(
             _invoke_intro_assessment,
@@ -705,7 +824,7 @@ async def run_node_deep_dive(req: NodeDeepDiveRequest) -> NodeDeepDiveResponse:
             chat_mgr,
         )
         return await _finish_init_after_intro(
-            req,
+            grounded_req,
             intro_out,
             chat_mgr,
             anchor,
@@ -816,13 +935,6 @@ async def run_node_deep_dive(req: NodeDeepDiveRequest) -> NodeDeepDiveResponse:
                 "(не dense_material)"
             )
         advance_phase_after_chat(memory, intent, action)
-        behavior = tutor_behavior_hint(
-            intent,
-            action,
-            memory.learning_mode,
-            memory.learning_phase,
-            user_msg,
-        )
         trace(
             f"NODE_DIVE ▶ {action} intent={intent} "
             f"phase={memory.learning_phase} mode={memory.learning_mode}"
@@ -833,7 +945,6 @@ async def run_node_deep_dive(req: NodeDeepDiveRequest) -> NodeDeepDiveResponse:
             node,
             intent,
             action,
-            behavior,
             user_msg,
             anchor,
             f"node_deep_dive / {action}",

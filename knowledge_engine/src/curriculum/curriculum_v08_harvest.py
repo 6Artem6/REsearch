@@ -6,7 +6,10 @@ import uuid
 
 from knowledge_engine.config import (
     CONSENSUS_MAX_RETRIES,
+    CURRICULUM_ON_DEMAND_V08_MAX_PAPERS,
+    CURRICULUM_ON_DEMAND_V08_POOL_SIZE,
     CURRICULUM_V08_MAX_PAPERS,
+    CURRICULUM_V08_PAPER_POOL_SIZE,
     PACKAGE_ROOT,
 )
 from knowledge_engine.services.summarizer import summarize_article
@@ -15,6 +18,7 @@ from knowledge_engine.src.analytics.chunker import extract_structured_chunks
 from knowledge_engine.src.curriculum.schemas import CurriculumSearchHit
 from knowledge_engine.src.processors.consensus_query_prep import (
     assess_profile_applicability,
+    consensus_sanitize_anchor,
     extract_preserved_terms_for_consensus,
 )
 from knowledge_engine.src.processors.source_anchors import (
@@ -53,10 +57,6 @@ def _read_user_profile_md() -> str:
     if path.is_file():
         return path.read_text(encoding="utf-8")
     return ""
-
-
-def _consensus_sanitize_anchor(user_query: str) -> str:
-    return f"Задача (только для ориентира, не расширять): {user_query.strip()}"
 
 
 def _word_count(text: str) -> int:
@@ -239,14 +239,41 @@ async def _process_paper_to_hit(
     url_map: dict,
     paper_dicts: list[dict],
     seen_urls: set[str],
+    *,
+    on_demand: bool = False,
 ) -> CurriculumSearchHit | None:
     url = (paper.source_url or "").strip()
     if not _external_paper_url(url) or url in seen_urls:
         return None
     title = (paper.title or url)[:400]
     snippet = (paper.abstract or paper.tldr or "")[:1200]
+
+    existing = store.fetch_summaries_by_urls([url], limit=1)
+    if existing:
+        hit = _hits_from_summary_and_chunks(
+            title, url, existing[0], [], snippet_fallback=snippet
+        )
+        if hit:
+            seen_urls.add(url)
+            trace(f"CURRICULUM v08 reuse LanceDB ✓ | {url[:70]}")
+            return hit
+
+    if on_demand:
+        extracts = _deep_extract_blocks([], [], [snippet], min_words=80, max_words=300)
+        if not extracts:
+            return None
+        seen_urls.add(url)
+        return CurriculumSearchHit(
+            url=url[:2000],
+            title=title,
+            snippet=snippet[:1200],
+            key_extracts=extracts[:8],
+            source_tier="consensus",
+            skip_ollama_summary=True,
+        )
+
     doc_sid = resolve_source_anchor_for_url(url, url_map, paper_dicts)
-    doc = await fetch_paper_document(paper)
+    doc = await fetch_paper_document(paper, abstract_only=on_demand)
     raw_for_summary = (doc.raw_markdown if doc else "") or paper_to_document_text(paper)
     try:
         summary = summarize_article(title, url, raw_for_summary[:14000])
@@ -280,18 +307,47 @@ async def _process_paper_to_hit(
 async def harvest_curriculum_sources_v08(
     target_goal: str,
     anchor: str,
+    *,
+    on_demand: bool = False,
 ) -> list[CurriculumSearchHit]:
     goal = (target_goal or "").strip()
     if len(goal) < 8:
         return []
 
-    trace("CURRICULUM v08 harvest ▶ Consensus Playwright + Lite + Summarizer")
+    max_papers = (
+        CURRICULUM_ON_DEMAND_V08_MAX_PAPERS if on_demand else CURRICULUM_V08_MAX_PAPERS
+    )
+    pool_cap = (
+        CURRICULUM_ON_DEMAND_V08_POOL_SIZE
+        if on_demand
+        else max(CURRICULUM_V08_MAX_PAPERS, min(CURRICULUM_V08_PAPER_POOL_SIZE, 100))
+    )
+
+    if on_demand:
+        from knowledge_engine.src.curriculum.on_demand_reuse import hits_from_lancedb_goal
+
+        reused = hits_from_lancedb_goal(
+            goal,
+            cap=max_papers,
+            exclude_url_keys=set(),
+        )
+        if len(reused) >= max_papers:
+            trace(
+                f"CURRICULUM v08 on_demand ⊘ Playwright | "
+                f"LanceDB reuse hits={len(reused)}"
+            )
+            return reused[:max_papers]
+
+    trace(
+        "CURRICULUM v08 harvest ▶ Consensus Playwright + Lite + Summarizer"
+        + (" (on_demand lite)" if on_demand else "")
+    )
     user_profile_md = _read_user_profile_md()
-    sanitize_anchor = _consensus_sanitize_anchor(goal)
+    sanitize_anchor = consensus_sanitize_anchor(goal)
 
     applicability = assess_profile_applicability(goal, sanitize_anchor)
     profile_effective = ""
-    if applicability.apply_personal_profile:
+    if applicability.apply_personal_profile and not on_demand:
         from knowledge_engine.src.memory.light_rag import LightRAG
 
         rag = LightRAG()
@@ -314,65 +370,91 @@ async def harvest_curriculum_sources_v08(
         consensus_query = (academic.academic_query_en or goal).strip()
         trace(f"CURRICULUM v08 Consensus query | {consensus_query[:200]}")
 
-        await session.start()
-        await session.begin_new_run()
+        # Один переход: send_message → quick/?q=&oa=true (без отдельного bootstrap goto quick/)
         turn = await session.send_message(consensus_query)
         raw = turn.raw_text
         accumulated: list[ScholarPaper] = list(turn.papers)
+        if not on_demand and len(accumulated) < pool_cap:
+            extra = await session.harvest_paper_pool()
+            accumulated = merge_scholar_papers(accumulated, extra)
+        accumulated = accumulated[:pool_cap]
+        trace(
+            f"CURRICULUM v08 paper pool | accumulated={len(accumulated)} cap={pool_cap}"
+        )
         best_docs: list[dict] = []
 
-        for attempt in range(CONSENSUS_MAX_RETRIES + 1):
-            validation = validate_consensus_response(
-                raw,
-                goal,
-                profile_effective,
-                anchor,
-                attempt=attempt,
-                max_retries=CONSENSUS_MAX_RETRIES,
-                extracted_papers=accumulated,
-            )
-            trace(
-                f"CURRICULUM v08 Lite validate | status={validation.status} "
-                f"attempt={attempt} docs={len(validation.docs)}"
-            )
-            validator_papers = consensus_docs_to_papers(
-                [d.model_dump() for d in validation.docs]
-            )
-            accumulated = merge_scholar_papers(accumulated, validator_papers)
-            if validation.docs:
-                best_docs = [d.model_dump() for d in validation.docs]
-            if validation.status == "OK":
-                break
-            if validation.status == "REJECT":
-                trace("CURRICULUM v08 Consensus REJECT | no consensus hits")
-                return []
-            if validation.status == "RETRY" and attempt < CONSENSUS_MAX_RETRIES:
-                refinement = (validation.refinement_prompt or "").strip()
-                if not refinement:
-                    refinement = (
-                        "Compare alternative approaches and complexity trade-offs."
-                    )
-                consensus_refinement = sanitize_message_for_consensus(
-                    refinement,
-                    sanitize_anchor,
+        if on_demand:
+            trace("CURRICULUM v08 on_demand ▶ skip Lite validator (rank pool only)")
+            selected = _select_curriculum_papers(accumulated, [], max_papers)
+        else:
+            for attempt in range(CONSENSUS_MAX_RETRIES + 1):
+                validation = validate_consensus_response(
+                    raw,
+                    goal,
+                    profile_effective,
+                    anchor,
+                    attempt=attempt,
+                    max_retries=CONSENSUS_MAX_RETRIES,
+                    extracted_papers=accumulated,
                 )
-                turn = await session.send_message(consensus_refinement)
-                raw = turn.raw_text
-                accumulated = merge_scholar_papers(accumulated, turn.papers)
-            else:
-                break
+                trace(
+                    f"CURRICULUM v08 Lite validate | status={validation.status} "
+                    f"attempt={attempt} docs={len(validation.docs)}"
+                )
+                validator_papers = consensus_docs_to_papers(
+                    [d.model_dump() for d in validation.docs]
+                )
+                accumulated = merge_scholar_papers(accumulated, validator_papers)
+                if validation.docs:
+                    best_docs = [d.model_dump() for d in validation.docs]
+                if validation.status == "OK":
+                    break
+                if validation.status == "REJECT":
+                    if accumulated or best_docs:
+                        trace(
+                            "CURRICULUM v08 Consensus REJECT | Lite — "
+                            f"сохраняем захваченные papers ({len(accumulated)}) "
+                            f"validator_docs={len(best_docs)}"
+                        )
+                        break
+                    trace("CURRICULUM v08 Consensus REJECT | no papers to index")
+                    return []
+                if validation.status == "RETRY" and attempt < CONSENSUS_MAX_RETRIES:
+                    refinement = (validation.refinement_prompt or "").strip()
+                    if not refinement:
+                        refinement = (
+                            "Compare alternative approaches and complexity trade-offs."
+                        )
+                    consensus_refinement = sanitize_message_for_consensus(
+                        refinement,
+                        sanitize_anchor,
+                    )
+                    turn = await session.send_message(consensus_refinement)
+                    raw = turn.raw_text
+                    accumulated = merge_scholar_papers(accumulated, turn.papers)
+                else:
+                    break
 
-        selected = _select_curriculum_papers(
-            accumulated,
-            best_docs,
-            CURRICULUM_V08_MAX_PAPERS,
-        )
+            selected = _select_curriculum_papers(
+                accumulated,
+                best_docs,
+                max_papers,
+            )
         trace(
             f"CURRICULUM v08 paper select | accumulated={len(accumulated)} "
             f"selected={len(selected)} validator_docs={len(best_docs)}"
         )
 
-        enriched = await enrich_papers_metadata(selected)
+        if on_demand:
+            enriched = selected[:max_papers]
+            trace(
+                f"CURRICULUM v08 on_demand ▶ skip SS enrich | papers={len(enriched)}"
+            )
+        else:
+            enriched = await enrich_papers_metadata(
+                selected,
+                ignore_enabled_flag=True,
+            )
         paper_dicts = [p.model_dump() for p in enriched]
         url_map = url_to_source_id_map(build_source_registry(paper_dicts))
 
@@ -384,7 +466,13 @@ async def harvest_curriculum_sources_v08(
 
         for paper in enriched:
             hit = await _process_paper_to_hit(
-                paper, anchor, store, url_map, paper_dicts, seen_urls
+                paper,
+                anchor,
+                store,
+                url_map,
+                paper_dicts,
+                seen_urls,
+                on_demand=on_demand,
             )
             if hit:
                 hits.append(hit)
@@ -393,7 +481,7 @@ async def harvest_curriculum_sources_v08(
         trace(
             f"CURRICULUM v08 harvest ✓ | hits={len(hits)} deep={deep} LanceDB indexed"
         )
-        return hits[:CURRICULUM_V08_MAX_PAPERS]
+        return hits[:max_papers]
 
     except ConsensusLoginRequiredError as exc:
         trace(f"CURRICULUM v08 Consensus login required | {exc}")

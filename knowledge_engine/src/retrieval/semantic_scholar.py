@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import xml.etree.ElementTree as ET
 from typing import List, Optional
@@ -14,12 +15,19 @@ from knowledge_engine.config import (
     SEMANTIC_SCHOLAR_API_KEY,
     SEMANTIC_SCHOLAR_ENABLED,
     SEMANTIC_SCHOLAR_LIMIT,
+    SEMANTIC_SCHOLAR_429_BACKOFF_SEC,
+    SEMANTIC_SCHOLAR_MIN_INTERVAL_SEC,
     SEMANTIC_SCHOLAR_TIMEOUT_SEC,
+)
+from knowledge_engine.src.retrieval.semantic_scholar_rate_limit import (
+    acquire_semantic_scholar_slot_async,
+    semantic_scholar_pause_before_retry_async,
 )
 from knowledge_engine.ui.run_log import trace
 
 _SS_SEARCH_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
-_ARXIV_API_URL = "http://export.arxiv.org/api/query"
+_SS_PAPER_URL = "https://api.semanticscholar.org/graph/v1/paper"
+_ARXIV_API_URL = "https://export.arxiv.org/api/query"
 _ATOM_NS = {"a": "http://www.w3.org/2005/Atom"}
 
 
@@ -43,16 +51,70 @@ def _ss_headers() -> dict[str, str]:
     return headers
 
 
+async def _ss_http_get(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    params: dict | None = None,
+) -> httpx.Response:
+    """Один GET с throttle; retry после 429 с паузой 1–1.5s."""
+    await acquire_semantic_scholar_slot_async()
+    resp = await client.get(url, params=params or {})
+    if resp.status_code == 429:
+        backoff = max(1.0, min(1.5, SEMANTIC_SCHOLAR_429_BACKOFF_SEC))
+        trace(
+            f"Semantic Scholar ⊘ 429 — wait {backoff:.2f}s "
+            f"(rate limit, min_interval={SEMANTIC_SCHOLAR_MIN_INTERVAL_SEC:.2f}s) "
+            "and retry once"
+        )
+        await semantic_scholar_pause_before_retry_async(backoff)
+        resp = await client.get(url, params=params or {})
+    return resp
+
+
+async def get_semantic_scholar_paper_by_id(
+    paper_id: str,
+    *,
+    fields: str = "title,url,abstract,tldr,paperId",
+) -> tuple[int, dict | None]:
+    pid = (paper_id or "").strip()
+    if not pid:
+        return 0, None
+    url = f"{_SS_PAPER_URL}/{pid}"
+    timeout = httpx.Timeout(SEMANTIC_SCHOLAR_TIMEOUT_SEC)
+    try:
+        async with httpx.AsyncClient(timeout=timeout, headers=_ss_headers()) as client:
+            resp = await _ss_http_get(client, url, params={"fields": fields})
+            if resp.status_code != 200:
+                return resp.status_code, None
+            return resp.status_code, resp.json()
+    except Exception as exc:
+        trace(f"Semantic Scholar ✗ paper/{pid[:12]} | {exc}")
+        return 0, None
+
+
 async def search_semantic_scholar(
     query: str,
     limit: int | None = None,
+    *,
+    ignore_enabled_flag: bool = False,
 ) -> List[ScholarPaper]:
     q = (query or "").strip()
     if not q:
         return []
-    if not SEMANTIC_SCHOLAR_ENABLED:
+    if not SEMANTIC_SCHOLAR_ENABLED and not ignore_enabled_flag:
         trace("Semantic Scholar ⊘ disabled (SEMANTIC_SCHOLAR_ENABLED=false)")
         return []
+    if ignore_enabled_flag:
+        from knowledge_engine.services.curriculum_api_quota_store import (
+            can_use_semantic_scholar,
+            record_semantic_scholar_result,
+        )
+
+        allowed, why = can_use_semantic_scholar()
+        if not allowed:
+            trace(f"Semantic Scholar ⊘ curriculum | {why}")
+            return []
     lim = min(limit or SEMANTIC_SCHOLAR_LIMIT, 20)
     params = {
         "query": q,
@@ -63,12 +125,35 @@ async def search_semantic_scholar(
     timeout = httpx.Timeout(SEMANTIC_SCHOLAR_TIMEOUT_SEC)
     try:
         async with httpx.AsyncClient(timeout=timeout, headers=_ss_headers()) as client:
-            resp = await client.get(_SS_SEARCH_URL, params=params)
+            resp = await _ss_http_get(client, _SS_SEARCH_URL, params=params)
+            if ignore_enabled_flag and resp.status_code in (429, 503):
+                from knowledge_engine.services.curriculum_api_quota_store import (
+                    record_semantic_scholar_result,
+                )
+
+                record_semantic_scholar_result(
+                    ok=False,
+                    http_status=resp.status_code,
+                    quota_exhausted=True,
+                )
             resp.raise_for_status()
             data = resp.json()
     except Exception as exc:
         trace(f"Semantic Scholar ✗ {exc}")
+        if ignore_enabled_flag:
+            from knowledge_engine.services.curriculum_api_quota_store import (
+                record_semantic_scholar_result,
+            )
+
+            record_semantic_scholar_result(ok=False)
         return []
+
+    if ignore_enabled_flag:
+        from knowledge_engine.services.curriculum_api_quota_store import (
+            record_semantic_scholar_result,
+        )
+
+        record_semantic_scholar_result(ok=True)
 
     papers: List[ScholarPaper] = []
     for item in data.get("data", [])[:lim]:
@@ -107,16 +192,35 @@ async def search_arxiv_fallback(query: str, limit: int = 5) -> List[ScholarPaper
     q = (query or "").strip()
     if not q:
         return []
-    params = urlencode({"search_query": f"all:{q}", "start": 0, "max_results": limit})
+    if len(q) >= 2 and q[0] == q[-1] == '"':
+        q = q[1:-1].strip()
+    if q.lower().startswith("all:"):
+        search_query = q
+    else:
+        search_query = f"all:{q}"
+    params = urlencode({"search_query": search_query, "start": 0, "max_results": limit})
     url = f"{_ARXIV_API_URL}?{params}"
     trace(f"arXiv API ▶ fallback | {q[:100]}")
+    root = None
     try:
-        async with httpx.AsyncClient(timeout=25.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            root = ET.fromstring(resp.text)
+        async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
+            for attempt in range(2):
+                resp = await client.get(url)
+                if resp.status_code == 503 and attempt == 0:
+                    trace("arXiv API ⊘ 503 — retry once")
+                    await asyncio.sleep(3.0)
+                    continue
+                resp.raise_for_status()
+                if resp.text.strip().startswith("<!DOCTYPE") or "<feed" not in resp.text[:500]:
+                    trace(f"arXiv API ✗ non-atom body (HTTP {resp.status_code})")
+                    return []
+                root = ET.fromstring(resp.text)
+                break
     except Exception as exc:
         trace(f"arXiv API ✗ {exc}")
+        return []
+
+    if root is None:
         return []
 
     papers: List[ScholarPaper] = []

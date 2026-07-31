@@ -1,4 +1,8 @@
-"""Ollama, пути данных, Gemini и поисковые провайдеры."""
+"""Ollama, пути данных, Gemini и поисковые провайдеры.
+
+Все переменные окружения читаются здесь (после `_load_dotenv()`).
+Остальной код импортирует константы из этого модуля, не `os.getenv`.
+"""
 
 from __future__ import annotations
 
@@ -80,13 +84,26 @@ GUARDRAILS_OLLAMA_MODEL: str = os.getenv(
     "GUARDRAILS_OLLAMA_MODEL",
     os.getenv("GUARDRAILS_MODEL", "qwen2.5-coder:7b"),
 )
-# Модель для галочек контекста (7B точнее 1.5B на релевантности)
-CONTEXT_EVAL_MODEL: str = os.getenv("CONTEXT_EVAL_MODEL", MAIN_MODEL)
+# Модель для галочек контекста (1.5B — меньше UMA; 7B через CONTEXT_EVAL_MODEL)
+CONTEXT_EVAL_MODEL: str = os.getenv("CONTEXT_EVAL_MODEL", ROUTER_MODEL)
 CONTEXT_EVAL_NUM_PREDICT: int = int(os.getenv("CONTEXT_EVAL_NUM_PREDICT", "2048"))
 EMBED_MODEL: str = "nomic-embed-text"
-# Контекст / лимит генерации (structured JSON на 7B без лимита → тысячи токенов и минуты на CPU)
-OLLAMA_NUM_CTX: int = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
+# Контекст KV: router (1.5B) vs heavy (7B). OLLAMA_NUM_CTX — legacy alias для heavy.
+OLLAMA_ROUTER_NUM_CTX: int = int(os.getenv("OLLAMA_ROUTER_NUM_CTX", "2048"))
+OLLAMA_HEAVY_NUM_CTX: int = int(
+    os.getenv(
+        "OLLAMA_HEAVY_NUM_CTX",
+        os.getenv("OLLAMA_NUM_CTX", "4096"),
+    )
+)
+OLLAMA_NUM_CTX: int = OLLAMA_HEAVY_NUM_CTX
+OLLAMA_ROUTER_KEEP_ALIVE: str = os.getenv("OLLAMA_ROUTER_KEEP_ALIVE", "2m")
+OLLAMA_HEAVY_KEEP_ALIVE: str = os.getenv("OLLAMA_HEAVY_KEEP_ALIVE", "2m")
 OLLAMA_NUM_PREDICT: int = int(os.getenv("OLLAMA_NUM_PREDICT", "1024"))
+# Guardrails JSON (короткий ValidatedQuerySpec / PersonalContext)
+OLLAMA_GUARDRAILS_NUM_PREDICT: int = int(
+    os.getenv("OLLAMA_GUARDRAILS_NUM_PREDICT", "1536")
+)
 # AnalysisReport (3 options + abstractions) — при 1024 JSON обрезается на 3-м варианте
 OLLAMA_STRUCTURE_NUM_PREDICT: int = int(
     os.getenv("OLLAMA_STRUCTURE_NUM_PREDICT", "3072")
@@ -159,6 +176,13 @@ GEMINI_TUTOR_FALLBACK_MODELS: tuple[str, ...] = _gemini_tutor_fallback_models()
 GEMINI_API_TIMEOUT_SEC: float = float(os.getenv("GEMINI_API_TIMEOUT_SEC", "120"))
 # Тьютор / Skill Tree — короче, чтобы быстрее падать при зависании API.
 GEMINI_TUTOR_TIMEOUT_SEC: float = float(os.getenv("GEMINI_TUTOR_TIMEOUT_SEC", "45"))
+KE_NODE_DIVE_TIMEOUT_SEC: float = float(os.getenv("KE_NODE_DIVE_TIMEOUT_SEC", "900"))
+KE_NODE_DIVE_ASYNC_TIMEOUT_SEC: float = float(
+    os.getenv(
+        "KE_NODE_DIVE_ASYNC_TIMEOUT_SEC",
+        str(max(GEMINI_TUTOR_TIMEOUT_SEC * 3, 120)),
+    )
+)
 # Быстрый ping перед основным запросом (переключение chain без полного payload).
 GEMINI_PROBE_BEFORE_USE: bool = _env_bool("GEMINI_PROBE_BEFORE_USE", False)
 GEMINI_PROBE_TIMEOUT_SEC: float = float(os.getenv("GEMINI_PROBE_TIMEOUT_SEC", "12"))
@@ -189,6 +213,8 @@ MIN_PAGE_CHARS_FOR_EXTRACTION: int = int(
 # Docker / API: логи в stdout (docker compose logs), без Rich Live-панели
 KE_TRACE_STDOUT: bool = _env_bool("KE_TRACE_STDOUT", False)
 KE_LOG_PLAIN: bool = _env_bool("KE_LOG_PLAIN", False)
+# Полные промпты и сырые ответы каждого LLM-вызова в run log
+KE_LLM_FULL_TRACE: bool = _env_bool("KE_LLM_FULL_TRACE", False)
 
 REDIS_URL: str = (os.getenv("REDIS_URL") or "").strip()
 KE_USE_REDIS: bool = _env_bool(
@@ -197,6 +223,28 @@ KE_USE_REDIS: bool = _env_bool(
 KE_REDIS_LOGS: bool = _env_bool("KE_REDIS_LOGS", KE_USE_REDIS)
 KE_TASKS_CHANNEL: str = os.getenv("KE_TASKS_CHANNEL", "ke:tasks")
 KE_REDIS_LOG_MAX_LINES: int = int(os.getenv("KE_REDIS_LOG_MAX_LINES", "20000"))
+REDIS_SOCKET_TIMEOUT_SEC: float = float(os.getenv("REDIS_SOCKET_TIMEOUT_SEC", "120"))
+
+KE_API_HOST: str = os.getenv("KE_API_HOST", "127.0.0.1")
+KE_API_PORT: int = int(os.getenv("KE_API_PORT", "8765"))
+KE_API_RELOAD: bool = _env_bool("KE_API_RELOAD", False)
+_raw_ke_api_base = (os.getenv("KE_API_BASE") or "").strip()
+KE_API_BASE: str = _raw_ke_api_base or f"http://{KE_API_HOST}:{KE_API_PORT}"
+
+KE_WORKER_POLL_SEC: float = float(os.getenv("KE_WORKER_POLL_SEC", "0.4"))
+KE_WORKER_HEARTBEAT_SEC: float = float(os.getenv("KE_WORKER_HEARTBEAT_SEC", "10"))
+KE_WORKER_STALE_RUNNING_SEC: float = float(
+    os.getenv("KE_WORKER_STALE_RUNNING_SEC", "300")
+)
+KE_WORKER_INLINE_FALLBACK: bool = _env_bool("KE_WORKER_INLINE_FALLBACK", False)
+KE_WORKER_RELOAD_DEBOUNCE_SEC: float = float(
+    os.getenv("KE_WORKER_RELOAD_DEBOUNCE_SEC", "1.0")
+)
+KE_WORKER_STOP_TIMEOUT_SEC: float = float(os.getenv("KE_WORKER_STOP_TIMEOUT_SEC", "30"))
+
+GEMINI_QUOTA_TRACK: bool = _env_bool("GEMINI_QUOTA_TRACK", True)
+
+PLAYWRIGHT_BROWSERS_PATH: str = (os.getenv("PLAYWRIGHT_BROWSERS_PATH") or "").strip()
 
 
 def _init_gemini_client() -> Any | None:
@@ -313,6 +361,10 @@ CONSENSUS_BROWSER_HEADLESS: bool = os.getenv(
     "true",
     "yes",
 )
+# Playwright: headed + сохранённый profile (consensus-login). Headless часто login wall / пустая SPA.
+CONSENSUS_FORCE_HEADED: bool = _env_bool("CONSENSUS_FORCE_HEADED", True)
+if CONSENSUS_FORCE_HEADED:
+    CONSENSUS_BROWSER_HEADLESS = False
 CONSENSUS_MAX_RETRIES: int = int(os.getenv("CONSENSUS_MAX_RETRIES", "2"))
 CONSENSUS_RESPONSE_MAX_SEC: float = float(
     os.getenv("CONSENSUS_RESPONSE_MAX_SEC", "300")
@@ -323,6 +375,9 @@ CONSENSUS_RESPONSE_FIRST_TIMEOUT_SEC: float = float(
 CONSENSUS_STREAM_POLL_SEC: float = float(os.getenv("CONSENSUS_STREAM_POLL_SEC", "1.5"))
 CONSENSUS_STREAM_STABLE_ROUNDS: int = int(
     os.getenv("CONSENSUS_STREAM_STABLE_ROUNDS", "4")
+)
+CONSENSUS_BOOTSTRAP_INPUT_TIMEOUT_SEC: float = float(
+    os.getenv("CONSENSUS_BOOTSTRAP_INPUT_TIMEOUT_SEC", "45")
 )
 CONSENSUS_MIN_RESPONSE_CHARS: int = int(
     os.getenv("CONSENSUS_MIN_RESPONSE_CHARS", "200")
@@ -337,6 +392,34 @@ CONSENSUS_REUSE_BROWSER_SESSION: bool = _env_bool(
 )
 # Каждый анализ — новый тред на Consensus; RETRY внутри прогона — тот же тред.
 CONSENSUS_NEW_THREAD_EACH_RUN: bool = _env_bool("CONSENSUS_NEW_THREAD_EACH_RUN", True)
+# Закрывать Chromium после каждого v0.8 harvest (свободная RAM; profile/cookies сохраняются).
+CONSENSUS_CLOSE_AFTER_EACH_HARVEST: bool = _env_bool(
+    "CONSENSUS_CLOSE_AFTER_EACH_HARVEST", True
+)
+CONSENSUS_NEW_DIALOG_MAX_WAIT_SEC: float = float(
+    os.getenv("CONSENSUS_NEW_DIALOG_MAX_WAIT_SEC", "28")
+)
+CONSENSUS_UI_POLL_SEC: float = float(os.getenv("CONSENSUS_UI_POLL_SEC", "1.0"))
+CONSENSUS_PAPER_HARVEST_PASSES: int = int(
+    os.getenv("CONSENSUS_PAPER_HARVEST_PASSES", "10")
+)
+CONSENSUS_PAPER_HARVEST_PAUSE_SEC: float = float(
+    os.getenv("CONSENSUS_PAPER_HARVEST_PAUSE_SEC", "1.2")
+)
+# Базовый paper search (без Pro AI): /quick/?q=… + модал «Find papers» при лимите.
+CONSENSUS_USE_QUICK_PAPER_SEARCH: bool = _env_bool(
+    "CONSENSUS_USE_QUICK_PAPER_SEARCH", True
+)
+CONSENSUS_QUICK_BASE_URL: str = os.getenv(
+    "CONSENSUS_QUICK_BASE_URL", "https://consensus.app/quick"
+).rstrip("/")
+CONSENSUS_QUICK_OPEN_ACCESS: bool = _env_bool("CONSENSUS_QUICK_OPEN_ACCESS", True)
+CONSENSUS_QUICK_LOAD_MORE_CLICKS: int = int(
+    os.getenv("CONSENSUS_QUICK_LOAD_MORE_CLICKS", "6")
+)
+CONSENSUS_QUICK_RESULTS_MAX_WAIT_SEC: float = float(
+    os.getenv("CONSENSUS_QUICK_RESULTS_MAX_WAIT_SEC", "45")
+)
 # Reasoner / Heavy (флагман; по умолчанию GEMINI_MODEL)
 GEMINI_REASONER_MODEL: str = os.getenv("GEMINI_REASONER_MODEL", GEMINI_MODEL)
 
@@ -400,7 +483,13 @@ SEMANTIC_SCHOLAR_TIMEOUT_SEC: float = float(
 )
 # SS API: 1 request/s cumulative across endpoints (official limit)
 SEMANTIC_SCHOLAR_MIN_INTERVAL_SEC: float = float(
-    os.getenv("SEMANTIC_SCHOLAR_MIN_INTERVAL_SEC", "1.05")
+    os.getenv("SEMANTIC_SCHOLAR_MIN_INTERVAL_SEC", "1.25")
+)
+SEMANTIC_SCHOLAR_429_BACKOFF_SEC: float = float(
+    os.getenv("SEMANTIC_SCHOLAR_429_BACKOFF_SEC", "1.25")
+)
+SEMANTIC_SCHOLAR_ENRICH_TIMEOUT_SEC: float = float(
+    os.getenv("SEMANTIC_SCHOLAR_ENRICH_TIMEOUT_SEC", "2.0")
 )
 # SS API часто 429/503 — по умолчанию выключен; v0.7 → arXiv, v0.8 → только карточки Consensus
 SEMANTIC_SCHOLAR_ENABLED: bool = _env_bool("SEMANTIC_SCHOLAR_ENABLED", False)
@@ -410,13 +499,50 @@ LIGHT_RAG_PROFILE_LIMIT: int = int(os.getenv("LIGHT_RAG_PROFILE_LIMIT", "5"))
 RAG_CROSS_ENCODER_MODEL: str = os.getenv(
     "RAG_CROSS_ENCODER_MODEL", "BAAI/bge-reranker-v2-m3"
 )
-RAG_DEFAULT_MIN_RELEVANCE: float = float(os.getenv("RAG_DEFAULT_MIN_RELEVANCE", "0.75"))
+# Cross-Encoder memory: fp16 on MPS, optional idle unload (cross_encoder.py)
+RAG_CE_TORCH_DTYPE: str = os.getenv("RAG_CE_TORCH_DTYPE", "auto").strip().lower()
+RAG_CE_AUTO_UNLOAD: bool = _env_bool("RAG_CE_AUTO_UNLOAD", False)
+RAG_CE_AUTO_UNLOAD_IDLE_SEC: float = float(
+    os.getenv("RAG_CE_AUTO_UNLOAD_IDLE_SEC", "300")
+)
+RAG_DEFAULT_MIN_RELEVANCE: float = float(os.getenv("RAG_DEFAULT_MIN_RELEVANCE", "0.55"))
 RAG_DEFAULT_MAX_FACTS: int = int(os.getenv("RAG_DEFAULT_MAX_FACTS", "4"))
 RAG_RETRIEVAL_PER_DIRECTION: int = int(os.getenv("RAG_RETRIEVAL_PER_DIRECTION", "5"))
 RAG_LATENCY_WARN_MS: float = float(os.getenv("RAG_LATENCY_WARN_MS", "100"))
 ARXIV_API_URL: str = "https://export.arxiv.org/api/query"
 CROSSREF_API_URL: str = "https://api.crossref.org/works"
 HABR_API_URL: str = "https://habr.com/kairos/v1/articles"
+
+# Exa API (exa-py) — whitelist search (см. services/search/exa_client.py)
+EXA_API_KEY: str = (os.getenv("EXA_API_KEY") or "").strip()
+CURRICULUM_PRACTICAL_EXA_LIMIT: int = int(os.getenv("CURRICULUM_PRACTICAL_EXA_LIMIT", "12"))
+EXA_SEARCH_ENABLED: bool = _env_bool("EXA_SEARCH_ENABLED", True)
+EXA_DOMAIN_CAP_PER_HOST: int = int(os.getenv("EXA_DOMAIN_CAP_PER_HOST", "1"))
+EXA_RERANK_LITE_THRESHOLD: int = int(os.getenv("EXA_RERANK_LITE_THRESHOLD", "5"))
+EXA_FAIR_ROUND_ROBIN_MAX_PER_DOMAIN: int = int(
+    os.getenv("EXA_FAIR_ROUND_ROBIN_MAX_PER_DOMAIN", "1")
+)
+EXA_DUAL_QUERY_EN_RATIO: float = float(os.getenv("EXA_DUAL_QUERY_EN_RATIO", "0.7"))
+# Exa API: excludeText — одна фраза, до 5 слов (без запятых / нескольких phrase).
+EXA_EXCLUDE_TEXT: str = os.getenv(
+    "EXA_EXCLUDE_TEXT",
+    "api reference documentation sdk classes",
+).strip()
+EXA_PRACTICAL_HIGHLIGHT_QUERY: str = os.getenv(
+    "EXA_PRACTICAL_HIGHLIGHT_QUERY",
+    "Engineering blog deep dive: system architecture, implementation trade-offs, "
+    "failure modes, benchmarks — not API parameter lists or SDK setup steps.",
+).strip()
+EXCLUDED_SOURCES_BLACKLIST: tuple[str, ...] = tuple(
+    d.strip().lower()
+    for d in (
+        os.getenv(
+            "EXCLUDED_SOURCES_BLACKLIST",
+            "medium.com,dev.to,twitter.com,reddit.com,linkedin.com,youtube.com",
+        )
+    ).split(",")
+    if d.strip()
+)
 
 # Имена провайдеров в SearchRegistry (можно сузить список)
 SEARCH_ACTIVE_PROVIDERS: tuple[str, ...] = (
@@ -428,15 +554,77 @@ SEARCH_ACTIVE_PROVIDERS: tuple[str, ...] = (
     "crossref",
 )
 
+
+def resolved_search_active_providers() -> tuple[str, ...]:
+    """Добавляет exa в начало списка при наличии EXA_API_KEY."""
+    names = list(SEARCH_ACTIVE_PROVIDERS)
+    if EXA_API_KEY and EXA_SEARCH_ENABLED and "exa" not in names:
+        names.insert(0, "exa")
+    return tuple(names)
+
 # Search-First curriculum (предпоиск перед Flash)
 CURRICULUM_SEARCH_TARGET_HITS: int = int(os.getenv("CURRICULUM_SEARCH_TARGET_HITS", "15"))
 CURRICULUM_SEARCH_MIN_HITS: int = int(os.getenv("CURRICULUM_SEARCH_MIN_HITS", "8"))
 CURRICULUM_SEARCH_PROBE_URLS: bool = _env_bool("CURRICULUM_SEARCH_PROBE_URLS", True)
-CURRICULUM_SEARCH_FIRST_ENABLED: bool = _env_bool("CURRICULUM_SEARCH_FIRST_ENABLED", True)
-CURRICULUM_USE_V08_CONSENSUS: bool = _env_bool("CURRICULUM_USE_V08_CONSENSUS", False)
+CURRICULUM_SEARCH_FIRST_ENABLED: bool = _env_bool("CURRICULUM_SEARCH_FIRST_ENABLED", False)
+CURRICULUM_TARGETED_NODE_GROUNDING_ENABLED: bool = _env_bool(
+    "CURRICULUM_TARGETED_NODE_GROUNDING_ENABLED", True
+)
+CURRICULUM_MODEL_FIRST_MIN_NODES: int = int(
+    os.getenv("CURRICULUM_MODEL_FIRST_MIN_NODES", "8")
+)
+CURRICULUM_MODEL_FIRST_TARGET_NODES: int = int(
+    os.getenv("CURRICULUM_MODEL_FIRST_TARGET_NODES", "10")
+)
+CURRICULUM_LITE_BATCH_STRICT: bool = _env_bool("CURRICULUM_LITE_BATCH_STRICT", True)
+CURRICULUM_DEEP_NODE_MAX_HITS: int = int(
+    os.getenv("CURRICULUM_DEEP_NODE_MAX_HITS", "4")
+)
+# hybrid на DEEP-ноде: сначала практика (Exa/SearXNG) + Lite; академика только если пусто
+CURRICULUM_DEEP_HYBRID_PRACTICAL_FIRST: bool = _env_bool(
+    "CURRICULUM_DEEP_HYBRID_PRACTICAL_FIRST", True
+)
+# Практический SearXNG: только category general (веб: Google/Bing).
+CURRICULUM_PRACTICAL_SEARXNG_ENGINES: str = os.getenv(
+    "CURRICULUM_PRACTICAL_SEARXNG_ENGINES", "google,bing"
+)
+# Игнорируется для HTTP: в коде всегда categories=["general"].
+CURRICULUM_PRACTICAL_SEARXNG_CATEGORIES: str = os.getenv(
+    "CURRICULUM_PRACTICAL_SEARXNG_CATEGORIES", "general"
+)
+CURRICULUM_ACADEMIC_SEARXNG_LIMIT: int = int(
+    os.getenv("CURRICULUM_ACADEMIC_SEARXNG_LIMIT", "8")
+)
+CURRICULUM_USE_V08_CONSENSUS: bool = _env_bool("CURRICULUM_USE_V08_CONSENSUS", True)
+CURRICULUM_CONSENSUS_MIN_APPROVED_ACADEMIC: int = int(
+    os.getenv("CURRICULUM_CONSENSUS_MIN_APPROVED_ACADEMIC", "2")
+)
 # Legacy: игнорируется, режим задаётся UI generation_mode (fast | consensus)
 CURRICULUM_CONSENSUS_PRIMARY: bool = _env_bool("CURRICULUM_CONSENSUS_PRIMARY", False)
 CURRICULUM_V08_MAX_PAPERS: int = int(os.getenv("CURRICULUM_V08_MAX_PAPERS", "10"))
+# Сколько карточек накапливаем из API/DOM перед отбором в MAX_PAPERS (Lite может отсеять часть).
+CURRICULUM_V08_PAPER_POOL_SIZE: int = int(
+    os.getenv("CURRICULUM_V08_PAPER_POOL_SIZE", "75")
+)
+# Lazy grounding / node/init: лёгкий academic path
+CURRICULUM_ON_DEMAND_V08_MAX_PAPERS: int = int(
+    os.getenv("CURRICULUM_ON_DEMAND_V08_MAX_PAPERS", "3")
+)
+CURRICULUM_ON_DEMAND_V08_POOL_SIZE: int = int(
+    os.getenv("CURRICULUM_ON_DEMAND_V08_POOL_SIZE", "15")
+)
+CURRICULUM_ON_DEMAND_ACADEMIC_WAIT_SEC: float = float(
+    os.getenv("CURRICULUM_ON_DEMAND_ACADEMIC_WAIT_SEC", "5")
+)
+CURRICULUM_ON_DEMAND_MIN_PRACTICAL_FOR_FAST_RETURN: int = int(
+    os.getenv("CURRICULUM_ON_DEMAND_MIN_PRACTICAL_FOR_FAST_RETURN", "3")
+)
+ACADEMIC_FAST_FETCH_TIMEOUT_SEC: float = float(
+    os.getenv("ACADEMIC_FAST_FETCH_TIMEOUT_SEC", "8.0")
+)
+ACADEMIC_SCIHUB_TIMEOUT_SEC: float = float(
+    os.getenv("ACADEMIC_SCIHUB_TIMEOUT_SEC", "1.5")
+)
 CURRICULUM_GEMINI_GROUNDING_ENABLED: bool = _env_bool(
     "CURRICULUM_GEMINI_GROUNDING_ENABLED", False
 )
@@ -597,3 +785,32 @@ URL_PRIORITY_SUBSTR: tuple[str, ...] = (
 RAG_HYBRID_LIMIT: int = int(os.getenv("RAG_HYBRID_LIMIT", "3"))
 RAG_MIN_RELEVANT_HITS: int = int(os.getenv("RAG_MIN_RELEVANT_HITS", "2"))
 LECTURE_RAG_TOP_K: int = int(os.getenv("LECTURE_RAG_TOP_K", "3"))
+# Lecture dense: расширенный пул → CE rerank → MMR (services/lecture_context_rerank.py)
+LECTURE_RAG_CANDIDATE_LIMIT: int = int(os.getenv("LECTURE_RAG_CANDIDATE_LIMIT", "15"))
+LECTURE_RAG_MMR_TOP_K: int = int(os.getenv("LECTURE_RAG_MMR_TOP_K", "5"))
+LECTURE_RAG_CE_MIN_SCORE: float = float(os.getenv("LECTURE_RAG_CE_MIN_SCORE", "0.38"))
+LECTURE_RAG_MMR_LAMBDA: float = float(os.getenv("LECTURE_RAG_MMR_LAMBDA", "0.62"))
+LECTURE_RAG_RERANK_TIMEOUT_SEC: float = float(
+    os.getenv("LECTURE_RAG_RERANK_TIMEOUT_SEC", "60")
+)
+LECTURE_RAG_KNODE_CANDIDATE_LIMIT: int = int(
+    os.getenv("LECTURE_RAG_KNODE_CANDIDATE_LIMIT", "4")
+)
+
+
+def set_api_server(host: str, port: int, reload: bool) -> None:
+    """CLI / main: переключить HTTP API без os.environ."""
+    global KE_API_HOST, KE_API_PORT, KE_API_RELOAD, KE_API_BASE
+    KE_API_HOST = host
+    KE_API_PORT = int(port)
+    KE_API_RELOAD = bool(reload)
+    KE_API_BASE = f"http://{KE_API_HOST}:{KE_API_PORT}"
+
+
+def apply_cli_gemini_research_mode() -> None:
+    """CLI --gemini-research: Gemini bulk + локальный Re-Act."""
+    global SKIP_GEMINI, REQUIRE_GEMINI, GEMINI_PRIMARY, SEARXNG_ENABLED
+    SKIP_GEMINI = False
+    REQUIRE_GEMINI = True
+    GEMINI_PRIMARY = True
+    SEARXNG_ENABLED = False

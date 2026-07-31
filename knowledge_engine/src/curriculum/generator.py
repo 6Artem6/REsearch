@@ -1,13 +1,16 @@
-"""Генерация учебного DAG: Search-First (поиск → Flash) или legacy Reasoner."""
+"""Генерация учебного DAG: Targeted Grounding (default), Search-First или legacy Reasoner."""
 
 from __future__ import annotations
 
 import re
+import time
 import uuid
 from typing import Any
 
 from knowledge_engine.config import (
     CURRICULUM_SEARCH_FIRST_ENABLED,
+    CURRICULUM_SEARCH_MIN_HITS,
+    CURRICULUM_TARGETED_NODE_GROUNDING_ENABLED,
     GEMINI_REASONER_MODEL,
     GEMINI_RPM_PAUSE_SEC,
 )
@@ -36,6 +39,9 @@ from knowledge_engine.src.curriculum.source_material_pipeline import (
     summarize_whitelist_blog_hits,
 )
 from knowledge_engine.src.curriculum.source_enrichment import enrich_curriculum_whitelist_sources
+from knowledge_engine.src.curriculum.targeted_node_grounding import (
+    generate_curriculum_targeted_grounding,
+)
 from knowledge_engine.ui.run_log import trace
 
 _CURRICULUM_SYSTEM_BASE = (
@@ -45,7 +51,9 @@ _CURRICULUM_SYSTEM_BASE = (
     "НЕ генерируй лекции и длинные объяснения — только структура графа и источники из Whitelist.\n\n"
     "{whitelist_block}\n"
     "ПРАВИЛА ПОСТРОЕНИЯ:\n"
-    "1. **Топология (prerequisites):** если узел B опирается на A, node_id A в prerequisites B.\n"
+    "1. **Топология (prerequisites):** если узел B опирается на A, node_id A в prerequisites B. "
+    "НЕ линейная цепочка: ветвящийся DAG — несколько параллельных foundation-веток, "
+    "merge-ноды с 2+ prerequisites, один родитель — несколько детей.\n"
     "2. **Слои (layer):** 'foundation' или 'sota'.\n"
     "3. **core_concepts:** 3–5 тезисов границ темы.\n"
     "4. **DAG:** без циклов; prerequisites только на существующие node_id.\n"
@@ -181,8 +189,9 @@ def generate_curriculum_graph(
     inp: CurriculumGenerateInput | dict[str, Any],
 ) -> CurriculumGraph:
     """
-    Search-First: предпоиск (SearchRegistry) → Flash (registry + nodes).
-    Fallback: Reasoner DAG + Lite whitelist enrich, если поиск пуст или отключён.
+    Targeted Node Grounding (default): Model-First → Risk → Search → Grounding.
+    Legacy Search-First: CURRICULUM_SEARCH_FIRST_ENABLED=true.
+    Fallback: Reasoner DAG + Lite whitelist enrich.
     """
     if not is_gemini_available():
         raise GeminiUnavailableError(
@@ -199,6 +208,7 @@ def generate_curriculum_graph(
         model_in = inp
 
     anchor = _anchor(model_in.target_goal)
+    t_gen = time.monotonic()
     trace(
         f"CURRICULUM ▶ генерация | mode={model_in.generation_mode} "
         f"goal={model_in.target_goal[:80]}…"
@@ -206,15 +216,28 @@ def generate_curriculum_graph(
 
     graph: CurriculumGraph | None = None
 
-    if CURRICULUM_SEARCH_FIRST_ENABLED:
+    if CURRICULUM_TARGETED_NODE_GROUNDING_ENABLED:
+        trace(
+            f"CURRICULUM pipeline | Targeted Node Grounding (lazy) "
+            f"policy={model_in.source_policy}"
+        )
+        graph = generate_curriculum_targeted_grounding(model_in, anchor)
+    elif CURRICULUM_SEARCH_FIRST_ENABLED:
+        policy = model_in.source_policy
         hits = collect_curriculum_source_hits(
             model_in.target_goal,
             depth_level=model_in.depth_level,
             generation_mode=model_in.generation_mode,
+            source_policy=policy,
         )
+        if hits and len(hits) < CURRICULUM_SEARCH_MIN_HITS:
+            trace(
+                f"CURRICULUM search thin pool | hits={len(hits)} "
+                f"< CURRICULUM_SEARCH_MIN_HITS={CURRICULUM_SEARCH_MIN_HITS} "
+                "— мало материала для развёрнутого DAG"
+            )
         if hits:
-            if model_in.generation_mode == "consensus":
-                hits = summarize_whitelist_blog_hits(hits, model_in.target_goal)
+            hits = summarize_whitelist_blog_hits(hits, model_in.target_goal)
             hits = enrich_search_hits_with_extracts(hits, model_in.target_goal)
             hits = assign_source_ids(hits)
             parsed_json = search_hits_as_prompt_json(hits)
@@ -230,5 +253,8 @@ def generate_curriculum_graph(
     if graph is None:
         graph = _generate_legacy_reasoner(model_in, anchor)
 
-    trace(f"CURRICULUM ✓ nodes={graph.total_nodes} id={graph.curriculum_id}")
+    trace(
+        f"CURRICULUM ✓ nodes={graph.total_nodes} id={graph.curriculum_id} "
+        f"elapsed={time.monotonic() - t_gen:.1f}s"
+    )
     return graph

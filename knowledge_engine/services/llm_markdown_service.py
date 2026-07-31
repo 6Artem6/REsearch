@@ -5,14 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from knowledge_engine.src.node_deep_dive.schemas import NodeContentBlock, NodeDeepDiveResponse
-from knowledge_engine.src.node_deep_dive.session_store import (
-    normalize_dialog_history,
-    repair_history_with_memory,
-)
+from knowledge_engine.src.node_deep_dive.session_store import repair_history_with_memory
 from knowledge_engine.web.linkify import markdown_document_html
 from knowledge_engine.web.llm_text_repair import (
     repair_diagram_markdown,
     repair_llm_literal_escapes,
+    repair_structured_analysis_json,
 )
 
 
@@ -21,8 +19,11 @@ def llm_markdown_to_html(
     source_registry: list[dict[str, Any]] | None = None,
 ) -> str:
     """Единая точка: Reasoner / тьютор / explainer markdown → HTML."""
-    return markdown_document_html(
+    repaired = repair_structured_analysis_json(
         repair_llm_literal_escapes(text),
+    )
+    return markdown_document_html(
+        repaired,
         source_registry,
     )
 
@@ -33,8 +34,10 @@ def present_history_for_client(
 ) -> list[dict[str, str]]:
     """История диалога с content_html для реплик тьютора (LLM)."""
     out: list[dict[str, str]] = []
-    for item in normalize_dialog_history(history):
-        role = item["role"]
+    for item in history or []:
+        role = str(item.get("role") or "tutor").strip()
+        if role not in ("user", "tutor"):
+            role = "tutor"
         content = repair_llm_literal_escapes(str(item.get("content") or ""))
         row: dict[str, str] = {"role": role, "content": content}
         if role == "tutor" and content.strip():
@@ -87,7 +90,7 @@ def enrich_node_deep_dive_response(
         mastery_dashboard=resp.mastery_dashboard,
         learning_phase=resp.learning_phase,
         learning_mode=resp.learning_mode,
-        source_registry=list(resp.source_registry or registry or []),
+        source_registry=list(resp.source_registry),
     )
 
 

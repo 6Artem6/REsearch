@@ -54,6 +54,11 @@ def build_consensus_sanitize_payload(
     return "\n\n".join(parts)
 
 
+def consensus_sanitize_anchor(user_query: str) -> str:
+    """Lite anchor для Consensus: только вопрос пользователя — без Light RAG."""
+    return f"Задача (только для ориентира, не расширять): {(user_query or '').strip()}"
+
+
 RELEVANCE_GATE_SYSTEM = """You are a Relevance Gate before literature search and final synthesis.
 
 Classify whether the user's question requires their personal developer profile in answers

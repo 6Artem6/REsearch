@@ -14,6 +14,36 @@ from knowledge_engine.ui.run_log import trace
 _ARCHIVE_TRUST_REUSE = 0.72
 _ARCHIVE_TRUST_REGISTER = 0.86
 
+_ACADEMIC_OPEN_HOST_SUFFIXES = (
+    "arxiv.org",
+    "export.arxiv.org",
+    "semanticscholar.org",
+    "aclanthology.org",
+    "doi.org",
+    "openreview.net",
+)
+
+
+def _host_from_url(url: str) -> str:
+    try:
+        host = (urlparse((url or "").strip()).hostname or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+        return host
+    except Exception:
+        return ""
+
+
+def is_academic_open_host(url: str) -> bool:
+    """Открытые академические домены — всегда whitelisted provenance."""
+    host = _host_from_url(url)
+    if not host:
+        return False
+    for suffix in _ACADEMIC_OPEN_HOST_SUFFIXES:
+        if host == suffix or host.endswith(f".{suffix}"):
+            return True
+    return False
+
 
 def is_collectible_article_url(url: str) -> bool:
     """Открытый сбор: HTTP(S), не blocklist, не голый homepage."""
@@ -85,6 +115,8 @@ def resolve_source_provenance(url: str) -> tuple[str, str]:
     """
     (category_label, origin) — origin: static_whitelist | archive | open_candidate
     """
+    if is_academic_open_host(url):
+        return "academic_open", "static_whitelist"
     matched, cat = match_whitelist(url)
     if matched:
         return cat or "whitelist", "static_whitelist"
@@ -95,7 +127,9 @@ def resolve_source_provenance(url: str) -> tuple[str, str]:
 
 
 def is_fast_trusted_source(url: str) -> bool:
-    """Уже в статическом whitelist или ранее подтвержён Lite в архиве."""
+    """Уже в статическом whitelist, академический open host или архив."""
+    if is_academic_open_host(url):
+        return True
     matched, _ = match_whitelist(url)
     if matched:
         return True

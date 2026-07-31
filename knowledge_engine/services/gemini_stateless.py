@@ -14,11 +14,13 @@ from pydantic import BaseModel
 
 from knowledge_engine.config import (
     GEMINI_API_KEY,
+    GEMINI_API_KEYS,
     GEMINI_API_TIMEOUT_SEC,
     GEMINI_CLIENT,
     GEMINI_LITE_FALLBACK_MODELS,
     GEMINI_LITE_MODEL,
     GEMINI_MODEL,
+    GEMINI_GROUNDING_MODEL,
     GEMINI_REASONER_FALLBACK_MODELS,
     GEMINI_RETRY_BACKOFF_SEC,
     GEMINI_RPM_JITTER_SEC,
@@ -28,6 +30,9 @@ from knowledge_engine.config import (
     GEMINI_PROBE_BEFORE_USE,
     GEMINI_PROBE_TIMEOUT_SEC,
     SKIP_GEMINI,
+    CURRICULUM_GEMINI_GROUNDING_FALLBACK_MODELS,
+    CURRICULUM_GEMINI_GROUNDING_MODEL,
+    _normalize_grounding_model_id,
 )
 from knowledge_engine.ui.run_log import trace
 
@@ -45,26 +50,39 @@ class GeminiQuotaExhaustedError(RuntimeError):
     """Все модели в цепочке исчерпали квоту."""
 
 
-_clients_by_timeout_ms: dict[int, Any] = {}
+_clients_by_key_timeout: dict[tuple[str, int], Any] = {}
 
 
-def _make_client(timeout_sec: float) -> Any:
+def gemini_api_key_pool() -> list[str]:
+    return [k for k in GEMINI_API_KEYS if (k or "").strip()]
+
+
+def _make_client(timeout_sec: float, api_key: str | None = None) -> Any:
     from google import genai
     from google.genai import types
 
+    key = (api_key or GEMINI_API_KEY or "").strip()
+    if not key:
+        raise GeminiUnavailableError("Пустой GEMINI API key")
     timeout_ms = max(1, int(timeout_sec * 1000))
-    if timeout_ms in _clients_by_timeout_ms:
-        return _clients_by_timeout_ms[timeout_ms]
+    cache_key = (key, timeout_ms)
+    if cache_key in _clients_by_key_timeout:
+        return _clients_by_key_timeout[cache_key]
     client = genai.Client(
-        api_key=GEMINI_API_KEY,
+        api_key=key,
         http_options=types.HttpOptions(timeout=timeout_ms),
     )
-    _clients_by_timeout_ms[timeout_ms] = client
+    _clients_by_key_timeout[cache_key] = client
     return client
 
 
+def _client_for_api_key(api_key: str, timeout_sec: float | None = None) -> Any:
+    t = float(timeout_sec if timeout_sec is not None else GEMINI_API_TIMEOUT_SEC)
+    return _make_client(t, api_key=api_key)
+
+
 def is_gemini_available() -> bool:
-    return bool(GEMINI_API_KEY) and not SKIP_GEMINI and GEMINI_CLIENT is not None
+    return bool(gemini_api_key_pool()) and not SKIP_GEMINI and GEMINI_CLIENT is not None
 
 
 def _client(timeout_sec: float | None = None) -> Any:
@@ -134,18 +152,23 @@ def _is_hard_quota_exhausted(exc: BaseException) -> bool:
     """
     Дневная / жёсткая квота → перейти на следующую модель в chain.
     RPM (есть retry in …s) → False, остаёмся на модели и ждём.
+    Generic 429 без per-day / limit:0 → False (backoff на той же модели).
     """
     if _google_retry_delay_sec(exc) is not None:
         return False
     msg = _gemini_error_blob(exc).lower()
+    if "limit: 0" in msg:
+        return True
     if "perday" in msg or "per_day" in msg or "generaterequestsperday" in msg:
         return True
-    if not any(marker in msg for marker in _QUOTA_MARKERS):
-        return False
     if "perminute" in msg or "per_minute" in msg or "per minute" in msg:
         return False
     code = _extract_status_code(exc)
-    return code == 429 or "resource_exhausted" in msg
+    if code == 429 or "resource_exhausted" in msg:
+        return False
+    if not any(marker in msg for marker in _QUOTA_MARKERS):
+        return False
+    return True
 
 
 def _is_heavy_flash_model(model: str) -> bool:
@@ -193,6 +216,50 @@ def gemini_reasoner_model_chain(primary: str | None = None) -> list[str]:
             *GEMINI_REASONER_FALLBACK_MODELS,
         )
     )
+
+
+def _is_search_grounding_model(model: str) -> bool:
+    """Google Search tool: flash-lite / 2.x; не reasoner-tier 3.5/3.6."""
+    m = (model or "").strip().lower()
+    if not m.startswith("gemini-"):
+        return False
+    blocked = (
+        "gemini-3.6",
+        "gemini-3.5-flash-preview",
+        "gemini-3-flash-preview",
+        "gemini-3.1-pro",
+        "gemini-3-pro",
+        "-pro",
+    )
+    if any(b in m for b in blocked):
+        return False
+    if "gemini-3.5-flash" in m and "lite" not in m:
+        return False
+    return True
+
+
+def curriculum_grounding_model_chain(primary: str | None = None) -> list[str]:
+    """Curriculum blogs: Search grounding tier (2.5 / 2.0 Flash, ~1.5K RPD)."""
+    raw = _dedupe_model_chain(
+        (
+            (primary or CURRICULUM_GEMINI_GROUNDING_MODEL),
+            CURRICULUM_GEMINI_GROUNDING_MODEL,
+            GEMINI_GROUNDING_MODEL,
+            *CURRICULUM_GEMINI_GROUNDING_FALLBACK_MODELS,
+        )
+    )
+    for i, name in enumerate(raw):
+        fixed = _normalize_grounding_model_id(name)
+        if fixed != (name or "").strip():
+            trace(
+                f"CURRICULUM grounding model alias | {name} → {fixed} "
+                f"(в API нет «{name}», часто HTTP 404)"
+            )
+            raw[i] = fixed
+    filtered = [m for m in raw if _is_search_grounding_model(m)]
+    if not filtered:
+        return ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-1.5-flash"]
+    return filtered
 
 
 def gemini_model_chain() -> list[str]:
@@ -302,6 +369,9 @@ def _generate_once(
     text = (response.text or "").strip()
     if not text:
         raise RuntimeError("Gemini stateless: пустой ответ")
+    from knowledge_engine.ui.llm_trace import trace_llm_exchange
+
+    trace_llm_exchange(lab, system_instruction, combined_user, text, model=model)
     trace(
         f"GEMINI HTTP ✓ {lab} | model={model} | {elapsed:.1f}s | ответ {len(text)} sym"
     )

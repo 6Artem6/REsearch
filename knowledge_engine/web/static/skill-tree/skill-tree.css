@@ -34,7 +34,7 @@
 
 .skill-saved-section {
   width: 100%;
-  padding: 0.65rem 0.75rem;
+  padding: 0.35rem 0.5rem;
   border-radius: var(--ke-radius-sm);
   border: 1px solid var(--ke-border-subtle);
   background: var(--ke-surface-elevated);
@@ -45,14 +45,16 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--ke-text-dim);
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.3rem;
 }
 
 .skill-route-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
-  max-height: 140px;
+  gap: 0.35rem;
+  /* 1.5× высота одной кнопки маршрута (padding + line box) */
+  --skill-route-item-height: calc(0.4rem + 0.4rem + 0.8rem * 1.35);
+  max-height: calc(1.5 * var(--skill-route-item-height));
   overflow-y: auto;
 }
 
@@ -67,6 +69,10 @@
   font-size: 0.8rem;
   cursor: pointer;
   line-height: 1.35;
+  max-height: var(--skill-route-item-height, calc(0.4rem + 0.4rem + 0.8rem * 1.35));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .skill-route-btn:hover {
@@ -127,6 +133,41 @@
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.skill-btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.skill-btn-primary {
+  padding: 0.55rem 1rem;
+  border: none;
+  border-radius: var(--ke-radius-sm);
+  background: var(--ke-primary);
+  color: var(--ke-primary-fg, #111);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.skill-btn-secondary {
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--ke-input-border);
+  border-radius: var(--ke-radius-sm);
+  background: transparent;
+  color: var(--ke-body-color);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.skill-btn-primary:disabled,
+.skill-btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .skill-goal-form button:disabled {
@@ -503,12 +544,13 @@ body.skill-col-resizing .tutor-selectable {
 }
 
 .diagram-viewport {
-  min-height: 260px;
-  height: min(52vh, 480px);
+  min-height: 280px;
+  height: min(58vh, 520px);
   border-radius: var(--ke-radius-sm);
   background: var(--ke-chrome-bg);
   border: 1px solid var(--ke-border-color);
-  overflow: auto;
+  overflow: hidden;
+  overscroll-behavior: contain;
   cursor: grab;
   position: relative;
 }
@@ -517,10 +559,15 @@ body.skill-col-resizing .tutor-selectable {
   cursor: grabbing;
 }
 
+.diagram-pan-layer {
+  transform-origin: 0 0;
+  display: inline-block;
+}
+
 .diagram-zoom-inner {
   transform-origin: 0 0;
   display: inline-block;
-  padding: 0.75rem;
+  padding: 1rem 1.25rem;
   min-width: min-content;
 }
 
@@ -528,6 +575,25 @@ body.skill-col-resizing .tutor-selectable {
   max-width: none !important;
   height: auto !important;
   display: block;
+  transform-origin: 0 0;
+}
+
+.diagram-zoom-inner .mermaid foreignObject {
+  overflow: visible;
+}
+
+.diagram-zoom-inner .mermaid foreignObject div {
+  color: var(--ke-body-color) !important;
+}
+
+.diagram-zoom-inner .mermaid svg .edgeLabel {
+  font-size: 13px !important;
+  line-height: 1.35 !important;
+}
+
+.diagram-zoom-inner .mermaid svg .node rect,
+.diagram-zoom-inner .mermaid svg .node polygon {
+  stroke-width: 1.5px;
 }
 
 .diagram-zoom-inner .mermaid svg .messageText,
@@ -638,6 +704,28 @@ body.skill-col-resizing .tutor-selectable {
   font-size: 0.72rem;
   color: var(--ke-text-subtle);
   margin-bottom: 0.5rem;
+}
+
+.rag-hint-block {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--ke-text-subtle);
+  margin-bottom: 0.5rem;
+}
+
+.rag-hint-title {
+  margin: 0 0 0.25rem;
+}
+
+.rag-hint-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  max-height: 4.5rem;
+  overflow-y: auto;
+}
+
+.rag-hint-list li {
+  margin-bottom: 0.15rem;
 }
 
 .chat-log {
@@ -921,6 +1009,26 @@ body.skill-col-resizing .tutor-selectable {
   font-weight: 700;
   margin-right: 0.35rem;
   color: var(--ke-link-color);
+}
+
+.source-tier-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  margin-right: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+.source-tier-badge.consensus {
+  background: rgba(168, 85, 247, 0.22);
+  color: #c4b5fd;
+}
+
+.source-tier-badge.grounding {
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
 }
 
 .source-registry-list .snippet {

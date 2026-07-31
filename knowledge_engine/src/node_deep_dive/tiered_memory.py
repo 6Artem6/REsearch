@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from knowledge_engine.src.node_deep_dive.fact_manifest import format_fact_manifest_block
 from knowledge_engine.src.node_deep_dive.memory_schemas import (
     CoreConceptRecord,
     NodeStatus,
@@ -125,7 +126,11 @@ def append_to_active_window(memory: SessionMemory, role: str, content: str) -> N
     if not text:
         return
     r = role if role in (ROLE_USER, ROLE_TUTOR) else ROLE_TUTOR
-    memory.active_window.append({"role": r, "content": text})
+    from knowledge_engine.src.node_deep_dive.dialog_ids import dialog_message, next_msg_id
+
+    msg_id = next_msg_id(memory)
+    memory.active_window.append(dialog_message(r, text, msg_id))
+    memory.dialog_seq = msg_id
 
 
 def pop_evicted_message(memory: SessionMemory) -> dict[str, str] | None:
@@ -162,17 +167,14 @@ def format_evicted_for_llm(messages: list[dict[str, str]]) -> str:
 
 
 def build_handoff_summary(memory: SessionMemory) -> str:
-    """Сжатое состояние для новой модели (без сырой multi-turn истории)."""
+    """Сжатое состояние для новой модели (manifest + matrix, без прозаического rolling)."""
     parts: list[str] = []
+    manifest_block = format_fact_manifest_block(memory)
+    if manifest_block.strip() and "{}" not in manifest_block[-3:]:
+        parts.append(manifest_block)
     roll = (memory.rolling_dialogue_summary or "").strip()
-    if roll:
-        if "PENDING_ACTION" in roll or "[!]" in roll or "NEXT_ACTION_FOR_TUTOR" in roll:
-            parts.append(
-                "CRITICAL — выполни NEXT_ACTION из rolling_summary (pending материал):\n"
-                f"{roll[:4000]}"
-            )
-        else:
-            parts.append(f"rolling_summary:\n{roll[:3500]}")
+    if roll and ("[!]" in roll or "PENDING" in roll):
+        parts.append(f"legacy_pending_hint:\n{roll[:1500]}")
     matrix = format_matrix_for_llm(memory.concepts_matrix)
     if matrix and matrix != "(пусто)":
         parts.append(f"concepts_matrix:\n{matrix[:2000]}")
@@ -188,7 +190,7 @@ def build_tiered_context_payload(
     node: NodeDataInput,
     intent: str,
     action: str,
-    behavior_hint: str,
+    behavior_state_block: str,
     user_message: str,
 ) -> str:
     concepts_list = "\n".join(f"- {c}" for c in node.core_concepts)
@@ -205,12 +207,10 @@ def build_tiered_context_payload(
         f"### layer_1_compressed_rag_profile\n{memory.rag_profile_compressed}\n\n"
         f"### layer_2_core_concepts_matrix\n{format_matrix_for_llm(memory.concepts_matrix)}\n"
         f"### topic_mastery_score\n{memory.topic_mastery_score}%\n\n"
-        f"### layer_3_rolling_dialogue_summary\n"
-        f"{memory.rolling_dialogue_summary or '(пусто)'}\n"
         f"### learning_phase\n{memory.learning_phase}\n"
         f"### learning_mode\n{memory.learning_mode}\n\n"
         f"### detected_user_intent\n{intent}\n"
-        f"### tutor_behavior_rules\n{behavior_hint}"
+        f"{behavior_state_block}"
         f"{user_block}"
     )
 
@@ -220,9 +220,8 @@ def build_tiered_static_context(
     node: NodeDataInput,
     intent: str,
     action: str,
-    behavior_hint: str,
+    behavior_state_block: str,
 ) -> str:
-    """Статический блок без active_window (окно — только delta в chat-сессии)."""
     return build_tiered_context_payload(
-        memory, node, intent, action, behavior_hint, user_message=""
+        memory, node, intent, action, behavior_state_block, user_message=""
     )

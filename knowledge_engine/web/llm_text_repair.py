@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 _RAW_MERMAID_INLINE = re.compile(
@@ -32,6 +33,110 @@ def repair_llm_literal_escapes(text: str) -> str:
             break
         t = t2
     return t
+
+
+_LIST_SECTIONS: tuple[tuple[str, str], ...] = (
+    ("pros", "Плюсы"),
+    ("cons", "Минусы и риски"),
+    ("cons_and_risks", "Минусы и риски"),
+    ("takeaways", "Ключевые выводы"),
+    ("failure_modes", "Типичные сбои"),
+)
+
+
+def _looks_like_analysis_object(obj: object) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    keys = set(obj.keys())
+    if "title" not in keys and "description" not in keys:
+        return False
+    return bool(
+        keys & {"pros", "cons", "cons_and_risks", "takeaways", "failure_modes"}
+    )
+
+
+def _format_analysis_object(obj: dict) -> str:
+    parts: list[str] = []
+    title = str(obj.get("title") or "").strip()
+    if title:
+        parts.append(f"## {title}")
+    desc = str(obj.get("description") or "").strip()
+    if desc:
+        parts.append(desc)
+    seen_labels: set[str] = set()
+    for key, label in _LIST_SECTIONS:
+        if label in seen_labels:
+            continue
+        raw = obj.get(key)
+        if not raw:
+            continue
+        items = [str(x).strip() for x in raw if str(x).strip()]
+        if not items:
+            continue
+        seen_labels.add(label)
+        parts.append(f"### {label}")
+        parts.extend(f"- {it}" for it in items)
+    return "\n\n".join(parts).strip()
+
+
+def _iter_json_objects(text: str):
+    dec = json.JSONDecoder()
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] != "{":
+            i += 1
+            continue
+        try:
+            obj, end = dec.raw_decode(text, i)
+        except json.JSONDecodeError:
+            i += 1
+            continue
+        if _looks_like_analysis_object(obj):
+            yield i, end, obj
+        i = end if end > i else i + 1
+
+
+def repair_structured_analysis_json(text: str) -> str:
+    """
+    LLM иногда вставляет trade-off JSON (title/pros/cons/takeaways/failure_modes)
+    в tutor_message или summary — превращаем в Markdown для UI.
+    """
+    raw = (text or "").strip()
+    if not raw or "{" not in raw:
+        return text or ""
+
+    if raw.startswith("{") or raw.startswith("```"):
+        fenced = raw
+        if fenced.startswith("```"):
+            fenced = re.sub(r"^```(?:json)?\s*", "", fenced, flags=re.IGNORECASE)
+            fenced = re.sub(r"```\s*$", "", fenced.strip())
+        try:
+            whole = json.loads(fenced.strip())
+            if _looks_like_analysis_object(whole):
+                return _format_analysis_object(whole)
+        except json.JSONDecodeError:
+            pass
+
+    spans = list(_iter_json_objects(raw))
+    if not spans:
+        return text
+
+    out = raw
+    for start, end, obj in reversed(spans):
+        md = _format_analysis_object(obj)
+        before = raw[:start].rstrip()
+        last_line = before.split("\n")[-1].strip() if before else ""
+        title = str(obj.get("title") or "").strip()
+        if last_line and title:
+            if title.lower() in last_line.lower() or last_line.lower() in title.lower():
+                md_lines = md.split("\n", 1)
+                if md_lines and md_lines[0].startswith("## "):
+                    md = md_lines[1].strip() if len(md_lines) > 1 else ""
+        replacement = md if md else raw[start:end]
+        out = out[:start] + replacement + out[end:]
+
+    return out.strip()
 
 
 def _strip_outer_quotes(s: str) -> str:

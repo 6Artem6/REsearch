@@ -1,11 +1,12 @@
-# SearXNG для Knowledge Engine — Bing + Google + IT/science engines (v0.6).
-# https://docs.searxng.org/admin/settings/settings.html#use-default-settings
+# SearXNG для Knowledge Engine (v0.6/v0.7)
+# https://docs.searxng.org/admin/settings/settings.html
 
 use_default_settings:
   engines:
     keep_only:
-      - bing
       - google
+      - bing
+      - duckduckgo
       - github
       - hackernews
       - stackoverflow
@@ -28,28 +29,44 @@ search:
     - json
 
 outgoing:
-  request_timeout: 12.0
+  request_timeout: 10.0
   max_request_timeout: 15.0
 
 engines:
-  - name: bing
-    disabled: false
-    weight: 0.8
+  # === WEB / PRACTICAL SEARCH ENGINES ===
   - name: google
-    inactive: false
-    weight: 0.8
-  - name: hackernews
-    disabled: false
-    weight: 1.35
-  - name: github
-    disabled: false
-    weight: 1.25
-  - name: arxiv
     disabled: false
     weight: 1.2
+    timeout: 6.0
+
+  - name: bing
+    disabled: false
+    weight: 1.0
+    timeout: 5.0
+
+  - name: duckduckgo
+    disabled: false
+    weight: 1.0
+    timeout: 5.0
+
+  # === IT / COMMUNITY ENGINES ===
+  - name: github
+    disabled: false
+    weight: 0.9
+
+  - name: hackernews
+    disabled: false
+    weight: 0.8
+
   - name: stackoverflow
     disabled: false
-    weight: 1.15
+    weight: 0.9
+
+  # === ACADEMIC ENGINES ===
+  - name: arxiv
+    disabled: false
+    weight: 1.0
+
   - name: google scholar
     disabled: false
-    weight: 1.1
+    weight: 1.0

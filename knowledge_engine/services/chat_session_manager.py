@@ -148,7 +148,11 @@ class ChatSessionManager:
         """Первый turn — полный контекст; далее — только delta (без active_window)."""
         stored = self._sessions.get(label)
         if stored is None or stored.turns == 0:
-            return (full_context or "").strip()
+            base = (full_context or "").strip()
+            delta = (delta_user_message or "").strip()
+            if base and delta:
+                return f"{base}\n\n{delta}"
+            return base or delta
         delta = (delta_user_message or "").strip()
         if delta:
             return f"### current_user_message\n{delta}"
@@ -220,5 +224,14 @@ class ChatSessionManager:
         text = (response.text or "").strip()
         if not text:
             raise RuntimeError("Gemini chat: пустой ответ")
+        from knowledge_engine.ui.llm_trace import trace_llm_exchange
+
+        trace_llm_exchange(
+            label or "gemini_chat",
+            system_instruction,
+            (message or "").strip(),
+            text,
+            model=stored.model_name,
+        )
         self.record_turn(label, message, text)
         return text

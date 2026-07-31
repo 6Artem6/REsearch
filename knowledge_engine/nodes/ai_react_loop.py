@@ -18,6 +18,7 @@ from knowledge_engine.schemas import (
 from knowledge_engine.services.ai_dialogue.gemini_session import (
     BrowserGeminiDialogueSession,
 )
+from knowledge_engine.src.processors.question_formation_rules import QUESTION_FORMATION_RULES
 from knowledge_engine.ui.logger import set_status
 from knowledge_engine.ui.run_log import node_end, node_start
 
@@ -55,7 +56,8 @@ def _evaluate_response(state: EngineState, answer: str) -> AIDialogueEvaluation:
         content=(
             f"{RUSSIAN_ROUTER_RULE} "
             "Оцени ответ внешнего ИИ: достаточно ли ссылок и фактов для Trade-off матрицы. "
-            "Если нет — один уточняющий вопрос на русском (follow_up_question)."
+            "Если нет — один уточняющий вопрос на русском (follow_up_question).\n\n"
+            f"{QUESTION_FORMATION_RULES}"
         )
     )
     human = HumanMessage(

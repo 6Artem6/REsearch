@@ -12,9 +12,9 @@
 | `pathway_decision` | Выбор траектории / финализация. |
 | `socratic_focus` | Точечный Сократ только по запросу `[mode:socratic]`. |
 
-**Модели:** `GEMINI_TUTOR_MODEL` (Lite chain) — intro, чат, dense в панели; `GEMINI_LITE_MODEL` — step_analysis / rolling_compress; `GEMINI_REASONER_MODEL` — только генерация маршрута (curriculum).
+**Модели:** `GEMINI_TUTOR_MODEL` (Lite chain) — intro, чат, dense в панели; `GEMINI_LITE_MODEL` — step_analysis, fact manifest; `GEMINI_REASONER_MODEL` — только генерация маршрута (curriculum).
 
-**Лекция (`dense_material`):** перед вызовом Gemini — `retrieve_lecture_rag_context()` (`lecture_rag_context.py`): hybrid LanceDB `document_summaries` (Consensus/скачанные) + `light_rag_facts` (TOP-K, `LECTURE_RAG_TOP_K`). Промпт с блоком `=== НАЧАЛО МАТЕРИАЛА ===` / fallback Best Practices.
+**Лекция (`dense_material`):** перед Heavy Gemini — `retrieve_lecture_rag_context()` ([LECTURE_RAG_CONTEXT.md](LECTURE_RAG_CONTEXT.md)): пул до 15 кандидатов (LanceDB hybrid + route URLs + LightRAG) → **Cross-Encoder rerank** → **MMR** → top 5 чанков + pinned whitelist → блок `=== НАЧАЛО МАТЕРИАЛА ===`. При ошибке/таймауте — fallback (URL + exact-text dedupe).
 
 **Probe:** перед основным запросом — `GEMINI probe ▶/✓/✗` (короткий ping, `GEMINI_PROBE_TIMEOUT_SEC`); quota store; первая рабочая модель в chain; при смене модели — `ChatSessionManager` Summary + handoff.
 
@@ -22,9 +22,9 @@
 
 ## Tiered Memory (4 слоя в промпте тьютора)
 
-1. **Compressed RAG Profile** — сжатый срез фактов Модуля 3 (стек, опыт, пробелы по ноде).
+1. **Compressed RAG Profile** — сжатый срез фактов Модуля 3 (стек, опыт, пробелы по ноде); фиксируется на **init** (Directional RAG Gateway), не обновляется на каждый chat.
 2. **Core Concepts Matrix** — `core_concepts` с `status`, `evidence`, `mastery_score` (0–100).
-3. **Rolling Dialogue Summary** — структурированный дайджест (`CURRENT_STATE`, `COVERED_POINTS`, `PENDING_ACTION`, `NEXT_ACTION_FOR_TUTOR`); не путает запрос лекции с выданным материалом.
+3. **Fact manifest** — структурированный JSON на `SessionMemory` (`fact_manifest.py`); пополняется при вытеснении из окна (Lite), не полный rolling_compress на hot path.
 4. **Active Dialogue Window** — последние 3 цикла (6 сообщений tutor/user); в API Gemini передаётся **один раз** при первом turn chat-сессии, далее только **delta** (`current_user_message`).
 
 Персистентность: поле `memory` в `node_deep_dive_sessions.json` (+ `memory.chat_sessions` для Gemini); UI-история `history` сохраняется для чата.
@@ -46,7 +46,7 @@
 
 1. **Intent** — `ANSWER` | `INTENT_EXPLAIN` | `INTENT_SHIFT_FOCUS` | `INTENT_FINALIZE`.
 2. **Mastery update** — сопоставление `user_message` + окна с матрицей концептов.
-3. **Window rotation** — при >6 сообщений вытеснение в rolling summary (LLM-сжатие).
+3. **Window rotation** — при >6 сообщений вытеснение → обновление **fact manifest** (Lite); `rolling_dialogue_summary` — для handoff/legacy.
 4. **Node status** — `in_progress` (0–39%), `deep_understanding` (40–99%), `gap`, `mastered` (100%, все verified).
 
 ## API
@@ -63,9 +63,9 @@ POST /api/v1/node-deep-dive/interact
 
 ## Надёжность (503 / Redis)
 
-- `step_analysis` и `rolling_compress` — **GEMINI_LITE_MODEL** (меньше конкуренции с Flash).
+- `step_analysis` и fact manifest — **GEMINI_LITE_MODEL**.
 - При ошибке step_analysis — **эвристический intent** (диалог не падает).
-- При ошибке rolling_compress — текстовое слияние без LLM.
+- При ошибке manifest extract — окно вытесняется без LLM-сжатия (лог).
 - Gemini 503/429: probe → retry + fallback по chain (логи `GEMINI probe`, `GEMINI wait`, `fallback ▶`).
 - Redis: `REDIS_SOCKET_TIMEOUT_SEC` (default 30), retry на чтение job.
 
@@ -76,7 +76,10 @@ POST /api/v1/node-deep-dive/interact
 | Engine | `engine.py` |
 | Learning loop | `learning_loop.py` |
 | Dense material (tutor Lite) | `services/node_content_generator.py` |
+| Lecture RAG (CE + MMR) | [LECTURE_RAG_CONTEXT.md](LECTURE_RAG_CONTEXT.md), `lecture_rag_context.py`, `lecture_context_rerank.py` |
+| Промпты / UI текст | [TUTOR_PROMPT_AND_UI_TEXT.md](TUTOR_PROMPT_AND_UI_TEXT.md) |
 | Tiered memory | `tiered_memory.py` |
+| Dialog context | `dialog_context.py`, `fact_manifest.py` |
 | Step pipeline | `step_pipeline.py` |
 | Схемы памяти | `memory_schemas.py` |
 | Store | `session_store.py` |

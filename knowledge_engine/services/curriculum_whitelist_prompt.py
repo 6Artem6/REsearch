@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from knowledge_engine.config import CURRICULUM_DEEP_NODE_MAX_HITS
 from knowledge_engine.src.curriculum.schemas import (
     LearningMaterials,
     NodeCurriculumBreakdown,
@@ -16,13 +17,13 @@ from knowledge_engine.src.source_evaluator.evaluator import format_whitelist_for
 
 def curriculum_whitelist_prompt_block() -> str:
     return (
-        "ДОПУСТИМЫЕ ИСТОЧНИКИ И БЕЛЫЕ СПИСКИ (WHITELIST):\n"
+        "ОРИЕНТИРЫ АВТОРИТЕТНЫХ ИСТОЧНИКОВ (стартовый whitelist + пополняемый архив):\n"
         f"{format_whitelist_for_reasoner_prompt()}\n\n"
-        "ТРЕБОВАНИЯ К ИСТОЧНИКАМ НОД:\n"
-        "1. Для каждой ноды заполни learning_materials.primary_whitelist_source: "
-        "материалы и главы СТРОГО из Whitelist выше.\n"
-        "2. Сторонние невалидированные источники ЗАПРЕЩЕНЫ.\n"
-        "3. core_concepts в primary_whitelist_source — концепты из выбранной главы/статьи.\n"
+        "ТРЕБОВАНИЯ К ИСТОЧНИКАМ:\n"
+        "1. Предлагай глубокие инженерные материалы; домен может быть вне списка — "
+        "он пройдёт Lite-валидацию и пополнит архив.\n"
+        "2. Для нод с Search-First используй source_ref и выдержки из уже проверенных материалов.\n"
+        "3. core_concepts — из содержания статьи/главы, не из SEO-обзоров.\n"
     )
 
 
@@ -98,12 +99,81 @@ def _merge_node_plan_from_graph(node: Any, curriculum_id: str) -> Any:
     return node
 
 
+_TUTOR_NEIGHBORHOOD_RULES = (
+    "Маршрут и окружение (блок NEIGHBORHOOD_CONTEXT в user payload):\n"
+    "1. Связь с прошлым: при объяснении опирайся на концепты из «ПРЕДШЕСТВУЮЩИХ ТЕМ», "
+    "если это облегчает понимание.\n"
+    "2. Граница будущего: НЕ объясняй подробно концепты из «СЛЕДУЮЩИХ ТЕМ». "
+    "Если пользователь спрашивает про них — кратко ответь и укажи, что детально "
+    "это будет на следующем шаге маршрута.\n"
+)
+
+
+def format_neighborhood_context_block(curriculum_id: str, node_id: str) -> str:
+    cid = (curriculum_id or "").strip()
+    nid = (node_id or "").strip()
+    if not cid or not nid:
+        return ""
+    from knowledge_engine.services.skill_tree_store import get_node_neighbors_context
+
+    ctx = get_node_neighbors_context(cid, nid)
+    if not ctx:
+        return ""
+
+    current_title = (ctx.get("current_title") or nid).strip()
+    preds = ctx.get("predecessors") or []
+    succs = ctx.get("successors") or []
+    if not preds and not succs:
+        return ""
+
+    lines = [
+        "=== МАРШРУТ И ОКРУЖЕНИЕ ТЕМЫ ===",
+        "ПРЕДШЕСТВУЮЩИЕ ТЕМЫ (пользователь уже прошёл фундаментальные вещи):",
+    ]
+    if preds:
+        for p in preds:
+            title = (p.get("title") or p.get("node_id") or "").strip()
+            concepts = (p.get("short_concepts") or "").strip()
+            suffix = f" ({concepts})" if concepts else ""
+            lines.append(f"- [Prereq]: {title}{suffix}")
+    else:
+        lines.append("- (нет явных предшественников в графе)")
+
+    lines.append("")
+    lines.append("ТЕКУЩАЯ ТЕМА (фокус текущего диалога):")
+    lines.append(f"- {current_title}")
+
+    lines.append("")
+    lines.append(
+        "СЛЕДУЮЩИЕ ТЕМЫ (НЕ углубляйся сюда — это темы будущих уроков):"
+    )
+    if succs:
+        for s in succs:
+            title = (s.get("title") or s.get("node_id") or "").strip()
+            lines.append(f"- [Next]: {title}")
+    else:
+        lines.append("- (нет явных следующих тем в графе)")
+
+    return "\n".join(lines)
+
+
 def format_node_curriculum_context_for_tutor(node: Any, curriculum_id: str = "") -> str:
     """Контекст ноды для chat-тьютора (без дублирования роли из system prompt)."""
+    parts: list[str] = []
+    nid = str(getattr(node, "node_id", "") or "").strip()
+    neighborhood = format_neighborhood_context_block(curriculum_id, nid)
+    if neighborhood.strip():
+        parts.append(neighborhood.strip())
+
     plan = format_node_lesson_plan_for_lecture(node, curriculum_id)
-    if not plan.strip():
+    if plan.strip():
+        body = plan.replace("Ты — IT-Тьютор.\n", "").replace("Ты — IT-Тьютор.", "").strip()
+        if body:
+            parts.append(body)
+
+    if not parts:
         return ""
-    return plan.replace("Ты — IT-Тьютор.\n", "").replace("Ты — IT-Тьютор.", "").strip()
+    return "\n\n".join(parts)
 
 
 def format_primary_whitelist_foundation(node: Any, curriculum_id: str = "") -> str:
@@ -167,7 +237,9 @@ def enrich_node_learning_materials_from_graph(
             continue
         updates: dict[str, Any] = {}
         if raw.get("mapped_source_ids"):
-            updates["mapped_source_ids"] = list(raw.get("mapped_source_ids") or [])[:3]
+            updates["mapped_source_ids"] = list(raw.get("mapped_source_ids") or [])[
+                :CURRICULUM_DEEP_NODE_MAX_HITS
+            ]
         if raw.get("learning_goal"):
             updates["learning_goal"] = str(raw.get("learning_goal") or "")[:600]
         if raw.get("primary_source_id"):

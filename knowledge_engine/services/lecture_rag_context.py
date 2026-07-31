@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
 
-from knowledge_engine.config import LECTURE_RAG_TOP_K, LIGHT_RAG_MIN_COSINE_SIM
+from knowledge_engine.config import (
+    LECTURE_RAG_CANDIDATE_LIMIT,
+    LECTURE_RAG_KNODE_CANDIDATE_LIMIT,
+    LECTURE_RAG_MMR_TOP_K,
+    LECTURE_RAG_RERANK_TIMEOUT_SEC,
+    LECTURE_RAG_TOP_K,
+    LIGHT_RAG_MIN_COSINE_SIM,
+)
 from knowledge_engine.db.source_links import get_source_link_archive
 from knowledge_engine.services.curriculum_whitelist_prompt import (
     enrich_node_learning_materials_from_graph,
     format_primary_whitelist_foundation,
-    primary_whitelist_from_graph_node,
+)
+from knowledge_engine.services.lecture_context_rerank import (
+    LectureContextCandidate,
+    diversify_lecture_candidates_sync,
+    fallback_dedupe_candidates,
 )
 from knowledge_engine.schemas import DocumentSummary
 from knowledge_engine.services.skill_tree_store import get_curriculum_graph, get_curriculum_meta
@@ -87,6 +98,191 @@ def _format_registry_stub(
     if snippet:
         lines.append(f"Контекст: {snippet[:1200]}")
     return "\n".join(lines)
+
+
+def _plain_from_document_summary(ds: DocumentSummary) -> str:
+    parts = [
+        ds.title,
+        " ".join(ds.cs_concepts or []),
+        " ".join(ds.key_takeaways or []),
+        " ".join(ds.failure_modes or []),
+        " ".join(ds.diagram_descriptions or []),
+    ]
+    return "\n".join(p for p in parts if (p or "").strip())[:6000]
+
+
+def _collect_rerank_candidates_sync(
+    curriculum_id: str,
+    node: NodeDataInput,
+    query: str,
+) -> tuple[list[str], list[LectureContextCandidate], list[str]]:
+    """
+    Пул кандидатов для CE/MMR (whitelist foundation — pinned, не в пуле).
+    """
+    pool_limit = max(LECTURE_RAG_CANDIDATE_LIMIT, LECTURE_RAG_MMR_TOP_K + 2)
+    legacy_k = max(2, min(LECTURE_RAG_TOP_K, 5))
+    candidate_limit = max(pool_limit, legacy_k)
+
+    pinned: list[str] = []
+    candidates: list[LectureContextCandidate] = []
+    seen_urls: set[str] = set()
+
+    foundation = format_primary_whitelist_foundation(node, curriculum_id)
+    if foundation.strip():
+        pinned.append(foundation.strip())
+
+    route_links = _collect_route_link_candidates(curriculum_id, node)
+    route_urls = [u for u, _, _ in route_links]
+
+    if route_urls:
+        url_docs = _summaries_for_urls(
+            route_urls,
+            min(len(route_urls), candidate_limit),
+        )
+        for i, ds in enumerate(url_docs, 1):
+            key = _normalize_url(ds.url)
+            seen_urls.add(key)
+            formatted = _format_document_summary(
+                ds, i, tag="Конспект по ссылке маршрута"
+            )
+            candidates.append(
+                LectureContextCandidate(
+                    label="route_doc",
+                    formatted=formatted,
+                    plain=_plain_from_document_summary(ds),
+                    url_key=key,
+                )
+            )
+
+    for i, (url, title, snippet) in enumerate(route_links, 1):
+        key = _normalize_url(url)
+        if key in seen_urls:
+            continue
+        formatted = _format_registry_stub(i, url, title, snippet)
+        plain = "\n".join(p for p in [title, snippet] if (p or "").strip())[:4000]
+        candidates.append(
+            LectureContextCandidate(
+                label="registry_stub",
+                formatted=formatted,
+                plain=plain or formatted[:2000],
+                url_key=key,
+            )
+        )
+
+    docs = _hybrid_document_summaries(query, candidate_limit)
+    for ds in docs:
+        key = _normalize_url(ds.url)
+        if key in seen_urls:
+            continue
+        seen_urls.add(key)
+        doc_idx = sum(1 for c in candidates if c.label == "hybrid_semantic")
+        formatted = _format_document_summary(
+            ds, doc_idx + 1, tag="Семантический конспект"
+        )
+        candidates.append(
+            LectureContextCandidate(
+                label="hybrid_semantic",
+                formatted=formatted,
+                plain=_plain_from_document_summary(ds),
+                url_key=key,
+            )
+        )
+
+    knode_limit = max(2, LECTURE_RAG_KNODE_CANDIDATE_LIMIT)
+    knodes = _hybrid_knowledge_nodes(query, knode_limit)
+    for i, (content, source_url, level) in enumerate(knodes, 1):
+        formatted = _format_knowledge_node(i, content, source_url, level)
+        url_key = _normalize_url(source_url or "")
+        candidates.append(
+            LectureContextCandidate(
+                label="knowledge_node",
+                formatted=formatted,
+                plain=(content or "")[:6000],
+                url_key=url_key,
+            )
+        )
+
+    return pinned, candidates, route_urls
+
+
+async def _light_rag_hits(rag: LightRAG, query: str, limit: int):
+    return await rag.vector_search(
+        query,
+        limit,
+        kinds=frozenset({"profile", "fact"}),
+        min_cosine=LIGHT_RAG_MIN_COSINE_SIM,
+    )
+
+
+async def _apply_rerank_mmr(
+    query: str,
+    candidates: list[LectureContextCandidate],
+) -> list[LectureContextCandidate]:
+    if not candidates:
+        return []
+    try:
+        selected = await asyncio.wait_for(
+            run_under_uma_lock(
+                diversify_lecture_candidates_sync,
+                query,
+                candidates,
+            ),
+            timeout=LECTURE_RAG_RERANK_TIMEOUT_SEC,
+        )
+        return selected
+    except Exception as exc:
+        trace(f"LECTURE_RAG rerank/mmr fallback | {exc}")
+        return fallback_dedupe_candidates(candidates, LECTURE_RAG_MMR_TOP_K)
+
+
+def _legacy_concat_chunks(
+    pinned: list[str],
+    candidates: list[LectureContextCandidate],
+) -> list[str]:
+    """Склейка без CE/MMR (откат)."""
+    deduped = fallback_dedupe_candidates(
+        candidates,
+        max(LECTURE_RAG_MMR_TOP_K, LECTURE_RAG_TOP_K),
+    )
+    return pinned + [c.formatted for c in deduped]
+
+
+def _rerank_focus_query(
+    node: NodeDataInput,
+    user_query: str,
+    curriculum_goal: str,
+) -> str:
+    focus = (user_query or "").strip()
+    if focus:
+        return focus[:2000]
+    return _build_search_query(node, "", curriculum_goal)[:2000]
+
+
+def _append_light_rag_candidates(
+    candidates: list[LectureContextCandidate],
+    hits: list[tuple[float, str, dict]],
+) -> None:
+    for sim, text, meta_h in hits:
+        body = (text or "").strip()
+        if len(body) < 24:
+            continue
+        node_tag = (meta_h.get("node_id") or "").strip()
+        category = (meta_h.get("category") or "").strip()
+        header = f"[LightRAG score={sim:.2f}"
+        if node_tag:
+            header += f" node={node_tag}"
+        if category:
+            header += f" category={category}"
+        header += "]"
+        formatted = f"{header}\n{body[:6000]}"
+        candidates.append(
+            LectureContextCandidate(
+                label="light_rag",
+                formatted=formatted,
+                plain=body[:6000],
+                url_key="",
+            )
+        )
 
 
 def _hybrid_document_summaries(query: str, limit: int) -> list[DocumentSummary]:
@@ -214,8 +410,7 @@ async def retrieve_lecture_rag_context(
     curriculum_id: str = "",
 ) -> str:
     """
-    TOP-K из LanceDB + конспекты по URL маршрута (learning_resources / registry) +
-    light_rag_facts + knowledge_nodes.
+    LanceDB + LightRAG → Cross-Encoder → MMR → склейка для dense_material.
     """
     node = enrich_node_learning_materials_from_graph(node, curriculum_id)
     meta = get_curriculum_meta(curriculum_id.strip()) if curriculum_id else None
@@ -224,71 +419,61 @@ async def retrieve_lecture_rag_context(
     if not query:
         return LECTURE_RAG_FALLBACK
 
-    top_k = max(2, min(LECTURE_RAG_TOP_K, 5))
-    chunks: list[str] = []
-    seen_urls: set[str] = set()
-    url_docs: list[DocumentSummary] = []
+    pool_limit = max(LECTURE_RAG_CANDIDATE_LIMIT, LECTURE_RAG_MMR_TOP_K + 2)
 
-    foundation = format_primary_whitelist_foundation(node, curriculum_id)
-    if foundation.strip():
-        chunks.append(foundation.strip())
-
-    route_links = _collect_route_link_candidates(curriculum_id, node)
-    route_urls = [u for u, _, _ in route_links]
-    if route_urls:
-        url_docs = await run_under_uma_lock(
-            _summaries_for_urls, route_urls, min(len(route_urls), top_k + 2)
+    try:
+        pinned, candidates, route_urls = await run_under_uma_lock(
+            _collect_rerank_candidates_sync,
+            curriculum_id,
+            node,
+            query,
         )
-        for i, ds in enumerate(url_docs, 1):
-            seen_urls.add(_normalize_url(ds.url))
-            chunks.append(_format_document_summary(ds, i, tag="Конспект по ссылке маршрута"))
+        rag = LightRAG()
+        hits = await _light_rag_hits(rag, query, pool_limit)
+        _append_light_rag_candidates(candidates, hits)
 
-    for i, (url, title, snippet) in enumerate(route_links, 1):
-        if _normalize_url(url) in seen_urls:
-            continue
-        chunks.append(_format_registry_stub(i, url, title, snippet))
+        trace(
+            f"LECTURE_RAG pool ▶ | candidates={len(candidates)} pinned={len(pinned)} "
+            f"route_urls={len(route_urls)} light_hits={len(hits)}"
+        )
 
-    docs = await run_under_uma_lock(_hybrid_document_summaries, query, top_k)
-    doc_idx = 0
-    for ds in docs:
-        key = _normalize_url(ds.url)
-        if key in seen_urls:
-            continue
-        seen_urls.add(key)
-        doc_idx += 1
-        chunks.append(_format_document_summary(ds, doc_idx, tag="Семантический конспект"))
+        if not candidates and not pinned:
+            trace(f"LECTURE_RAG ⊘ empty | query_len={len(query)}")
+            return LECTURE_RAG_FALLBACK
 
-    knodes = await run_under_uma_lock(_hybrid_knowledge_nodes, query, 2)
-    for i, (content, source_url, level) in enumerate(knodes, 1):
-        chunks.append(_format_knowledge_node(i, content, source_url, level))
+        if candidates:
+            focus = _rerank_focus_query(node, user_query, curriculum_goal)
+            selected = await _apply_rerank_mmr(focus, candidates)
+            chunks = pinned + [c.formatted for c in selected]
+        else:
+            chunks = list(pinned)
 
-    rag = LightRAG()
-    hits = await rag.vector_search(
-        query,
-        top_k,
-        kinds=frozenset({"profile", "fact"}),
-        min_cosine=LIGHT_RAG_MIN_COSINE_SIM,
-    )
-    for sim, text, meta_h in hits:
-        node_tag = (meta_h.get("node_id") or "").strip()
-        category = (meta_h.get("category") or "").strip()
-        header = f"[LightRAG score={sim:.2f}"
-        if node_tag:
-            header += f" node={node_tag}"
-        if category:
-            header += f" category={category}"
-        header += "]"
-        chunks.append(f"{header}\n{text[:6000]}")
-
-    if not chunks:
-        trace(f"LECTURE_RAG ⊘ empty | query_len={len(query)} route_urls={len(route_urls)}")
-        return LECTURE_RAG_FALLBACK
-
-    trace(
-        f"LECTURE_RAG ✓ | route_urls={len(route_urls)} url_docs={len(url_docs) if route_urls else 0} "
-        f"hybrid_docs={len(docs)} light_hits={len(hits)} chunks={len(chunks)}"
-    )
-    return "\n\n---\n\n".join(chunks)
+        trace(
+            f"LECTURE_RAG ✓ | out_chunks={len(chunks)} "
+            f"(mmr_selected={len(chunks) - len(pinned)})"
+        )
+        return "\n\n---\n\n".join(chunks)
+    except Exception as exc:
+        trace(f"LECTURE_RAG full fallback | {exc}")
+        try:
+            pinned, candidates, route_urls = await run_under_uma_lock(
+                _collect_rerank_candidates_sync,
+                curriculum_id,
+                node,
+                query,
+            )
+            rag = LightRAG()
+            hits = await _light_rag_hits(
+                rag, query, max(2, min(LECTURE_RAG_TOP_K, 5))
+            )
+            _append_light_rag_candidates(candidates, hits)
+            chunks = _legacy_concat_chunks(pinned, candidates)
+            if not chunks:
+                return LECTURE_RAG_FALLBACK
+            return "\n\n---\n\n".join(chunks)
+        except Exception as exc2:
+            trace(f"LECTURE_RAG fallback failed | {exc2}")
+            return LECTURE_RAG_FALLBACK
 
 
 def build_lecture_generation_payload(

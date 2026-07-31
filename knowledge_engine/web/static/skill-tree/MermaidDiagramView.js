@@ -5,9 +5,11 @@ import {
   repairDiagramMarkdown,
   softenMermaidSource,
 } from "./mermaidExtract.js";
+import { polishMermaidSvg, applyDiagramSvgScale } from "./mermaidSvgPolish.js";
 
-const MIN_SCALE = 0.35;
+const MIN_SCALE = 0.5;
 const MAX_SCALE = 5;
+const FIT_MIN_SCALE = 0.88;
 const LS_ZOOM = "skillTreeDiagramZoom";
 
 function clamp(n, lo, hi) {
@@ -21,7 +23,7 @@ export function MermaidDiagramView({ diagram, nodeId }) {
   const viewportRef = useRef(null);
   const [scale, setScale] = useState(() => {
     const saved = Number(localStorage.getItem(LS_ZOOM));
-    return saved > 0 ? clamp(saved, MIN_SCALE, MAX_SCALE) : 1;
+    return saved > 0 ? clamp(saved, MIN_SCALE, MAX_SCALE) : 1.12;
   });
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const panStart = useRef(null);
@@ -31,23 +33,51 @@ export function MermaidDiagramView({ diagram, nodeId }) {
     const host = hostRef.current;
     const svg = host?.querySelector("svg");
     if (!viewport || !svg) return;
-    const pad = 16;
+    const pad = 20;
     const vw = viewport.clientWidth - pad;
     const vh = viewport.clientHeight - pad;
-    setScale((cur) => {
+    setScale(() => {
+      applyDiagramSvgScale(svg, 1);
       const bb = svg.getBoundingClientRect();
-      const unscaledW = bb.width / cur;
-      const unscaledH = bb.height / cur;
-      if (unscaledW < 8 || unscaledH < 8) return cur;
-      const fit = clamp(
-        Math.min(vw / unscaledW, vh / unscaledH),
-        MIN_SCALE,
-        MAX_SCALE,
-      );
-      return fit;
+      const unscaledW = bb.width;
+      const unscaledH = bb.height;
+      if (unscaledW < 8 || unscaledH < 8) return 1.12;
+      const fit = Math.min(vw / unscaledW, vh / unscaledH);
+      return clamp(fit, FIT_MIN_SCALE, MAX_SCALE);
     });
     setPan({ x: 0, y: 0 });
   }, []);
+
+  const applyComfortableScale = useCallback(() => {
+    const viewport = viewportRef.current;
+    const host = hostRef.current;
+    const svg = host?.querySelector("svg");
+    if (!viewport || !svg) {
+      setScale(1.12);
+      return;
+    }
+    applyDiagramSvgScale(svg, 1);
+    const pad = 20;
+    const vw = viewport.clientWidth - pad;
+    const vh = viewport.clientHeight - pad;
+    const bb = svg.getBoundingClientRect();
+    if (bb.width < 8 || bb.height < 8) {
+      setScale(1.12);
+      return;
+    }
+    const fit = Math.min(vw / bb.width, vh / bb.height);
+    if (fit < 1) {
+      setScale(clamp(fit, FIT_MIN_SCALE, 1));
+    } else {
+      setScale(clamp(Math.min(fit, 1.25), 1, 1.35));
+    }
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  useEffect(() => {
+    const svg = hostRef.current?.querySelector("svg");
+    applyDiagramSvgScale(svg, scale);
+  }, [scale]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -73,8 +103,9 @@ export function MermaidDiagramView({ diagram, nodeId }) {
           if (svg) {
             svg.style.maxWidth = "none";
             svg.style.height = "auto";
+            polishMermaidSvg(svg);
           }
-          requestAnimationFrame(() => fitToViewport());
+          requestAnimationFrame(() => applyComfortableScale());
         })
         .catch((err) => {
           if (attempt === 0) {
@@ -102,7 +133,7 @@ export function MermaidDiagramView({ diagram, nodeId }) {
 
     const source = extractMermaidSource(text || rawDiagram);
     runMermaid(source, 0);
-  }, [text, rawDiagram, nodeId, fitToViewport]);
+  }, [text, rawDiagram, nodeId, applyComfortableScale]);
 
   useEffect(() => {
     localStorage.setItem(LS_ZOOM, String(scale));
@@ -112,12 +143,18 @@ export function MermaidDiagramView({ diagram, nodeId }) {
     setScale((s) => clamp(s * factor, MIN_SCALE, MAX_SCALE));
   }
 
-  function onWheel(e) {
-    if (!viewportRef.current?.contains(e.target)) return;
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
-    setScale((s) => clamp(s * factor, MIN_SCALE, MAX_SCALE));
-  }
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onWheelNative = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
+      setScale((s) => clamp(s * factor, MIN_SCALE, MAX_SCALE));
+    };
+    el.addEventListener("wheel", onWheelNative, { passive: false });
+    return () => el.removeEventListener("wheel", onWheelNative);
+  }, []);
 
   function onPanStart(e) {
     if (e.button !== 0) return;
@@ -219,17 +256,20 @@ export function MermaidDiagramView({ diagram, nodeId }) {
       {
         className: "diagram-viewport",
         ref: viewportRef,
-        onWheel,
         onMouseDown: onPanStart,
         title: "Колёсико — зум, перетаскивание — пан",
       },
-      React.createElement("div", {
-        className: "diagram-zoom-inner",
-        style: {
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+      React.createElement(
+        "div",
+        {
+          className: "diagram-pan-layer",
+          style: { transform: `translate(${pan.x}px, ${pan.y}px)` },
         },
-        ref: hostRef,
-      }),
+        React.createElement("div", {
+          className: "diagram-zoom-inner",
+          ref: hostRef,
+        }),
+      ),
     ),
   );
 }

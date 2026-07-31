@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { RoadmapCanvas } from "./RoadmapCanvas.js";
+import { CurriculumInputBar } from "./CurriculumInputBar.js";
 import { NodeDrawer } from "./NodeDrawer.js";
 import { NodeTutorChat } from "./NodeTutorChat.js";
 import { ColumnResizer } from "./ColumnResizer.js";
 import {
   fetchRagStatus,
-  generateCurriculum,
+  createCurriculum,
+  expandCurriculum,
   fetchCurriculaList,
   fetchWorkspace,
   setActiveCurriculum,
@@ -14,6 +16,7 @@ import {
   hydrateSessionsFromServer,
   historyToMessages,
   mergeHistoryWithPendingUser,
+  sortDialogMessages,
   tutorMessageFromApi,
   mergeNodeStatuses,
   nodeInit,
@@ -24,7 +27,7 @@ import {
 
 export function RoadmapDashboard() {
   const [goal, setGoal] = useState("");
-  const [mode, setMode] = useState("fast");
+  const [sourcePolicy, setSourcePolicy] = useState("practical_only");
   const [ragStatus, setRagStatus] = useState(null);
   const [curriculum, setCurriculum] = useState(null);
   const [curriculaList, setCurriculaList] = useState([]);
@@ -33,9 +36,13 @@ export function RoadmapDashboard() {
   const [sessions, setSessions] = useState({});
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [genStatus, setGenStatus] = useState("");
+  /** expand | create — какая кнопка запустила busy */
+  const [genBusyAction, setGenBusyAction] = useState(null);
   /** Нода, для которой сейчас ждём init/chat/verify; null — нет активной генерации. */
   const [tutorBusyNodeId, setTutorBusyNodeId] = useState(null);
   const [error, setError] = useState("");
+  /** Смена после expand — принудительный Dagre + fitView. */
+  const [layoutEpoch, setLayoutEpoch] = useState(0);
   const [leftColWidth, setLeftColWidth] = useState(() => {
     const n = Number(localStorage.getItem("skillTreeColLeft"));
     return n >= 240 && n <= 720 ? n : 360;
@@ -69,6 +76,7 @@ export function RoadmapDashboard() {
       setSelectedNode(null);
       await setActiveCurriculum(curriculumId);
       rememberActiveCurriculumId(curriculumId);
+      setSourcePolicy("practical_only");
       const url = new URL(window.location.href);
       url.searchParams.set("curriculum", curriculumId);
       window.history.replaceState(null, "", url.pathname + url.search);
@@ -78,6 +86,21 @@ export function RoadmapDashboard() {
       setError(String(err.message || err));
     } finally {
       setWorkspaceBusy(false);
+    }
+  }, []);
+
+  const refreshCurriculumGraph = useCallback(async (curriculumId) => {
+    if (!curriculumId) return null;
+    try {
+      const ws = await fetchWorkspace(curriculumId);
+      setCurriculum(ws.curriculum);
+      setStatuses(
+        mergeNodeStatuses(ws.curriculum, ws.statuses || {}),
+      );
+      return ws.curriculum;
+    } catch (err) {
+      setError(String(err.message || err));
+      return null;
     }
   }, []);
 
@@ -96,16 +119,27 @@ export function RoadmapDashboard() {
         theme: "dark",
         securityLevel: "loose",
         themeVariables: {
-          fontSize: "11px",
+          fontSize: "14px",
+          fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif",
+          primaryTextColor: "#eceff4",
+          lineColor: "#7eb8b8",
+          primaryBorderColor: "#4ec9b0",
         },
-        flowchart: { useMaxWidth: false, htmlLabels: true },
+        flowchart: {
+          useMaxWidth: false,
+          htmlLabels: true,
+          padding: 28,
+          nodeSpacing: 56,
+          rankSpacing: 64,
+          curve: "basis",
+        },
         sequence: {
           useMaxWidth: false,
           wrap: true,
           width: 240,
-          messageFontSize: 10,
-          noteFontSize: 10,
-          actorFontSize: 11,
+          messageFontSize: 11,
+          noteFontSize: 11,
+          actorFontSize: 12,
           messageMargin: 48,
           boxMargin: 10,
           mirrorActors: false,
@@ -130,38 +164,102 @@ export function RoadmapDashboard() {
     })();
   }, [loadWorkspace]);
 
-  async function onGenerate(e) {
-    e.preventDefault();
-    const text = goal.trim();
-    if (text.length < 8) return;
+  function clearCanvasForNewRoute() {
+    setCurriculum(null);
+    setSelectedNode(null);
+    setSessions({});
+    setStatuses({});
+    const url = new URL(window.location.href);
+    url.searchParams.delete("curriculum");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    setSourcePolicy("practical_only");
+  }
+
+  async function runCreatePath(text) {
     setError("");
     setWorkspaceBusy(true);
+    setGenBusyAction("create");
     let phaseTimer = null;
-    const consensusPhases = [
-      "Сбор научных статей в Consensus (Playwright)…",
-      "Lite-валидация и Summarizer → LanceDB…",
-      "Flash строит граф вокруг выдержек…",
-    ];
-    if (mode === "consensus") {
-      let phaseIdx = 0;
-      setGenStatus(consensusPhases[0]);
-      phaseTimer = setInterval(() => {
-        phaseIdx = (phaseIdx + 1) % consensusPhases.length;
-        setGenStatus(consensusPhases[phaseIdx]);
-      }, 8000);
-    } else {
-      setGenStatus("SearXNG / whitelist и Flash…");
-    }
+    const policyPhases = {
+      hybrid: [
+        "Model-First: Flash строит структуру DAG…",
+        "Lite: классификация нод (BASE / DEEP)…",
+        "DEEP: Exa + блоги (практика)…",
+        "Summarizer → LanceDB → привязка источников…",
+      ],
+      academic_only: [
+        "Semantic Scholar / arXiv / Consensus…",
+        "Summarizer → LanceDB…",
+        "Grounding DEEP-нод…",
+      ],
+      practical_only: [
+        "Model-First → Risk → DEEP: Exa / SearXNG…",
+        "Summarizer → LanceDB…",
+        "Привязка источников к нодам…",
+      ],
+    };
+    const phases = policyPhases[sourcePolicy] || policyPhases.hybrid;
+    setGenStatus(phases[0]);
+    let phaseIdx = 0;
+    phaseTimer = setInterval(() => {
+      if (phaseIdx >= phases.length - 1) return;
+      phaseIdx += 1;
+      setGenStatus(phases[phaseIdx]);
+    }, 12000);
     try {
-      const graph = await generateCurriculum(text, mode);
+      const graph = await createCurriculum(text, sourcePolicy);
+      setGoal(text);
       await loadWorkspace(graph.curriculum_id);
     } catch (err) {
       setError(String(err.message || err));
     } finally {
       if (phaseTimer) clearInterval(phaseTimer);
       setGenStatus("");
+      setGenBusyAction(null);
       setWorkspaceBusy(false);
     }
+  }
+
+  async function runExpandBranch(text) {
+    if (!curriculum?.curriculum_id) return;
+    setError("");
+    setWorkspaceBusy(true);
+    setGenBusyAction("expand");
+    setGenStatus("Достройка: Lite → сбор источников (SearXNG / SS)…");
+    const expandPhases = [
+      "Lite → вектор расширения…",
+      "Сбор по вектору (SearXNG / SS / arXiv)…",
+      "Summarizer → LanceDB…",
+      "Flash достраивает ветку…",
+    ];
+    let phaseIdx = 0;
+    const phaseTimer = setInterval(() => {
+      if (phaseIdx >= expandPhases.length - 1) return;
+      phaseIdx += 1;
+      setGenStatus(expandPhases[phaseIdx]);
+    }, 10000);
+    try {
+      const graph = await expandCurriculum(
+        curriculum.curriculum_id,
+        text,
+        sourcePolicy,
+      );
+      setGoal("");
+      setLayoutEpoch((n) => n + 1);
+      await loadWorkspace(graph.curriculum_id);
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      clearInterval(phaseTimer);
+      setGenStatus("");
+      setGenBusyAction(null);
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function runCreateNewWhileLoaded(text) {
+    clearCanvasForNewRoute();
+    await runCreatePath(text);
   }
 
   const applyNodeResponse = useCallback((nodeId, res, userMsg) => {
@@ -175,15 +273,23 @@ export function RoadmapDashboard() {
       const hasHistory =
         Array.isArray(res.history) && res.history.length > 0;
       const messages = hasHistory
-        ? mergeHistoryWithPendingUser(
-            historyToMessages(res.history),
-            userMsg,
+        ? sortDialogMessages(
+            mergeHistoryWithPendingUser(
+              historyToMessages(res.history),
+              userMsg,
+            ),
           )
         : (() => {
             const next = [...old.messages];
-            if (userMsg) next.push({ role: "user", content: userMsg });
+            if (userMsg) {
+              next.push({
+                role: "user",
+                content: userMsg,
+                msg_id: `pending-${Date.now()}`,
+              });
+            }
             if (res.tutor_message) next.push(tutorMessageFromApi(res));
-            return next;
+            return sortDialogMessages(next);
           })();
       return {
         ...prev,
@@ -197,7 +303,9 @@ export function RoadmapDashboard() {
             res.topic_mastery_score ?? old.topicMasteryScore ?? 0,
           learningPhase: res.learning_phase || old.learningPhase,
           learningMode: res.learning_mode || old.learningMode,
-          sourceRegistry: res.source_registry || old.sourceRegistry || [],
+          sourceRegistry: Array.isArray(res.source_registry)
+            ? res.source_registry
+            : old.sourceRegistry || [],
         },
       };
     });
@@ -221,6 +329,11 @@ export function RoadmapDashboard() {
         toNodeDataInput(node),
       );
       applyNodeResponse(sid, res);
+      const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
+      if (freshGraph) {
+        const freshNode = freshGraph.nodes.find((n) => n.node_id === sid);
+        if (freshNode) setSelectedNode(freshNode);
+      }
     } catch (err) {
       setError(String(err.message || err));
     } finally {
@@ -287,12 +400,12 @@ export function RoadmapDashboard() {
           ...old,
           messages: (() => {
             const msgs = [...(old.messages || [])];
-            if (msgs.length && msgs[msgs.length - 1].role === "tutor") {
-              msgs.splice(msgs.length - 1, 0, { role: "user", content: u });
-            } else {
-              msgs.push({ role: "user", content: u });
-            }
-            return msgs;
+            msgs.push({
+              role: "user",
+              content: u,
+              msg_id: `pending-${Date.now()}`,
+            });
+            return sortDialogMessages(msgs);
           })(),
         },
       };
@@ -400,55 +513,19 @@ export function RoadmapDashboard() {
               ),
             ),
       ),
-      React.createElement(
-        "div",
-        { className: "skill-header-actions" },
-        React.createElement(
-          "form",
-          { className: "skill-goal-form", onSubmit: onGenerate },
-          React.createElement("input", {
-            value: goal,
-            onChange: (e) => setGoal(e.target.value),
-            placeholder: "Чему вы хотите научиться?",
-            required: true,
-          }),
-          React.createElement(
-            "select",
-            {
-              className: "skill-mode-select",
-              value: mode,
-              onChange: (e) => setMode(e.target.value),
-              "aria-label": "Режим генерации",
-            },
-            React.createElement(
-              "option",
-              { value: "fast" },
-              "Fast — быстрый граф",
-            ),
-            React.createElement(
-              "option",
-              { value: "consensus" },
-              "Consensus — глубокий анализ (v0.8)",
-            ),
-          ),
-          workspaceBusy &&
-            genStatus &&
-            React.createElement(
-              "p",
-              { className: "muted skill-gen-status", role: "status" },
-              genStatus,
-            ),
-          React.createElement(
-            "button",
-            { type: "submit", disabled: workspaceBusy },
-            workspaceBusy
-              ? mode === "consensus"
-                ? "Глубокая генерация…"
-                : "Генерация…"
-              : "Создать путь",
-          ),
-        ),
-      ),
+      React.createElement(CurriculumInputBar, {
+        goal,
+        onGoalChange: setGoal,
+        sourcePolicy,
+        onSourcePolicyChange: setSourcePolicy,
+        activeCurriculumId: activeId,
+        workspaceBusy,
+        genStatus,
+        busyAction: genBusyAction,
+        onCreatePath: runCreatePath,
+        onExpandBranch: runExpandBranch,
+        onCreateNew: runCreateNewWhileLoaded,
+      }),
     ),
     error && React.createElement("div", { className: "skill-error" }, error),
     React.createElement(
@@ -465,7 +542,6 @@ export function RoadmapDashboard() {
         curriculum && selectedNode
           ? React.createElement(NodeTutorChat, {
               session,
-              ragLabels: session?.ragLabels,
               onSend: sendTutorMessage,
               disabled: composeLocked,
               generating: nodeGenerating,
@@ -503,6 +579,7 @@ export function RoadmapDashboard() {
             onNodeClick: openNode,
             tutorBusyNodeId,
             sessions,
+            layoutEpoch,
           })
         : React.createElement(
             "div",

@@ -68,16 +68,24 @@ def trace(message: str) -> None:
     )
 
     line = f"{datetime.now().strftime('%H:%M:%S')} | {message}"
-    if KE_TRACE_STDOUT:
+    if "\n" in message:
+        if KE_TRACE_STDOUT:
+            print(message, flush=True)
+    elif KE_TRACE_STDOUT:
         print(line, flush=True)
     if _log_redis_id and redis_logs_enabled():
-        append_line(_log_redis_id, line)
+        append_line(_log_redis_id, line if "\n" not in message else message)
     path = _log_path
-    if path is None or redis_logs_enabled():
+    if path is None:
+        return
+    if redis_logs_enabled() and "\n" not in message:
         return
     with _lock:
         with path.open("a", encoding="utf-8") as f:
-            f.write(line + "\n")
+            if "\n" in message:
+                f.write(message + "\n")
+            else:
+                f.write(line + "\n")
 
 
 def node_start(node_id: str) -> None:
@@ -105,6 +113,20 @@ def ollama_invoke(llm: Any, messages: list[Any], label: str) -> Any:
     t0 = time.monotonic()
     try:
         result = llm.invoke(messages)
+        from knowledge_engine.config import KE_LLM_FULL_TRACE
+        from knowledge_engine.ui.llm_trace import trace_llm_messages
+
+        if KE_LLM_FULL_TRACE:
+            raw = result
+            if hasattr(result, "model_dump_json"):
+                raw = result.model_dump_json(indent=2)
+            elif hasattr(result, "content"):
+                raw = result.content if isinstance(result.content, str) else str(
+                    result.content
+                )
+            else:
+                raw = str(result)
+            trace_llm_messages(label, messages, raw, model=str(model))
         on_ollama_end(str(model), label, time.monotonic() - t0, ok=True)
         return result
     except Exception as exc:

@@ -7,9 +7,18 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from knowledge_engine.config import CURRICULUM_DEEP_NODE_MAX_HITS
+
 DepthLevel = Literal["Overview", "Standard", "Deep Mechanics"]
 GenerationMode = Literal["fast", "consensus"]
 LayerKind = Literal["foundation", "advanced", "sota"]
+NodeRiskKind = Literal["BASE", "DEEP"]
+GroundingStatus = Literal[
+    "model_only",
+    "grounded",
+    "unverified_deep",
+    "pending_grounding",
+]
 
 _NODE_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
@@ -41,8 +50,19 @@ class CurriculumGenerateInput(BaseModel):
     )
     generation_mode: GenerationMode = Field(
         default="fast",
-        description="fast: SearXNG/whitelist + LanceDB; consensus: Playwright v0.8",
+        description="legacy: fast | consensus (используйте source_policy)",
     )
+    source_policy: str = Field(
+        default="practical_only",
+        description="hybrid | practical_only | academic_only",
+    )
+
+    @field_validator("source_policy", mode="before")
+    @classmethod
+    def _norm_source_policy(cls, v: str) -> str:
+        from knowledge_engine.src.curriculum.source_policy import normalize_source_policy
+
+        return normalize_source_policy(v, default="practical_only")
 
     @field_validator("generation_mode", mode="before")
     @classmethod
@@ -82,6 +102,11 @@ class CurriculumSourceRegistryEntry(BaseModel):
     why_read: str = Field(default="", max_length=800)
     snippet: str = Field(default="", max_length=1200)
     key_extracts: list[str] = Field(default_factory=list, max_length=12)
+    source_tier: str = Field(
+        default="",
+        max_length=24,
+        description="consensus | gemini_grounding | whitelist_blog",
+    )
 
 
 class NodeSourceRef(BaseModel):
@@ -112,8 +137,13 @@ class CurriculumSearchHit(BaseModel):
     url: str = Field(min_length=8, max_length=2000)
     title: str = Field(default="", max_length=400)
     snippet: str = Field(default="", max_length=1200)
+    published_date: str = Field(default="", max_length=32)
     key_extracts: list[str] = Field(default_factory=list, max_length=12)
     source_tier: str = Field(default="", max_length=24)
+    skip_ollama_summary: bool = Field(
+        default=False,
+        description="Exa highlights уже достаточны — не гонять 7B summarizer",
+    )
 
 
 class LearningMaterials(BaseModel):
@@ -150,12 +180,20 @@ class CurriculumNode(BaseModel):
     )
     mapped_source_ids: list[str] = Field(
         default_factory=list,
-        max_length=3,
-        description="1–3 source_id из curriculum_sources_registry",
+        max_length=CURRICULUM_DEEP_NODE_MAX_HITS,
+        description="source_id из curriculum_sources_registry (до CURRICULUM_DEEP_NODE_MAX_HITS)",
     )
     learning_goal: str = Field(default="", max_length=600)
     source_ref: NodeSourceRef | None = None
     node_curriculum_breakdown: NodeCurriculumBreakdown | None = None
+    node_risk_kind: NodeRiskKind = Field(
+        default="BASE",
+        description="BASE — без веб-поиска; DEEP — требуется RAG",
+    )
+    grounding_status: GroundingStatus = Field(
+        default="model_only",
+        description="model_only | grounded | unverified_deep | pending_grounding",
+    )
 
     @field_validator("source_ref", "node_curriculum_breakdown", mode="before")
     @classmethod
@@ -174,7 +212,7 @@ class CurriculumNode(BaseModel):
             s = str(raw).strip()
             if s and s not in out:
                 out.append(s[:16])
-        return out[:3]
+        return out[:CURRICULUM_DEEP_NODE_MAX_HITS]
 
     @field_validator("learning_materials", mode="before")
     @classmethod
@@ -251,3 +289,23 @@ class CurriculumReasonerPayload(BaseModel):
     description: str = ""
     total_nodes: int = 0
     nodes: list[CurriculumNode] = Field(default_factory=list)
+
+
+class ExpansionVectorOutput(BaseModel):
+    """Lite: вектор направления расширения (без нод и ссылок)."""
+
+    expansion_vector: str = Field(min_length=20, max_length=4000)
+
+
+class CurriculumExpansionEdge(BaseModel):
+    """Новое DAG-ребро: prerequisite → dependent."""
+
+    from_node_id: str = Field(min_length=2, max_length=80)
+    to_node_id: str = Field(min_length=2, max_length=80)
+
+
+class CurriculumExpansionPatch(BaseModel):
+    """Flash: JSON Patch для expand_curriculum."""
+
+    new_nodes: list[CurriculumNode] = Field(default_factory=list, max_length=20)
+    new_edges: list[CurriculumExpansionEdge] = Field(default_factory=list, max_length=40)

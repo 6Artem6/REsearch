@@ -129,7 +129,8 @@ class SourceLinkArchive:
             try:
                 rows = conn.execute(
                     """
-                    SELECT url, trust_score, category, status FROM source_links
+                    SELECT url, trust_score, category, status, discovery_query
+                    FROM source_links
                     WHERE status NOT IN ('rejected_low_trust', 'fetch_empty')
                       AND (trust_score IS NULL OR trust_score >= ?)
                     ORDER BY (trust_score IS NULL), trust_score DESC, last_seen_at DESC
@@ -150,21 +151,47 @@ class SourceLinkArchive:
                 continue
             score = row["trust_score"]
             cat = row["category"] or ""
+            disc = row["discovery_query"] or ""
             if high_trust_only and score is not None:
                 if not is_high_trust_score(float(score), cat):
                     continue
-            # лёгкий матч по домену/URL и задаче (опционально)
             if problem_lower and len(problem_lower) > 8:
-                blob = f"{url} {cat}".lower()
-                tokens = [t for t in problem_lower.split() if len(t) > 4][:6]
-                if tokens and not any(t in blob for t in tokens):
-                    # высокий trust — всё равно включаем
-                    if score is None or float(score) < 0.75:
+                blob = f"{url} {cat} {disc}".lower()
+                tokens = [t for t in problem_lower.split() if len(t) > 3][:8]
+                if tokens:
+                    hits = sum(1 for t in tokens if t in blob)
+                    if hits < 2 and (score is None or float(score) < 0.82):
                         continue
             out.append(url)
             if len(out) >= limit:
                 break
         return out
+
+    def get_url_trust(self, url: str) -> float:
+        u = (url or "").strip()
+        if not u:
+            return 0.0
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(
+                    "SELECT trust_score, status FROM source_links WHERE url = ?",
+                    (u,),
+                ).fetchone()
+            finally:
+                conn.close()
+        if not row:
+            return 0.0
+        status = (row["status"] or "").strip().lower()
+        if status in ("rejected_low_trust", "fetch_empty"):
+            return 0.0
+        score = row["trust_score"]
+        if score is None:
+            return 0.0
+        try:
+            return float(score)
+        except (TypeError, ValueError):
+            return 0.0
 
 
 _archive: Optional[SourceLinkArchive] = None

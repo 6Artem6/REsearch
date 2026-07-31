@@ -13,7 +13,10 @@ from knowledge_engine.src.source_evaluator.evaluator_prompt import (
     build_evaluator_system_instruction,
     build_evaluator_user_message,
 )
-from knowledge_engine.src.source_evaluator.whitelist import APPROVED_SOURCES_WHITELIST
+from knowledge_engine.src.source_evaluator.whitelist import (
+    APPROVED_SOURCES_WHITELIST,
+    format_whitelist_detailed,
+)
 from knowledge_engine.ui.run_log import trace
 
 _MD_URL_RE = re.compile(r"\((https?://[^)\s]+)\)")
@@ -90,6 +93,18 @@ def evaluate_source(
 
     matched, category = match_whitelist(url_clean)
     if matched:
+        from knowledge_engine.src.source_evaluator.curriculum_source_pool import (
+            register_curriculum_source,
+        )
+
+        register_curriculum_source(
+            url_clean,
+            thesis_clean,
+            category=category,
+            trust_score=0.92,
+            status="accepted",
+            reason="static_whitelist",
+        )
         result = SourceEvaluatorResult(
             status="APPROVED",
             confidence_score=1.0,
@@ -139,6 +154,18 @@ def evaluate_source(
         suggested_action=action,
         whitelist_match=False,
     )
+    if status == "APPROVED":
+        from knowledge_engine.src.source_evaluator.curriculum_source_pool import (
+            register_curriculum_source,
+        )
+
+        register_curriculum_source(
+            url_clean,
+            thesis_clean,
+            category="lite_approved",
+            trust_score=min(0.95, float(lite.confidence_score or 0.86)),
+            reason=(lite.reason or "")[:400],
+        )
     trace(
         f"SOURCE_EVAL ✓ {result.status} "
         f"conf={result.confidence_score:.2f} | {result.reason[:100]}"
@@ -147,9 +174,42 @@ def evaluate_source(
 
 
 def format_whitelist_for_reasoner_prompt() -> str:
-    lines = ["БЕЛЫЙ СПИСОК АВТОРИТЕННЫХ ИСТОЧНИКОВ (WHITELIST MATRIX):"]
-    for category, entries in APPROVED_SOURCES_WHITELIST.items():
-        lines.append(f"  [{category}]")
-        for e in entries:
-            lines.append(f"    - {e}")
-    return "\n".join(lines)
+    return format_whitelist_detailed()
+
+
+def lite_curriculum_hit_approved(
+    url: str,
+    learning_goal: str,
+    title: str,
+    snippet: str,
+    anchor: str,
+    *,
+    source_tier: str = "",
+    skip_trusted_archive_reuse: bool = True,
+) -> bool:
+    """
+    Единый Lite-gate для curriculum hits → evaluate_source + архив.
+    Не дублировать run_gemini_lite_structured в pipeline.
+    """
+    from knowledge_engine.src.source_evaluator.curriculum_source_pool import (
+        is_fast_trusted_source,
+    )
+
+    url_clean = (url or "").strip()
+    if (
+        skip_trusted_archive_reuse
+        and (source_tier or "").strip().lower() == "archive"
+        and is_fast_trusted_source(url_clean)
+    ):
+        return True
+
+    excerpt = "\n".join(
+        x for x in [(title or "").strip(), (snippet or "").strip()] if x
+    )
+    raw = evaluate_source(url_clean, learning_goal, excerpt, anchor)
+    status = (raw.get("status") or "").strip().upper()
+    ok = status == "APPROVED"
+    if not ok:
+        reason = (raw.get("reason") or "")[:80]
+        trace(f"CURRICULUM lite source ⊘ | {url_clean[:60]} | {reason}")
+    return ok

@@ -109,8 +109,13 @@ class SemanticScholarProvider(BaseSearchProvider):
     name = "semantic_scholar"
 
     async def search(self, query: str, limit: int = 5, **kwargs: Any) -> list[dict]:
+        from knowledge_engine.src.retrieval.semantic_scholar_rate_limit import (
+            acquire_semantic_scholar_slot_async,
+        )
+
         try:
             async with httpx.AsyncClient(timeout=12.0) as client:
+                await acquire_semantic_scholar_slot_async()
                 res = await client.get(
                     SEMANTIC_SCHOLAR_API_URL,
                     params={
@@ -247,3 +252,29 @@ class CrossrefProvider(BaseSearchProvider):
                 }
             )
         return out
+
+
+class ExaSearchProvider(BaseSearchProvider):
+    """Neural search по whitelist-доменам (exa-py). contents = highlights only (no Exa AI summary)."""
+
+    name = "exa"
+
+    async def search(self, query: str, limit: int = 5, **kwargs: Any) -> list[dict]:
+        import asyncio
+
+        from knowledge_engine.config import EXA_API_KEY, EXA_SEARCH_ENABLED
+        from knowledge_engine.services.search.exa_client import ExaNotConfiguredError, ExaSearchClient
+        from knowledge_engine.services.search.exa_transform import exa_response_to_provider_dicts
+
+        if not EXA_SEARCH_ENABLED or not EXA_API_KEY:
+            return [{"error": "Exa not configured", "source": "exa"}]
+
+        client = ExaSearchClient(api_key=EXA_API_KEY)
+        num = max(1, min(limit, 25))
+        try:
+            response = await asyncio.to_thread(client.search, query, num_results=num)
+        except ExaNotConfiguredError as exc:
+            return [{"error": str(exc), "source": "exa"}]
+        except Exception as exc:
+            return [{"error": str(exc), "source": "exa"}]
+        return exa_response_to_provider_dicts(response)[:limit]

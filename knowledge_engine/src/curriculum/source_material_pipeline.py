@@ -9,9 +9,11 @@ from knowledge_engine.config import (
     CURRICULUM_GEMINI_GROUNDING_ENABLED,
     CURRICULUM_GEMINI_WEB_HARVEST_ENABLED,
     CURRICULUM_LITE_SITE_SUGGEST_ENABLED,
+    CURRICULUM_CONSENSUS_MIN_APPROVED_ACADEMIC,
     CURRICULUM_SEARCH_MIN_HITS,
     CURRICULUM_SEARCH_TARGET_HITS,
     CURRICULUM_URL_VALIDATE_TIMEOUT_SEC,
+    CURRICULUM_USE_V08_CONSENSUS,
 )
 from knowledge_engine.services.gemini_search_grounding import (
     search_grounded_whitelist_blogs_detailed,
@@ -39,6 +41,7 @@ _BLOG_SOURCE_TIERS = frozenset(
         "google_cse",
         "searxng",
         "ddgs",
+        "exa",
     }
 )
 
@@ -47,6 +50,7 @@ _ACADEMIC_SOURCE_TIERS = frozenset(
         "semantic_scholar",
         "arxiv",
         "consensus",
+        "searxng_science",
     }
 )
 
@@ -110,7 +114,9 @@ def enrich_search_hits_with_extracts(
         ds = by_url.get(key_lower)
         extracts: list[str] = list(hit.key_extracts or [])
 
-        if ds:
+        if hit.skip_ollama_summary and _extract_word_total(extracts) >= 100:
+            pass
+        elif ds:
             lance_extracts = _extracts_from_document_summary(ds)
             if _extract_word_total(lance_extracts) > _extract_word_total(extracts):
                 extracts = lance_extracts
@@ -118,7 +124,9 @@ def enrich_search_hits_with_extracts(
                 hit = hit.model_copy(update={"title": ds.title[:400]})
 
         if not extracts or _extract_word_total(extracts) < 120:
-            if ds:
+            if hit.skip_ollama_summary:
+                pass
+            elif ds:
                 extracts = _extracts_from_document_summary(ds) or extracts
             if not extracts and hit.snippet:
                 extracts = _deep_extract_blocks([], [], [hit.snippet], 150, 300)
@@ -174,6 +182,14 @@ def collect_practical_blog_hits(
         limit=4,
         strict=True,
     ):
+        from knowledge_engine.src.curriculum.practical_url_filters import (
+            practical_url_reject_reason,
+        )
+
+        reason = practical_url_reject_reason(h.url)
+        if reason:
+            trace(f"CURRICULUM practical filter ⊘ | {h.url[:70]} | {reason}")
+            continue
         key = _normalize_url_key(h.url)
         if key:
             exclude.add(key)
@@ -296,6 +312,7 @@ def collect_practical_blog_hits(
     trace(
         f"CURRICULUM practical blogs ✓ | total={len(out)} "
         f"google_cse={sum(1 for h in out if h.source_tier == 'google_cse')} "
+        f"exa={sum(1 for h in out if h.source_tier == 'exa')} "
         f"searxng={sum(1 for h in out if h.source_tier == 'searxng')} "
         f"ddgs={sum(1 for h in out if h.source_tier == 'ddgs')} "
         f"api_grounding={sum(1 for h in out if h.source_tier == 'gemini_grounding')} "
@@ -303,7 +320,89 @@ def collect_practical_blog_hits(
         f"archive={sum(1 for h in out if h.source_tier == 'archive')} "
         f"searxng_fallback={sum(1 for h in out if h.source_tier == 'whitelist_blog')} "
     )
+    from knowledge_engine.src.curriculum.curriculum_lancedb_persist import (
+        persist_approved_curriculum_hits_to_lancedb,
+    )
+
+    persist_approved_curriculum_hits_to_lancedb(out, label="practical_post_batch")
     return out[:cap]
+
+
+def _count_academic_hits(hits: list[CurriculumSearchHit]) -> int:
+    return sum(
+        1
+        for h in hits
+        if (h.source_tier or "").strip() in _ACADEMIC_SOURCE_TIERS
+    )
+
+
+def _run_consensus_harvest(
+    target_goal: str,
+    context_vector: str,
+) -> list[CurriculumSearchHit]:
+    from knowledge_engine.src.curriculum.curriculum_v08_harvest import (
+        harvest_curriculum_sources_v08,
+    )
+
+    goal = (target_goal or "").strip()
+    vec = (context_vector or goal).strip()
+    anchor = f"curriculum:{goal[:500]}"
+    try:
+        return asyncio.run(harvest_curriculum_sources_v08(vec or goal, anchor))
+    except Exception as exc:
+        trace(f"CURRICULUM consensus ✗ | {exc}")
+        return []
+
+
+def _supplement_academic_from_consensus(
+    hits: list[CurriculumSearchHit],
+    target_goal: str,
+    context_vector: str,
+    *,
+    stage: str,
+    force: bool = False,
+) -> list[CurriculumSearchHit]:
+    if not CURRICULUM_USE_V08_CONSENSUS:
+        trace("CURRICULUM consensus ⊘ | CURRICULUM_USE_V08_CONSENSUS=false")
+        return hits
+    approved_academic = _count_academic_hits(hits)
+    min_academic = CURRICULUM_CONSENSUS_MIN_APPROVED_ACADEMIC
+    min_pool = CURRICULUM_SEARCH_MIN_HITS
+    pool_thin = len(hits) < min_pool
+    if not force and not pool_thin and approved_academic >= min_academic:
+        trace(
+            f"CURRICULUM consensus ⊘ | stage={stage} "
+            f"pool={len(hits)} academic={approved_academic} "
+            f"(need pool<{min_pool} or academic<{min_academic})"
+        )
+        return hits
+    trace(
+        f"CURRICULUM consensus ▶ | node=— reason=pool_fallback stage={stage} "
+        f"force={force} pool={len(hits)} academic={approved_academic}"
+    )
+    extra = _run_consensus_harvest(target_goal, context_vector)
+    if not extra:
+        trace("CURRICULUM consensus ⊘ | harvest returned 0 hits")
+        return hits
+    merged = _merge_hit_lists([hits, extra])
+    trace(
+        f"CURRICULUM consensus ✓ | stage={stage} "
+        f"added={len(extra)} merged={len(merged)}"
+    )
+    return merged
+
+
+def _finalize_collected_hits(
+    hits: list[CurriculumSearchHit],
+    *,
+    label: str,
+) -> list[CurriculumSearchHit]:
+    from knowledge_engine.src.curriculum.curriculum_lancedb_persist import (
+        persist_approved_curriculum_hits_to_lancedb,
+    )
+
+    persist_approved_curriculum_hits_to_lancedb(hits, label=label)
+    return hits
 
 
 def _batch_filter_curriculum_hits(
@@ -349,42 +448,26 @@ def collect_academic_source_hits(
     *,
     context_vector: str = "",
 ) -> list[CurriculumSearchHit]:
-    """Semantic Scholar → arXiv; опционально Consensus Playwright при пустом API."""
-    from knowledge_engine.config import CURRICULUM_USE_V08_CONSENSUS
-    from knowledge_engine.src.curriculum.academic_source_fetch import fetch_academic_sources
+    """Semantic Scholar → arXiv; Consensus только fallback при пустом API (bulk)."""
+    import asyncio
+
+    from knowledge_engine.src.curriculum.academic_source_fetch import (
+        fetch_academic_sources_async,
+    )
 
     vec = (context_vector or target_goal or "").strip()
     if len(vec) < 8:
         return []
 
-    hits = fetch_academic_sources(vec)
-    if hits:
-        trace(
-            f"CURRICULUM academic ✓ | api hits={len(hits)} "
-            "(Consensus не вызывается — API-first)"
+    hits = asyncio.run(
+        fetch_academic_sources_async(
+            vec,
+            anchor=f"curriculum_academic:{vec[:400]}",
+            allow_consensus=True,
         )
-        return hits
-
-    if not CURRICULUM_USE_V08_CONSENSUS:
-        trace("CURRICULUM academic ⊘ | API empty, Consensus disabled")
-        return []
-
-    import asyncio
-
-    from knowledge_engine.src.curriculum.curriculum_v08_harvest import (
-        harvest_curriculum_sources_v08,
     )
-
-    goal = (target_goal or "").strip()
-    anchor = f"curriculum:{goal[:500]}"
-    trace("CURRICULUM academic ▶ | Consensus Playwright fallback")
-    try:
-        hits = asyncio.run(harvest_curriculum_sources_v08(goal, anchor))
-    except Exception as exc:
-        trace(f"CURRICULUM academic ✗ | {exc}")
-        hits = []
     cap = CURRICULUM_SEARCH_TARGET_HITS
-    trace(f"CURRICULUM academic ✓ | consensus hits={len(hits)}")
+    trace(f"CURRICULUM academic ✓ | bulk hits={len(hits)}")
     return hits[:cap]
 
 
@@ -430,11 +513,18 @@ def collect_sources_by_policy(
             target_goal,
             context_vector=context_vector or target_goal,
         )
-        return _batch_filter_curriculum_hits(
+        filtered = _batch_filter_curriculum_hits(
             hits,
             target_goal,
             anchor_suffix="academic_only",
         )
+        filtered = _supplement_academic_from_consensus(
+            filtered,
+            target_goal,
+            context_vector or target_goal,
+            stage="academic_only",
+        )
+        return _finalize_collected_hits(filtered, label="academic_only")
 
     if policy == "practical_only":
         return collect_practical_blog_hits(
@@ -461,10 +551,17 @@ def collect_sources_by_policy(
         target_goal,
         anchor_suffix="hybrid",
     )
+    filtered = _supplement_academic_from_consensus(
+        filtered,
+        target_goal,
+        context_vector or target_goal,
+        stage="hybrid",
+    )
+    filtered = _finalize_collected_hits(filtered, label="hybrid")
     trace(
         f"CURRICULUM hybrid ✓ | academic={len(academic)} "
         f"practical={len(practical)} merged={len(merged)} "
-        f"after_batch={len(filtered)}"
+        f"after_batch={len(filtered)} academic_in_final={_count_academic_hits(filtered)}"
     )
     return filtered
 
@@ -529,10 +626,14 @@ def merge_expansion_source_pool(
 
 
 def _ingest_blog_url(hit: CurriculumSearchHit) -> tuple[list[str], str]:
+    cached = _extracts_from_lancedb_url(hit.url)
+    if cached:
+        trace(f"CURRICULUM summarizer reuse LanceDB ⊘ blog | {hit.url[:60]}")
+        return cached
     text, _method = smart_fetch_page_text(hit.url)
     if len((text or "").strip()) < 200:
         return [], hit.title
-    summary = summarize_article(hit.title or hit.url, hit.url, text[:14000])
+    summary = summarize_article(hit.title or hit.url, hit.url, _text_for_summarizer(text))
     VectorStore().save_summary(summary)
     extracts = _deep_extract_blocks(
         list(summary.key_takeaways or []),
@@ -545,12 +646,16 @@ def _ingest_blog_url(hit: CurriculumSearchHit) -> tuple[list[str], str]:
 
 
 def _ingest_academic_url(hit: CurriculumSearchHit) -> tuple[list[str], str]:
+    cached = _extracts_from_lancedb_url(hit.url)
+    if cached:
+        trace(f"CURRICULUM summarizer reuse LanceDB ⊘ academic | {hit.url[:60]}")
+        return cached
     text = (hit.snippet or "").strip()
     if len(text) < 200:
         text, _method = smart_fetch_page_text(hit.url)
     if len((text or "").strip()) < 200:
         return [], hit.title
-    summary = summarize_article(hit.title or hit.url, hit.url, text[:14000])
+    summary = summarize_article(hit.title or hit.url, hit.url, _text_for_summarizer(text))
     VectorStore().save_summary(summary)
     extracts = _deep_extract_blocks(
         list(summary.key_takeaways or []),
@@ -564,7 +669,163 @@ def _hit_extract_words(hit: CurriculumSearchHit) -> int:
     return sum(len((e or "").split()) for e in hit.key_extracts)
 
 
+def _extracts_from_lancedb_url(url: str) -> tuple[list[str], str] | None:
+    u = (url or "").strip()
+    if not u.startswith("http"):
+        return None
+    summaries = VectorStore().fetch_summaries_by_urls([u], limit=1)
+    if not summaries:
+        return None
+    s = summaries[0]
+    extracts = _deep_extract_blocks(
+        list(s.key_takeaways or []),
+        list(s.failure_modes or []),
+        [],
+    )
+    if not extracts:
+        return None
+    title = (s.title or u)[:400]
+    return extracts[:8], title
+
+
+_INGEST_URL_SEM = asyncio.Semaphore(1)
+_SUMMARIZER_MAX_INPUT_CHARS = 2500
+
+
+def _text_for_summarizer(text: str) -> str:
+    t = (text or "").strip()
+    return t[:_SUMMARIZER_MAX_INPUT_CHARS] if t else ""
+
+
+async def _ingest_academic_hit_async(hit: CurriculumSearchHit) -> CurriculumSearchHit | None:
+    async with _INGEST_URL_SEM:
+        try:
+            extracts, title = await asyncio.to_thread(_ingest_academic_url, hit)
+            if not extracts:
+                return None
+            return hit.model_copy(update={"title": title, "key_extracts": extracts})
+        except Exception as exc:
+            trace(f"CURRICULUM academic summarizer skip | {hit.url[:50]} | {exc}")
+            return None
+
+
+async def _ingest_blog_hit_async(hit: CurriculumSearchHit) -> CurriculumSearchHit:
+    async with _INGEST_URL_SEM:
+        try:
+            extracts, title = await asyncio.to_thread(_ingest_blog_url, hit)
+            if not extracts:
+                return hit
+            return hit.model_copy(update={"title": title, "key_extracts": extracts})
+        except Exception as exc:
+            trace(f"CURRICULUM blog summarizer skip | {hit.url[:50]} | {exc}")
+            return hit
+
+
+async def summarize_whitelist_blog_hits_async(
+    hits: list[CurriculumSearchHit],
+    target_goal: str = "",
+) -> list[CurriculumSearchHit]:
+    """Последовательный ingest URL (Semaphore 1) для 7B/Ollama — меньше пик UMA."""
+    blog_hits = [h for h in hits if (h.source_tier or "").strip() in _BLOG_SOURCE_TIERS]
+    academic_hits = [
+        h for h in hits if (h.source_tier or "").strip() in _ACADEMIC_SOURCE_TIERS
+    ]
+    other_hits = [
+        h
+        for h in hits
+        if (h.source_tier or "").strip() not in _BLOG_SOURCE_TIERS
+        and (h.source_tier or "").strip() not in _ACADEMIC_SOURCE_TIERS
+    ]
+
+    if blog_hits:
+        valid_blog, broken_blog = validate_and_filter_urls(
+            blog_hits,
+            timeout=CURRICULUM_URL_VALIDATE_TIMEOUT_SEC,
+        )
+        if broken_blog:
+            trace(
+                f"CURRICULUM summarizer gate ⊘ | skip broken urls={len(broken_blog)} "
+                "(не попадут в 7B / LanceDB)"
+            )
+        blog_hits = valid_blog
+
+    out: list[CurriculumSearchHit] = list(other_hits)
+
+    academic_tasks: list[asyncio.Task] = []
+    for h in academic_hits:
+        if _hit_extract_words(h) >= 120:
+            out.append(h)
+            continue
+        academic_tasks.append(asyncio.create_task(_ingest_academic_hit_async(h)))
+
+    blog_tasks: list[asyncio.Task] = []
+    for h in blog_hits:
+        if h.skip_ollama_summary and h.key_extracts:
+            out.append(h)
+            continue
+        if h.key_extracts and _hit_extract_words(h) >= 120:
+            out.append(h)
+            continue
+        blog_tasks.append(asyncio.create_task(_ingest_blog_hit_async(h)))
+
+    async def _collect_academic() -> list[CurriculumSearchHit | None]:
+        if not academic_tasks:
+            return []
+        return list(await asyncio.gather(*academic_tasks))
+
+    async def _collect_blog() -> list[CurriculumSearchHit]:
+        if not blog_tasks:
+            return []
+        return list(await asyncio.gather(*blog_tasks))
+
+    ac_done, blog_done = await asyncio.gather(
+        _collect_academic(),
+        _collect_blog(),
+    )
+    for done in ac_done:
+        if done is not None:
+            out.append(done)
+    out.extend(blog_done)
+
+    trace(
+        f"CURRICULUM summarizer parallel ✓ | ingest_tasks="
+        f"academic={len(academic_tasks)} blog={len(blog_tasks)} sem=2"
+    )
+
+    blog_deep = sum(
+        1
+        for h in out
+        if h.source_tier in _BLOG_SOURCE_TIERS
+        and _hit_extract_words(h) >= 120
+    )
+    academic_deep = sum(
+        1
+        for h in out
+        if h.source_tier in _ACADEMIC_SOURCE_TIERS
+        and _hit_extract_words(h) >= 120
+    )
+    trace(
+        f"CURRICULUM summarizer ✓ | deep_blogs={blog_deep} deep_academic={academic_deep}"
+    )
+    return out
+
+
 def summarize_whitelist_blog_hits(
+    hits: list[CurriculumSearchHit],
+    target_goal: str = "",
+) -> list[CurriculumSearchHit]:
+    """Sync wrapper: параллельный ingest в отдельном event loop."""
+    if not hits:
+        return hits
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(summarize_whitelist_blog_hits_async(hits, target_goal))
+    trace("CURRICULUM summarizer ⊘ | nested loop — sequential fallback")
+    return _summarize_whitelist_blog_hits_sequential(hits, target_goal)
+
+
+def _summarize_whitelist_blog_hits_sequential(
     hits: list[CurriculumSearchHit],
     target_goal: str = "",
 ) -> list[CurriculumSearchHit]:
@@ -607,6 +868,9 @@ def summarize_whitelist_blog_hits(
             trace(f"CURRICULUM academic summarizer skip | {h.url[:50]} | {exc}")
 
     for h in blog_hits:
+        if h.skip_ollama_summary and h.key_extracts:
+            out.append(h)
+            continue
         if h.key_extracts and _hit_extract_words(h) >= 120:
             out.append(h)
             continue

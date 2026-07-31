@@ -18,6 +18,7 @@ from knowledge_engine.src.guardrails.fast_grounding import get_term_grounding_co
 from knowledge_engine.src.memory.light_rag import LightRAG
 from knowledge_engine.src.processors.consensus_query_prep import (
     assess_profile_applicability,
+    consensus_sanitize_anchor,
     extract_preserved_terms_for_consensus,
 )
 from knowledge_engine.src.processors.source_anchors import (
@@ -66,11 +67,6 @@ def _global_anchor(user_query: str, profile_context: str) -> str:
     if profile_context.strip():
         parts.append(f"Selective profile:\n{profile_context[:1500]}")
     return "\n".join(parts)
-
-
-def _consensus_sanitize_anchor(user_query: str) -> str:
-    """Consensus query: только вопрос пользователя — без Light RAG (иначе Lite подменяет тему)."""
-    return f"Задача (только для ориентира, не расширять): {user_query.strip()}"
 
 
 def _docs_from_validation(v: ValidationResult) -> List[dict[str, Any]]:
@@ -129,7 +125,7 @@ async def run_consensus_pipeline(
         rag = LightRAG()
         await rag.sync_profile_from_markdown(user_profile_md)
         profile_context = await rag.get_relevant_profile_context(user_query)
-        gate_anchor = _consensus_sanitize_anchor(user_query)
+        gate_anchor = consensus_sanitize_anchor(user_query)
         applicability = await asyncio.to_thread(
             assess_profile_applicability,
             user_query,
@@ -162,7 +158,7 @@ async def run_consensus_pipeline(
         anchor = _global_anchor(user_query, profile_effective)
 
         trace("Gemini Lite ▶ sanitize query for Consensus (academic EN only)")
-        sanitize_anchor = _consensus_sanitize_anchor(user_query)
+        sanitize_anchor = consensus_sanitize_anchor(user_query)
         preserved_terms = extract_preserved_terms_for_consensus(user_query)
         grounding = await get_term_grounding_context(user_query)
         if preserved_terms:
@@ -282,7 +278,7 @@ async def run_consensus_pipeline(
                 consensus_refinement = await asyncio.to_thread(
                     sanitize_message_for_consensus,
                     refinement_raw,
-                    _consensus_sanitize_anchor(user_query),
+                    consensus_sanitize_anchor(user_query),
                 )
                 trace("Consensus ▶ RETRY refinement (academic EN)")
                 turn = await session.send_message(consensus_refinement)
@@ -611,7 +607,7 @@ async def run_fast_pipeline(
         await rag.sync_profile_from_markdown(user_profile_md)
         profile_context = await rag.get_relevant_profile_context(user_query)
         facts_context = await rag.get_relevant_facts_context(user_query, limit=8)
-        gate_anchor = _consensus_sanitize_anchor(user_query)
+        gate_anchor = consensus_sanitize_anchor(user_query)
         applicability = await asyncio.to_thread(
             assess_profile_applicability,
             user_query,

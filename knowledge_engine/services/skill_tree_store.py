@@ -52,6 +52,7 @@ def save_curriculum_record(
     generation_mode: str = "fast",
     depth_level: str = "Standard",
     user_level: str = "Intermediate/Advanced",
+    source_policy: str | None = None,
 ) -> dict[str, Any]:
     """Сохранить или обновить граф маршрута."""
     if isinstance(graph, CurriculumGraph):
@@ -68,6 +69,7 @@ def save_curriculum_record(
         "generation_mode": (generation_mode or "fast").strip(),
         "depth_level": (depth_level or "Standard").strip(),
         "user_level": (user_level or "Intermediate/Advanced").strip(),
+        "source_policy": (source_policy or "").strip(),
         "title": str(payload.get("title") or "").strip(),
         "description": str(payload.get("description") or "").strip(),
         "graph": payload,
@@ -160,6 +162,88 @@ def get_curriculum_meta(curriculum_id: str) -> dict[str, Any] | None:
         if item.get("curriculum_id") == cid:
             return dict(item)
     return None
+
+
+def _short_neighbor_concepts(concepts: list[str] | None, max_items: int = 3) -> str:
+    parts: list[str] = []
+    for c in concepts or []:
+        s = (c or "").strip()
+        if not s:
+            continue
+        words = s.split()[:3]
+        parts.append(" ".join(words))
+        if len(parts) >= max_items:
+            break
+    return ", ".join(parts)
+
+
+def get_node_neighbors_context(curriculum_id: str, node_id: str) -> dict[str, Any]:
+    """
+    Микро-контекст соседей по DAG: предшественники (prerequisites + edges) и преемники.
+    """
+    graph = get_curriculum_graph(curriculum_id)
+    if not graph:
+        return {}
+    nid = (node_id or "").strip()
+    if not nid:
+        return {}
+
+    nodes = graph.get("nodes") or []
+    by_id: dict[str, dict[str, Any]] = {}
+    for raw in nodes:
+        if isinstance(raw, dict) and raw.get("node_id"):
+            by_id[str(raw["node_id"]).strip()] = raw
+
+    current = by_id.get(nid)
+    if not current:
+        return {}
+
+    prereq_ids: set[str] = set()
+    for p in current.get("prerequisites") or []:
+        pid = str(p).strip()
+        if pid and pid != nid:
+            prereq_ids.add(pid)
+
+    for e in graph.get("edges") or graph.get("dag_edges") or []:
+        if not isinstance(e, dict):
+            continue
+        to_id = str(e.get("to_node_id") or e.get("to") or "").strip()
+        fr_id = str(e.get("from_node_id") or e.get("from") or "").strip()
+        if to_id == nid and fr_id and fr_id != nid:
+            prereq_ids.add(fr_id)
+
+    predecessors: list[dict[str, str]] = []
+    for pid in sorted(prereq_ids):
+        raw = by_id.get(pid)
+        if not raw:
+            continue
+        predecessors.append(
+            {
+                "node_id": pid,
+                "title": str(raw.get("title") or pid)[:300],
+                "short_concepts": _short_neighbor_concepts(raw.get("core_concepts") or []),
+            }
+        )
+
+    successors: list[dict[str, str]] = []
+    for oid, raw in by_id.items():
+        if oid == nid:
+            continue
+        prereqs = [str(p).strip() for p in (raw.get("prerequisites") or [])]
+        if nid in prereqs:
+            successors.append(
+                {
+                    "node_id": oid,
+                    "title": str(raw.get("title") or oid)[:300],
+                }
+            )
+
+    return {
+        "current_node_id": nid,
+        "current_title": str(current.get("title") or nid)[:300],
+        "predecessors": predecessors,
+        "successors": successors,
+    }
 
 
 def set_active_curriculum(curriculum_id: str) -> bool:

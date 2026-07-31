@@ -24,22 +24,24 @@ from knowledge_engine.services.work_job_store import (
     work_job_store,
 )
 from knowledge_engine.services.gemini_quota_store import clear_stale_quota_blocks
+from knowledge_engine.services.worker_busy import worker_busy_scope
 from knowledge_engine.ui.run_log import trace
 
 _job_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ke-worker-job")
 
 
 def _poll_sec() -> float:
-    return float(os.getenv("KE_WORKER_POLL_SEC", "0.4"))
+    return cfg.KE_WORKER_POLL_SEC
 
 
 def _heartbeat_sec() -> float:
-    return float(os.getenv("KE_WORKER_HEARTBEAT_SEC", "10"))
+    return cfg.KE_WORKER_HEARTBEAT_SEC
 
 
 def _dispatch_safe(data: dict) -> None:
     try:
-        dispatch_task_message(data)
+        with worker_busy_scope(str(data.get("type") or "task")):
+            dispatch_task_message(data)
     except Exception as exc:
         trace(f"WORKER ✗ task dispatch | {exc}")
 
@@ -61,10 +63,11 @@ def _run_poll_loop() -> None:
                 _dispatch_safe,
                 {"type": "work_job", "id": job.id},
             )
-        if process_pending_analysis_jobs():
-            did = True
-        if process_pending_v07_run():
-            did = True
+        with worker_busy_scope("poll"):
+            if process_pending_analysis_jobs():
+                did = True
+            elif process_pending_v07_run():
+                did = True
         if not did:
             time.sleep(_poll_sec())
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List, Optional
 
-from knowledge_engine.config import SEARCH_ACTIVE_PROVIDERS
+from knowledge_engine.config import EXA_API_KEY, EXA_SEARCH_ENABLED, resolved_search_active_providers
 from knowledge_engine.services.search.base import (
     BaseSearchProvider,
     SearchResult,
@@ -20,6 +20,7 @@ from knowledge_engine.services.search.providers import (
     ArxivProvider,
     ConsensusSearchProvider,
     CrossrefProvider,
+    ExaSearchProvider,
     HabrSearchProvider,
     SearXNGProvider,
     SemanticScholarProvider,
@@ -35,6 +36,8 @@ class SearchRegistry:
         self.register(ConsensusSearchProvider())
         self.register(ArxivProvider())
         self.register(CrossrefProvider())
+        if EXA_API_KEY and EXA_SEARCH_ENABLED:
+            self.register(ExaSearchProvider())
 
     def register(self, provider: BaseSearchProvider) -> None:
         self.providers[provider.name] = provider
@@ -46,17 +49,16 @@ class SearchRegistry:
         limit_per_provider: int = 3,
         searxng_categories: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        targets = active_providers or list(SEARCH_ACTIVE_PROVIDERS)
+        targets = active_providers or list(resolved_search_active_providers())
         aggregated: list[dict[str, Any]] = []
-        searxng_kw: dict[str, Any] = {}
-        if searxng_categories:
-            searxng_kw["categories"] = list(searxng_categories)
         for name in targets:
             provider = self.providers.get(name)
             if provider is None:
                 continue
             try:
-                kw = dict(searxng_kw) if name == "google_meta" else {}
+                kw: dict[str, Any] = {}
+                if name == "google_meta" and searxng_categories:
+                    kw["categories"] = list(searxng_categories)
                 res = await provider.search(query, limit=limit_per_provider, **kw)
                 aggregated.extend(res)
             except Exception as exc:

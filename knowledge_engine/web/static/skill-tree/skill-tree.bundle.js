@@ -2384,9 +2384,9 @@ var require_react_dom_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var React15 = require_react();
+        var React16 = require_react();
         var Scheduler = require_scheduler();
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React16.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         var suppressWarning = false;
         function setSuppressWarning(newSuppressWarning) {
           {
@@ -3993,7 +3993,7 @@ var require_react_dom_development = __commonJS({
           {
             if (props.value == null) {
               if (typeof props.children === "object" && props.children !== null) {
-                React15.Children.forEach(props.children, function(child) {
+                React16.Children.forEach(props.children, function(child) {
                   if (child == null) {
                     return;
                   }
@@ -23589,7 +23589,7 @@ var require_react_jsx_runtime_development = __commonJS({
     if (true) {
       (function() {
         "use strict";
-        var React15 = require_react();
+        var React16 = require_react();
         var REACT_ELEMENT_TYPE = Symbol.for("react.element");
         var REACT_PORTAL_TYPE = Symbol.for("react.portal");
         var REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
@@ -23615,7 +23615,7 @@ var require_react_jsx_runtime_development = __commonJS({
           }
           return null;
         }
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React16.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function error(format) {
           {
             {
@@ -24496,7 +24496,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
         return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
       }
       function useSyncExternalStore$2(subscribe, getSnapshot) {
-        didWarnOld18Alpha || void 0 === React15.startTransition || (didWarnOld18Alpha = true, console.error(
+        didWarnOld18Alpha || void 0 === React16.startTransition || (didWarnOld18Alpha = true, console.error(
           "You are using an outdated, pre-release alpha of React 18 that does not support useSyncExternalStore. The use-sync-external-store shim will not work correctly. Upgrade to a newer pre-release."
         ));
         var value = getSnapshot();
@@ -24544,8 +24544,8 @@ var require_use_sync_external_store_shim_development = __commonJS({
         return getSnapshot();
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React15 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is, useState6 = React15.useState, useEffect8 = React15.useEffect, useLayoutEffect2 = React15.useLayoutEffect, useDebugValue2 = React15.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
-      exports.useSyncExternalStore = void 0 !== React15.useSyncExternalStore ? React15.useSyncExternalStore : shim;
+      var React16 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is, useState6 = React16.useState, useEffect8 = React16.useEffect, useLayoutEffect2 = React16.useLayoutEffect, useDebugValue2 = React16.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
+      exports.useSyncExternalStore = void 0 !== React16.useSyncExternalStore ? React16.useSyncExternalStore : shim;
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
     })();
   }
@@ -24572,7 +24572,7 @@ var require_with_selector_development = __commonJS({
         return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React15 = require_react(), shim = require_shim(), objectIs = "function" === typeof Object.is ? Object.is : is, useSyncExternalStore = shim.useSyncExternalStore, useRef8 = React15.useRef, useEffect8 = React15.useEffect, useMemo3 = React15.useMemo, useDebugValue2 = React15.useDebugValue;
+      var React16 = require_react(), shim = require_shim(), objectIs = "function" === typeof Object.is ? Object.is : is, useSyncExternalStore = shim.useSyncExternalStore, useRef8 = React16.useRef, useEffect8 = React16.useEffect, useMemo3 = React16.useMemo, useDebugValue2 = React16.useDebugValue;
       exports.useSyncExternalStoreWithSelector = function(subscribe, getSnapshot, getServerSnapshot, selector, isEqual) {
         var instRef = useRef8(null);
         if (null === instRef.current) {
@@ -28144,11 +28144,11 @@ var require_dagre = __commonJS({
 });
 
 // main.js
-var import_react18 = __toESM(require_react(), 1);
+var import_react19 = __toESM(require_react(), 1);
 var import_client = __toESM(require_client(), 1);
 
 // RoadmapDashboard.js
-var import_react17 = __toESM(require_react(), 1);
+var import_react18 = __toESM(require_react(), 1);
 
 // RoadmapCanvas.js
 var import_react5 = __toESM(require_react(), 1);
@@ -37232,7 +37232,8 @@ function RoadmapFlowInner({
   selectedNodeId,
   onNodeClick,
   tutorBusyNodeId,
-  sessions
+  sessions,
+  layoutEpoch = 0
 }) {
   const { fitView, getNodesBounds: getNodesBounds2 } = useReactFlow();
   const { nodes: initialNodes, edges: initialEdges } = (0, import_react5.useMemo)(
@@ -37265,7 +37266,7 @@ function RoadmapFlowInner({
   (0, import_react5.useEffect)(() => {
     const t = window.setTimeout(() => fitMapToView(), 50);
     return () => window.clearTimeout(t);
-  }, [curriculum?.curriculum_id, nodes.length, fitMapToView]);
+  }, [curriculum?.curriculum_id, nodes.length, layoutEpoch, fitMapToView]);
   return import_react5.default.createElement(
     "div",
     { className: "skill-flow-root" },
@@ -37333,8 +37334,122 @@ function RoadmapCanvas(props) {
   );
 }
 
+// CurriculumInputBar.js
+var import_react7 = __toESM(require_react(), 1);
+function CurriculumInputBar({
+  goal,
+  onGoalChange,
+  sourcePolicy,
+  onSourcePolicyChange,
+  activeCurriculumId,
+  workspaceBusy,
+  genStatus,
+  busyAction,
+  onCreatePath,
+  onExpandBranch,
+  onCreateNew
+}) {
+  const hasGraph = Boolean(activeCurriculumId);
+  const expandBusy = workspaceBusy && busyAction === "expand";
+  const createBusy = workspaceBusy && busyAction === "create";
+  function onFormSubmit(e) {
+    e.preventDefault();
+    const text = (goal || "").trim();
+    if (text.length < 8) return;
+    if (hasGraph) {
+      onExpandBranch(text);
+    } else {
+      onCreatePath(text);
+    }
+  }
+  return import_react7.default.createElement(
+    "div",
+    { className: "skill-header-actions" },
+    import_react7.default.createElement(
+      "form",
+      { className: "skill-goal-form", onSubmit: onFormSubmit },
+      import_react7.default.createElement("input", {
+        value: goal,
+        onChange: (e) => onGoalChange(e.target.value),
+        placeholder: hasGraph ? "\u0412\u043F\u0438\u0448\u0438\u0442\u0435 \u0432\u0435\u043A\u0442\u043E\u0440 \u0434\u043B\u044F \u0434\u043E\u0441\u0442\u0440\u043E\u0439\u043A\u0438 (\u0438\u043B\u0438 \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u043D\u043E\u0432\u0443\u044E \u0442\u0435\u043C\u0443 \u0438 \u043D\u0430\u0436\u043C\u0438\u0442\u0435 \xAB\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043D\u043E\u0432\u044B\u0439\xBB)\u2026" : "\u0427\u0435\u043C\u0443 \u0432\u044B \u0445\u043E\u0442\u0438\u0442\u0435 \u043D\u0430\u0443\u0447\u0438\u0442\u044C\u0441\u044F?",
+        required: true,
+        minLength: 8,
+        disabled: workspaceBusy
+      }),
+      import_react7.default.createElement(
+        "select",
+        {
+          className: "skill-mode-select",
+          value: sourcePolicy,
+          onChange: (e) => onSourcePolicyChange(e.target.value),
+          "aria-label": "\u0420\u0435\u0436\u0438\u043C \u0441\u0431\u043E\u0440\u0430 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432",
+          disabled: workspaceBusy
+        },
+        import_react7.default.createElement(
+          "option",
+          { value: "practical_only" },
+          "\u26A1 \u041F\u0440\u0430\u043A\u0442\u0438\u043A\u0430 \u2014 \u0431\u043B\u043E\u0433\u0438 \u0438 \u043A\u0435\u0439\u0441\u044B"
+        ),
+        import_react7.default.createElement(
+          "option",
+          { value: "academic_only" },
+          "\u{1F52C} \u0410\u043A\u0430\u0434\u0435\u043C\u0438\u044F \u2014 \u0441\u0442\u0430\u0442\u044C\u0438 \u0438 Consensus"
+        ),
+        import_react7.default.createElement(
+          "option",
+          { value: "hybrid" },
+          "\u{1F9E0} \u041F\u043E\u043B\u043D\u044B\u0439 \u2014 \u043D\u0430\u0443\u043A\u0430 + \u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0430"
+        )
+      ),
+      genStatus && import_react7.default.createElement(
+        "p",
+        { className: "muted skill-gen-status", role: "status" },
+        genStatus
+      ),
+      hasGraph ? import_react7.default.createElement(
+        "div",
+        { className: "skill-btn-group" },
+        import_react7.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "skill-btn-primary",
+            disabled: workspaceBusy,
+            onClick: () => {
+              const text = (goal || "").trim();
+              if (text.length >= 8) onExpandBranch(text);
+            }
+          },
+          expandBusy ? "\u0414\u043E\u0441\u0442\u0440\u043E\u0439\u043A\u0430 \u0432\u0435\u0442\u043A\u0438\u2026" : "+ \u0414\u043E\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0432\u0435\u0442\u043A\u0443"
+        ),
+        import_react7.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "skill-btn-secondary",
+            disabled: workspaceBusy,
+            onClick: () => {
+              const text = (goal || "").trim();
+              if (text.length >= 8) onCreateNew(text);
+            }
+          },
+          createBusy ? "\u0421\u0431\u043E\u0440\u043A\u0430 \u043D\u043E\u0432\u043E\u0433\u043E \u043F\u0443\u0442\u0438\u2026" : "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043D\u043E\u0432\u044B\u0439"
+        )
+      ) : import_react7.default.createElement(
+        "button",
+        {
+          type: "submit",
+          className: "skill-btn-primary",
+          disabled: workspaceBusy
+        },
+        createBusy || workspaceBusy && !busyAction ? sourcePolicy === "hybrid" ? "\u041F\u043E\u043B\u043D\u044B\u0439 \u0441\u0431\u043E\u0440\u2026" : sourcePolicy === "academic_only" ? "\u0410\u043A\u0430\u0434\u0435\u043C\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u0441\u0431\u043E\u0440\u2026" : "\u0421\u0431\u043E\u0440 \u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0438\u2026" : "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043F\u0443\u0442\u044C"
+      )
+    )
+  );
+}
+
 // NodeDrawer.js
-var import_react14 = __toESM(require_react(), 1);
+var import_react15 = __toESM(require_react(), 1);
 
 // llmTextRepair.js
 function repairLlMText(text) {
@@ -37346,6 +37461,99 @@ function repairLlMText(text) {
     t = next;
   }
   return t;
+}
+var ANALYSIS_LIST_SECTIONS = [
+  ["pros", "\u041F\u043B\u044E\u0441\u044B"],
+  ["cons", "\u041C\u0438\u043D\u0443\u0441\u044B \u0438 \u0440\u0438\u0441\u043A\u0438"],
+  ["cons_and_risks", "\u041C\u0438\u043D\u0443\u0441\u044B \u0438 \u0440\u0438\u0441\u043A\u0438"],
+  ["takeaways", "\u041A\u043B\u044E\u0447\u0435\u0432\u044B\u0435 \u0432\u044B\u0432\u043E\u0434\u044B"],
+  ["failure_modes", "\u0422\u0438\u043F\u0438\u0447\u043D\u044B\u0435 \u0441\u0431\u043E\u0438"]
+];
+function looksLikeAnalysisObject(obj) {
+  if (!obj || typeof obj !== "object") return false;
+  const keys = Object.keys(obj);
+  if (!keys.includes("title") && !keys.includes("description")) return false;
+  return keys.some(
+    (k) => ["pros", "cons", "cons_and_risks", "takeaways", "failure_modes"].includes(k)
+  );
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function formatAnalysisObjectHtml(obj) {
+  const parts = [];
+  const title = String(obj.title || "").trim();
+  if (title) parts.push(`<h2>${escapeHtml(title)}</h2>`);
+  const desc = String(obj.description || "").trim();
+  if (desc) parts.push(`<p>${escapeHtml(desc)}</p>`);
+  const seen = /* @__PURE__ */ new Set();
+  for (const [key, label] of ANALYSIS_LIST_SECTIONS) {
+    if (seen.has(label)) continue;
+    const raw = obj[key];
+    if (!raw || !Array.isArray(raw)) continue;
+    const items = raw.map((x) => String(x).trim()).filter(Boolean);
+    if (!items.length) continue;
+    seen.add(label);
+    parts.push(`<h3>${escapeHtml(label)}</h3><ul>`);
+    for (const it of items) {
+      parts.push(`<li>${escapeHtml(it)}</li>`);
+    }
+    parts.push("</ul>");
+  }
+  return parts.join("");
+}
+function tryParseJsonObjectAt(text, start2) {
+  let pos = start2;
+  while (pos < text.length && text[pos] !== "{") pos += 1;
+  if (pos >= text.length) return null;
+  let depth = 0;
+  for (let i = pos; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        const candidate = text.slice(pos, i + 1);
+        try {
+          const obj = JSON.parse(candidate);
+          if (looksLikeAnalysisObject(obj)) {
+            return { obj, start: pos, end: i + 1 };
+          }
+        } catch {
+        }
+        return null;
+      }
+    }
+  }
+  return null;
+}
+function structuredAnalysisToHtml(text) {
+  const raw = repairLlMText(text).trim();
+  if (!raw || raw.indexOf("{") < 0) return "";
+  if (raw.startsWith("{") || raw.startsWith("```")) {
+    let jsonText = raw;
+    if (jsonText.startsWith("```")) {
+      jsonText = jsonText.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    }
+    try {
+      const whole = JSON.parse(jsonText);
+      if (looksLikeAnalysisObject(whole)) {
+        return `<div class="md-body prose">${formatAnalysisObjectHtml(whole)}</div>`;
+      }
+    } catch {
+    }
+  }
+  for (let i = 0; i < raw.length; i += 1) {
+    if (raw[i] !== "{") continue;
+    const hit = tryParseJsonObjectAt(raw, i);
+    if (hit) {
+      const prefix = escapeHtml(raw.slice(0, hit.start).trim());
+      const body = formatAnalysisObjectHtml(hit.obj);
+      const prefixBlock = prefix ? `<p class="analysis-prefix">${prefix.replace(/\n/g, "<br>")}</p>` : "";
+      return `<div class="md-body prose">${prefixBlock}${body}</div>`;
+    }
+  }
+  return "";
 }
 
 // api.js
@@ -37420,6 +37628,18 @@ function readActiveCurriculumId() {
 function historyItemHtml(item) {
   return String(item.content_html || item.contentHtml || "").trim();
 }
+function dialogMsgId(item) {
+  const raw = item?.msg_id ?? item?.id;
+  if (raw == null || raw === "") return null;
+  const s = String(raw).trim();
+  const pending = /^pending-(\d+)$/i.exec(s);
+  if (pending) return Number(pending[1]);
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+function sortDialogMessages(messages) {
+  return [...messages || []];
+}
 function normalizeDialogHistory(history) {
   const cleaned = [];
   for (const item of history || []) {
@@ -37430,36 +37650,33 @@ function normalizeDialogHistory(history) {
       role: role === "user" || role === "tutor" ? role : "tutor",
       content
     };
+    const mid = String(item.msg_id ?? item.id ?? "").trim();
+    if (mid) row.msg_id = mid;
     const html = historyItemHtml(item);
     if (html) row.content_html = html;
     cleaned.push(row);
   }
-  const fixed = [];
-  let i = 0;
-  while (i < cleaned.length) {
-    if (i + 1 < cleaned.length && i > 0 && cleaned[i].role === "tutor" && cleaned[i + 1].role === "user") {
-      fixed.push(cleaned[i + 1]);
-      fixed.push(cleaned[i]);
-      i += 2;
-    } else {
-      fixed.push(cleaned[i]);
-      i += 1;
-    }
-  }
-  return fixed;
+  return cleaned;
 }
 function historyToMessages(history) {
-  return normalizeDialogHistory(history).map((h) => ({
-    role: h.role || "tutor",
-    content: h.content || "",
-    contentHtml: historyItemHtml(h)
-  }));
+  return normalizeDialogHistory(history).map((h, idx) => {
+    const mid = String(h.msg_id || h.id || "").trim() || String(idx + 1);
+    return {
+      role: h.role || "tutor",
+      content: h.content || "",
+      contentHtml: historyItemHtml(h),
+      msg_id: mid
+    };
+  });
 }
 function tutorMessageFromApi(res) {
+  const last = Array.isArray(res.history) ? res.history[res.history.length - 1] : null;
+  const mid = last?.msg_id ?? last?.id ?? "";
   return {
     role: "tutor",
     content: repairLlMText(res.tutor_message || ""),
-    contentHtml: String(res.tutor_message_html || "").trim()
+    contentHtml: String(res.tutor_message_html || "").trim(),
+    msg_id: mid
   };
 }
 function mergeHistoryWithPendingUser(messages, userMsg) {
@@ -37473,12 +37690,8 @@ function mergeHistoryWithPendingUser(messages, userMsg) {
   if (last?.role === "user" && (last.content || "").trim() === u) {
     return copy;
   }
-  if (last?.role === "tutor") {
-    copy.splice(copy.length - 1, 0, { role: "user", content: u });
-    return copy;
-  }
-  copy.push({ role: "user", content: u });
-  return copy;
+  copy.push({ role: "user", content: u, msg_id: `pending-${Date.now()}` });
+  return sortDialogMessages(copy);
 }
 function hydrateSessionsFromServer(sessions) {
   const out = {};
@@ -37506,17 +37719,42 @@ function mergeNodeStatuses(curriculum, serverStatuses) {
   }
   return out;
 }
-async function generateCurriculum(targetGoal, mode) {
-  const generation_mode = mode === "consensus" ? "consensus" : "fast";
-  const depth = generation_mode === "consensus" ? "Deep Mechanics" : "Standard";
-  const r = await fetch(`${API}/curriculum/generate`, {
+async function createCurriculum(targetGoal, sourcePolicy) {
+  const policy = sourcePolicy || "practical_only";
+  const depth = policy === "hybrid" || policy === "academic_only" ? "Deep Mechanics" : "Standard";
+  const r = await fetch(`${API}/curriculum/create`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       target_goal: targetGoal,
       user_level: "Intermediate/Advanced",
       depth_level: depth,
-      generation_mode
+      source_policy: policy,
+      generation_mode: policy === "academic_only" ? "consensus" : "fast"
+    })
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  const data = await r.json();
+  if (data.graph) return data.graph;
+  if (data.job_id) {
+    const job = await waitWorkJob(data.job_id);
+    return job.result;
+  }
+  return data;
+}
+async function expandCurriculum(curriculumId, expansionPrompt, sourcePolicy) {
+  const policy = sourcePolicy || "practical_only";
+  const r = await fetch(`${API}/curriculum/expand`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      curriculum_id: curriculumId,
+      expansion_prompt: expansionPrompt,
+      source_policy: policy,
+      generation_mode: policy === "academic_only" ? "consensus" : "fast"
     })
   });
   if (!r.ok) {
@@ -37625,12 +37863,13 @@ function toNodeDataInput(node) {
     learning_goal: node.learning_goal || "",
     source_ref: node.source_ref || null,
     node_curriculum_breakdown: node.node_curriculum_breakdown || null,
-    primary_source_id: node.primary_source_id || ""
+    primary_source_id: node.primary_source_id || "",
+    resource_urls: node.resource_urls || []
   };
 }
 
 // LlmHtmlBlock.js
-var import_react7 = __toESM(require_react(), 1);
+var import_react8 = __toESM(require_react(), 1);
 
 // katexRender.js
 function renderMathInLlmHtml(root3) {
@@ -37656,16 +37895,16 @@ function highlightCodeInRoot(root3) {
 
 // LlmHtmlBlock.js
 function LlmHtmlBlock({ html, className = "md-body" }) {
-  const ref = (0, import_react7.useRef)(null);
+  const ref = (0, import_react8.useRef)(null);
   const safe = (html || "").trim();
-  (0, import_react7.useEffect)(() => {
+  (0, import_react8.useEffect)(() => {
     if (ref.current && safe) {
       renderMathInLlmHtml(ref.current);
       highlightCodeInRoot(ref.current);
     }
   }, [safe]);
   if (!safe) return null;
-  return import_react7.default.createElement("div", {
+  return import_react8.default.createElement("div", {
     ref,
     className,
     dangerouslySetInnerHTML: { __html: safe }
@@ -37673,7 +37912,7 @@ function LlmHtmlBlock({ html, className = "md-body" }) {
 }
 
 // MermaidDiagramView.js
-var import_react8 = __toESM(require_react(), 1);
+var import_react9 = __toESM(require_react(), 1);
 
 // mermaidExtract.js
 function stripOuterQuotes(s) {
@@ -37771,6 +38010,58 @@ function ensureSequenceInit(inner) {
   if (/%%\s*\{init:/i.test(inner)) return inner;
   return "%%{init: {'themeVariables': {'fontSize': '10px'}, 'sequence': {'wrap': true, 'width': 240, 'messageFontSize': 10, 'noteFontSize': 10, 'actorFontSize': 11, 'messageMargin': 48, 'boxMargin': 10, 'mirrorActors': false}}}%%\n" + inner;
 }
+function ensureFlowchartInit(inner) {
+  const head = inner.trimStart();
+  if (!/^(flowchart\b|graph\s+(?:TD|LR|BT|RL)\b)/im.test(head)) return inner;
+  if (/%%\s*\{init:/i.test(inner)) return inner;
+  return '%%{init: {"flowchart": {"htmlLabels": true, "useMaxWidth": false, "padding": 28, "nodeSpacing": 56, "rankSpacing": 64, "curve": "basis"}, "themeVariables": {"fontSize": "14px", "fontFamily": "system-ui, sans-serif"}}}%%\n' + inner;
+}
+function quoteFlowchartNodeLabels(inner) {
+  return inner.split("\n").map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("%%")) return line;
+    if (/^(subgraph|end|classDef|class |linkStyle|style )/i.test(trimmed)) {
+      return line;
+    }
+    const bracket = trimmed.match(
+      /^([A-Za-z0-9_]+)\[([^\]]+)\](.*)$/
+    );
+    if (bracket) {
+      let label = bracket[2].trim().replace(/^"|"$/g, "");
+      if (label.startsWith('"')) return line;
+      if (label.length <= 14) return line;
+      label = wrapLongLabel(label.replace(/"/g, "'"), 20);
+      const safe = `"${label}"`;
+      return line.replace(
+        bracket[0],
+        `${bracket[1]}[${safe}]${bracket[3] || ""}`
+      );
+    }
+    const round = trimmed.match(/^([A-Za-z0-9_]+)\(([^)]+)\)(.*)$/);
+    if (round) {
+      let label = round[2].trim().replace(/^"|"$/g, "");
+      if (label.startsWith('"')) return line;
+      if (label.length <= 14) return line;
+      label = wrapLongLabel(label.replace(/"/g, "'"), 20);
+      return line.replace(
+        round[0],
+        `${round[1]}("${label}")${round[3] || ""}`
+      );
+    }
+    const diamond = trimmed.match(/^([A-Za-z0-9_]+)\{([^}]+)\}(.*)$/);
+    if (diamond) {
+      let label = diamond[2].trim().replace(/^"|"$/g, "");
+      if (label.startsWith('"')) return line;
+      if (label.length <= 12) return line;
+      label = wrapLongLabel(label.replace(/"/g, "'"), 18);
+      return line.replace(
+        diamond[0],
+        `${diamond[1]}{"${label}"}${diamond[3] || ""}`
+      );
+    }
+    return line;
+  }).join("\n");
+}
 function mermaidNodeId(raw) {
   const t = (raw || "").trim();
   if (!t) return "node";
@@ -37856,6 +38147,8 @@ function formatMermaidInner(inner) {
   let s = quoteSubgraphTitles(repairLlMText(inner).trim());
   if (!s) return s;
   s = ensureSequenceInit(s);
+  s = ensureFlowchartInit(s);
+  s = quoteFlowchartNodeLabels(s);
   s = s.replace(/^(sequenceDiagram(?:\s+autonumber)?)\s+/i, "$1\n");
   s = s.replace(/^(graph\s+(?:TD|LR|BT|RL))\s+/i, "$1\n");
   s = s.replace(/^(flowchart\s+(?:TD|LR|BT|RL)?)\s+/i, "$1\n");
@@ -37943,9 +38236,90 @@ function softenMermaidSource(source) {
   return (source || "").replace(/^sequenceDiagram\s+autonumber/im, "sequenceDiagram").trim();
 }
 
+// mermaidSvgPolish.js
+var FLOWCHART_BOX_PAD_W = 22;
+var FLOWCHART_BOX_PAD_H = 6;
+function expandFlowchartNodeBoxes(svg) {
+  svg.querySelectorAll("g.node").forEach((node) => {
+    const fo = node.querySelector("foreignObject");
+    if (!fo) return;
+    const extraW = FLOWCHART_BOX_PAD_W;
+    const extraH = FLOWCHART_BOX_PAD_H;
+    const w = Number(fo.getAttribute("width") || 0);
+    const h = Number(fo.getAttribute("height") || 0);
+    const x = Number(fo.getAttribute("x") || 0);
+    const y = Number(fo.getAttribute("y") || 0);
+    if (w > 0) {
+      fo.setAttribute("width", String(w + extraW));
+      fo.setAttribute("x", String(x - extraW / 2));
+    }
+    if (h > 0) {
+      fo.setAttribute("height", String(h + extraH));
+      fo.setAttribute("y", String(y - extraH / 2));
+    }
+    const rect = node.querySelector("rect");
+    if (rect) {
+      const rw = Number(rect.getAttribute("width") || 0);
+      const rh = Number(rect.getAttribute("height") || 0);
+      const rx = Number(rect.getAttribute("x") || 0);
+      const ry = Number(rect.getAttribute("y") || 0);
+      if (rw > 0) {
+        rect.setAttribute("width", String(rw + extraW));
+        rect.setAttribute("x", String(rx - extraW / 2));
+      }
+      if (rh > 0) {
+        rect.setAttribute("height", String(rh + extraH));
+        rect.setAttribute("y", String(ry - extraH / 2));
+      }
+    }
+    const poly = node.querySelector("polygon");
+    if (poly) {
+      const pts = (poly.getAttribute("points") || "").trim().split(/\s+/).map((p) => p.split(",").map(Number));
+      if (pts.length >= 4) {
+        const xs = pts.map((p) => p[0]);
+        const ys = pts.map((p) => p[1]);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        const scaleX = (maxX - minX + extraW) / (maxX - minX);
+        const scaleY = (maxY - minY + extraH) / (maxY - minY);
+        const scaled = pts.map(([px, py]) => {
+          const nx = cx + (px - cx) * scaleX;
+          const ny = cy + (py - cy) * scaleY;
+          return `${nx},${ny}`;
+        });
+        poly.setAttribute("points", scaled.join(" "));
+      }
+    }
+  });
+}
+function polishMermaidSvg(svg) {
+  if (!svg) return;
+  expandFlowchartNodeBoxes(svg);
+  svg.querySelectorAll(".edgeLabel").forEach((el) => {
+    el.setAttribute("font-size", "13");
+  });
+  svg.querySelectorAll(".node rect, .node polygon, .node path").forEach((el) => {
+    el.style.strokeWidth = "1.5px";
+  });
+}
+function applyDiagramSvgScale(svg, scale) {
+  if (!svg) return;
+  svg.style.transformOrigin = "0 0";
+  if (!scale || scale === 1) {
+    svg.style.transform = "";
+  } else {
+    svg.style.transform = `scale(${scale})`;
+  }
+}
+
 // MermaidDiagramView.js
-var MIN_SCALE = 0.35;
+var MIN_SCALE = 0.5;
 var MAX_SCALE = 5;
+var FIT_MIN_SCALE = 0.88;
 var LS_ZOOM = "skillTreeDiagramZoom";
 function clamp2(n, lo, hi) {
   return Math.min(hi, Math.max(lo, n));
@@ -37953,37 +38327,63 @@ function clamp2(n, lo, hi) {
 function MermaidDiagramView({ diagram, nodeId }) {
   const rawDiagram = (diagram || "").trim();
   const text = repairDiagramMarkdown(rawDiagram);
-  const hostRef = (0, import_react8.useRef)(null);
-  const viewportRef = (0, import_react8.useRef)(null);
-  const [scale, setScale] = (0, import_react8.useState)(() => {
+  const hostRef = (0, import_react9.useRef)(null);
+  const viewportRef = (0, import_react9.useRef)(null);
+  const [scale, setScale] = (0, import_react9.useState)(() => {
     const saved = Number(localStorage.getItem(LS_ZOOM));
-    return saved > 0 ? clamp2(saved, MIN_SCALE, MAX_SCALE) : 1;
+    return saved > 0 ? clamp2(saved, MIN_SCALE, MAX_SCALE) : 1.12;
   });
-  const [pan, setPan] = (0, import_react8.useState)({ x: 0, y: 0 });
-  const panStart = (0, import_react8.useRef)(null);
-  const fitToViewport = (0, import_react8.useCallback)(() => {
+  const [pan, setPan] = (0, import_react9.useState)({ x: 0, y: 0 });
+  const panStart = (0, import_react9.useRef)(null);
+  const fitToViewport = (0, import_react9.useCallback)(() => {
     const viewport = viewportRef.current;
     const host = hostRef.current;
     const svg = host?.querySelector("svg");
     if (!viewport || !svg) return;
-    const pad = 16;
+    const pad = 20;
     const vw = viewport.clientWidth - pad;
     const vh = viewport.clientHeight - pad;
-    setScale((cur) => {
+    setScale(() => {
+      applyDiagramSvgScale(svg, 1);
       const bb = svg.getBoundingClientRect();
-      const unscaledW = bb.width / cur;
-      const unscaledH = bb.height / cur;
-      if (unscaledW < 8 || unscaledH < 8) return cur;
-      const fit = clamp2(
-        Math.min(vw / unscaledW, vh / unscaledH),
-        MIN_SCALE,
-        MAX_SCALE
-      );
-      return fit;
+      const unscaledW = bb.width;
+      const unscaledH = bb.height;
+      if (unscaledW < 8 || unscaledH < 8) return 1.12;
+      const fit = Math.min(vw / unscaledW, vh / unscaledH);
+      return clamp2(fit, FIT_MIN_SCALE, MAX_SCALE);
     });
     setPan({ x: 0, y: 0 });
   }, []);
-  (0, import_react8.useEffect)(() => {
+  const applyComfortableScale = (0, import_react9.useCallback)(() => {
+    const viewport = viewportRef.current;
+    const host = hostRef.current;
+    const svg = host?.querySelector("svg");
+    if (!viewport || !svg) {
+      setScale(1.12);
+      return;
+    }
+    applyDiagramSvgScale(svg, 1);
+    const pad = 20;
+    const vw = viewport.clientWidth - pad;
+    const vh = viewport.clientHeight - pad;
+    const bb = svg.getBoundingClientRect();
+    if (bb.width < 8 || bb.height < 8) {
+      setScale(1.12);
+      return;
+    }
+    const fit = Math.min(vw / bb.width, vh / bb.height);
+    if (fit < 1) {
+      setScale(clamp2(fit, FIT_MIN_SCALE, 1));
+    } else {
+      setScale(clamp2(Math.min(fit, 1.25), 1, 1.35));
+    }
+    setPan({ x: 0, y: 0 });
+  }, []);
+  (0, import_react9.useEffect)(() => {
+    const svg = hostRef.current?.querySelector("svg");
+    applyDiagramSvgScale(svg, scale);
+  }, [scale]);
+  (0, import_react9.useEffect)(() => {
     const host = hostRef.current;
     if (!host || !text) return;
     function runMermaid(source2, attempt) {
@@ -38004,8 +38404,9 @@ function MermaidDiagramView({ diagram, nodeId }) {
         if (svg) {
           svg.style.maxWidth = "none";
           svg.style.height = "auto";
+          polishMermaidSvg(svg);
         }
-        requestAnimationFrame(() => fitToViewport());
+        requestAnimationFrame(() => applyComfortableScale());
       }).catch((err) => {
         if (attempt === 0) {
           const soft = softenMermaidSource(src);
@@ -38031,19 +38432,25 @@ function MermaidDiagramView({ diagram, nodeId }) {
     }
     const source = extractMermaidSource(text || rawDiagram);
     runMermaid(source, 0);
-  }, [text, rawDiagram, nodeId, fitToViewport]);
-  (0, import_react8.useEffect)(() => {
+  }, [text, rawDiagram, nodeId, applyComfortableScale]);
+  (0, import_react9.useEffect)(() => {
     localStorage.setItem(LS_ZOOM, String(scale));
   }, [scale]);
   function zoomBy(factor) {
     setScale((s) => clamp2(s * factor, MIN_SCALE, MAX_SCALE));
   }
-  function onWheel(e) {
-    if (!viewportRef.current?.contains(e.target)) return;
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
-    setScale((s) => clamp2(s * factor, MIN_SCALE, MAX_SCALE));
-  }
+  (0, import_react9.useEffect)(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onWheelNative = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
+      setScale((s) => clamp2(s * factor, MIN_SCALE, MAX_SCALE));
+    };
+    el.addEventListener("wheel", onWheelNative, { passive: false });
+    return () => el.removeEventListener("wheel", onWheelNative);
+  }, []);
   function onPanStart(e) {
     if (e.button !== 0) return;
     panStart.current = {
@@ -38065,7 +38472,7 @@ function MermaidDiagramView({ diagram, nodeId }) {
   function onPanEnd() {
     panStart.current = null;
   }
-  (0, import_react8.useEffect)(() => {
+  (0, import_react9.useEffect)(() => {
     window.addEventListener("mousemove", onPanMove);
     window.addEventListener("mouseup", onPanEnd);
     return () => {
@@ -38074,17 +38481,17 @@ function MermaidDiagramView({ diagram, nodeId }) {
     };
   }, []);
   if (!text) return null;
-  return import_react8.default.createElement(
+  return import_react9.default.createElement(
     "div",
     { className: "drawer-section diagram-section" },
-    import_react8.default.createElement(
+    import_react9.default.createElement(
       "div",
       { className: "diagram-section-head" },
-      import_react8.default.createElement("h3", null, "\u0421\u0445\u0435\u043C\u0430"),
-      import_react8.default.createElement(
+      import_react9.default.createElement("h3", null, "\u0421\u0445\u0435\u043C\u0430"),
+      import_react9.default.createElement(
         "div",
         { className: "diagram-zoom-toolbar" },
-        import_react8.default.createElement(
+        import_react9.default.createElement(
           "button",
           {
             type: "button",
@@ -38094,12 +38501,12 @@ function MermaidDiagramView({ diagram, nodeId }) {
           },
           "\u2212"
         ),
-        import_react8.default.createElement(
+        import_react9.default.createElement(
           "span",
           { className: "diagram-zoom-label" },
           `${Math.round(scale * 100)}%`
         ),
-        import_react8.default.createElement(
+        import_react9.default.createElement(
           "button",
           {
             type: "button",
@@ -38109,7 +38516,7 @@ function MermaidDiagramView({ diagram, nodeId }) {
           },
           "+"
         ),
-        import_react8.default.createElement(
+        import_react9.default.createElement(
           "button",
           {
             type: "button",
@@ -38122,7 +38529,7 @@ function MermaidDiagramView({ diagram, nodeId }) {
           },
           "1:1"
         ),
-        import_react8.default.createElement(
+        import_react9.default.createElement(
           "button",
           {
             type: "button",
@@ -38134,39 +38541,42 @@ function MermaidDiagramView({ diagram, nodeId }) {
         )
       )
     ),
-    import_react8.default.createElement(
+    import_react9.default.createElement(
       "div",
       {
         className: "diagram-viewport",
         ref: viewportRef,
-        onWheel,
         onMouseDown: onPanStart,
         title: "\u041A\u043E\u043B\u0451\u0441\u0438\u043A\u043E \u2014 \u0437\u0443\u043C, \u043F\u0435\u0440\u0435\u0442\u0430\u0441\u043A\u0438\u0432\u0430\u043D\u0438\u0435 \u2014 \u043F\u0430\u043D"
       },
-      import_react8.default.createElement("div", {
-        className: "diagram-zoom-inner",
-        style: {
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`
+      import_react9.default.createElement(
+        "div",
+        {
+          className: "diagram-pan-layer",
+          style: { transform: `translate(${pan.x}px, ${pan.y}px)` }
         },
-        ref: hostRef
-      })
+        import_react9.default.createElement("div", {
+          className: "diagram-zoom-inner",
+          ref: hostRef
+        })
+      )
     )
   );
 }
 
 // ResourceCard.js
-var import_react9 = __toESM(require_react(), 1);
+var import_react10 = __toESM(require_react(), 1);
 function ResourceCard({ item }) {
   if (!item) return null;
   const title = (item.title || item.source_name || item.url || "").trim();
   const mins = item.read_time_minutes || item.read_time_minutes === 0 ? item.read_time_minutes : null;
-  return import_react9.default.createElement(
+  return import_react10.default.createElement(
     "article",
     { className: "resource-card" },
-    import_react9.default.createElement(
+    import_react10.default.createElement(
       "header",
       { className: "resource-card-head" },
-      import_react9.default.createElement(
+      import_react10.default.createElement(
         "a",
         {
           className: "resource-card-title",
@@ -38176,26 +38586,26 @@ function ResourceCard({ item }) {
         },
         title
       ),
-      mins != null && mins > 0 && import_react9.default.createElement("span", { className: "resource-card-time" }, `~${mins} \u043C\u0438\u043D`)
+      mins != null && mins > 0 && import_react10.default.createElement("span", { className: "resource-card-time" }, `~${mins} \u043C\u0438\u043D`)
     ),
-    import_react9.default.createElement("div", { className: "resource-card-source" }, item.source_name),
-    (item.why_read || "").trim() && import_react9.default.createElement(
+    import_react10.default.createElement("div", { className: "resource-card-source" }, item.source_name),
+    (item.why_read || "").trim() && import_react10.default.createElement(
       "p",
       { className: "resource-card-why" },
-      import_react9.default.createElement("strong", null, "\u0417\u0430\u0447\u0435\u043C: "),
+      import_react10.default.createElement("strong", null, "\u0417\u0430\u0447\u0435\u043C: "),
       item.why_read
     ),
-    (item.key_focus || "").trim() && import_react9.default.createElement(
+    (item.key_focus || "").trim() && import_react10.default.createElement(
       "p",
       { className: "resource-card-focus" },
-      import_react9.default.createElement("strong", null, "\u0424\u043E\u043A\u0443\u0441: "),
+      import_react10.default.createElement("strong", null, "\u0424\u043E\u043A\u0443\u0441: "),
       item.key_focus
     )
   );
 }
 
 // NodeMasteryPanel.js
-var import_react10 = __toESM(require_react(), 1);
+var import_react11 = __toESM(require_react(), 1);
 var PHASE_LABELS = {
   intro_assessment: "\u042D\u043A\u0441\u043F\u0440\u0435\u0441\u0441-\u0441\u0440\u0435\u0437",
   dense_material: "\u041F\u043B\u043E\u0442\u043D\u044B\u0439 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B",
@@ -38221,7 +38631,7 @@ function NodeMasteryPanel({
   const mode = dash.learning_mode || "lecture";
   const st = dash.node_status || status || "unexplored";
   function modeBtn(id2, label, prefix) {
-    return import_react10.default.createElement(
+    return import_react11.default.createElement(
       "button",
       {
         type: "button",
@@ -38232,66 +38642,66 @@ function NodeMasteryPanel({
       label
     );
   }
-  return import_react10.default.createElement(
+  return import_react11.default.createElement(
     "div",
     { className: "mastery-panel" },
-    import_react10.default.createElement(
+    import_react11.default.createElement(
       "div",
       { className: "mastery-progress-row" },
-      import_react10.default.createElement("span", { className: "mastery-pct" }, `${score}%`),
-      import_react10.default.createElement(
+      import_react11.default.createElement("span", { className: "mastery-pct" }, `${score}%`),
+      import_react11.default.createElement(
         "div",
         { className: "mastery-bar" },
-        import_react10.default.createElement("div", {
+        import_react11.default.createElement("div", {
           className: "mastery-bar-fill",
           style: { width: `${Math.min(100, score)}%` }
         })
       ),
-      import_react10.default.createElement("span", { className: "chip mastery-status" }, st)
+      import_react11.default.createElement("span", { className: "chip mastery-status" }, st)
     ),
-    import_react10.default.createElement(
+    import_react11.default.createElement(
       "p",
       { className: "mastery-phase" },
       PHASE_LABELS[phase] || phase,
       " \xB7 ",
       MODE_LABELS[mode] || mode
     ),
-    (dash.strengths || []).length > 0 && import_react10.default.createElement(
+    (dash.strengths || []).length > 0 && import_react11.default.createElement(
       "div",
       { className: "mastery-zone mastery-zone-ok" },
-      import_react10.default.createElement("h4", null, "\u0421\u0438\u043B\u044C\u043D\u044B\u0435 \u0441\u0442\u043E\u0440\u043E\u043D\u044B"),
-      import_react10.default.createElement(
+      import_react11.default.createElement("h4", null, "\u0421\u0438\u043B\u044C\u043D\u044B\u0435 \u0441\u0442\u043E\u0440\u043E\u043D\u044B"),
+      import_react11.default.createElement(
         "ul",
         null,
-        dash.strengths.map((s, i) => import_react10.default.createElement("li", { key: i }, s))
+        dash.strengths.map((s, i) => import_react11.default.createElement("li", { key: i }, s))
       )
     ),
-    (dash.polish_zones || []).length > 0 && import_react10.default.createElement(
+    (dash.polish_zones || []).length > 0 && import_react11.default.createElement(
       "div",
       { className: "mastery-zone mastery-zone-warn" },
-      import_react10.default.createElement("h4", null, "\u0428\u043B\u0438\u0444\u043E\u0432\u043A\u0430"),
-      import_react10.default.createElement(
+      import_react11.default.createElement("h4", null, "\u0428\u043B\u0438\u0444\u043E\u0432\u043A\u0430"),
+      import_react11.default.createElement(
         "ul",
         null,
-        dash.polish_zones.map((s, i) => import_react10.default.createElement("li", { key: i }, s))
+        dash.polish_zones.map((s, i) => import_react11.default.createElement("li", { key: i }, s))
       )
     ),
-    (dash.critical_gaps || []).length > 0 && import_react10.default.createElement(
+    (dash.critical_gaps || []).length > 0 && import_react11.default.createElement(
       "div",
       { className: "mastery-zone mastery-zone-gap" },
-      import_react10.default.createElement("h4", null, "\u041A\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u043F\u0440\u043E\u0431\u0435\u043B\u044B"),
-      import_react10.default.createElement(
+      import_react11.default.createElement("h4", null, "\u041A\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u043F\u0440\u043E\u0431\u0435\u043B\u044B"),
+      import_react11.default.createElement(
         "ul",
         null,
-        dash.critical_gaps.map((s, i) => import_react10.default.createElement("li", { key: i }, s))
+        dash.critical_gaps.map((s, i) => import_react11.default.createElement("li", { key: i }, s))
       )
     ),
-    (dash.pathway_bridge || "").trim() && import_react10.default.createElement(
+    (dash.pathway_bridge || "").trim() && import_react11.default.createElement(
       "p",
       { className: "mastery-bridge muted" },
       dash.pathway_bridge
     ),
-    import_react10.default.createElement(
+    import_react11.default.createElement(
       "div",
       { className: "mastery-modes" },
       modeBtn("lecture", "\u041B\u0435\u043A\u0446\u0438\u044F", "[mode:lecture] \u0414\u0430\u0439 \u043F\u043B\u043E\u0442\u043D\u044B\u0439 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B \u043F\u043E \u0442\u0435\u043C\u0435."),
@@ -38306,15 +38716,20 @@ function NodeMasteryPanel({
 }
 
 // SourceRegistryList.js
-var import_react11 = __toESM(require_react(), 1);
+var import_react12 = __toESM(require_react(), 1);
 function SourceRegistryList({ registry }) {
   const items = registry || [];
   if (!items.length) return null;
-  return import_react11.default.createElement(
+  return import_react12.default.createElement(
     "div",
     { className: "drawer-section source-registry-section" },
-    import_react11.default.createElement("h3", null, "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0432 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0435"),
-    import_react11.default.createElement(
+    import_react12.default.createElement("h3", null, "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0432 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0435"),
+    import_react12.default.createElement(
+      "p",
+      { className: "muted small drawer-hint" },
+      "\u0420\u0435\u0435\u0441\u0442\u0440 \u0441\u0435\u0441\u0441\u0438\u0438 \u043D\u043E\u0434\u044B (mapped / \u043B\u0435\u043A\u0446\u0438\u044F), \u043D\u0435 \u0433\u043B\u043E\u0431\u0430\u043B\u044C\u043D\u0430\u044F \u0431\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u043A\u0443\u0440\u0441\u0430."
+    ),
+    import_react12.default.createElement(
       "ul",
       { className: "source-registry-list" },
       items.map((entry, i) => {
@@ -38322,11 +38737,11 @@ function SourceRegistryList({ registry }) {
         const title = (entry.title || "source").trim();
         const url = (entry.url || "").trim();
         const snippet = (entry.snippet || "").trim().slice(0, 280);
-        return import_react11.default.createElement(
+        return import_react12.default.createElement(
           "li",
           { key: sid },
-          import_react11.default.createElement("span", { className: "source-anchor-tag" }, `[${sid}]`),
-          url ? import_react11.default.createElement(
+          import_react12.default.createElement("span", { className: "source-anchor-tag" }, `[${sid}]`),
+          url ? import_react12.default.createElement(
             "a",
             {
               className: "source-link",
@@ -38335,8 +38750,8 @@ function SourceRegistryList({ registry }) {
               rel: "noopener noreferrer"
             },
             title
-          ) : import_react11.default.createElement("span", null, title),
-          snippet && import_react11.default.createElement("p", { className: "muted snippet" }, snippet)
+          ) : import_react12.default.createElement("span", null, title),
+          snippet && import_react12.default.createElement("p", { className: "muted snippet" }, snippet)
         );
       })
     )
@@ -38344,24 +38759,24 @@ function SourceRegistryList({ registry }) {
 }
 
 // CodeSnippet.js
-var import_react12 = __toESM(require_react(), 1);
+var import_react13 = __toESM(require_react(), 1);
 function CodeSnippet({ code, language }) {
-  const ref = (0, import_react12.useRef)(null);
+  const ref = (0, import_react13.useRef)(null);
   const text = (code || "").trim();
   if (!text) return null;
-  (0, import_react12.useEffect)(() => {
+  (0, import_react13.useEffect)(() => {
     if (ref.current) highlightCodeInRoot(ref.current);
   }, [text, language]);
   const langClass = language && language !== "auto" ? `language-${language}` : "";
-  return import_react12.default.createElement(
+  return import_react13.default.createElement(
     "pre",
     { className: "code-snippet hljs-snippet", ref },
-    import_react12.default.createElement("code", { className: langClass }, text)
+    import_react13.default.createElement("code", { className: langClass }, text)
   );
 }
 
 // NodeSelectionExplain.js
-var import_react13 = __toESM(require_react(), 1);
+var import_react14 = __toESM(require_react(), 1);
 
 // selectionUtils.js
 function getSurroundingParagraph(node, selectedText) {
@@ -38396,21 +38811,21 @@ function NodeSelectionExplain({
   containerRef,
   enabled
 }) {
-  const [toolbarPos, setToolbarPos] = (0, import_react13.useState)(null);
-  const [open, setOpen] = (0, import_react13.useState)(false);
-  const [selectedText, setSelectedText] = (0, import_react13.useState)("");
-  const [paragraph, setParagraph] = (0, import_react13.useState)("");
-  const [suggest, setSuggest] = (0, import_react13.useState)(DEFAULT_QUESTIONS);
-  const [suggestSource, setSuggestSource] = (0, import_react13.useState)("");
-  const [loadingSuggest, setLoadingSuggest] = (0, import_react13.useState)(false);
-  const [loadingExplain, setLoadingExplain] = (0, import_react13.useState)(false);
-  const [explanationHtml, setExplanationHtml] = (0, import_react13.useState)("");
-  const [customQ, setCustomQ] = (0, import_react13.useState)("");
-  const abortRef = (0, import_react13.useRef)(null);
-  const hideToolbar = (0, import_react13.useCallback)(() => {
+  const [toolbarPos, setToolbarPos] = (0, import_react14.useState)(null);
+  const [open, setOpen] = (0, import_react14.useState)(false);
+  const [selectedText, setSelectedText] = (0, import_react14.useState)("");
+  const [paragraph, setParagraph] = (0, import_react14.useState)("");
+  const [suggest, setSuggest] = (0, import_react14.useState)(DEFAULT_QUESTIONS);
+  const [suggestSource, setSuggestSource] = (0, import_react14.useState)("");
+  const [loadingSuggest, setLoadingSuggest] = (0, import_react14.useState)(false);
+  const [loadingExplain, setLoadingExplain] = (0, import_react14.useState)(false);
+  const [explanationHtml, setExplanationHtml] = (0, import_react14.useState)("");
+  const [customQ, setCustomQ] = (0, import_react14.useState)("");
+  const abortRef = (0, import_react14.useRef)(null);
+  const hideToolbar = (0, import_react14.useCallback)(() => {
     setToolbarPos(null);
   }, []);
-  (0, import_react13.useEffect)(() => {
+  (0, import_react14.useEffect)(() => {
     if (!enabled) return;
     let debounceTimer = null;
     function syncSelection() {
@@ -38518,10 +38933,10 @@ function NodeSelectionExplain({
       setLoadingExplain(false);
     }
   }
-  return import_react13.default.createElement(
-    import_react13.default.Fragment,
+  return import_react14.default.createElement(
+    import_react14.default.Fragment,
     null,
-    toolbarPos && import_react13.default.createElement(
+    toolbarPos && import_react14.default.createElement(
       "div",
       {
         className: "node-explain-toolbar",
@@ -38530,24 +38945,24 @@ function NodeSelectionExplain({
           top: `${toolbarPos.y}px`
         }
       },
-      import_react13.default.createElement(
+      import_react14.default.createElement(
         "button",
         { type: "button", onClick: openDialog },
         "\u041E\u0431\u044A\u044F\u0441\u043D\u0438\u0442\u044C"
       )
     ),
-    open && import_react13.default.createElement(
+    open && import_react14.default.createElement(
       "div",
       { className: "node-explain-backdrop", onClick: () => setOpen(false) }
     ),
-    open && import_react13.default.createElement(
+    open && import_react14.default.createElement(
       "aside",
       { className: "node-explain-dialog", role: "dialog" },
-      import_react13.default.createElement(
+      import_react14.default.createElement(
         "header",
         { className: "node-explain-head" },
-        import_react13.default.createElement("h3", null, "\u041F\u043E\u044F\u0441\u043D\u0435\u043D\u0438\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u0430"),
-        import_react13.default.createElement(
+        import_react14.default.createElement("h3", null, "\u041F\u043E\u044F\u0441\u043D\u0435\u043D\u0438\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u0430"),
+        import_react14.default.createElement(
           "button",
           {
             type: "button",
@@ -38557,8 +38972,8 @@ function NodeSelectionExplain({
           "\xD7"
         )
       ),
-      import_react13.default.createElement("blockquote", { className: "node-explain-quote" }, selectedText),
-      import_react13.default.createElement(
+      import_react14.default.createElement("blockquote", { className: "node-explain-quote" }, selectedText),
+      import_react14.default.createElement(
         "button",
         {
           type: "button",
@@ -38568,13 +38983,13 @@ function NodeSelectionExplain({
         },
         "\u041E\u0431\u044A\u044F\u0441\u043D\u0438, \u0447\u0442\u043E \u044D\u0442\u043E \u0437\u043D\u0430\u0447\u0438\u0442?"
       ),
-      import_react13.default.createElement("div", { className: "node-explain-label" }, "\u0421\u043B\u043E\u0436\u043D\u044B\u0435 \u0432\u043E\u043F\u0440\u043E\u0441\u044B"),
-      loadingSuggest && import_react13.default.createElement("p", { className: "muted" }, "\u041F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 (Ollama)\u2026"),
-      import_react13.default.createElement(
+      import_react14.default.createElement("div", { className: "node-explain-label" }, "\u0421\u043B\u043E\u0436\u043D\u044B\u0435 \u0432\u043E\u043F\u0440\u043E\u0441\u044B"),
+      loadingSuggest && import_react14.default.createElement("p", { className: "muted" }, "\u041F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 (Ollama)\u2026"),
+      import_react14.default.createElement(
         "div",
         { className: "node-explain-chips" },
         suggest.map(
-          (q, i) => import_react13.default.createElement(
+          (q, i) => import_react14.default.createElement(
             "button",
             {
               key: i,
@@ -38586,18 +39001,18 @@ function NodeSelectionExplain({
           )
         )
       ),
-      suggestSource === "default" && import_react13.default.createElement(
+      suggestSource === "default" && import_react14.default.createElement(
         "p",
         { className: "muted small" },
         "\u0411\u0430\u0437\u043E\u0432\u044B\u0435 \u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 (Ollama \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430)"
       ),
-      import_react13.default.createElement("textarea", {
+      import_react14.default.createElement("textarea", {
         className: "node-explain-input",
         placeholder: "\u0421\u0432\u043E\u0439 \u0432\u043E\u043F\u0440\u043E\u0441\u2026",
         value: customQ,
         onChange: (e) => setCustomQ(e.target.value)
       }),
-      import_react13.default.createElement(
+      import_react14.default.createElement(
         "button",
         {
           type: "button",
@@ -38607,7 +39022,7 @@ function NodeSelectionExplain({
         },
         loadingExplain ? "\u2026" : "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C"
       ),
-      explanationHtml && import_react13.default.createElement(LlmHtmlBlock, {
+      explanationHtml && import_react14.default.createElement(LlmHtmlBlock, {
         html: explanationHtml,
         className: "md-body node-explain-result"
       })
@@ -38617,129 +39032,250 @@ function NodeSelectionExplain({
 
 // NodeDrawer.js
 function DiagramBlock({ diagram, nodeId }) {
-  return import_react14.default.createElement(MermaidDiagramView, { diagram, nodeId });
+  return import_react15.default.createElement(MermaidDiagramView, { diagram, nodeId });
 }
-function renderRouteCurriculumMaterials(selectedNode, curriculum) {
+function sourceTierBadge(tier) {
+  const t = (tier || "").trim().toLowerCase();
+  if (t === "consensus") {
+    return { className: "source-tier-badge consensus", label: "Consensus" };
+  }
+  if (t === "exa") {
+    return { className: "source-tier-badge exa", label: "Exa" };
+  }
+  if (t === "searxng") {
+    return { className: "source-tier-badge searxng", label: "SearXNG" };
+  }
+  if (t === "arxiv" || t === "semantic_scholar" || t === "searxng_science") {
+    return { className: "source-tier-badge academic", label: "Academic" };
+  }
+  if (t === "gemini_grounding" || t === "whitelist_blog" || t === "gemini_web") {
+    return { className: "source-tier-badge grounding", label: "Grounding" };
+  }
+  return null;
+}
+function courseLibraryIndex(curriculum) {
   const registry = curriculum?.curriculum_sources_registry || [];
   const routeSources = curriculum?.route_sources || [];
   const library = registry.length > 0 ? registry : routeSources.map((r) => ({
     source_id: r.source_id,
     title: r.source_name,
+    source_name: r.source_name,
     whitelist_domain: r.whitelist_category,
     source_type: "",
     url: r.url,
-    why_read: r.why_read
+    why_read: r.why_read,
+    source_tier: r.source_tier
   }));
+  const byId = Object.fromEntries(
+    library.map((e) => [String(e.source_id || "").trim(), e])
+  );
+  return { library, byId };
+}
+function resolveMappedSourceRows(selectedNode, curriculum, session) {
+  const mappedIds = (selectedNode?.mapped_source_ids || []).map((id2) => String(id2 || "").trim()).filter(Boolean);
+  if (!mappedIds.length) return [];
+  const { byId } = courseLibraryIndex(curriculum);
+  const resourceUrls = (selectedNode?.resource_urls || []).map((u) => String(u || "").trim()).filter((u) => u.startsWith("http"));
+  const sessionById = Object.fromEntries(
+    (session?.sourceRegistry || []).map((e) => {
+      const sid = String(e.id || e.source_id || "").trim();
+      return [sid, e];
+    })
+  );
+  const ref = selectedNode?.source_ref;
+  const primaryId = String(selectedNode?.primary_source_id || "").trim();
+  return mappedIds.map((id2, index2) => {
+    let title = id2;
+    let url = "";
+    const lib = byId[id2];
+    if (lib) {
+      title = (lib.title || lib.source_name || id2).trim();
+      url = String(lib.url || "").trim();
+    }
+    if (!url && sessionById[id2]) {
+      const s = sessionById[id2];
+      title = (s.title || title).trim();
+      url = String(s.url || "").trim();
+    }
+    if (!url && resourceUrls[index2]) {
+      url = resourceUrls[index2];
+    }
+    if (!url && ref && (id2 === primaryId || id2 === String(ref.source_id || "").trim())) {
+      url = String(ref.url || "").trim();
+      if (!title || title === id2) {
+        title = url.slice(0, 80) || title;
+      }
+    }
+    return { source_id: id2, title, url };
+  });
+}
+function renderMappedSourceRow(row) {
+  const badge = sourceTierBadge(row.source_tier);
+  const label = (row.title || row.source_id).trim();
+  return import_react15.default.createElement(
+    "li",
+    { key: row.source_id },
+    badge && import_react15.default.createElement(
+      "span",
+      { className: badge.className },
+      badge.label === "Consensus" ? "\u{1F7E3} " : "\u{1F7E2} ",
+      `[${badge.label}]`
+    ),
+    import_react15.default.createElement(
+      "span",
+      { className: "source-anchor-tag" },
+      `[${row.source_id}]`
+    ),
+    row.url ? import_react15.default.createElement(
+      "a",
+      {
+        className: "source-link",
+        href: row.url,
+        target: "_blank",
+        rel: "noopener noreferrer"
+      },
+      label
+    ) : import_react15.default.createElement("span", null, label),
+    !row.url && import_react15.default.createElement(
+      "span",
+      { className: "muted small" },
+      " \xB7 URL \u043D\u0435 \u0432 \u0440\u0435\u0435\u0441\u0442\u0440\u0435 \u2014 \u0441\u043C. \xAB\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u043A\u0443\u0440\u0441\u0430\xBB"
+    )
+  );
+}
+function renderCourseKnowledgePool(selectedNode, curriculum) {
+  const { library } = courseLibraryIndex(curriculum);
+  return import_react15.default.createElement(
+    "details",
+    { className: "drawer-section knowledge-pool-panel" },
+    import_react15.default.createElement(
+      "summary",
+      { className: "knowledge-pool-summary" },
+      "\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u043A\u0443\u0440\u0441\u0430 (Knowledge Pool)",
+      import_react15.default.createElement(
+        "span",
+        { className: "muted small" },
+        ` \xB7 ${library.length} \u0432 \u0440\u0435\u0435\u0441\u0442\u0440\u0435, \u043D\u0435 \u0441\u0435\u0441\u0441\u0438\u044F \u043D\u043E\u0434\u044B`
+      )
+    ),
+    import_react15.default.createElement(
+      "p",
+      { className: "muted small drawer-hint" },
+      "\u041E\u0431\u0449\u0438\u0439 \u043F\u0443\u043B \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u0430. \u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0442\u0435\u043A\u0443\u0449\u0435\u0439 \u043D\u043E\u0434\u044B \u2014 \u0442\u043E\u043B\u044C\u043A\u043E \u0432 \u0431\u043B\u043E\u043A\u0435 \xAB\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0432 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0435\xBB \u043D\u0438\u0436\u0435."
+    ),
+    import_react15.default.createElement(
+      "ul",
+      { className: "source-registry-list course-library-list" },
+      library.map((entry) => {
+        const badge = sourceTierBadge(entry.source_tier);
+        return import_react15.default.createElement(
+          "li",
+          { key: entry.source_id || entry.url },
+          badge && import_react15.default.createElement(
+            "span",
+            { className: badge.className },
+            badge.label === "Consensus" ? "\u{1F7E3} " : "\u{1F7E2} ",
+            `[${badge.label}]`
+          ),
+          import_react15.default.createElement(
+            "span",
+            { className: "source-anchor-tag" },
+            `[${entry.source_id}]`
+          ),
+          entry.url ? import_react15.default.createElement(
+            "a",
+            {
+              className: "source-link",
+              href: entry.url,
+              target: "_blank",
+              rel: "noopener noreferrer"
+            },
+            entry.title || entry.url
+          ) : import_react15.default.createElement("span", null, entry.title || "source"),
+          entry.whitelist_domain && import_react15.default.createElement(
+            "span",
+            { className: "muted small" },
+            ` \xB7 ${entry.whitelist_domain}`
+          )
+        );
+      })
+    )
+  );
+}
+function renderRouteCurriculumMaterials(selectedNode, curriculum, session) {
   const lm = selectedNode?.learning_materials?.primary_whitelist_source;
   const lres = selectedNode?.learning_resources || [];
   const pid = (selectedNode?.primary_source_id || "").trim();
-  const mappedIds = (selectedNode?.mapped_source_ids || []).filter(Boolean);
-  const byId = Object.fromEntries(
-    library.map((e) => [e.source_id, e])
-  );
+  const { library, byId } = courseLibraryIndex(curriculum);
   const linked = library.find((r) => r.source_id === pid);
-  const mappedEntries = mappedIds.map((id2) => byId[id2]).filter(Boolean);
+  const mappedRows = resolveMappedSourceRows(selectedNode, curriculum, session);
   const learningGoal = (selectedNode?.learning_goal || "").trim();
-  if (!library.length && !lm && !lres.length && !mappedIds.length) return null;
-  return import_react14.default.createElement(
+  if (!lm && !lres.length && !mappedRows.length && !learningGoal) return null;
+  return import_react15.default.createElement(
     "div",
     { className: "drawer-section route-curriculum-sources" },
-    import_react14.default.createElement("h3", null, "\u041C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u044B \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u0430 (Whitelist)"),
-    learningGoal && import_react14.default.createElement(
+    learningGoal && import_react15.default.createElement(
       "p",
       { className: "muted small node-learning-goal" },
       `\u0426\u0435\u043B\u044C \u043D\u043E\u0434\u044B: ${learningGoal}`
     ),
-    library.length > 0 && import_react14.default.createElement(
+    mappedRows.length > 0 && import_react15.default.createElement(
       "div",
       { className: "drawer-subsection" },
-      import_react14.default.createElement(
-        "h4",
-        { className: "drawer-subtitle" },
-        "\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u043A\u0443\u0440\u0441\u0430 (curriculum_sources_registry)"
-      ),
-      import_react14.default.createElement(
-        "ul",
-        { className: "source-registry-list" },
-        library.map(
-          (entry) => import_react14.default.createElement(
-            "li",
-            { key: entry.source_id || entry.url },
-            import_react14.default.createElement(
-              "span",
-              { className: "source-anchor-tag" },
-              `[${entry.source_id}]`
-            ),
-            entry.url ? import_react14.default.createElement(
-              "a",
-              {
-                className: "source-link",
-                href: entry.url,
-                target: "_blank",
-                rel: "noopener noreferrer"
-              },
-              entry.title || entry.url
-            ) : import_react14.default.createElement("span", null, entry.title || "source"),
-            entry.whitelist_domain && import_react14.default.createElement(
-              "span",
-              { className: "muted small" },
-              ` \xB7 ${entry.whitelist_domain}`
-            ),
-            entry.why_read && import_react14.default.createElement("p", { className: "muted snippet" }, entry.why_read)
-          )
-        )
-      )
-    ),
-    mappedEntries.length > 0 && import_react14.default.createElement(
-      "div",
-      { className: "drawer-subsection" },
-      import_react14.default.createElement(
+      import_react15.default.createElement(
         "h4",
         { className: "drawer-subtitle" },
         "\u0410\u0434\u0440\u0435\u0441\u0430\u0446\u0438\u044F \u043D\u043E\u0434\u044B (mapped_source_ids)"
       ),
-      import_react14.default.createElement(
+      import_react15.default.createElement(
         "ul",
         { className: "source-registry-list mapped-sources" },
-        mappedEntries.map(
-          (entry) => import_react14.default.createElement(
-            "li",
-            { key: entry.source_id },
-            import_react14.default.createElement(
-              "span",
-              { className: "source-anchor-tag" },
-              `[${entry.source_id}]`
-            ),
-            entry.title || entry.source_id
-          )
-        )
+        mappedRows.map((row) => {
+          const tier = byId[row.source_id]?.source_tier;
+          return renderMappedSourceRow({ ...row, source_tier: tier });
+        })
       )
     ),
-    lm && import_react14.default.createElement(
+    lm && import_react15.default.createElement(
       "div",
       { className: "drawer-subsection" },
-      import_react14.default.createElement("h4", { className: "drawer-subtitle" }, "\u0424\u0443\u043D\u0434\u0430\u043C\u0435\u043D\u0442 \u043D\u043E\u0434\u044B"),
-      linked && import_react14.default.createElement(
+      import_react15.default.createElement("h4", { className: "drawer-subtitle" }, "\u0424\u0443\u043D\u0434\u0430\u043C\u0435\u043D\u0442 \u043D\u043E\u0434\u044B"),
+      linked && import_react15.default.createElement(
         "p",
         { className: "muted small" },
-        `\u0421\u0441\u044B\u043B\u043A\u0430 \u043D\u0430 \u0440\u0435\u0435\u0441\u0442\u0440: [${linked.source_id}] ${linked.source_name}`
+        "\u0421\u0441\u044B\u043B\u043A\u0430 \u043D\u0430 \u0440\u0435\u0435\u0441\u0442\u0440: ",
+        import_react15.default.createElement(
+          "span",
+          { className: "source-anchor-tag" },
+          `[${linked.source_id}]`
+        ),
+        linked.url ? import_react15.default.createElement(
+          "a",
+          {
+            className: "source-link",
+            href: linked.url,
+            target: "_blank",
+            rel: "noopener noreferrer"
+          },
+          linked.title || linked.source_name || linked.url
+        ) : import_react15.default.createElement("span", null, linked.title || linked.source_id)
       ),
-      import_react14.default.createElement("p", null, lm.source_name),
-      import_react14.default.createElement("p", { className: "muted" }, lm.chapter_or_article),
-      (lm.core_concepts || []).length > 0 && import_react14.default.createElement(
+      import_react15.default.createElement("p", null, lm.source_name),
+      import_react15.default.createElement("p", { className: "muted" }, lm.chapter_or_article),
+      (lm.core_concepts || []).length > 0 && import_react15.default.createElement(
         "ul",
         { className: "drawer-concepts" },
-        lm.core_concepts.map((c) => import_react14.default.createElement("li", { key: c }, c))
+        lm.core_concepts.map((c) => import_react15.default.createElement("li", { key: c }, c))
       )
     ),
-    lres.length > 0 && import_react14.default.createElement(
+    lres.length > 0 && import_react15.default.createElement(
       "div",
       { className: "drawer-subsection" },
-      import_react14.default.createElement("h4", { className: "drawer-subtitle" }, "\u0421\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0447\u0442\u0435\u043D\u0438\u0435"),
-      import_react14.default.createElement(
+      import_react15.default.createElement("h4", { className: "drawer-subtitle" }, "\u0421\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0447\u0442\u0435\u043D\u0438\u0435"),
+      import_react15.default.createElement(
         "div",
         { className: "resource-card-list" },
-        lres.map((r, i) => import_react14.default.createElement(ResourceCard, { key: i, item: r }))
+        lres.map((r, i) => import_react15.default.createElement(ResourceCard, { key: i, item: r }))
       )
     )
   );
@@ -38756,9 +39292,9 @@ function NodeDrawer({
   nodeGenerating,
   sessions
 }) {
-  const materialRef = (0, import_react14.useRef)(null);
+  const materialRef = (0, import_react15.useRef)(null);
   if (!selectedNode) {
-    return import_react14.default.createElement(
+    return import_react15.default.createElement(
       "aside",
       { className: "node-drawer empty" },
       "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u0438\u043B\u0438 \u0441\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u0443\u0439\u0442\u0435 \u0443\u0447\u0435\u0431\u043D\u044B\u0439 \u043F\u0443\u0442\u044C."
@@ -38770,10 +39306,10 @@ function NodeDrawer({
   const snippets = content.code_snippets || [];
   const registry = session?.sourceRegistry || [];
   const nodeData = toNodeDataInput(selectedNode);
-  return import_react14.default.createElement(
+  return import_react15.default.createElement(
     "aside",
     { className: "node-drawer" },
-    import_react14.default.createElement(NodeSelectionExplain, {
+    import_react15.default.createElement(NodeSelectionExplain, {
       curriculumId: curriculum.curriculum_id,
       nodeData,
       containerRef: materialRef,
@@ -38781,39 +39317,39 @@ function NodeDrawer({
         content.summary || content.summary_html || refs.length || snippets.length
       )
     }),
-    import_react14.default.createElement(
+    import_react15.default.createElement(
       "div",
       { className: "drawer-scroll node-selectable-material", ref: materialRef },
-      import_react14.default.createElement(
+      import_react15.default.createElement(
         "div",
         { className: "drawer-header" },
-        import_react14.default.createElement("h2", null, selectedNode.title),
-        import_react14.default.createElement(NodeMasteryPanel, {
+        import_react15.default.createElement("h2", null, selectedNode.title),
+        import_react15.default.createElement(NodeMasteryPanel, {
           status: st,
           masteryDashboard: session?.masteryDashboard,
           topicMasteryScore: session?.topicMasteryScore,
           onModeSelect,
           disabled: composeLocked
         }),
-        import_react14.default.createElement(
+        import_react15.default.createElement(
           "div",
           { className: "drawer-meta" },
-          import_react14.default.createElement("span", { className: "chip" }, selectedNode.layer),
-          import_react14.default.createElement("span", { className: "chip" }, st),
-          selectedNode.category && import_react14.default.createElement("span", { className: "chip" }, selectedNode.category)
+          import_react15.default.createElement("span", { className: "chip" }, selectedNode.layer),
+          import_react15.default.createElement("span", { className: "chip" }, st),
+          selectedNode.category && import_react15.default.createElement("span", { className: "chip" }, selectedNode.category)
         ),
-        renderRouteCurriculumMaterials(selectedNode, curriculum),
-        (selectedNode.prerequisites || []).length > 0 && import_react14.default.createElement(
+        renderRouteCurriculumMaterials(selectedNode, curriculum, session),
+        (selectedNode.prerequisites || []).length > 0 && import_react15.default.createElement(
           "div",
           { className: "drawer-section" },
-          import_react14.default.createElement("h3", null, "\u041F\u0440\u0435\u0434\u0448\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0435 \u0442\u0435\u043C\u044B"),
-          import_react14.default.createElement(
+          import_react15.default.createElement("h3", null, "\u041F\u0440\u0435\u0434\u0448\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0435 \u0442\u0435\u043C\u044B"),
+          import_react15.default.createElement(
             "div",
             { className: "drawer-meta" },
             selectedNode.prerequisites.map((pid) => {
               const pre = curriculum.nodes.find((n) => n.node_id === pid);
               const preInit = Boolean(sessions?.[pid]?.initialized);
-              return import_react14.default.createElement(
+              return import_react15.default.createElement(
                 "span",
                 {
                   key: pid,
@@ -38831,55 +39367,59 @@ function NodeDrawer({
           )
         )
       ),
-      nodeGenerating && import_react14.default.createElement(
+      nodeGenerating && import_react15.default.createElement(
         "p",
         { className: "muted drawer-gen-hint" },
         "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043D\u043E\u0434\u044B\u2026 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B \u043D\u0438\u0436\u0435 \u043C\u043E\u0436\u043D\u043E \u0447\u0438\u0442\u0430\u0442\u044C \u0438 \u043F\u0440\u043E\u043A\u0440\u0443\u0447\u0438\u0432\u0430\u0442\u044C."
       ),
-      content.summary && import_react14.default.createElement(
+      content.summary && import_react15.default.createElement(
         "div",
         { className: "drawer-section node-selectable-material" },
-        import_react14.default.createElement("h3", null, "\u0421\u0443\u0442\u044C \u043C\u0435\u0445\u0430\u043D\u0438\u043A\u0438"),
-        import_react14.default.createElement(
+        import_react15.default.createElement("h3", null, "\u0421\u0443\u0442\u044C \u043C\u0435\u0445\u0430\u043D\u0438\u043A\u0438"),
+        import_react15.default.createElement(
           "p",
           { className: "muted small drawer-hint" },
           "\u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u2014 \xAB\u041E\u0431\u044A\u044F\u0441\u043D\u0438\u0442\u044C\xBB \u0438 \u0441\u043B\u043E\u0436\u043D\u044B\u0435 \u0432\u043E\u043F\u0440\u043E\u0441\u044B, \u043A\u0430\u043A \u0432 \u043E\u0431\u0437\u043E\u0440\u0435 \u0430\u043D\u0430\u043B\u0438\u0437\u0430."
         ),
-        (content.summary_html || "").trim() ? import_react14.default.createElement(LlmHtmlBlock, {
+        (content.summary_html || "").trim() ? import_react15.default.createElement(LlmHtmlBlock, {
           html: content.summary_html,
           className: "drawer-summary md-body"
-        }) : import_react14.default.createElement(
+        }) : structuredAnalysisToHtml(content.summary || "") ? import_react15.default.createElement(LlmHtmlBlock, {
+          html: structuredAnalysisToHtml(content.summary || ""),
+          className: "drawer-summary md-body"
+        }) : import_react15.default.createElement(
           "div",
           { className: "drawer-summary" },
           content.summary
         )
       ),
-      import_react14.default.createElement(SourceRegistryList, { registry }),
-      import_react14.default.createElement(DiagramBlock, {
+      import_react15.default.createElement(SourceRegistryList, { registry }),
+      import_react15.default.createElement(DiagramBlock, {
         diagram: content.diagram,
         nodeId: selectedNode.node_id
       }),
-      refs.length > 0 && import_react14.default.createElement(
+      refs.length > 0 && import_react15.default.createElement(
         "div",
         { className: "drawer-section" },
-        import_react14.default.createElement("h3", null, "\u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u043E\u0432"),
-        import_react14.default.createElement(
+        import_react15.default.createElement("h3", null, "\u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u043E\u0432"),
+        import_react15.default.createElement(
           "div",
           { className: "resource-card-list" },
           refs.map(
-            (r, i) => import_react14.default.createElement(ResourceCard, { key: i, item: r })
+            (r, i) => import_react15.default.createElement(ResourceCard, { key: i, item: r })
           )
         )
       ),
-      snippets.length > 0 && import_react14.default.createElement(
+      snippets.length > 0 && import_react15.default.createElement(
         "div",
         { className: "drawer-section" },
-        import_react14.default.createElement("h3", null, "\u041A\u043E\u0434 \u0438 edge cases"),
+        import_react15.default.createElement("h3", null, "\u041A\u043E\u0434 \u0438 edge cases"),
         snippets.map(
-          (block, i) => import_react14.default.createElement(CodeSnippet, { key: i, code: block })
+          (block, i) => import_react15.default.createElement(CodeSnippet, { key: i, code: block })
         )
       ),
-      import_react14.default.createElement(
+      renderCourseKnowledgePool(selectedNode, curriculum),
+      import_react15.default.createElement(
         "button",
         {
           type: "button",
@@ -38896,7 +39436,7 @@ function NodeDrawer({
 }
 
 // NodeTutorChat.js
-var import_react15 = __toESM(require_react(), 1);
+var import_react16 = __toESM(require_react(), 1);
 var QUICK = [
   {
     label: "\u041F\u043B\u043E\u0442\u043D\u0430\u044F \u043B\u0435\u043A\u0446\u0438\u044F",
@@ -38913,16 +39453,15 @@ var QUICK = [
 ];
 function NodeTutorChat({
   session,
-  ragLabels,
   onSend,
   disabled,
   generating,
   curriculumId,
   nodeData
 }) {
-  const [input, setInput] = (0, import_react15.useState)("");
-  const materialRef = (0, import_react15.useRef)(null);
-  const messages = session?.messages || [];
+  const [input, setInput] = (0, import_react16.useState)("");
+  const materialRef = (0, import_react16.useRef)(null);
+  const messages = sortDialogMessages(session?.messages || []);
   const composeLocked = Boolean(disabled);
   const explainEnabled = Boolean(curriculumId && nodeData);
   async function send(text) {
@@ -38934,61 +39473,66 @@ function NodeTutorChat({
     } catch {
     }
   }
-  const ragText = ragLabels && ragLabels.length ? `\u0417\u0430\u0433\u0440\u0443\u0436\u0435\u043D\u043E ${ragLabels.length} \u043F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u044C\u043D\u044B\u0445 \u0444\u0430\u043A\u0442\u043E\u0432 \u0438\u0437 RAG (${ragLabels.join(
-    ", "
-  )})` : "\u041F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u044C\u043D\u044B\u0439 RAG: \u0444\u0430\u043A\u0442\u044B \u0432\u044B\u0448\u0435 \u043F\u043E\u0440\u043E\u0433\u0430 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u044B \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043D\u043E\u0434\u044B";
-  return import_react15.default.createElement(
+  return import_react16.default.createElement(
     "div",
     { className: "tutor-panel" },
-    import_react15.default.createElement(NodeSelectionExplain, {
+    import_react16.default.createElement(NodeSelectionExplain, {
       curriculumId,
       nodeData,
       containerRef: materialRef,
       enabled: explainEnabled
     }),
-    generating && import_react15.default.createElement(
+    generating && import_react16.default.createElement(
       "div",
       { className: "tutor-busy-hint", "aria-live": "polite" },
       "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043E\u0442\u0432\u0435\u0442\u0430\u2026 \u043C\u043E\u0436\u043D\u043E \u0447\u0438\u0442\u0430\u0442\u044C \u0438\u0441\u0442\u043E\u0440\u0438\u044E \u0432\u044B\u0448\u0435; \u043D\u043E\u0432\u044B\u0435 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B."
     ),
-    import_react15.default.createElement(
+    import_react16.default.createElement(
       "div",
       { className: "tutor-panel-scroll tutor-selectable", ref: materialRef },
-      import_react15.default.createElement("div", { className: "rag-hint" }, ragText),
-      messages.length > 0 && import_react15.default.createElement(
+      messages.length > 0 && import_react16.default.createElement(
         "p",
         { className: "tutor-selectable-hint muted" },
         "\u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u0432 \u043E\u0442\u0432\u0435\u0442\u0435 \u0442\u044C\u044E\u0442\u043E\u0440\u0430 \u2014 \xAB\u041E\u0431\u044A\u044F\u0441\u043D\u0438\u0442\u044C\xBB."
       ),
-      import_react15.default.createElement(
+      import_react16.default.createElement(
         "div",
         { className: "chat-log node-selectable-material" },
-        messages.map(
-          (m, i) => import_react15.default.createElement(
+        messages.map((m) => {
+          const msgKey = m.msg_id || `${m.role}-${dialogMsgId(m) ?? (m.content || "").slice(0, 40)}`;
+          return import_react16.default.createElement(
             "div",
-            { key: i, className: `chat-msg ${m.role}` },
-            m.role === "tutor" && (m.contentHtml || "").length > 0 ? import_react15.default.createElement(LlmHtmlBlock, {
+            {
+              key: msgKey,
+              className: `chat-msg ${m.role}`,
+              "data-msg-id": m.msg_id || "",
+              "data-role": m.role
+            },
+            m.role === "tutor" && (m.contentHtml || "").length > 0 ? import_react16.default.createElement(LlmHtmlBlock, {
               html: m.contentHtml,
               className: "md-body chat-md"
-            }) : import_react15.default.createElement(
+            }) : m.role === "tutor" && structuredAnalysisToHtml(m.content || "") ? import_react16.default.createElement(LlmHtmlBlock, {
+              html: structuredAnalysisToHtml(m.content || ""),
+              className: "md-body chat-md"
+            }) : import_react16.default.createElement(
               "div",
               { className: "chat-plain" },
               repairLlMText(m.content)
             )
-          )
-        )
+          );
+        })
       )
     ),
-    import_react15.default.createElement(
+    import_react16.default.createElement(
       "div",
       {
         className: composeLocked ? "tutor-panel-compose tutor-panel-compose-locked" : "tutor-panel-compose"
       },
-      import_react15.default.createElement(
+      import_react16.default.createElement(
         "div",
         { className: "quick-chips" },
         QUICK.map(
-          (q) => import_react15.default.createElement(
+          (q) => import_react16.default.createElement(
             "button",
             {
               key: q.label,
@@ -39000,7 +39544,7 @@ function NodeTutorChat({
           )
         )
       ),
-      import_react15.default.createElement(
+      import_react16.default.createElement(
         "form",
         {
           className: "chat-form",
@@ -39009,13 +39553,13 @@ function NodeTutorChat({
             if (!composeLocked) send(input);
           }
         },
-        import_react15.default.createElement("input", {
+        import_react16.default.createElement("input", {
           value: input,
           onChange: (e) => setInput(e.target.value),
           placeholder: composeLocked ? "\u0416\u0434\u0451\u043C \u043E\u0442\u0432\u0435\u0442 \u0442\u044C\u044E\u0442\u043E\u0440\u0430\u2026" : "\u0412\u043E\u043F\u0440\u043E\u0441 \u0442\u044C\u044E\u0442\u043E\u0440\u0443\u2026",
           disabled: composeLocked
         }),
-        import_react15.default.createElement(
+        import_react16.default.createElement(
           "button",
           { type: "submit", disabled: composeLocked },
           composeLocked ? "\u2026" : "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C"
@@ -39026,7 +39570,7 @@ function NodeTutorChat({
 }
 
 // ColumnResizer.js
-var import_react16 = __toESM(require_react(), 1);
+var import_react17 = __toESM(require_react(), 1);
 function ColumnResizer({ onDragDelta, onDragEnd }) {
   function onMouseDown(e) {
     e.preventDefault();
@@ -39047,7 +39591,7 @@ function ColumnResizer({ onDragDelta, onDragEnd }) {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
-  return import_react16.default.createElement("div", {
+  return import_react17.default.createElement("div", {
     className: "skill-col-resizer",
     role: "separator",
     "aria-orientation": "vertical",
@@ -39057,35 +39601,37 @@ function ColumnResizer({ onDragDelta, onDragEnd }) {
 
 // RoadmapDashboard.js
 function RoadmapDashboard() {
-  const [goal, setGoal] = (0, import_react17.useState)("");
-  const [mode, setMode] = (0, import_react17.useState)("fast");
-  const [ragStatus, setRagStatus] = (0, import_react17.useState)(null);
-  const [curriculum, setCurriculum] = (0, import_react17.useState)(null);
-  const [curriculaList, setCurriculaList] = (0, import_react17.useState)([]);
-  const [statuses, setStatuses] = (0, import_react17.useState)({});
-  const [selectedNode, setSelectedNode] = (0, import_react17.useState)(null);
-  const [sessions, setSessions] = (0, import_react17.useState)({});
-  const [workspaceBusy, setWorkspaceBusy] = (0, import_react17.useState)(false);
-  const [genStatus, setGenStatus] = (0, import_react17.useState)("");
-  const [tutorBusyNodeId, setTutorBusyNodeId] = (0, import_react17.useState)(null);
-  const [error, setError] = (0, import_react17.useState)("");
-  const [leftColWidth, setLeftColWidth] = (0, import_react17.useState)(() => {
+  const [goal, setGoal] = (0, import_react18.useState)("");
+  const [sourcePolicy, setSourcePolicy] = (0, import_react18.useState)("practical_only");
+  const [ragStatus, setRagStatus] = (0, import_react18.useState)(null);
+  const [curriculum, setCurriculum] = (0, import_react18.useState)(null);
+  const [curriculaList, setCurriculaList] = (0, import_react18.useState)([]);
+  const [statuses, setStatuses] = (0, import_react18.useState)({});
+  const [selectedNode, setSelectedNode] = (0, import_react18.useState)(null);
+  const [sessions, setSessions] = (0, import_react18.useState)({});
+  const [workspaceBusy, setWorkspaceBusy] = (0, import_react18.useState)(false);
+  const [genStatus, setGenStatus] = (0, import_react18.useState)("");
+  const [genBusyAction, setGenBusyAction] = (0, import_react18.useState)(null);
+  const [tutorBusyNodeId, setTutorBusyNodeId] = (0, import_react18.useState)(null);
+  const [error, setError] = (0, import_react18.useState)("");
+  const [layoutEpoch, setLayoutEpoch] = (0, import_react18.useState)(0);
+  const [leftColWidth, setLeftColWidth] = (0, import_react18.useState)(() => {
     const n = Number(localStorage.getItem("skillTreeColLeft"));
     return n >= 240 && n <= 720 ? n : 360;
   });
-  const [rightColWidth, setRightColWidth] = (0, import_react17.useState)(() => {
+  const [rightColWidth, setRightColWidth] = (0, import_react18.useState)(() => {
     const n = Number(localStorage.getItem("skillTreeColRight"));
     return n >= 280 && n <= 960 ? n : 420;
   });
-  const leftColRef = import_react17.default.useRef(leftColWidth);
-  const rightColRef = import_react17.default.useRef(rightColWidth);
+  const leftColRef = import_react18.default.useRef(leftColWidth);
+  const rightColRef = import_react18.default.useRef(rightColWidth);
   leftColRef.current = leftColWidth;
   rightColRef.current = rightColWidth;
   function persistColWidths() {
     localStorage.setItem("skillTreeColLeft", String(leftColRef.current));
     localStorage.setItem("skillTreeColRight", String(rightColRef.current));
   }
-  const loadWorkspace = (0, import_react17.useCallback)(async (curriculumId) => {
+  const loadWorkspace = (0, import_react18.useCallback)(async (curriculumId) => {
     if (!curriculumId) return;
     setError("");
     setWorkspaceBusy(true);
@@ -39100,6 +39646,7 @@ function RoadmapDashboard() {
       setSelectedNode(null);
       await setActiveCurriculum(curriculumId);
       rememberActiveCurriculumId(curriculumId);
+      setSourcePolicy("practical_only");
       const url = new URL(window.location.href);
       url.searchParams.set("curriculum", curriculumId);
       window.history.replaceState(null, "", url.pathname + url.search);
@@ -39111,7 +39658,21 @@ function RoadmapDashboard() {
       setWorkspaceBusy(false);
     }
   }, []);
-  (0, import_react17.useEffect)(() => {
+  const refreshCurriculumGraph = (0, import_react18.useCallback)(async (curriculumId) => {
+    if (!curriculumId) return null;
+    try {
+      const ws = await fetchWorkspace(curriculumId);
+      setCurriculum(ws.curriculum);
+      setStatuses(
+        mergeNodeStatuses(ws.curriculum, ws.statuses || {})
+      );
+      return ws.curriculum;
+    } catch (err) {
+      setError(String(err.message || err));
+      return null;
+    }
+  }, []);
+  (0, import_react18.useEffect)(() => {
     fetchRagStatus().then(setRagStatus).catch(
       () => setRagStatus({
         connected: false,
@@ -39124,16 +39685,27 @@ function RoadmapDashboard() {
         theme: "dark",
         securityLevel: "loose",
         themeVariables: {
-          fontSize: "11px"
+          fontSize: "14px",
+          fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif",
+          primaryTextColor: "#eceff4",
+          lineColor: "#7eb8b8",
+          primaryBorderColor: "#4ec9b0"
         },
-        flowchart: { useMaxWidth: false, htmlLabels: true },
+        flowchart: {
+          useMaxWidth: false,
+          htmlLabels: true,
+          padding: 28,
+          nodeSpacing: 56,
+          rankSpacing: 64,
+          curve: "basis"
+        },
         sequence: {
           useMaxWidth: false,
           wrap: true,
           width: 240,
-          messageFontSize: 10,
-          noteFontSize: 10,
-          actorFontSize: 11,
+          messageFontSize: 11,
+          noteFontSize: 11,
+          actorFontSize: 12,
           messageMargin: 48,
           boxMargin: 10,
           mirrorActors: false
@@ -39153,40 +39725,101 @@ function RoadmapDashboard() {
       }
     })();
   }, [loadWorkspace]);
-  async function onGenerate(e) {
-    e.preventDefault();
-    const text = goal.trim();
-    if (text.length < 8) return;
+  function clearCanvasForNewRoute() {
+    setCurriculum(null);
+    setSelectedNode(null);
+    setSessions({});
+    setStatuses({});
+    const url = new URL(window.location.href);
+    url.searchParams.delete("curriculum");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    setSourcePolicy("practical_only");
+  }
+  async function runCreatePath(text) {
     setError("");
     setWorkspaceBusy(true);
+    setGenBusyAction("create");
     let phaseTimer = null;
-    const consensusPhases = [
-      "\u0421\u0431\u043E\u0440 \u043D\u0430\u0443\u0447\u043D\u044B\u0445 \u0441\u0442\u0430\u0442\u0435\u0439 \u0432 Consensus (Playwright)\u2026",
-      "Lite-\u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u044F \u0438 Summarizer \u2192 LanceDB\u2026",
-      "Flash \u0441\u0442\u0440\u043E\u0438\u0442 \u0433\u0440\u0430\u0444 \u0432\u043E\u043A\u0440\u0443\u0433 \u0432\u044B\u0434\u0435\u0440\u0436\u0435\u043A\u2026"
-    ];
-    if (mode === "consensus") {
-      let phaseIdx = 0;
-      setGenStatus(consensusPhases[0]);
-      phaseTimer = setInterval(() => {
-        phaseIdx = (phaseIdx + 1) % consensusPhases.length;
-        setGenStatus(consensusPhases[phaseIdx]);
-      }, 8e3);
-    } else {
-      setGenStatus("SearXNG / whitelist \u0438 Flash\u2026");
-    }
+    const policyPhases = {
+      hybrid: [
+        "Model-First: Flash \u0441\u0442\u0440\u043E\u0438\u0442 \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0443 DAG\u2026",
+        "Lite: \u043A\u043B\u0430\u0441\u0441\u0438\u0444\u0438\u043A\u0430\u0446\u0438\u044F \u043D\u043E\u0434 (BASE / DEEP)\u2026",
+        "DEEP: Exa + \u0431\u043B\u043E\u0433\u0438 (\u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0430)\u2026",
+        "Summarizer \u2192 LanceDB \u2192 \u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0430 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432\u2026"
+      ],
+      academic_only: [
+        "Semantic Scholar / arXiv / Consensus\u2026",
+        "Summarizer \u2192 LanceDB\u2026",
+        "Grounding DEEP-\u043D\u043E\u0434\u2026"
+      ],
+      practical_only: [
+        "Model-First \u2192 Risk \u2192 DEEP: Exa / SearXNG\u2026",
+        "Summarizer \u2192 LanceDB\u2026",
+        "\u041F\u0440\u0438\u0432\u044F\u0437\u043A\u0430 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432 \u043A \u043D\u043E\u0434\u0430\u043C\u2026"
+      ]
+    };
+    const phases = policyPhases[sourcePolicy] || policyPhases.hybrid;
+    setGenStatus(phases[0]);
+    let phaseIdx = 0;
+    phaseTimer = setInterval(() => {
+      if (phaseIdx >= phases.length - 1) return;
+      phaseIdx += 1;
+      setGenStatus(phases[phaseIdx]);
+    }, 12e3);
     try {
-      const graph = await generateCurriculum(text, mode);
+      const graph = await createCurriculum(text, sourcePolicy);
+      setGoal(text);
       await loadWorkspace(graph.curriculum_id);
     } catch (err) {
       setError(String(err.message || err));
     } finally {
       if (phaseTimer) clearInterval(phaseTimer);
       setGenStatus("");
+      setGenBusyAction(null);
       setWorkspaceBusy(false);
     }
   }
-  const applyNodeResponse = (0, import_react17.useCallback)((nodeId, res, userMsg) => {
+  async function runExpandBranch(text) {
+    if (!curriculum?.curriculum_id) return;
+    setError("");
+    setWorkspaceBusy(true);
+    setGenBusyAction("expand");
+    setGenStatus("\u0414\u043E\u0441\u0442\u0440\u043E\u0439\u043A\u0430: Lite \u2192 \u0441\u0431\u043E\u0440 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432 (SearXNG / SS)\u2026");
+    const expandPhases = [
+      "Lite \u2192 \u0432\u0435\u043A\u0442\u043E\u0440 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F\u2026",
+      "\u0421\u0431\u043E\u0440 \u043F\u043E \u0432\u0435\u043A\u0442\u043E\u0440\u0443 (SearXNG / SS / arXiv)\u2026",
+      "Summarizer \u2192 LanceDB\u2026",
+      "Flash \u0434\u043E\u0441\u0442\u0440\u0430\u0438\u0432\u0430\u0435\u0442 \u0432\u0435\u0442\u043A\u0443\u2026"
+    ];
+    let phaseIdx = 0;
+    const phaseTimer = setInterval(() => {
+      if (phaseIdx >= expandPhases.length - 1) return;
+      phaseIdx += 1;
+      setGenStatus(expandPhases[phaseIdx]);
+    }, 1e4);
+    try {
+      const graph = await expandCurriculum(
+        curriculum.curriculum_id,
+        text,
+        sourcePolicy
+      );
+      setGoal("");
+      setLayoutEpoch((n) => n + 1);
+      await loadWorkspace(graph.curriculum_id);
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      clearInterval(phaseTimer);
+      setGenStatus("");
+      setGenBusyAction(null);
+      setWorkspaceBusy(false);
+    }
+  }
+  async function runCreateNewWhileLoaded(text) {
+    clearCanvasForNewRoute();
+    await runCreatePath(text);
+  }
+  const applyNodeResponse = (0, import_react18.useCallback)((nodeId, res, userMsg) => {
     if (res.error) {
       setError(res.error);
       return;
@@ -39195,14 +39828,22 @@ function RoadmapDashboard() {
     setSessions((prev) => {
       const old = prev[nodeId] || { messages: [] };
       const hasHistory = Array.isArray(res.history) && res.history.length > 0;
-      const messages = hasHistory ? mergeHistoryWithPendingUser(
-        historyToMessages(res.history),
-        userMsg
+      const messages = hasHistory ? sortDialogMessages(
+        mergeHistoryWithPendingUser(
+          historyToMessages(res.history),
+          userMsg
+        )
       ) : (() => {
         const next = [...old.messages];
-        if (userMsg) next.push({ role: "user", content: userMsg });
+        if (userMsg) {
+          next.push({
+            role: "user",
+            content: userMsg,
+            msg_id: `pending-${Date.now()}`
+          });
+        }
         if (res.tutor_message) next.push(tutorMessageFromApi(res));
-        return next;
+        return sortDialogMessages(next);
       })();
       return {
         ...prev,
@@ -39215,7 +39856,7 @@ function RoadmapDashboard() {
           topicMasteryScore: res.topic_mastery_score ?? old.topicMasteryScore ?? 0,
           learningPhase: res.learning_phase || old.learningPhase,
           learningMode: res.learning_mode || old.learningMode,
-          sourceRegistry: res.source_registry || old.sourceRegistry || []
+          sourceRegistry: Array.isArray(res.source_registry) ? res.source_registry : old.sourceRegistry || []
         }
       };
     });
@@ -39235,6 +39876,11 @@ function RoadmapDashboard() {
         toNodeDataInput(node)
       );
       applyNodeResponse(sid, res);
+      const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
+      if (freshGraph) {
+        const freshNode = freshGraph.nodes.find((n) => n.node_id === sid);
+        if (freshNode) setSelectedNode(freshNode);
+      }
     } catch (err) {
       setError(String(err.message || err));
     } finally {
@@ -39296,12 +39942,12 @@ function RoadmapDashboard() {
           ...old,
           messages: (() => {
             const msgs = [...old.messages || []];
-            if (msgs.length && msgs[msgs.length - 1].role === "tutor") {
-              msgs.splice(msgs.length - 1, 0, { role: "user", content: u });
-            } else {
-              msgs.push({ role: "user", content: u });
-            }
-            return msgs;
+            msgs.push({
+              role: "user",
+              content: u,
+              msg_id: `pending-${Date.now()}`
+            });
+            return sortDialogMessages(msgs);
           })()
         }
       };
@@ -39325,31 +39971,31 @@ function RoadmapDashboard() {
     const suffix = c.has_graph === false ? " (\u0431\u0435\u0437 \u0433\u0440\u0430\u0444\u0430)" : "";
     return `${title}${nodes}${suffix}`;
   }
-  return import_react17.default.createElement(
+  return import_react18.default.createElement(
     "div",
     { className: "skill-dashboard" },
-    import_react17.default.createElement(
+    import_react18.default.createElement(
       "header",
       { className: "skill-header" },
-      import_react17.default.createElement(
+      import_react18.default.createElement(
         "div",
         { className: "skill-header-top" },
-        import_react17.default.createElement(
+        import_react18.default.createElement(
           "div",
           null,
-          import_react17.default.createElement("h1", null, "AI Skill Tree & Tutor"),
-          import_react17.default.createElement(
+          import_react18.default.createElement("h1", null, "AI Skill Tree & Tutor"),
+          import_react18.default.createElement(
             "p",
             { className: "muted" },
             "\u041C\u0430\u0440\u0448\u0440\u0443\u0442\u044B: knowledge_engine/.runs/skill_tree_curricula.json"
           ),
-          import_react17.default.createElement(
+          import_react18.default.createElement(
             "a",
             { href: "/app", className: "nav-link-skill" },
             "\u2190 \u0418\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0439 \u0430\u043D\u0430\u043B\u0438\u0437"
           )
         ),
-        ragStatus && import_react17.default.createElement(
+        ragStatus && import_react18.default.createElement(
           "span",
           {
             className: `rag-pill${ragStatus.connected ? "" : " off"}`
@@ -39357,23 +40003,23 @@ function RoadmapDashboard() {
           ragStatus.label
         )
       ),
-      import_react17.default.createElement(
+      import_react18.default.createElement(
         "div",
         { className: "skill-saved-section" },
-        import_react17.default.createElement(
+        import_react18.default.createElement(
           "p",
           { className: "skill-saved-title" },
           `\u0421\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u044B (${curriculaList.length})`
         ),
-        curriculaList.length === 0 ? import_react17.default.createElement(
+        curriculaList.length === 0 ? import_react18.default.createElement(
           "p",
           { className: "skill-saved-empty" },
           "\u041F\u043E\u043A\u0430 \u043D\u0435\u0442 \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u043E\u0432. \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043F\u0443\u0442\u044C \u043D\u0438\u0436\u0435 \u2014 \u043E\u043D \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438."
-        ) : import_react17.default.createElement(
+        ) : import_react18.default.createElement(
           "div",
           { className: "skill-route-list" },
           curriculaList.map(
-            (c) => import_react17.default.createElement(
+            (c) => import_react18.default.createElement(
               "button",
               {
                 key: c.curriculum_id,
@@ -39398,52 +40044,22 @@ function RoadmapDashboard() {
           )
         )
       ),
-      import_react17.default.createElement(
-        "div",
-        { className: "skill-header-actions" },
-        import_react17.default.createElement(
-          "form",
-          { className: "skill-goal-form", onSubmit: onGenerate },
-          import_react17.default.createElement("input", {
-            value: goal,
-            onChange: (e) => setGoal(e.target.value),
-            placeholder: "\u0427\u0435\u043C\u0443 \u0432\u044B \u0445\u043E\u0442\u0438\u0442\u0435 \u043D\u0430\u0443\u0447\u0438\u0442\u044C\u0441\u044F?",
-            required: true
-          }),
-          import_react17.default.createElement(
-            "select",
-            {
-              className: "skill-mode-select",
-              value: mode,
-              onChange: (e) => setMode(e.target.value),
-              "aria-label": "\u0420\u0435\u0436\u0438\u043C \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438"
-            },
-            import_react17.default.createElement(
-              "option",
-              { value: "fast" },
-              "Fast \u2014 \u0431\u044B\u0441\u0442\u0440\u044B\u0439 \u0433\u0440\u0430\u0444"
-            ),
-            import_react17.default.createElement(
-              "option",
-              { value: "consensus" },
-              "Consensus \u2014 \u0433\u043B\u0443\u0431\u043E\u043A\u0438\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 (v0.8)"
-            )
-          ),
-          workspaceBusy && genStatus && import_react17.default.createElement(
-            "p",
-            { className: "muted skill-gen-status", role: "status" },
-            genStatus
-          ),
-          import_react17.default.createElement(
-            "button",
-            { type: "submit", disabled: workspaceBusy },
-            workspaceBusy ? mode === "consensus" ? "\u0413\u043B\u0443\u0431\u043E\u043A\u0430\u044F \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F\u2026" : "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F\u2026" : "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043F\u0443\u0442\u044C"
-          )
-        )
-      )
+      import_react18.default.createElement(CurriculumInputBar, {
+        goal,
+        onGoalChange: setGoal,
+        sourcePolicy,
+        onSourcePolicyChange: setSourcePolicy,
+        activeCurriculumId: activeId,
+        workspaceBusy,
+        genStatus,
+        busyAction: genBusyAction,
+        onCreatePath: runCreatePath,
+        onExpandBranch: runExpandBranch,
+        onCreateNew: runCreateNewWhileLoaded
+      })
     ),
-    error && import_react17.default.createElement("div", { className: "skill-error" }, error),
-    import_react17.default.createElement(
+    error && import_react18.default.createElement("div", { className: "skill-error" }, error),
+    import_react18.default.createElement(
       "div",
       {
         className: "skill-split",
@@ -39451,29 +40067,28 @@ function RoadmapDashboard() {
           gridTemplateColumns: `${leftColWidth}px 6px minmax(180px, 1fr) 6px ${rightColWidth}px`
         }
       },
-      import_react17.default.createElement(
+      import_react18.default.createElement(
         "aside",
         { className: "skill-chat-column" },
-        curriculum && selectedNode ? import_react17.default.createElement(NodeTutorChat, {
+        curriculum && selectedNode ? import_react18.default.createElement(NodeTutorChat, {
           session,
-          ragLabels: session?.ragLabels,
           onSend: sendTutorMessage,
           disabled: composeLocked,
           generating: nodeGenerating,
           curriculumId: curriculum.curriculum_id,
           nodeData: toNodeDataInput(selectedNode)
-        }) : import_react17.default.createElement(
+        }) : import_react18.default.createElement(
           "div",
           { className: "tutor-panel skill-chat-placeholder" },
-          import_react17.default.createElement("h3", null, "\u0427\u0430\u0442 \u0441 \u0442\u044C\u044E\u0442\u043E\u0440\u043E\u043C"),
-          import_react17.default.createElement(
+          import_react18.default.createElement("h3", null, "\u0427\u0430\u0442 \u0441 \u0442\u044C\u044E\u0442\u043E\u0440\u043E\u043C"),
+          import_react18.default.createElement(
             "p",
             { className: "muted" },
             curriculum ? "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u2014 \u0434\u0438\u0430\u043B\u043E\u0433 \u043E\u0442\u043A\u0440\u043E\u0435\u0442\u0441\u044F \u0437\u0434\u0435\u0441\u044C (\u043A\u0430\u043A \u0432 Cursor)." : "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442, \u0437\u0430\u0442\u0435\u043C \u043E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u0433\u0440\u0430\u0444\u0435."
           )
         )
       ),
-      import_react17.default.createElement(ColumnResizer, {
+      import_react18.default.createElement(ColumnResizer, {
         onDragDelta: (dx) => {
           setLeftColWidth((w) => {
             const next = Math.min(720, Math.max(240, w + dx));
@@ -39483,19 +40098,20 @@ function RoadmapDashboard() {
         },
         onDragEnd: persistColWidths
       }),
-      curriculum ? import_react17.default.createElement(RoadmapCanvas, {
+      curriculum ? import_react18.default.createElement(RoadmapCanvas, {
         curriculum,
         statuses,
         selectedNodeId: selectedNode?.node_id,
         onNodeClick: openNode,
         tutorBusyNodeId,
-        sessions
-      }) : import_react17.default.createElement(
+        sessions,
+        layoutEpoch
+      }) : import_react18.default.createElement(
         "div",
         { className: "skill-canvas-wrap muted", style: { padding: "2rem" } },
         "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0446\u0435\u043B\u044C \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0439 \u043C\u0430\u0440\u0448\u0440\u0443\u0442."
       ),
-      import_react17.default.createElement(ColumnResizer, {
+      import_react18.default.createElement(ColumnResizer, {
         onDragDelta: (dx) => {
           setRightColWidth((w) => {
             const next = Math.min(960, Math.max(280, w - dx));
@@ -39505,7 +40121,7 @@ function RoadmapDashboard() {
         },
         onDragEnd: persistColWidths
       }),
-      curriculum ? import_react17.default.createElement(NodeDrawer, {
+      curriculum ? import_react18.default.createElement(NodeDrawer, {
         curriculum,
         selectedNode,
         session,
@@ -39516,14 +40132,14 @@ function RoadmapDashboard() {
         composeLocked,
         nodeGenerating,
         sessions
-      }) : import_react17.default.createElement("aside", { className: "node-drawer empty" })
+      }) : import_react18.default.createElement("aside", { className: "node-drawer empty" })
     )
   );
 }
 
 // main.js
 var root2 = (0, import_client.createRoot)(document.getElementById("skill-tree-root"));
-root2.render(import_react18.default.createElement(RoadmapDashboard));
+root2.render(import_react19.default.createElement(RoadmapDashboard));
 /*! Bundled license information:
 
 react/cjs/react.development.js:

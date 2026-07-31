@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
+import { sortDialogMessages, dialogMsgId } from "./api.js";
 import { LlmHtmlBlock } from "./LlmHtmlBlock.js";
-import { repairLlMText } from "./llmTextRepair.js";
+import { repairLlMText, structuredAnalysisToHtml } from "./llmTextRepair.js";
 import { NodeSelectionExplain } from "./NodeSelectionExplain.js";
 
 const QUICK = [
@@ -20,7 +21,6 @@ const QUICK = [
 
 export function NodeTutorChat({
   session,
-  ragLabels,
   onSend,
   disabled,
   generating,
@@ -29,7 +29,7 @@ export function NodeTutorChat({
 }) {
   const [input, setInput] = useState("");
   const materialRef = useRef(null);
-  const messages = session?.messages || [];
+  const messages = sortDialogMessages(session?.messages || []);
   const composeLocked = Boolean(disabled);
   const explainEnabled = Boolean(curriculumId && nodeData);
 
@@ -43,13 +43,6 @@ export function NodeTutorChat({
       /* ошибка в родителе */
     }
   }
-
-  const ragText =
-    ragLabels && ragLabels.length
-      ? `Загружено ${ragLabels.length} персональных фактов из RAG (${ragLabels.join(
-          ", ",
-        )})`
-      : "Персональный RAG: факты выше порога не найдены для этой ноды";
 
   return React.createElement(
     "div",
@@ -69,7 +62,6 @@ export function NodeTutorChat({
     React.createElement(
       "div",
       { className: "tutor-panel-scroll tutor-selectable", ref: materialRef },
-      React.createElement("div", { className: "rag-hint" }, ragText),
       messages.length > 0 &&
         React.createElement(
           "p",
@@ -79,22 +71,35 @@ export function NodeTutorChat({
       React.createElement(
         "div",
         { className: "chat-log node-selectable-material" },
-        messages.map((m, i) =>
-          React.createElement(
+        messages.map((m) => {
+          const msgKey =
+            m.msg_id ||
+            `${m.role}-${dialogMsgId(m) ?? (m.content || "").slice(0, 40)}`;
+          return React.createElement(
             "div",
-            { key: i, className: `chat-msg ${m.role}` },
+            {
+              key: msgKey,
+              className: `chat-msg ${m.role}`,
+              "data-msg-id": m.msg_id || "",
+              "data-role": m.role,
+            },
             m.role === "tutor" && (m.contentHtml || "").length > 0
               ? React.createElement(LlmHtmlBlock, {
                   html: m.contentHtml,
                   className: "md-body chat-md",
                 })
-              : React.createElement(
-                  "div",
-                  { className: "chat-plain" },
-                  repairLlMText(m.content),
-                ),
-          ),
-        ),
+              : m.role === "tutor" && structuredAnalysisToHtml(m.content || "")
+                ? React.createElement(LlmHtmlBlock, {
+                    html: structuredAnalysisToHtml(m.content || ""),
+                    className: "md-body chat-md",
+                  })
+                : React.createElement(
+                    "div",
+                    { className: "chat-plain" },
+                    repairLlMText(m.content),
+                  ),
+          );
+        }),
       ),
     ),
     React.createElement(

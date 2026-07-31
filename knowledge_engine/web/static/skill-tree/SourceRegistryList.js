@@ -9,6 +9,11 @@ export function SourceRegistryList({ registry }) {
     { className: "drawer-section source-registry-section" },
     React.createElement("h3", null, "Источники в материале"),
     React.createElement(
+      "p",
+      { className: "muted small drawer-hint" },
+      "Реестр сессии ноды (mapped / лекция), не глобальная библиотека курса.",
+    ),
+    React.createElement(
       "ul",
       { className: "source-registry-list" },
       items.map((entry, i) => {

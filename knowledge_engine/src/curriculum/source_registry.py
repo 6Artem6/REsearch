@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from knowledge_engine.config import CURRICULUM_DEEP_NODE_MAX_HITS
 from knowledge_engine.src.curriculum.schemas import (
     CurriculumGraph,
     CurriculumNode,
@@ -12,23 +13,38 @@ from knowledge_engine.src.curriculum.schemas import (
 )
 
 
-def validate_curriculum_source_links(graph: CurriculumGraph) -> list[str]:
+def validate_curriculum_source_links(
+    graph: CurriculumGraph,
+    *,
+    allow_model_only_nodes: bool = False,
+) -> list[str]:
     """Каждый mapped_source_id должен быть в curriculum_sources_registry."""
     reg_ids = {e.source_id for e in graph.curriculum_sources_registry}
     if not reg_ids and graph.route_sources:
         reg_ids = {e.source_id for e in graph.route_sources}
     errors: list[str] = []
-    if len(graph.curriculum_sources_registry) < 8 and not graph.route_sources:
-        errors.append(
-            "curriculum_sources_registry: ожидается ≥8 источников в библиотеке курса."
-        )
+    if not allow_model_only_nodes:
+        if len(graph.curriculum_sources_registry) < 8 and not graph.route_sources:
+            errors.append(
+                "curriculum_sources_registry: ожидается ≥8 источников в библиотеке курса."
+            )
     for n in graph.nodes:
+        if allow_model_only_nodes:
+            status = (n.grounding_status or "model_only").strip()
+            risk = (n.node_risk_kind or "BASE").strip()
+            if status in ("model_only", "unverified_deep", "pending_grounding") or risk == "BASE":
+                continue
         mapped = [m.strip() for m in n.mapped_source_ids if (m or "").strip()]
         if not mapped:
-            errors.append(f"Узел '{n.node_id}': mapped_source_ids пуст — нужны 1–3 src_id.")
+            errors.append(
+                f"Узел '{n.node_id}': mapped_source_ids пуст — нужны 1–"
+                f"{CURRICULUM_DEEP_NODE_MAX_HITS} src_id."
+            )
             continue
-        if len(mapped) > 3:
-            errors.append(f"Узел '{n.node_id}': mapped_source_ids > 3.")
+        if len(mapped) > CURRICULUM_DEEP_NODE_MAX_HITS:
+            errors.append(
+                f"Узел '{n.node_id}': mapped_source_ids > {CURRICULUM_DEEP_NODE_MAX_HITS}."
+            )
         for sid in mapped:
             if sid not in reg_ids:
                 errors.append(

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import knowledge_engine.config as cfg
@@ -19,7 +18,7 @@ def _redis_client_kwargs() -> dict[str, Any]:
     return {
         "decode_responses": True,
         "socket_connect_timeout": 5,
-        "socket_timeout": float(os.getenv("REDIS_SOCKET_TIMEOUT_SEC", "120")),
+        "socket_timeout": cfg.REDIS_SOCKET_TIMEOUT_SEC,
         "retry_on_timeout": True,
         # health_check_interval>0 + next_health_check=0 → PING во время on_connect
         "health_check_interval": 0,

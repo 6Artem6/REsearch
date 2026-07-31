@@ -6,7 +6,7 @@ import re
 
 from pydantic import BaseModel, Field
 
-from knowledge_engine.config import GEMINI_LITE_MODEL, GEMINI_RPM_PAUSE_SEC
+from knowledge_engine.config import GEMINI_LITE_MODEL, GEMINI_RPM_PAUSE_SEC, CURRICULUM_DEEP_NODE_MAX_HITS
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.curriculum_whitelist_prompt import curriculum_whitelist_prompt_block
 from knowledge_engine.services.gemini_stateless import (
@@ -225,7 +225,7 @@ def _apply_enrichment(
         new_nodes.append(
             n.model_copy(
                 update={
-                    "mapped_source_ids": mapped[:3],
+                    "mapped_source_ids": mapped[:CURRICULUM_DEEP_NODE_MAX_HITS],
                     "primary_source_id": primary_sid[:16],
                     "learning_goal": (patch.learning_goal or n.learning_goal or "")[:600],
                     "learning_materials": lm,

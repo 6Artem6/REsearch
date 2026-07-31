@@ -1,6 +1,6 @@
 # Knowledge Engine — быстрые команды (из корня REsearch)
 
-.PHONY: infra ollama python dev api worker sync-venv setup smoke-v07 v08 format lint check skill-tree-ui ship
+.PHONY: infra ollama python dev api worker sync-venv setup smoke-v07 v08 format lint check skill-tree-ui ship check-gemini-grounding
 
 PYTHON ?= ./.venv/bin/python
 BLACK ?= ./.venv/bin/black
@@ -61,6 +61,12 @@ dev-deps:
 
 skill-tree-ui:
 	./knowledge_engine/scripts/build-skill-tree-ui.sh
+
+check-gemini-grounding:
+	$(PYTHON) -m knowledge_engine.scripts.check_gemini_grounding --save
+
+check-gemini-grounding-all:
+	$(PYTHON) -m knowledge_engine.scripts.check_gemini_grounding --all-candidates --compare-plain --metadata --save
 
 # git add . + commit + push origin main
 # Пример: make ship MSG="fix: redis worker pubsub"

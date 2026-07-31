@@ -19,6 +19,7 @@ from knowledge_engine.src.processors.source_anchors import (
     format_registry_for_prompt,
     format_valid_docs_for_reasoner,
 )
+from knowledge_engine.src.processors.question_formation_rules import QUESTION_FORMATION_RULES
 from knowledge_engine.src.source_evaluator.evaluator import format_whitelist_for_reasoner_prompt
 from knowledge_engine.src.processors.source_evaluator import (
     MAX_REACT_SOURCE_ITERATIONS,
@@ -39,7 +40,7 @@ FOLLOW_UP_RULES = """
 3. 🏛️ **Шаг назад (Фундамент и первопричины)**: Предложи исследовать фундаментальные истоки, историю возникновения или базовый принцип Computer Science, который привёл к появлению этой технологии.
 
 Каждый пункт должен быть сформулирован как увлекательный исследовательский вопрос или тема для следующего запроса, а НЕ как задача для исполнения.
-"""
+""" + QUESTION_FORMATION_RULES
 
 FAST_MODE_REASONER_PROMPT = """Ты — Главный Системный Архитектор. Твоя задача — объяснить архитектурную концепцию или паттерн доступным, наглядным и фактологичным языком.
 

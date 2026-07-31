@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from knowledge_engine.config import CURRICULUM_DEEP_NODE_MAX_HITS
 from knowledge_engine.src.curriculum.schemas import (
     LayerKind,
     LearningMaterials,
@@ -33,7 +34,10 @@ class NodeDataInput(BaseModel):
     brief_summary: str = Field(default="", max_length=1200)
     category: str = Field(default="", max_length=200)
     learning_materials: LearningMaterials | None = None
-    mapped_source_ids: list[str] = Field(default_factory=list, max_length=3)
+    mapped_source_ids: list[str] = Field(
+        default_factory=list,
+        max_length=CURRICULUM_DEEP_NODE_MAX_HITS,
+    )
     learning_goal: str = Field(default="", max_length=600)
     primary_source_id: str = Field(default="", max_length=16)
     source_ref: NodeSourceRef | None = None

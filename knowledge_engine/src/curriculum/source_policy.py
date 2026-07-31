@@ -6,6 +6,12 @@ from typing import Literal
 
 SourcePolicy = Literal["hybrid", "practical_only", "academic_only"]
 
+# Targeted DEEP search (consensus / academic / practical):
+# - BASE: no search (targeted_node_grounding).
+# - practical_only: Exa → SearXNG only; Consensus blocked.
+# - academic_only | hybrid: SS/arXiv; Consensus sota_required or academic_fallback
+#   (see academic_consensus.py, fetch_academic_sources_async).
+
 _VALID: frozenset[str] = frozenset({"hybrid", "practical_only", "academic_only"})
 
 

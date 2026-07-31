@@ -2,6 +2,8 @@
 
 Страница: **http://127.0.0.1:8765/app/skill-tree**
 
+Пайплайны генерации (worker, Targeted / Search-First, Exa, expand): [TUTOR_PIPELINES.md](TUTOR_PIPELINES.md).
+
 ## Сборка (один раз после клонирования)
 
 CDN `esm.sh` часто блокируется (CORS/MIME). UI собирается **локально**:
@@ -21,6 +23,8 @@ make skill-tree-ui
 make dev          # API + worker
 make worker       # только worker (если API уже запущен)
 ```
+
+`make dev` поднимает API (uvicorn `--reload`) и **worker с auto-reload** (`dev_worker_watch.py`). Reload worker **откладывается**, пока выполняется задача (файл `.runs/worker_dev_busy.json` + running work jobs). Ручной `make worker` — без watcher.
 
 `GET /api/v1/health` → `worker_ok`. Без worker POST `/curriculum/generate` и `/node/*` → 503.
 

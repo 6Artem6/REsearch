@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
+from knowledge_engine.config import RAG_DEFAULT_MAX_FACTS, RAG_DEFAULT_MIN_RELEVANCE
+
 
 class SearchDirection(BaseModel):
     direction_label: str = Field(min_length=2, max_length=200)
@@ -17,8 +19,10 @@ class DirectionalRAGQuery(BaseModel):
     target_node: str = Field(min_length=2, max_length=80)
     search_directions: list[SearchDirection] = Field(min_length=1, max_length=8)
     relevance_criteria: str = Field(min_length=10, max_length=2000)
-    max_facts: int = Field(default=4, ge=1, le=12)
-    min_relevance_threshold: float = Field(default=0.75, ge=0.1, le=0.99)
+    max_facts: int = Field(default=RAG_DEFAULT_MAX_FACTS, ge=1, le=12)
+    min_relevance_threshold: float = Field(
+        default=RAG_DEFAULT_MIN_RELEVANCE, ge=0.1, le=0.99
+    )
 
 
 class RankedMemoryFact(BaseModel):

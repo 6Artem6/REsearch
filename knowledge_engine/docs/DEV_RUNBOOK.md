@@ -2,6 +2,8 @@
 
 Все команды из **корня** `REsearch`.
 
+**AI Skill Tree / Tutor (генерация графа, worker, Exa):** [TUTOR_PIPELINES.md](TUTOR_PIPELINES.md) · UI: [SKILL_TREE_UI.md](SKILL_TREE_UI.md).
+
 ## 1. Один раз (окружение)
 
 ```bash
@@ -126,3 +128,17 @@ Ollama в контейнере **не используется** — `OLLAMA_BAS
 
 - `KE_TRACE_STDOUT=true`
 - `KE_LOG_PLAIN=true`
+
+### Lecture RAG (dense_material, CE + MMR)
+
+См. [LECTURE_RAG_CONTEXT.md](LECTURE_RAG_CONTEXT.md). В trace ищите `LECTURE_RAG pool`, `ce_filter`, `mmr_pick`.
+
+| Env | Default |
+|-----|---------|
+| `LECTURE_RAG_CANDIDATE_LIMIT` | 15 |
+| `LECTURE_RAG_MMR_TOP_K` | 5 |
+| `LECTURE_RAG_CE_MIN_SCORE` | 0.38 |
+| `LECTURE_RAG_MMR_LAMBDA` | 0.62 |
+| `LECTURE_RAG_RERANK_TIMEOUT_SEC` | 60 |
+
+Требует Ollama (`EMBED_MODEL`) и опционально `sentence_transformers` + `RAG_CROSS_ENCODER_MODEL` для CE.

@@ -17,9 +17,8 @@ from knowledge_engine.config import (
     GOOGLE_CSE_API_KEY,
     GOOGLE_CSE_ID,
 )
-from knowledge_engine.schemas import DocumentSummary
-from knowledge_engine.services.vector_store import VectorStore
 from knowledge_engine.src.curriculum.curriculum_v08_harvest import _deep_extract_blocks
+from knowledge_engine.src.curriculum.practical_url_filters import filter_practical_search_row
 from knowledge_engine.src.curriculum.practical_searxng_search import collect_searxng_practical_rows
 from knowledge_engine.src.curriculum.schemas import CurriculumSearchHit
 from knowledge_engine.src.curriculum.search_query_builder import build_search_queries
@@ -139,22 +138,15 @@ def _snippet_ready(snippet: str) -> bool:
     return len((snippet or "").strip()) >= CURRICULUM_PRACTICAL_SNIPPET_MIN_CHARS
 
 
-def _save_snippet_hit(row: dict[str, str], tier: str) -> CurriculumSearchHit:
+def _row_to_hit(row: dict[str, str], tier: str) -> CurriculumSearchHit:
     url = row["url"]
     title = row["title"]
-    snippet = row["snippet"]
-    extracts = _deep_extract_blocks([], [], [snippet], min_words=60, max_words=220)
-    if not extracts:
-        extracts = [snippet[:800]]
-    ds = DocumentSummary(
-        title=title[:400],
-        url=url,
-        key_takeaways=extracts[:6],
-        failure_modes=[],
-        cs_concepts=[],
-    )
-    VectorStore().save_summary(ds)
-    trace(f"CURRICULUM practical snippet ✓ | {tier} | LanceDB без 7B | {url[:70]}")
+    snippet = row.get("snippet") or ""
+    extracts: list[str] = []
+    if _snippet_ready(snippet):
+        extracts = _deep_extract_blocks([], [], [snippet], min_words=60, max_words=220)
+        if not extracts:
+            extracts = [snippet[:800]]
     return CurriculumSearchHit(
         url=url,
         title=title,
@@ -174,26 +166,28 @@ def _merge_row_lists(
         for row in rows:
             url = row.get("url") or ""
             if not is_collectible_article_url(url):
+                trace(f"CURRICULUM practical filter ⊘ | {url[:70]} | not_collectible")
+                continue
+            if not filter_practical_search_row(row):
                 continue
             key = url.lower()
             if key in seen:
                 continue
             seen.add(key)
-            if _snippet_ready(row.get("snippet") or ""):
-                hits.append(_save_snippet_hit(row, tier))
-            else:
-                hits.append(
-                    CurriculumSearchHit(
-                        url=url,
-                        title=row["title"],
-                        snippet=row.get("snippet") or "",
-                        key_extracts=[],
-                        source_tier=tier,
-                    )
-                )
+            hits.append(_row_to_hit(row, tier))
             if len(hits) >= cap:
                 return hits
     return hits
+
+
+async def _search_exa_practical(query: str, limit: int) -> list[CurriculumSearchHit]:
+    from knowledge_engine.services.search.exa_transform import fetch_exa_curriculum_hits_simple
+
+    return await fetch_exa_curriculum_hits_simple(
+        query,
+        limit=limit,
+        anchor="curriculum:practical_bulk",
+    )
 
 
 async def fetch_practical_sources_async(
@@ -209,15 +203,28 @@ async def fetch_practical_sources_async(
     q = built.practical_query
     cap = max(1, max_hits)
 
+    merged: list[CurriculumSearchHit] = []
+    seen_urls: set[str] = set()
+
+    exa_hits = await _search_exa_practical(q, cap)
+    for h in exa_hits:
+        key = h.url.lower()
+        if key in seen_urls:
+            continue
+        seen_urls.add(key)
+        merged.append(h)
+
+    parts: list[tuple[list[dict[str, str]], str]] = []
+    need_fallback = len(merged) < cap
+
     cse_rows: list[dict[str, str]] = []
     cse_exhausted = False
-    if CURRICULUM_GOOGLE_CSE_ENABLED:
+    if need_fallback and CURRICULUM_GOOGLE_CSE_ENABLED:
         cse_rows, cse_exhausted = await _search_google_cse(q, CURRICULUM_PRACTICAL_CSE_LIMIT)
-    parts: list[tuple[list[dict[str, str]], str]] = []
     if cse_rows:
         parts.append((cse_rows, "google_cse"))
 
-    need_more = len(cse_rows) < cap or cse_exhausted
+    need_more = need_fallback and (len(cse_rows) < cap - len(merged) or cse_exhausted)
     if need_more:
         sx_rows = await collect_searxng_practical_rows(
             vec,
@@ -227,20 +234,25 @@ async def fetch_practical_sources_async(
             parts.append((sx_rows, "searxng"))
 
     total_rows = sum(len(p[0]) for p in parts)
-    if total_rows < cap and CURRICULUM_PRACTICAL_DDGS_ENABLED:
+    if need_fallback and total_rows < cap - len(merged) and CURRICULUM_PRACTICAL_DDGS_ENABLED:
         ddgs_rows = _search_ddgs(q, CURRICULUM_PRACTICAL_DDGS_LIMIT)
         if ddgs_rows:
             parts.append((ddgs_rows, "ddgs"))
 
-    if not parts:
-        return []
+    if parts:
+        extra_cap = max(0, cap - len(merged))
+        for h in _merge_row_lists(parts, extra_cap):
+            key = h.url.lower()
+            if key in seen_urls:
+                continue
+            seen_urls.add(key)
+            merged.append(h)
 
-    raw_hits = _merge_row_lists(parts, cap)
-    if not raw_hits:
+    if not merged:
         return []
 
     valid, broken = await validate_and_filter_urls_async(
-        raw_hits,
+        merged,
         timeout=CURRICULUM_URL_VALIDATE_TIMEOUT_SEC,
     )
     if broken:

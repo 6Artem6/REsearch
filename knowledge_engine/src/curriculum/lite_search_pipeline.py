@@ -8,7 +8,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from knowledge_engine.config import CURRICULUM_LITE_BATCH_EVAL_FALLBACK_N
+from knowledge_engine.config import (
+    CURRICULUM_LITE_BATCH_EVAL_FALLBACK_N,
+    CURRICULUM_LITE_BATCH_STRICT,
+)
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.src.curriculum.search_query_builder import build_fallback_quote_queries
 from knowledge_engine.src.source_evaluator.whitelist import APPROVED_SOURCES_WHITELIST
@@ -39,6 +42,76 @@ _BATCH_SYSTEM = (
 class LiteQueryPlan(BaseModel):
     selected_domains: list[str] = Field(default_factory=list)
     queries: list[str] = Field(default_factory=list)
+
+
+class LiteAcademicQueryOut(BaseModel):
+    academic_query_en: str = Field(
+        description="English CS/engineering literature search query"
+    )
+    notes: str = ""
+
+
+_ACADEMIC_QUERY_SYSTEM = (
+    f"{RUSSIAN_OUTPUT_RULE}\n\n"
+    "Ты — Academic Query Architect для Semantic Scholar / arXiv.\n"
+    "Переведи учебную цель на точный английский поисковый запрос (1–2 предложения).\n"
+    "Включи конкретные технические термины (asyncio, RabbitMQ, microservices, message broker…).\n"
+    "НЕ используй одно слово (python, programming). НЕ подменяй тему.\n"
+    "JSON: academic_query_en (string), notes (кратко, русский)."
+)
+
+
+def _anchor_academic(goal: str) -> str:
+    return f"curriculum_lite_academic_query:{(goal or '').strip()[:500]}"
+
+
+async def build_academic_search_query(
+    learning_goal: str,
+    *,
+    anchor: str | None = None,
+) -> str:
+    goal = (learning_goal or "").strip()
+    if len(goal) < 4:
+        return ""
+    trace("CURRICULUM academic query ▶ | Lite Academic Query Architect")
+    try:
+        out = await _lite_structured(
+            _ACADEMIC_QUERY_SYSTEM,
+            json.dumps({"learning_goal": goal[:1200]}, ensure_ascii=False),
+            anchor or _anchor_academic(goal),
+            LiteAcademicQueryOut,
+            "curriculum / lite_academic_query",
+        )
+        q = (out.academic_query_en or "").strip()
+        if len(q) < 12 or q.lower().split() == ["python"]:
+            raise ValueError(f"weak academic query: {q[:80]}")
+        trace(f"CURRICULUM academic query ✓ | Lite | {q[:120]}")
+        return q[:300]
+    except Exception as exc:
+        from knowledge_engine.src.curriculum.search_query_builder import build_search_queries
+
+        trace(f"CURRICULUM academic query fallback | {exc}")
+        built = build_search_queries(goal)
+        q = (built.academic_query or "").strip()
+        if len(q) < 8:
+            q = goal[:120]
+        trace(f"CURRICULUM academic query fallback ✓ | heuristic | {q[:120]}")
+        return q
+
+
+def build_academic_search_query_sync(learning_goal: str, *, anchor: str | None = None) -> str:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(build_academic_search_query(learning_goal, anchor=anchor))
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(
+            asyncio.run,
+            build_academic_search_query(learning_goal, anchor=anchor),
+        ).result()
 
 
 class LiteHitEvaluation(BaseModel):
@@ -192,21 +265,25 @@ async def batch_lite_eval_hits(
     *,
     anchor: str | None = None,
     fallback_approve_n: int | None = None,
+    strict: bool | None = None,
 ) -> list[dict[str, Any]]:
     """
     Один вызов Lite на все hits. Возвращает подмножество raw_hits (approved).
-    При ошибке — первые N hits с дефолтным approve.
+    strict=True (default из CURRICULUM_LITE_BATCH_STRICT): без аварийного approve.
     """
     goal = (learning_goal or "").strip()
     if not raw_hits:
         return []
 
+    use_strict = strict if strict is not None else CURRICULUM_LITE_BATCH_STRICT
     batch_input = _hits_to_batch_input(raw_hits)
     n_fb = fallback_approve_n if fallback_approve_n is not None else (
         CURRICULUM_LITE_BATCH_EVAL_FALLBACK_N
     )
 
     if len(goal) < 4:
+        if use_strict:
+            return []
         return list(raw_hits[:max(1, n_fb)])
 
     user_obj = {"learning_goal": goal[:1200], "raw_hits": batch_input}
@@ -225,10 +302,16 @@ async def batch_lite_eval_hits(
         for ev in out.evaluations or []:
             by_id[int(ev.id)] = ev
     except Exception as exc:
+        if use_strict:
+            trace(f"CURRICULUM lite batch eval strict ⊘ | {exc}")
+            return []
         trace(f"CURRICULUM lite batch eval fallback | approve first {n_fb} | {exc}")
         return list(raw_hits[:max(1, n_fb)])
 
     if not by_id:
+        if use_strict:
+            trace("CURRICULUM lite batch eval strict ⊘ | empty evaluations")
+            return []
         trace(f"CURRICULUM lite batch eval empty ⊘ | approve first {n_fb}")
         return list(raw_hits[:max(1, n_fb)])
 
@@ -249,7 +332,20 @@ async def batch_lite_eval_hits(
         f"CURRICULUM lite batch eval ✓ | in={len(raw_hits)} "
         f"approved={len(approved)} rejected={rejected}"
     )
+    if not approved and raw_hits and by_id and rejected >= len(raw_hits):
+        trace(
+            "CURRICULUM lite batch ⊘ | все hits отклонены Lite — "
+            "без fallback approve"
+        )
+        return []
     if not approved and raw_hits:
+        if use_strict:
+            trace("CURRICULUM lite batch strict ⊘ | approved=0")
+            return []
+        trace(
+            f"CURRICULUM lite batch fallback | approve first {n_fb} "
+            "(Lite не дал evaluations)"
+        )
         return list(raw_hits[:max(1, n_fb)])
     return approved
 
@@ -421,6 +517,7 @@ async def batch_lite_eval_curriculum_hits(
     learning_goal: str,
     *,
     anchor: str | None = None,
+    strict: bool | None = None,
 ) -> list[Any]:
     """Обертка для CurriculumSearchHit → batch_lite_eval_hits."""
     from knowledge_engine.src.curriculum.schemas import CurriculumSearchHit
@@ -453,6 +550,7 @@ async def batch_lite_eval_curriculum_hits(
         learning_goal,
         slim,
         anchor=anchor,
+        strict=strict,
     )
     approved_urls = {str(x.get("url") or "").strip().lower() for x in approved_slim}
     out: list[Any] = []

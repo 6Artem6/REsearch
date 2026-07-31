@@ -11,11 +11,16 @@ from pydantic import BaseModel, Field, field_validator
 
 from knowledge_engine.config import (
     OLLAMA_BASE_URL,
+    OLLAMA_ROUTER_KEEP_ALIVE,
     SELECTION_PROMPTS_NUM_PREDICT,
     SELECTION_PROMPTS_OLLAMA_MODEL,
     SELECTION_PROMPTS_TIMEOUT_SEC,
+    OLLAMA_ROUTER_NUM_CTX,
 )
 from knowledge_engine.ui.run_log import trace
+from knowledge_engine.src.processors.question_formation_rules import (
+    QUESTION_FORMATION_RULES,
+)
 
 SELECTION_PROMPT_SYSTEM = """Ты — ассистент исследовательского движка. Твоя задача — сгенерировать 3 коротких, точных и глубоких инженерных вопроса к выделенному пользователем фрагменту текста.
 
@@ -39,7 +44,7 @@ SELECTION_PROMPT_SYSTEM = """Ты — ассистент исследовате�
     "Текст вопроса 3?"
   ]
 }}
-"""
+""" + QUESTION_FORMATION_RULES
 
 DEFAULT_SELECTION_QUESTIONS: list[str] = [
     "Что это значит на практике?",
@@ -138,8 +143,9 @@ async def _ollama_chat_questions(system: str, user: str) -> list[str]:
         "options": {
             "temperature": 0.25,
             "num_predict": SELECTION_PROMPTS_NUM_PREDICT,
-            "num_ctx": 2048,
+            "num_ctx": OLLAMA_ROUTER_NUM_CTX,
         },
+        "keep_alive": OLLAMA_ROUTER_KEEP_ALIVE,
     }
     timeout = httpx.Timeout(SELECTION_PROMPTS_TIMEOUT_SEC)
     async with httpx.AsyncClient(timeout=timeout) as client:
