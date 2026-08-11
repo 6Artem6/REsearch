@@ -60,8 +60,22 @@ knowledge_engine/.source_archive/
 **/.browser_state/
 **/playwright-browsers/
 ms-playwright/
+*.har
+consensus_network_trace.har
+consensus_api_endpoint.json
+consensus_storage_state.json
 
 **/skill-tree/node_modules/
 
 # Docker локальные override (не секреты, но часто персональные)
 docker-compose.override.yml
+
+# Local DB & Temp dumps
+lancedb_data/
+knowledge_engine/tmp/
+logs/session_traces/
+
+# Offline tokenizer vocab (~26 MB; see tokenizers_cache/README.md)
+knowledge_engine/src/utils/tokenizers_cache/qwen.tiktoken
+knowledge_engine/src/utils/tokenizers_cache/qwen2.5.json
+knowledge_engine/src/utils/tokenizers_cache/gemma_gemini_tokenizer.json
