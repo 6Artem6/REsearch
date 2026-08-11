@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from knowledge_engine.llm_locale import GEMINI_RUSSIAN_ROLE, RUSSIAN_OUTPUT_RULE
-from knowledge_engine.schemas import EngineGraphState, L0DecompositionResult
+from knowledge_engine.schemas import EngineGraphState
+from knowledge_engine.schemas.llm_contracts.v04_gemini import (
+    GeminiL0DecompositionContract,
+)
 from knowledge_engine.services.gemini_stateless import (
     global_anchor_from_state,
     run_stateless_gemini,
@@ -35,7 +38,7 @@ def decomposition_node_v04(state: EngineGraphState) -> dict[str, Any]:
         system,
         user,
         anchor,
-        response_schema=L0DecompositionResult,
+        response_schema=GeminiL0DecompositionContract,
         label="v04 decomposition / L0",
     )
 

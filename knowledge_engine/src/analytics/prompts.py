@@ -5,12 +5,15 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
-from knowledge_engine.src.guardrails.personal_context import format_personal_context
+from knowledge_engine.src.guardrails.personal_context import (
+    PersonalContext,
+    format_personal_context,
+)
+from knowledge_engine.src.prompts.engineering_context import GLOBAL_ENGINEERING_CRITERIA
 from knowledge_engine.src.retrieval.semantic_scholar import (
     ScholarPaper,
     format_papers_block,
 )
-from knowledge_engine.src.state import PersonalContext
 
 
 def build_architect_system_instruction(
@@ -33,6 +36,7 @@ def build_architect_system_instruction(
         "Ты — Главный Архитектор Систем ИИ.\n\n"
         "### ЛОКАЛЬНЫЙ КОНТЕКСТ ПРОЕКТА И ОГРАНИЧЕНИЯ (от Local Agent):\n"
         f"{personal_block}\n\n"
+        f"{GLOBAL_ENGINEERING_CRITERIA}\n\n"
         "### НАЙДЕННЫЕ НАУЧНЫЕ СТАТЬИ И АБСТРАКТЫ (Semantic Scholar / arXiv):\n"
         f"{papers_block}\n\n"
         "### ВОПРОС ПОЛЬЗОВАТЕЛЯ:\n"

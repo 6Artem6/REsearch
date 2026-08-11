@@ -5,13 +5,22 @@ RUSSIAN_OUTPUT_RULE = (
     "сжимай, переводи и формулируй вывод только на русском. "
     "Все строки в JSON (title, description, pros, cons, takeaways, failure_modes) — русский."
 )
+"""
+RU (пояснение): блок LANGUAGE в system — все текстовые поля JSON только на русском.
+"""
 
 RUSSIAN_ROUTER_RULE = (
     "Ты локальный SLM-router. Отвечай и формируй поля только на русском, "
     "даже если вход пользователя смешанный или источники англоязычные."
 )
+"""
+RU (пояснение): правило для локального SLM-router (Ollama routing).
+"""
 
 GEMINI_RUSSIAN_ROLE = (
     "Ты — Senior System Architect. Весь синтез, матрица trade-off, failure modes и "
     "пояснения — только на русском языке, независимо от языка источников."
 )
+"""
+RU (пояснение): роль Gemini для аналитики/trade-off матриц — синтез на русском.
+"""

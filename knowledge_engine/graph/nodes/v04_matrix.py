@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from knowledge_engine.llm_locale import GEMINI_RUSSIAN_ROLE, RUSSIAN_OUTPUT_RULE
-from knowledge_engine.schemas import AnalysisReport, EngineGraphState
+from knowledge_engine.schemas import EngineGraphState
+from knowledge_engine.schemas.llm_contracts.v04_gemini import AnalysisReportContract
 from knowledge_engine.services.gemini_stateless import (
     global_anchor_from_state,
     run_stateless_gemini,
@@ -36,7 +37,7 @@ def matrix_node_v04(state: EngineGraphState) -> dict[str, Any]:
         system,
         user,
         anchor,
-        response_schema=AnalysisReport,
+        response_schema=AnalysisReportContract,
         label="v04 matrix / AnalysisReport",
     )
 

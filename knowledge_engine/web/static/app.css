@@ -603,9 +603,26 @@ a.source-link:hover {
 
 .md-body table {
   border-collapse: collapse;
-  width: 100%;
-  margin: 1rem 0;
+  margin: 0;
   font-size: 0.92rem;
+}
+
+.md-body .md-table-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  margin: 1rem 0;
+  border: 1px solid var(--ke-border-color);
+  border-radius: var(--ke-radius-sm);
+  background: var(--ke-table-surface, var(--ke-body-bg));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  -webkit-overflow-scrolling: touch;
+}
+
+.md-body .md-table-scroll table {
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
 }
 
 .md-body th,
@@ -617,6 +634,20 @@ a.source-link:hover {
 
 .md-body th {
   background: var(--ke-chrome-bg);
+}
+
+.md-body .md-table-scroll th {
+  background: var(--ke-table-head-bg, var(--ke-chrome-bg));
+  color: var(--ke-heading-color);
+  font-weight: 600;
+}
+
+.md-body .md-table-scroll td {
+  background: var(--ke-table-cell-bg, transparent);
+}
+
+.md-body .md-table-scroll tbody tr:nth-child(even) td {
+  background: var(--ke-table-row-alt, rgba(0, 0, 0, 0.12));
 }
 
 .md-body pre {

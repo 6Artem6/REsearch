@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
+from knowledge_engine.services.context_manager import load_personal_orchestrator_focus
 from knowledge_engine.src.analytics.gemini_v07 import run_gemini_flash_structured
 from knowledge_engine.src.analytics.prompts import (
     build_architect_system_instruction,
@@ -20,6 +21,10 @@ from knowledge_engine.src.processors.source_anchors import (
     format_registry_for_prompt,
 )
 from knowledge_engine.src.state import ScrapedDocument, StructuredChunk
+
+ConceptGraphContract = ConceptGraph
+ProfileGapMapContract = ProfileGapMap
+TradeoffMatrixContract = TradeoffMatrixResult
 
 _MAX_CHUNKS_IN_PROMPT = 28
 _MAX_CHUNK_TEXT = 900
@@ -156,7 +161,7 @@ def build_profile_gap_map(
     source_registry: List[Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """L2b: условия, допущения и столкновения теории с контекстом задачи."""
-    profile = (user_profile_md or "").strip()[:6000]
+    profile = load_personal_orchestrator_focus()[:2000]
     graph_json = json.dumps(concept_graph, ensure_ascii=False, indent=2)[:16_000]
 
     papers_fmt = formatted_papers_from_state(scholarly_papers)
@@ -170,8 +175,7 @@ def build_profile_gap_map(
         + _source_anchor_block(source_registry)
     )
     user = (
-        f"## user_profile.md (контекст, не фильтр)\n{profile}\n\n"
-        f"## ConceptGraph\n{graph_json}"
+        f"## Личный фокус (оркестратор)\n{profile}\n\n" f"## ConceptGraph\n{graph_json}"
     )
     full_docs = _full_documents_payload(source_documents or [])
     if full_docs:
@@ -199,7 +203,7 @@ def build_tradeoff_matrix(
     """
     L2c: Classical vs SOTA vs Minimalist — развернутый архитектурный разбор.
     """
-    profile = (user_profile_md or "").strip()[:4000]
+    profile = load_personal_orchestrator_focus()[:2000]
     graph_json = json.dumps(concept_graph, ensure_ascii=False)[:12_000]
     gap_json = json.dumps(profile_gap_map, ensure_ascii=False)[:12_000]
 
@@ -214,7 +218,7 @@ def build_tradeoff_matrix(
         f"{_RESEARCH_PRIORITY}\n\n" + _source_anchor_block(source_registry)
     )
     user = (
-        f"## user_profile.md (контекст)\n{profile}\n\n"
+        f"## Личный фокус (оркестратор)\n{profile}\n\n"
         f"## ConceptGraph\n{graph_json}\n\n"
         f"## ProfileGapMap\n{gap_json}"
     )

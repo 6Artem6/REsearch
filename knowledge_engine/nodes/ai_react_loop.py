@@ -18,7 +18,9 @@ from knowledge_engine.schemas import (
 from knowledge_engine.services.ai_dialogue.gemini_session import (
     BrowserGeminiDialogueSession,
 )
-from knowledge_engine.src.processors.question_formation_rules import QUESTION_FORMATION_RULES
+from knowledge_engine.src.processors.question_formation_rules import (
+    QUESTION_FORMATION_RULES,
+)
 from knowledge_engine.ui.logger import set_status
 from knowledge_engine.ui.run_log import node_end, node_start
 

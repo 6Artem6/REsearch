@@ -7,7 +7,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from knowledge_engine.api.helpers.work_enqueue import enqueue_curriculum_generate, enqueue_curriculum_expand
+from knowledge_engine.api.helpers.work_enqueue import (
+    enqueue_curriculum_expand,
+    enqueue_curriculum_generate,
+)
 from knowledge_engine.services.work_job_store import WorkJobStatus, work_job_store
 from knowledge_engine.src.curriculum.schemas import CurriculumGraph
 from knowledge_engine.ui.run_log import trace
@@ -64,10 +67,7 @@ def post_generate_curriculum(body: CurriculumGenerateRequest) -> dict[str, Any]:
         gen_mode = "consensus"
     else:
         gen_mode = "fast"
-    from knowledge_engine.src.curriculum.source_policy import (
-        normalize_source_policy,
-        resolve_source_policy,
-    )
+    from knowledge_engine.src.curriculum.source_policy import resolve_source_policy
 
     src_policy = resolve_source_policy(
         body.source_policy,

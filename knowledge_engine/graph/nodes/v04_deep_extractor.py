@@ -10,8 +10,10 @@ from knowledge_engine.llm_locale import GEMINI_RUSSIAN_ROLE, RUSSIAN_OUTPUT_RULE
 from knowledge_engine.schemas import (
     DocumentStructure,
     EngineGraphState,
-    L2EvidenceExtraction,
     StructureFilterResult,
+)
+from knowledge_engine.schemas.llm_contracts.v04_gemini import (
+    L2EvidenceExtractionContract,
 )
 from knowledge_engine.services.gemini_stateless import (
     global_anchor_from_state,
@@ -116,7 +118,7 @@ def deep_extractor_node(state: EngineGraphState) -> dict[str, Any]:
             user,
             anchor,
             image_parts,
-            response_schema=L2EvidenceExtraction,
+            response_schema=L2EvidenceExtractionContract,
             label="deep_extractor / multimodal L2",
             rpm_pause=True,
         )
@@ -125,7 +127,7 @@ def deep_extractor_node(state: EngineGraphState) -> dict[str, Any]:
             system,
             user,
             anchor,
-            response_schema=L2EvidenceExtraction,
+            response_schema=L2EvidenceExtractionContract,
             label="deep_extractor / L2",
             rpm_pause=True,
         )

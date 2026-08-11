@@ -8,8 +8,15 @@ from datetime import datetime, timezone
 from typing import Any
 
 from knowledge_engine.config import PACKAGE_ROOT
-from knowledge_engine.services.llm_markdown_service import enrich_session_blob_for_client
+from knowledge_engine.services.llm_markdown_service import (
+    enrich_session_blob_for_client,
+)
 from knowledge_engine.src.curriculum.schemas import CurriculumGraph
+from knowledge_engine.src.curriculum.source_registry import (
+    cap_curriculum_sources_registry,
+    normalize_stored_curriculum_graph,
+    sync_route_sources_from_registry,
+)
 from knowledge_engine.src.node_deep_dive.session_store import (
     discover_curriculum_ids_from_sessions,
     get_all_sessions_for_curriculum,
@@ -56,9 +63,19 @@ def save_curriculum_record(
 ) -> dict[str, Any]:
     """Сохранить или обновить граф маршрута."""
     if isinstance(graph, CurriculumGraph):
-        payload = graph.model_dump()
+        g_obj = graph
     else:
-        payload = dict(graph)
+        g_obj = CurriculumGraph.model_validate(
+            normalize_stored_curriculum_graph(dict(graph))
+        )
+    registry = cap_curriculum_sources_registry(
+        list(g_obj.curriculum_sources_registry),
+        graph=g_obj,
+    )
+    g_obj = sync_route_sources_from_registry(
+        g_obj.model_copy(update={"curriculum_sources_registry": registry})
+    )
+    payload = g_obj.model_dump()
     cid = str(payload.get("curriculum_id") or "").strip()
     if not cid:
         raise ValueError("curriculum_id обязателен")
@@ -116,9 +133,8 @@ def list_curriculum_summaries() -> list[dict[str, Any]]:
                 "total_nodes": g.get("total_nodes") or len(g.get("nodes") or []),
                 "created_at": item.get("created_at"),
                 "updated_at": item.get("updated_at"),
-                "is_active": item.get("curriculum_id") == doc.get(
-                    "active_curriculum_id"
-                ),
+                "is_active": item.get("curriculum_id")
+                == doc.get("active_curriculum_id"),
                 "has_graph": True,
             }
         )
@@ -150,7 +166,10 @@ def get_curriculum_graph(curriculum_id: str) -> dict[str, Any] | None:
         doc = _load_doc()
     for item in doc.get("curricula") or []:
         if item.get("curriculum_id") == cid:
-            return item.get("graph") or None
+            g = item.get("graph") or None
+            if g and isinstance(g, dict):
+                return normalize_stored_curriculum_graph(g)
+            return g
     return None
 
 
@@ -162,6 +181,42 @@ def get_curriculum_meta(curriculum_id: str) -> dict[str, Any] | None:
         if item.get("curriculum_id") == cid:
             return dict(item)
     return None
+
+
+def patch_curriculum_graph_node(
+    curriculum_id: str,
+    node_id: str,
+    updates: dict[str, Any],
+) -> bool:
+    """Merge ``updates`` into one node dict inside stored graph."""
+    cid = (curriculum_id or "").strip()
+    nid = (node_id or "").strip()
+    if not cid or not nid or not updates:
+        return False
+    with _lock:
+        doc = _load_doc()
+        for item in doc.get("curricula") or []:
+            if item.get("curriculum_id") != cid:
+                continue
+            graph = item.get("graph") or {}
+            nodes = graph.get("nodes") or []
+            found = False
+            for raw in nodes:
+                if not isinstance(raw, dict):
+                    continue
+                if str(raw.get("node_id") or "").strip() != nid:
+                    continue
+                raw.update(updates)
+                found = True
+                break
+            if not found:
+                return False
+            graph["nodes"] = nodes
+            item["graph"] = graph
+            item["updated_at"] = _now_iso()
+            _save_doc(doc)
+            return True
+    return False
 
 
 def _short_neighbor_concepts(concepts: list[str] | None, max_items: int = 3) -> str:
@@ -221,7 +276,9 @@ def get_node_neighbors_context(curriculum_id: str, node_id: str) -> dict[str, An
             {
                 "node_id": pid,
                 "title": str(raw.get("title") or pid)[:300],
-                "short_concepts": _short_neighbor_concepts(raw.get("core_concepts") or []),
+                "short_concepts": _short_neighbor_concepts(
+                    raw.get("core_concepts") or []
+                ),
             }
         )
 
@@ -263,6 +320,20 @@ def get_active_curriculum_id() -> str:
         return str(_load_doc().get("active_curriculum_id") or "").strip()
 
 
+def _mapped_source_ids_for_node(graph: dict[str, Any], node_id: str) -> list[str]:
+    nid = (node_id or "").strip()
+    for n in graph.get("nodes") or []:
+        if not isinstance(n, dict):
+            continue
+        if str(n.get("node_id") or n.get("id") or "").strip() == nid:
+            return [
+                str(x).strip()
+                for x in (n.get("mapped_source_ids") or [])
+                if str(x).strip()
+            ]
+    return []
+
+
 def get_workspace_state(curriculum_id: str) -> dict[str, Any] | None:
     """
     Полный снимок для UI: граф, статусы, сессии нод (контент, диалоги, ссылки).
@@ -272,10 +343,32 @@ def get_workspace_state(curriculum_id: str) -> dict[str, Any] | None:
         return None
     meta = get_curriculum_meta(curriculum_id) or {}
     statuses = get_node_statuses_for_curriculum(curriculum_id)
-    sessions = {
-        node_id: enrich_session_blob_for_client(blob)
-        for node_id, blob in get_all_sessions_for_curriculum(curriculum_id).items()
-    }
+    from knowledge_engine.services.node_source_registry import (
+        build_session_source_registry,
+    )
+    from knowledge_engine.src.node_deep_dive.schemas import NodeContentBlock
+    from knowledge_engine.src.node_deep_dive.tutor_source_citations import (
+        scrub_content_references,
+    )
+
+    sessions: dict[str, Any] = {}
+    for node_id, blob in get_all_sessions_for_curriculum(curriculum_id).items():
+        b = dict(blob)
+        mapped = _mapped_source_ids_for_node(graph, node_id)
+        reg = build_session_source_registry(curriculum_id, mapped)
+        b["source_registry"] = reg
+        raw_content = b.get("content")
+        if isinstance(raw_content, dict):
+            block = scrub_content_references(
+                NodeContentBlock.model_validate(raw_content),
+                reg,
+            )
+            b["content"] = block.model_dump(exclude={"summary_html"})
+        sessions[node_id] = enrich_session_blob_for_client(
+            b,
+            node_id=node_id,
+            curriculum_id=curriculum_id,
+        )
     return {
         "curriculum_id": curriculum_id,
         "meta": {

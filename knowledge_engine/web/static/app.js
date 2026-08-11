@@ -366,7 +366,8 @@ function fixCorruptedTextCommands(s) {
   s = s.replace(/\^\{\t+\\text\{/g, "^{\text{");
   s = s.replace(/\\text\s+([a-zA-Z][a-zA-Z0-9_]*)\s*,/g, "\\text{$1},");
   s = s.replace(/\\text\s+([a-zA-Z][a-zA-Z0-9_]*)(?![a-zA-Z0-9_{])/g, "\\text{$1}");
-  s = s.replace(/\\t\s+/g, " ");
+  s = s.replace(/\\t\s+(?!imes)/g, " ");
+  s = s.replace(/\\t\s+imes/gi, "\\times");
   return s;
 }
 

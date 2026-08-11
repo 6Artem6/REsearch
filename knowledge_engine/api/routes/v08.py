@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from knowledge_engine.services.gemini_stateless import GeminiUnavailableError
+from knowledge_engine.services.llm_markdown_service import llm_markdown_to_html
 from knowledge_engine.services.v07_run_store import v07_run_store
 from knowledge_engine.src.processors.explainer import (
     DEFAULT_EXPLAIN_QUESTION,
@@ -18,7 +19,6 @@ from knowledge_engine.src.processors.selection_prompts import (
     suggest_selection_questions,
 )
 from knowledge_engine.ui.run_log import trace
-from knowledge_engine.services.llm_markdown_service import llm_markdown_to_html
 
 router = APIRouter(prefix="/v08", tags=["v08-explainer"])
 

@@ -7,11 +7,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from knowledge_engine.config import (
-    MAX_RESEARCH_SOURCES,
-    ROUTER_MODEL,
-    SKIP_GEMINI,
-)
+from knowledge_engine.config import MAX_RESEARCH_SOURCES, ROUTER_MODEL, SKIP_GEMINI
 from knowledge_engine.llm import invoke_logged, structured_chat
 from knowledge_engine.llm_locale import GEMINI_RUSSIAN_ROLE, RUSSIAN_ROUTER_RULE
 from knowledge_engine.nodes.decomposition import decomposition_node

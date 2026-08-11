@@ -26,6 +26,11 @@
   --ke-border-color: #19181a; /* sideBar.border */
   --ke-border-subtle: #403e41; /* indent guides */
 
+  --ke-table-surface: #2d2a2e;
+  --ke-table-head-bg: #221f22;
+  --ke-table-cell-bg: #2d2a2e;
+  --ke-table-row-alt: #353238;
+
   /* Syntax / UI accents (Monokai Pro palette) */
   --ke-heading-color: #ffd866; /* markup.heading, tab.active */
   --ke-primary: #ffd866;
@@ -84,6 +89,11 @@
 
   --ke-border-color: #2d3a4f;
   --ke-border-subtle: #2d3a4f;
+
+  --ke-table-surface: #0f1419;
+  --ke-table-head-bg: #0a0f14;
+  --ke-table-cell-bg: #0f1419;
+  --ke-table-row-alt: #1a2332;
 
   --ke-heading-color: #e8eef4;
   --ke-primary: #5b9fd4;

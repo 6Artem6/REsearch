@@ -35,6 +35,38 @@ def load_user_profile() -> str:
     return _load_user_profile()
 
 
+_ORCHESTRATOR_SECTION_MARKERS = (
+    "оркестратор",
+    "личный фокус",
+    "orchestrator",
+)
+
+
+def load_personal_orchestrator_focus() -> str:
+    """
+    Верхнеуровневый личный фокус из user_profile.md (секция оркестратора).
+    Без инженерных критериев и детального стека — они в GLOBAL_ENGINEERING_CRITERIA.
+    """
+    raw = _load_user_profile()
+    if not raw or raw.startswith("("):
+        return (
+            "**Роль:** разработчик\n"
+            "**Основной стек и фокус:** Advanced AI Architectures и системная инженерия."
+        )
+    sections = raw.split("\n## ")
+    for block in sections:
+        head, _, body = block.partition("\n")
+        title = head.lstrip("#").strip().lower()
+        if any(m in title for m in _ORCHESTRATOR_SECTION_MARKERS):
+            text = body.strip() if body.strip() else head
+            return text[:1200]
+    # Fallback: первые непустые строки без длинных списков
+    lines = [
+        ln for ln in raw.splitlines() if ln.strip() and not ln.strip().startswith("#")
+    ]
+    return "\n".join(lines[:8])[:1200]
+
+
 def rolling_summarize_dialogue(
     state: EngineState,
     new_user_line: str | None = None,

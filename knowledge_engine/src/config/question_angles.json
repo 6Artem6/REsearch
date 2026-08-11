@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "angles": [
+    {
+      "angle_id": "low_level_io",
+      "description": "низкоуровневая архитектура / память / IO / QPS / persistence",
+      "keywords": [
+        "memory",
+        "ram",
+        "mmap",
+        "disk",
+        "io",
+        "qps",
+        "latency",
+        "throughput",
+        "cache",
+        "fsync",
+        "wal",
+        "persistence"
+      ]
+    },
+    {
+      "angle_id": "accuracy_tradeoff",
+      "description": "trade-offs точности (Recall/Precision, квантизация, ошибки аппроксимации)",
+      "keywords": [
+        "recall",
+        "precision",
+        "f1",
+        "accuracy",
+        "quantization",
+        "loss",
+        "error",
+        "approximation",
+        "trade-off",
+        "tradeoff"
+      ]
+    },
+    {
+      "angle_id": "complexity",
+      "description": "алгоритмическая сложность (Big-O, build/insert, amortized cost)",
+      "keywords": [
+        "big-o",
+        "complexity",
+        "asymptotic",
+        "o(n)",
+        "o(log",
+        "build time",
+        "insert",
+        "amortized"
+      ]
+    },
+    {
+      "angle_id": "failure_recovery",
+      "description": "сбои / recovery / durability / failover",
+      "keywords": [
+        "failover",
+        "recovery",
+        "crash",
+        "corruption",
+        "split-brain",
+        "durability",
+        "backup",
+        "replication",
+        "consistency"
+      ]
+    },
+    {
+      "angle_id": "integration",
+      "description": "интеграция / production / API / пайплайны / SLA",
+      "keywords": [
+        "integration",
+        "deploy",
+        "pipeline",
+        "sdk",
+        "api",
+        "orchestr",
+        "langchain",
+        "production",
+        "sla"
+      ]
+    }
+  ]
+}
