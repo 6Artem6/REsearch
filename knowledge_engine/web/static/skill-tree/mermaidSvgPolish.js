@@ -1,6 +1,26 @@
 const FLOWCHART_BOX_PAD_W = 22;
 const FLOWCHART_BOX_PAD_H = 6;
 
+const VIEWBOX_PAD_FLOWCHART = { top: 10, right: 14, bottom: 18, left: 14 };
+const VIEWBOX_PAD_XYCHART = { top: 12, right: 18, bottom: 56, left: 18 };
+
+function expandSvgViewBoxToContent(svg, pad) {
+  if (!svg || !pad) return;
+  let bbox;
+  try {
+    bbox = svg.getBBox();
+  } catch {
+    return;
+  }
+  if (!bbox.width || !bbox.height) return;
+  const x = bbox.x - pad.left;
+  const y = bbox.y - pad.top;
+  const w = bbox.width + pad.left + pad.right;
+  const h = bbox.height + pad.top + pad.bottom;
+  svg.setAttribute("viewBox", `${x} ${y} ${w} ${h}`);
+  svg.style.overflow = "visible";
+}
+
 function expandFlowchartNodeBoxes(svg) {
   svg.querySelectorAll("g.node").forEach((node) => {
     const fo = node.querySelector("foreignObject");
@@ -63,9 +83,14 @@ function expandFlowchartNodeBoxes(svg) {
 }
 
 /** Полировка SVG: чуть шире узлы flowchart (htmlLabels), без правок layout div. */
-export function polishMermaidSvg(svg) {
+export function polishMermaidSvg(svg, opts = {}) {
   if (!svg) return;
-  expandFlowchartNodeBoxes(svg);
+  const xychart = Boolean(opts.xychart);
+  expandSvgViewBoxToContent(
+    svg,
+    xychart ? VIEWBOX_PAD_XYCHART : VIEWBOX_PAD_FLOWCHART,
+  );
+  if (!xychart) expandFlowchartNodeBoxes(svg);
   svg.querySelectorAll(".edgeLabel").forEach((el) => {
     el.setAttribute("font-size", "13");
   });

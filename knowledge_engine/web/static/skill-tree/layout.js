@@ -29,9 +29,18 @@ export function layoutFlowNodes(curriculumNodes, flowNodes, flowEdges) {
   });
 }
 
-export function curriculumToFlow(curriculum, statuses, selectedId) {
+export function curriculumToFlow(
+  curriculum,
+  statuses,
+  selectedId,
+  masteryByNode = {},
+) {
   const nodes = (curriculum.nodes || []).map((n) => {
     const st = statuses[n.node_id] || "unexplored";
+    const masteryPct = Math.min(
+      100,
+      Math.max(0, Number(masteryByNode[n.node_id]) || 0),
+    );
     return {
       id: n.node_id,
       type: "skillNode",
@@ -42,6 +51,7 @@ export function curriculumToFlow(curriculum, statuses, selectedId) {
         layer: n.layer,
         status: st,
         selected: n.node_id === selectedId,
+        masteryPct,
         raw: n,
       },
     };

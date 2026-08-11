@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 MSG_ID_KEY = "msg_id"
@@ -115,12 +116,60 @@ def clean_dialog_rows(
     return out
 
 
+def _normalize_user_dialog_content(text: str) -> str:
+    t = (text or "").strip()
+    t = re.sub(r"^\[mode:\w+\]\s*", "", t, flags=re.IGNORECASE)
+    return t.strip()
+
+
 def _dialog_content_key(item: dict[str, Any]) -> tuple[str, str]:
     role = str(item.get("role") or "tutor").strip()
     if role not in ("user", "tutor"):
         role = "tutor"
     content = str(item.get("content") or "").strip()
+    if role == "user":
+        content = _normalize_user_dialog_content(content)
     return role, content
+
+
+def _prefer_tutor_display_content(prev: str, new: str) -> str:
+    """
+    active_window хранит tutor без follow_up_question; history/UI — полная склейка полей.
+    При reconcile не заменять длинный history-текст укорочённым window-текстом.
+    """
+    p = (prev or "").strip()
+    n = (new or "").strip()
+    if not p:
+        return n
+    if not n:
+        return p
+    if n in p or p.endswith(n):
+        return p
+    if p in n:
+        return n
+    return p if len(p) >= len(n) else n
+
+
+def _merge_dialog_row_for_display(
+    prev: dict[str, str], new: dict[str, str]
+) -> dict[str, str]:
+    role = str(new.get("role") or prev.get("role") or "tutor").strip()
+    if role != "tutor":
+        return new
+    content = _prefer_tutor_display_content(
+        str(prev.get("content") or ""),
+        str(new.get("content") or ""),
+    )
+    out = {**new, "role": role, "content": content}
+    prev_html = str(prev.get("content_html") or "").strip()
+    new_html = str(new.get("content_html") or "").strip()
+    if prev_html and len(str(prev.get("content") or "")) >= len(
+        str(new.get("content") or "")
+    ):
+        out["content_html"] = prev_html
+    elif new_html:
+        out["content_html"] = new_html
+    return out
 
 
 def reconcile_dialog_history(
@@ -130,18 +179,56 @@ def reconcile_dialog_history(
     start_seq: int = 0,
 ) -> tuple[list[dict[str, str]], int]:
     """
-    Хронологический порядок: реплики из history, которых нет в window (например intro),
-    затем active_window в порядке очереди. Переназначает msg_id без коллизий.
+    Объединить history и active_window: одна реплика на msg_id; user-текст без [mode:*]
+    сопоставляется с полным сообщением из API.
     """
     hist_rows = clean_dialog_rows(history)
     win_rows = clean_dialog_rows(window)
+    if not win_rows:
+        out, seq = ensure_msg_ids(hist_rows, start_seq=max(0, start_seq))
+        return out, seq
+    if not hist_rows:
+        out, seq = ensure_msg_ids(win_rows, start_seq=max(0, start_seq))
+        return out, seq
 
-    win_keys = {_dialog_content_key(m) for m in win_rows}
-    prefix = [m for m in hist_rows if _dialog_content_key(m) not in win_keys]
-    ordered = prefix + win_rows
-    if not ordered:
-        return clean_dialog_rows(history), max(0, start_seq)
-    out, seq = ensure_msg_ids(ordered, start_seq=max(0, start_seq))
+    by_id: dict[int, dict[str, str]] = {}
+    order_ids: list[int] = []
+    extra: list[dict[str, str]] = []
+
+    def ingest(row: dict[str, str]) -> None:
+        mid = parse_msg_id(row)
+        if mid is not None:
+            if mid not in by_id:
+                order_ids.append(mid)
+                by_id[mid] = row
+            else:
+                by_id[mid] = _merge_dialog_row_for_display(by_id[mid], row)
+            return
+        extra.append(row)
+
+    for m in hist_rows:
+        ingest(m)
+    for m in win_rows:
+        ingest(m)
+
+    merged: list[dict[str, str]] = [by_id[i] for i in order_ids]
+    seen_keys: set[tuple[str, str]] = {_dialog_content_key(m) for m in merged}
+    for m in extra:
+        key = _dialog_content_key(m)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        merged.append(m)
+
+    deduped: list[dict[str, str]] = []
+    for m in merged:
+        key = _dialog_content_key(m)
+        if deduped and _dialog_content_key(deduped[-1]) == key:
+            deduped[-1] = m
+        else:
+            deduped.append(m)
+
+    out, seq = ensure_msg_ids(deduped, start_seq=max(0, start_seq))
     return out, seq
 
 
@@ -192,8 +279,15 @@ def sync_session_history_turns(
     user_text = (user_message or "").strip()
     if user_text:
         uid: int | None = None
+        norm_user = _normalize_user_dialog_content(user_text)
         for m in reversed(window):
-            if m.get("role") == "user" and (m.get("content") or "").strip() == user_text:
+            if m.get("role") != "user":
+                continue
+            win_text = (m.get("content") or "").strip()
+            if (
+                win_text == user_text
+                or _normalize_user_dialog_content(win_text) == norm_user
+            ):
                 uid = parse_msg_id(m)
                 break
         if uid is None:
@@ -205,12 +299,13 @@ def sync_session_history_turns(
     if tutor_text:
         tid: int | None = None
         if window and (window[-1].get("role") or "") == "tutor":
-            last = (window[-1].get("content") or "").strip()
-            if last == tutor_text or not last:
-                tid = parse_msg_id(window[-1])
+            tid = parse_msg_id(window[-1])
         if tid is None:
             for m in reversed(window):
-                if m.get("role") == "tutor" and (m.get("content") or "").strip() == tutor_text:
+                if (
+                    m.get("role") == "tutor"
+                    and (m.get("content") or "").strip() == tutor_text
+                ):
                     tid = parse_msg_id(m)
                     break
         if tid is None:
@@ -223,3 +318,23 @@ def sync_session_history_turns(
         memory.dialog_seq = max(seq, max_msg_id(hist))
 
     return hist
+
+
+def patch_last_tutor_history_content(
+    history: list[dict[str, Any]] | None,
+    tutor_text: str,
+) -> list[dict[str, str]]:
+    """Подставить полный UI-текст (с follow_up) в последнюю реплику тьютора."""
+    text = (tutor_text or "").strip()
+    if not text or not history:
+        return clean_dialog_rows(history)
+    rows = clean_dialog_rows(history)
+    for i in range(len(rows) - 1, -1, -1):
+        if rows[i].get("role") != "tutor":
+            continue
+        row = dict(rows[i])
+        row["content"] = text
+        row.pop("content_html", None)
+        rows[i] = row
+        return rows
+    return rows

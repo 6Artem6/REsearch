@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { nodeExplainSelection, nodeSuggestQuestions } from "./api.js";
+import { nodeExplainSelectionStream, nodeSuggestQuestions } from "./api.js";
 import { LlmHtmlBlock } from "./LlmHtmlBlock.js";
+import { structuredAnalysisToHtml } from "./llmTextRepair.js";
 import { getSurroundingParagraph } from "./selectionUtils.js";
 
 const DEFAULT_QUESTIONS = [
@@ -24,8 +25,10 @@ export function NodeSelectionExplain({
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const [loadingExplain, setLoadingExplain] = useState(false);
   const [explanationHtml, setExplanationHtml] = useState("");
+  const [explanationMd, setExplanationMd] = useState("");
   const [customQ, setCustomQ] = useState("");
   const abortRef = useRef(null);
+  const explainAbortRef = useRef(null);
 
   const hideToolbar = useCallback(() => {
     setToolbarPos(null);
@@ -124,6 +127,7 @@ export function NodeSelectionExplain({
   function openDialog() {
     setOpen(true);
     setExplanationHtml("");
+    setExplanationMd("");
     setCustomQ("");
     loadSuggest();
   }
@@ -131,22 +135,48 @@ export function NodeSelectionExplain({
   async function runExplain(question) {
     const q = (question || "").trim();
     if (!q || loadingExplain) return;
+    if (explainAbortRef.current) explainAbortRef.current.abort();
+    explainAbortRef.current = new AbortController();
     setLoadingExplain(true);
+    setExplanationHtml("");
+    setExplanationMd("");
     try {
-      const res = await nodeExplainSelection(
+      let streamed = "";
+      await nodeExplainSelectionStream(
         curriculumId,
         nodeData,
         selectedText,
         paragraph,
         q,
+        (evt) => {
+          if (evt.type === "token" && evt.text) {
+            streamed += evt.text;
+            setExplanationMd(streamed);
+          }
+          if (evt.type === "complete" && evt.result) {
+            const html = String(evt.result.explanation_html || "").trim();
+            if (html) setExplanationHtml(html);
+            else setExplanationMd(String(evt.result.explanation || streamed));
+          }
+          if (evt.type === "error") {
+            throw new Error(evt.detail || "explain-stream error");
+          }
+        },
+        { signal: explainAbortRef.current.signal },
       );
-      setExplanationHtml(String(res.explanation_html || res.explanation || ""));
     } catch (e) {
-      setExplanationHtml(`<p class="skill-error">${String(e.message || e)}</p>`);
+      if (e.name !== "AbortError") {
+        setExplanationHtml(`<p class="skill-error">${String(e.message || e)}</p>`);
+        setExplanationMd("");
+      }
     } finally {
       setLoadingExplain(false);
     }
   }
+
+  const explainDisplayHtml =
+    explanationHtml ||
+    (explanationMd ? structuredAnalysisToHtml(explanationMd) : "");
 
   return React.createElement(
     React.Fragment,
@@ -242,9 +272,9 @@ export function NodeSelectionExplain({
           },
           loadingExplain ? "…" : "Отправить",
         ),
-        explanationHtml &&
+        explainDisplayHtml &&
           React.createElement(LlmHtmlBlock, {
-            html: explanationHtml,
+            html: explainDisplayHtml,
             className: "md-body node-explain-result",
           }),
       ),

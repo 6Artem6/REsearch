@@ -1,17 +1,12 @@
 import React, { useRef } from "react";
 import { toNodeDataInput } from "./api.js";
 import { LlmHtmlBlock } from "./LlmHtmlBlock.js";
-import { MermaidDiagramView } from "./MermaidDiagramView.js";
-import { ResourceCard } from "./ResourceCard.js";
 import { NodeMasteryPanel } from "./NodeMasteryPanel.js";
 import { SourceRegistryList } from "./SourceRegistryList.js";
-import { CodeSnippet } from "./CodeSnippet.js";
 import { NodeSelectionExplain } from "./NodeSelectionExplain.js";
+import { NodeMaterialsPanel } from "./NodeMaterialsPanel.js";
+import { flattenMaterials, normalizeNodeMaterials } from "./materialAssets.js";
 import { structuredAnalysisToHtml } from "./llmTextRepair.js";
-
-function DiagramBlock({ diagram, nodeId }) {
-  return React.createElement(MermaidDiagramView, { diagram, nodeId });
-}
 
 function sourceTierBadge(tier) {
   const t = (tier || "").trim().toLowerCase();
@@ -72,6 +67,14 @@ function resolveMappedSourceRows(selectedNode, curriculum, session) {
       return [sid, e];
     }),
   );
+  const sessionByCourseId = Object.fromEntries(
+    (session?.sourceRegistry || [])
+      .map((e) => {
+        const cid = String(e.course_source_id || "").trim();
+        return cid ? [cid, e] : null;
+      })
+      .filter(Boolean),
+  );
   const ref = selectedNode?.source_ref;
   const primaryId = String(selectedNode?.primary_source_id || "").trim();
 
@@ -80,9 +83,18 @@ function resolveMappedSourceRows(selectedNode, curriculum, session) {
     let url = "";
 
     const lib = byId[id];
+    let source_tier = "";
     if (lib) {
       title = (lib.title || lib.source_name || id).trim();
       url = String(lib.url || "").trim();
+      source_tier = String(lib.source_tier || "").trim();
+    }
+
+    if (!url && sessionByCourseId[id]) {
+      const s = sessionByCourseId[id];
+      title = (s.title || title).trim();
+      url = String(s.url || "").trim();
+      if (!source_tier) source_tier = String(s.source_tier || "").trim();
     }
 
     if (!url && sessionById[id]) {
@@ -102,7 +114,16 @@ function resolveMappedSourceRows(selectedNode, curriculum, session) {
       }
     }
 
-    return { source_id: id, title, url };
+    if (title === id && url) {
+      try {
+        const parsed = new URL(url);
+        title = (parsed.hostname + parsed.pathname).slice(0, 120);
+      } catch {
+        title = url.slice(0, 120);
+      }
+    }
+
+    return { source_id: id, title, url, source_tier };
   });
 }
 
@@ -307,9 +328,13 @@ export function NodeDrawer({
   onSelectPrereq,
   onModeSelect,
   onVerify,
+  onRestart,
   composeLocked,
   nodeGenerating,
   sessions,
+  selectedMaterialId,
+  materialViewMode,
+  onMaterialViewModeChange,
 }) {
   const materialRef = useRef(null);
 
@@ -323,9 +348,8 @@ export function NodeDrawer({
 
   const st = statuses[selectedNode.node_id] || "unexplored";
   const content = session?.content || {};
-  const refs = content.references || [];
-  const snippets = content.code_snippets || [];
   const registry = session?.sourceRegistry || [];
+  const materialItems = flattenMaterials(normalizeNodeMaterials(content));
 
   const nodeData = toNodeDataInput(selectedNode);
 
@@ -339,8 +363,7 @@ export function NodeDrawer({
       enabled: Boolean(
         content.summary ||
           content.summary_html ||
-          refs.length ||
-          snippets.length,
+          materialItems.length,
       ),
     }),
     React.createElement(
@@ -434,44 +457,43 @@ export function NodeDrawer({
               ),
         ),
       React.createElement(SourceRegistryList, { registry }),
-      React.createElement(DiagramBlock, {
-        diagram: content.diagram,
+      React.createElement(NodeMaterialsPanel, {
+        items: materialItems,
+        viewMode: materialViewMode || "list",
+        onViewModeChange: onMaterialViewModeChange,
+        selectedId: selectedMaterialId,
         nodeId: selectedNode.node_id,
       }),
-      refs.length > 0 &&
-        React.createElement(
-          "div",
-          { className: "drawer-section" },
-          React.createElement("h3", null, "Карточки материалов"),
-          React.createElement(
-            "div",
-            { className: "resource-card-list" },
-            refs.map((r, i) =>
-              React.createElement(ResourceCard, { key: i, item: r }),
-            ),
-          ),
-        ),
-      snippets.length > 0 &&
-        React.createElement(
-          "div",
-          { className: "drawer-section" },
-          React.createElement("h3", null, "Код и edge cases"),
-          snippets.map((block, i) =>
-            React.createElement(CodeSnippet, { key: i, code: block }),
-          ),
-        ),
       renderCourseKnowledgePool(selectedNode, curriculum),
       React.createElement(
-        "button",
-        {
-          type: "button",
-          className: "verify-btn",
-          onClick: () => {
-            if (!composeLocked) onVerify?.();
+        "div",
+        { className: "drawer-actions" },
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            className: "node-restart-btn",
+            onClick: () => {
+              if (!composeLocked) onRestart?.();
+            },
+            disabled: composeLocked,
+            title:
+              "Удалить материалы и прогресс, заново собрать RAG и подготовить ноду",
           },
-          disabled: composeLocked,
-        },
-        "Финальная проверка",
+          "Пройти заново",
+        ),
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            className: "verify-btn",
+            onClick: () => {
+              if (!composeLocked) onVerify?.();
+            },
+            disabled: composeLocked,
+          },
+          "Финальная проверка",
+        ),
       ),
     ),
   );

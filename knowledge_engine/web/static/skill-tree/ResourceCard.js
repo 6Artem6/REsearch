@@ -3,6 +3,11 @@ import React from "react";
 export function ResourceCard({ item }) {
   if (!item) return null;
   const title = (item.title || item.source_name || item.url || "").trim();
+  const sourceName = (item.source_name || "").trim();
+  const showSource =
+    sourceName &&
+    sourceName.toLowerCase() !== title.toLowerCase() &&
+    !title.toLowerCase().includes(sourceName.toLowerCase());
   const mins = item.read_time_minutes || item.read_time_minutes === 0
     ? item.read_time_minutes
   : null;
@@ -26,7 +31,8 @@ export function ResourceCard({ item }) {
         mins > 0 &&
         React.createElement("span", { className: "resource-card-time" }, `~${mins} мин`),
     ),
-    React.createElement("div", { className: "resource-card-source" }, item.source_name),
+    showSource &&
+      React.createElement("div", { className: "resource-card-source" }, sourceName),
     (item.why_read || "").trim() &&
       React.createElement(
         "p",

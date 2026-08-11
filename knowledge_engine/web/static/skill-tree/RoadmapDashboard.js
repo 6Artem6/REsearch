@@ -1,3 +1,4 @@
+import { ensureMermaidInitialized } from "./mermaidRuntime.js";
 import React, { useCallback, useEffect, useState } from "react";
 import { RoadmapCanvas } from "./RoadmapCanvas.js";
 import { CurriculumInputBar } from "./CurriculumInputBar.js";
@@ -14,16 +15,30 @@ import {
   rememberActiveCurriculumId,
   readActiveCurriculumId,
   hydrateSessionsFromServer,
-  historyToMessages,
-  mergeHistoryWithPendingUser,
+  buildMessagesAfterChatComplete,
   sortDialogMessages,
-  tutorMessageFromApi,
+  userMessageMatches,
+  isPendingMsgId,
   mergeNodeStatuses,
   nodeInit,
+  nodeRestart,
   nodeChat,
+  nodeChatStream,
   nodeVerify,
+  fetchNodeSourceRegistry,
   toNodeDataInput,
 } from "./api.js";
+import { MATERIAL_VIEW_LS } from "./materialAssets.js";
+
+function replaceSkillTreeSearchParams(patch) {
+  const url = new URL(window.location.href);
+  for (const [key, value] of Object.entries(patch)) {
+    const v = String(value || "").trim();
+    if (v) url.searchParams.set(key, v);
+    else url.searchParams.delete(key);
+  }
+  window.history.replaceState(null, "", url.pathname + url.search);
+}
 
 export function RoadmapDashboard() {
   const [goal, setGoal] = useState("");
@@ -40,6 +55,11 @@ export function RoadmapDashboard() {
   const [genBusyAction, setGenBusyAction] = useState(null);
   /** Нода, для которой сейчас ждём init/chat/verify; null — нет активной генерации. */
   const [tutorBusyNodeId, setTutorBusyNodeId] = useState(null);
+  const [selectedMaterialId, setSelectedMaterialId] = useState(null);
+  const [materialViewMode, setMaterialViewMode] = useState(() => {
+    const v = localStorage.getItem(MATERIAL_VIEW_LS);
+    return v === "carousel" ? "carousel" : "list";
+  });
   const [error, setError] = useState("");
   /** Смена после expand — принудительный Dagre + fitView. */
   const [layoutEpoch, setLayoutEpoch] = useState(0);
@@ -55,6 +75,15 @@ export function RoadmapDashboard() {
   const rightColRef = React.useRef(rightColWidth);
   leftColRef.current = leftColWidth;
   rightColRef.current = rightColWidth;
+
+  function maxResizableColumnWidth(oppositeWidth) {
+    const minCanvasWidth = 180;
+    const dividerWidth = 12;
+    return Math.max(
+      0,
+      window.innerWidth - oppositeWidth - minCanvasWidth - dividerWidth,
+    );
+  }
 
   function persistColWidths() {
     localStorage.setItem("skillTreeColLeft", String(leftColRef.current));
@@ -74,12 +103,11 @@ export function RoadmapDashboard() {
       );
       setSessions(hydrateSessionsFromServer(ws.sessions));
       setSelectedNode(null);
+      setSelectedMaterialId(null);
       await setActiveCurriculum(curriculumId);
       rememberActiveCurriculumId(curriculumId);
       setSourcePolicy("practical_only");
-      const url = new URL(window.location.href);
-      url.searchParams.set("curriculum", curriculumId);
-      window.history.replaceState(null, "", url.pathname + url.search);
+      replaceSkillTreeSearchParams({ curriculum: curriculumId });
       const list = await fetchCurriculaList();
       setCurriculaList(list.curricula || []);
     } catch (err) {
@@ -114,37 +142,7 @@ export function RoadmapDashboard() {
         }),
       );
     if (window.mermaid) {
-      window.mermaid.initialize({
-        startOnLoad: false,
-        theme: "dark",
-        securityLevel: "loose",
-        themeVariables: {
-          fontSize: "14px",
-          fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif",
-          primaryTextColor: "#eceff4",
-          lineColor: "#7eb8b8",
-          primaryBorderColor: "#4ec9b0",
-        },
-        flowchart: {
-          useMaxWidth: false,
-          htmlLabels: true,
-          padding: 28,
-          nodeSpacing: 56,
-          rankSpacing: 64,
-          curve: "basis",
-        },
-        sequence: {
-          useMaxWidth: false,
-          wrap: true,
-          width: 240,
-          messageFontSize: 11,
-          noteFontSize: 11,
-          actorFontSize: 12,
-          messageMargin: 48,
-          boxMargin: 10,
-          mirrorActors: false,
-        },
-      });
+      ensureMermaidInitialized();
     }
 
     (async () => {
@@ -169,9 +167,11 @@ export function RoadmapDashboard() {
     setSelectedNode(null);
     setSessions({});
     setStatuses({});
-    const url = new URL(window.location.href);
-    url.searchParams.delete("curriculum");
-    window.history.replaceState(null, "", url.pathname + url.search);
+    replaceSkillTreeSearchParams({
+      curriculum: "",
+      node: "",
+      material: "",
+    });
     setSourcePolicy("practical_only");
   }
 
@@ -262,6 +262,21 @@ export function RoadmapDashboard() {
     await runCreatePath(text);
   }
 
+  useEffect(() => {
+    function onPickMaterial(e) {
+      const id = String(e.detail?.id || "").trim();
+      if (!id) return;
+      setSelectedMaterialId(id);
+      replaceSkillTreeSearchParams({ material: id });
+    }
+    window.addEventListener("ke:select-material", onPickMaterial);
+    return () => window.removeEventListener("ke:select-material", onPickMaterial);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(MATERIAL_VIEW_LS, materialViewMode);
+  }, [materialViewMode]);
+
   const applyNodeResponse = useCallback((nodeId, res, userMsg) => {
     if (res.error) {
       setError(res.error);
@@ -270,35 +285,27 @@ export function RoadmapDashboard() {
     setStatuses((prev) => ({ ...prev, [nodeId]: res.node_status }));
     setSessions((prev) => {
       const old = prev[nodeId] || { messages: [] };
-      const hasHistory =
-        Array.isArray(res.history) && res.history.length > 0;
-      const messages = hasHistory
-        ? sortDialogMessages(
-            mergeHistoryWithPendingUser(
-              historyToMessages(res.history),
-              userMsg,
-            ),
-          )
-        : (() => {
-            const next = [...old.messages];
-            if (userMsg) {
-              next.push({
-                role: "user",
-                content: userMsg,
-                msg_id: `pending-${Date.now()}`,
-              });
-            }
-            if (res.tutor_message) next.push(tutorMessageFromApi(res));
-            return sortDialogMessages(next);
-          })();
+      const streamId = `stream-${nodeId}`;
+      const messages = buildMessagesAfterChatComplete(
+        res,
+        userMsg,
+        old.messages,
+        streamId,
+      );
       return {
         ...prev,
         [nodeId]: {
           initialized: true,
+          prepared: messages.length === 0 && Boolean(res.rag_facts_count || old.prepared),
           content: res.content,
           messages,
           ragLabels: res.rag_fact_labels || old.ragLabels || [],
           masteryDashboard: res.mastery_dashboard || old.masteryDashboard,
+          coverageSummary:
+            res.coverage_summary ||
+            res.mastery_dashboard?.coverage_summary ||
+            old.coverageSummary ||
+            null,
           topicMasteryScore:
             res.topic_mastery_score ?? old.topicMasteryScore ?? 0,
           learningPhase: res.learning_phase || old.learningPhase,
@@ -306,40 +313,115 @@ export function RoadmapDashboard() {
           sourceRegistry: Array.isArray(res.source_registry)
             ? res.source_registry
             : old.sourceRegistry || [],
+          lectureRagInspector: Array.isArray(res.lecture_rag_inspector)
+            ? res.lecture_rag_inspector
+            : old.lectureRagInspector || [],
+          readyForTransition: Boolean(res.ready_for_transition),
+          lastEvalDirective: String(
+            res.last_eval_directive || old.lastEvalDirective || "",
+          ).trim(),
+          quickReplies: Array.isArray(res.quick_replies)
+            ? res.quick_replies
+            : [],
         },
       };
     });
   }, []);
 
-  async function openNode(node) {
-    if (!curriculum) return;
-    const sid = node.node_id;
-    const initialized = Boolean(sessions[sid]?.initialized);
+  const openNode = useCallback(
+    async (node) => {
+      if (!curriculum) return;
+      const sid = node.node_id;
+      const initialized = Boolean(sessions[sid]?.initialized);
 
-    if (tutorBusyNodeId !== null && !initialized) return;
+      if (tutorBusyNodeId !== null && !initialized) return;
 
-    setSelectedNode(node);
-    setError("");
-    if (initialized) return;
-
-    setTutorBusyNodeId(sid);
-    try {
-      const res = await nodeInit(
-        curriculum.curriculum_id,
-        toNodeDataInput(node),
-      );
-      applyNodeResponse(sid, res);
-      const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
-      if (freshGraph) {
-        const freshNode = freshGraph.nodes.find((n) => n.node_id === sid);
-        if (freshNode) setSelectedNode(freshNode);
+      setSelectedNode(node);
+      setSelectedMaterialId(null);
+      replaceSkillTreeSearchParams({ node: sid, material: "" });
+      setError("");
+      const grounding = String(node.grounding_status || "").trim();
+      if (
+        !initialized &&
+        (grounding === "unverified_deep" ||
+          grounding === "grounded" ||
+          grounding === "model_only")
+      ) {
+        return;
       }
-    } catch (err) {
-      setError(String(err.message || err));
-    } finally {
-      setTutorBusyNodeId(null);
+      if (initialized) {
+        try {
+          const regRes = await fetchNodeSourceRegistry(
+            curriculum.curriculum_id,
+            sid,
+          );
+          const freshReg = regRes.source_registry || [];
+          setSessions((prev) => ({
+            ...prev,
+            [sid]: {
+              ...(prev[sid] || { messages: [] }),
+              sourceRegistry: freshReg,
+            },
+          }));
+        } catch {
+          /* keep cached registry */
+        }
+        return;
+      }
+
+      setTutorBusyNodeId(sid);
+      try {
+        const res = await nodeInit(
+          curriculum.curriculum_id,
+          toNodeDataInput(node),
+        );
+        applyNodeResponse(sid, res);
+        const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
+        if (freshGraph) {
+          const freshNode = freshGraph.nodes.find((n) => n.node_id === sid);
+          if (freshNode) setSelectedNode(freshNode);
+        }
+      } catch (err) {
+        setError(String(err.message || err));
+      } finally {
+        setTutorBusyNodeId(null);
+      }
+    },
+    [
+      curriculum,
+      sessions,
+      tutorBusyNodeId,
+      applyNodeResponse,
+      refreshCurriculumGraph,
+    ],
+  );
+
+  useEffect(() => {
+    if (!curriculum?.nodes?.length || workspaceBusy) return;
+    const params = new URLSearchParams(window.location.search);
+    const nodeId = (params.get("node") || "").trim();
+    if (!nodeId) return;
+    if (selectedNode?.node_id === nodeId) return;
+    const node = curriculum.nodes.find((n) => n.node_id === nodeId);
+    if (node) {
+      openNode(node);
+      return;
     }
-  }
+    replaceSkillTreeSearchParams({ node: "", material: "" });
+  }, [
+    curriculum?.curriculum_id,
+    curriculum?.nodes,
+    workspaceBusy,
+    selectedNode?.node_id,
+    openNode,
+  ]);
+
+  useEffect(() => {
+    if (!selectedNode || workspaceBusy) return;
+    const mid = (new URLSearchParams(window.location.search).get("material") ||
+      "").trim();
+    if (mid) setSelectedMaterialId(mid);
+  }, [selectedNode?.node_id, workspaceBusy]);
 
   async function sendTutorMessage(text) {
     if (!curriculum || !selectedNode || tutorBusyNodeId !== null) return;
@@ -349,12 +431,44 @@ export function RoadmapDashboard() {
     setTutorBusyNodeId(nid);
     onTutorPendingUser(msg);
     try {
-      const res = await nodeChat(
+      let finalRes = null;
+      let streamed = "";
+      await nodeChatStream(
         curriculum.curriculum_id,
         toNodeDataInput(selectedNode),
         msg,
+        (evt) => {
+          if (evt.type === "token" && evt.text) {
+            streamed += evt.text;
+            setSessions((prev) => {
+              const old = prev[nid] || { messages: [], initialized: true };
+              const msgs = [...(old.messages || [])];
+              const streamId = `stream-${nid}`;
+              const idx = msgs.findIndex((m) => m.msg_id === streamId);
+              const row = {
+                role: "tutor",
+                content: streamed,
+                msg_id: streamId,
+              };
+              if (idx >= 0) msgs[idx] = row;
+              else msgs.push(row);
+              return {
+                ...prev,
+                [nid]: { ...old, messages: msgs },
+              };
+            });
+          }
+          if (evt.type === "complete" && evt.result) {
+            finalRes = evt.result;
+          }
+          if (evt.type === "error") {
+            throw new Error(evt.detail || "chat-stream error");
+          }
+        },
       );
-      applyNodeResponse(nid, res, msg);
+      if (finalRes) {
+        applyNodeResponse(nid, finalRes, msg);
+      }
     } catch (err) {
       setError(String(err.message || err));
     } finally {
@@ -387,10 +501,13 @@ export function RoadmapDashboard() {
       const old = prev[nid] || { messages: [], initialized: true };
       const u = (userMsg || "").trim();
       if (!u) return prev;
+      const msgs = old.messages || [];
+      const last = msgs[msgs.length - 1];
+      // Allow repeating the same lecture stub; only skip double-pending at tail.
       if (
-        (old.messages || []).some(
-          (m) => m.role === "user" && (m.content || "").trim() === u,
-        )
+        last?.role === "user" &&
+        userMessageMatches(last.content, u) &&
+        isPendingMsgId(last.msg_id)
       ) {
         return prev;
       }
@@ -399,13 +516,13 @@ export function RoadmapDashboard() {
         [nid]: {
           ...old,
           messages: (() => {
-            const msgs = [...(old.messages || [])];
-            msgs.push({
+            const next = [...msgs];
+            next.push({
               role: "user",
               content: u,
               msg_id: `pending-${Date.now()}`,
             });
-            return sortDialogMessages(msgs);
+            return sortDialogMessages(next);
           })(),
         },
       };
@@ -421,10 +538,50 @@ export function RoadmapDashboard() {
     await sendTutorMessage(text);
   }
 
+  async function restartSelectedNode() {
+    if (!curriculum || !selectedNode || tutorBusyNodeId !== null) return;
+    const nid = selectedNode.node_id;
+    const title = (selectedNode.title || nid).trim();
+    const ok = window.confirm(
+      `Сбросить прогресс ноды «${title}»?\n\n` +
+        "Будут удалены материалы, диалог, память тьютора и статус прохождения. " +
+        "Затем заново соберутся персональные факты (RAG) и подготовится сессия.",
+    );
+    if (!ok) return;
+
+    setTutorBusyNodeId(nid);
+    setError("");
+    setSessions((prev) => {
+      const next = { ...prev };
+      delete next[nid];
+      return next;
+    });
+    setStatuses((prev) => ({ ...prev, [nid]: "unexplored" }));
+
+    try {
+      const res = await nodeRestart(
+        curriculum.curriculum_id,
+        toNodeDataInput(selectedNode),
+      );
+      applyNodeResponse(nid, res);
+      const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
+      if (freshGraph) {
+        const freshNode = freshGraph.nodes.find((n) => n.node_id === nid);
+        if (freshNode) setSelectedNode(freshNode);
+      }
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setTutorBusyNodeId(null);
+    }
+  }
+
   const session = selectedNode ? sessions[selectedNode.node_id] : null;
+  const sessionReady = Boolean(session?.initialized);
   const activeId = curriculum?.curriculum_id || "";
   const tutorBusy = tutorBusyNodeId !== null;
-  const composeLocked = tutorBusy;
+  const composeLocked =
+    tutorBusy || (selectedNode && !sessionReady);
   const nodeGenerating =
     selectedNode && tutorBusyNodeId === selectedNode.node_id;
 
@@ -533,44 +690,9 @@ export function RoadmapDashboard() {
       {
         className: "skill-split",
         style: {
-          gridTemplateColumns: `${leftColWidth}px 6px minmax(180px, 1fr) 6px ${rightColWidth}px`,
+          gridTemplateColumns: `minmax(180px, 1fr) 6px ${leftColWidth}px 6px ${rightColWidth}px`,
         },
       },
-      React.createElement(
-        "aside",
-        { className: "skill-chat-column" },
-        curriculum && selectedNode
-          ? React.createElement(NodeTutorChat, {
-              session,
-              onSend: sendTutorMessage,
-              disabled: composeLocked,
-              generating: nodeGenerating,
-              curriculumId: curriculum.curriculum_id,
-              nodeData: toNodeDataInput(selectedNode),
-            })
-          : React.createElement(
-              "div",
-              { className: "tutor-panel skill-chat-placeholder" },
-              React.createElement("h3", null, "Чат с тьютором"),
-              React.createElement(
-                "p",
-                { className: "muted" },
-                curriculum
-                  ? "Выберите ноду на карте — диалог откроется здесь (как в Cursor)."
-                  : "Создайте или выберите маршрут, затем откройте ноду на графе.",
-              ),
-            ),
-      ),
-      React.createElement(ColumnResizer, {
-        onDragDelta: (dx) => {
-          setLeftColWidth((w) => {
-            const next = Math.min(720, Math.max(240, w + dx));
-            leftColRef.current = next;
-            return next;
-          });
-        },
-        onDragEnd: persistColWidths,
-      }),
       curriculum
         ? React.createElement(RoadmapCanvas, {
             curriculum,
@@ -588,8 +710,53 @@ export function RoadmapDashboard() {
           ),
       React.createElement(ColumnResizer, {
         onDragDelta: (dx) => {
+          setLeftColWidth((w) => {
+            const maxWidth = Math.min(
+              720,
+              maxResizableColumnWidth(rightColRef.current),
+            );
+            const next = Math.min(maxWidth, Math.max(240, w - dx));
+            leftColRef.current = next;
+            return next;
+          });
+        },
+        onDragEnd: persistColWidths,
+      }),
+      React.createElement(
+        "aside",
+        { className: "skill-chat-column" },
+        curriculum && selectedNode
+          ? React.createElement(NodeTutorChat, {
+              session,
+              onSend: sendTutorMessage,
+              disabled: composeLocked,
+              generating: nodeGenerating,
+              curriculumId: curriculum.curriculum_id,
+              nodeData: toNodeDataInput(selectedNode),
+              curriculum,
+              onOpenNode: openNode,
+            })
+          : React.createElement(
+              "div",
+              { className: "tutor-panel skill-chat-placeholder" },
+              React.createElement("h3", null, "Чат с тьютором"),
+              React.createElement(
+                "p",
+                { className: "muted" },
+                curriculum
+                  ? "Выберите ноду на карте — диалог откроется здесь (как в Cursor)."
+                  : "Создайте или выберите маршрут, затем откройте ноду на графе.",
+              ),
+            ),
+      ),
+      React.createElement(ColumnResizer, {
+        onDragDelta: (dx) => {
           setRightColWidth((w) => {
-            const next = Math.min(960, Math.max(280, w - dx));
+            const maxWidth = Math.min(
+              960,
+              maxResizableColumnWidth(leftColRef.current),
+            );
+            const next = Math.min(maxWidth, Math.max(280, w - dx));
             rightColRef.current = next;
             return next;
           });
@@ -605,9 +772,13 @@ export function RoadmapDashboard() {
             onSelectPrereq: openNode,
             onModeSelect,
             onVerify: runVerify,
+            onRestart: restartSelectedNode,
             composeLocked,
             nodeGenerating,
             sessions,
+            selectedMaterialId,
+            materialViewMode,
+            onMaterialViewModeChange: setMaterialViewMode,
           })
         : React.createElement("aside", { className: "node-drawer empty" }),
     ),

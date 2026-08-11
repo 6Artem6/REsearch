@@ -11,18 +11,20 @@ from pydantic import BaseModel, Field, field_validator
 
 from knowledge_engine.config import (
     OLLAMA_BASE_URL,
-    OLLAMA_ROUTER_KEEP_ALIVE,
+    OLLAMA_ROUTER_NUM_CTX,
+    SELECTION_PROMPTS_KEEP_ALIVE,
     SELECTION_PROMPTS_NUM_PREDICT,
     SELECTION_PROMPTS_OLLAMA_MODEL,
     SELECTION_PROMPTS_TIMEOUT_SEC,
-    OLLAMA_ROUTER_NUM_CTX,
 )
-from knowledge_engine.ui.run_log import trace
+from knowledge_engine.services.ollama_runtime import ensure_ollama_server
 from knowledge_engine.src.processors.question_formation_rules import (
     QUESTION_FORMATION_RULES,
 )
+from knowledge_engine.ui.run_log import trace
 
-SELECTION_PROMPT_SYSTEM = """Ты — ассистент исследовательского движка. Твоя задача — сгенерировать 3 коротких, точных и глубоких инженерных вопроса к выделенному пользователем фрагменту текста.
+SELECTION_PROMPT_SYSTEM = (
+    """Ты — ассистент исследовательского движка. Твоя задача — сгенерировать 3 коротких, точных и глубоких инженерных вопроса к выделенному пользователем фрагменту текста.
 
 КОНТЕКСТ:
 - Главная тема: {topic}
@@ -44,7 +46,9 @@ SELECTION_PROMPT_SYSTEM = """Ты — ассистент исследовате�
     "Текст вопроса 3?"
   ]
 }}
-""" + QUESTION_FORMATION_RULES
+"""
+    + QUESTION_FORMATION_RULES
+)
 
 DEFAULT_SELECTION_QUESTIONS: list[str] = [
     "Что это значит на практике?",
@@ -145,7 +149,7 @@ async def _ollama_chat_questions(system: str, user: str) -> list[str]:
             "num_predict": SELECTION_PROMPTS_NUM_PREDICT,
             "num_ctx": OLLAMA_ROUTER_NUM_CTX,
         },
-        "keep_alive": OLLAMA_ROUTER_KEEP_ALIVE,
+        "keep_alive": SELECTION_PROMPTS_KEEP_ALIVE,
     }
     timeout = httpx.Timeout(SELECTION_PROMPTS_TIMEOUT_SEC)
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -184,9 +188,12 @@ async def suggest_selection_questions(
 
     trace(
         f"SELECTION_PROMPTS ▶ Ollama {SELECTION_PROMPTS_OLLAMA_MODEL} "
-        f"timeout={SELECTION_PROMPTS_TIMEOUT_SEC}s"
+        f"timeout={SELECTION_PROMPTS_TIMEOUT_SEC}s "
+        f"keep_alive={SELECTION_PROMPTS_KEEP_ALIVE}"
     )
     try:
+        if not await ensure_ollama_server():
+            raise RuntimeError("Ollama не отвечает на /api/tags")
         raw_questions = await _ollama_chat_questions(system, user)
         questions = _normalize_questions(raw_questions)
         trace(f"SELECTION_PROMPTS ✓ {questions[0][:48]}…")

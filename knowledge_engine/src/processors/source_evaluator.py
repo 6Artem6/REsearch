@@ -136,8 +136,7 @@ def evaluate_source(
                 "url": url or info,
                 "title": excerpt[:400],
                 "snippet": (
-                    f"Тезис: {(statement or '')[:500]}\n"
-                    f"Источник: {info[:400]}"
+                    f"Тезис: {(statement or '')[:500]}\n" f"Источник: {info[:400]}"
                 ),
             }
         ],

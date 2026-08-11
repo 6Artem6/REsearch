@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-QUESTION_FORMATION_RULES = """
+from knowledge_engine.src.config.question_angles_loader import (
+    format_question_angle_matrix_rules,
+)
+
+_QUESTION_FORMATION_BASE = """
 ### ПРАВИЛА ФОРМИРОВАНИЯ ВОПРОСОВ И ЗАДАЧ:
 
 1. ПРИНЦИП САМОДОСТАТОЧНОСТИ (SELF-CONTAINED QUESTIONS):
@@ -17,4 +21,13 @@ QUESTION_FORMATION_RULES = """
      "RAG-система находит точный контекст, но LLM при генерации выдумывает детали. Если использовать метрики автоматической оценки (например, из RAGAS), какие именно показатели вам понадобятся: проверка соответствия ответа контексту (Faithfulness) или релевантность ответа вопросу (Answer Relevance)? Объясните выбор."
    - ПРИМЕР ПЛОХОГО ВОПРОСА (ЗАПРЕЩЕНО):
      "Какие две метрики из фреймворка RAGAS вы выберете?"
+
 """
+
+
+def build_question_formation_rules() -> str:
+    """Собрать правила; матрица углов — из question_angles.json."""
+    return f"{_QUESTION_FORMATION_BASE.strip()}\n\n{format_question_angle_matrix_rules()}\n"
+
+
+QUESTION_FORMATION_RULES = build_question_formation_rules()

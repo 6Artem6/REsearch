@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import re
 
-from pydantic import BaseModel, Field
-
+from knowledge_engine.schemas.llm_contracts.consensus import (
+    ProfileApplicabilityContract,
+)
 from knowledge_engine.src.guardrails.term_guard import extract_user_acronyms
 
 _EXTRA_TERM_RULES: tuple[tuple[str, str], ...] = (
@@ -78,14 +79,7 @@ context_applicability: one of general_academic | engineering_practice | project_
 reason: one short sentence (Russian or English)."""
 
 
-class ProfileApplicabilityPayload(BaseModel):
-    apply_personal_profile: bool = Field(
-        description="Whether selective Light RAG profile should reach Reasoner and L2 profile steps"
-    )
-    context_applicability: str = Field(
-        description="general_academic | engineering_practice | project_specific | hybrid"
-    )
-    reason: str = ""
+ProfileApplicabilityPayload = ProfileApplicabilityContract
 
 
 def _heuristic_apply_personal_profile(user_query: str) -> bool:
@@ -128,7 +122,7 @@ def assess_profile_applicability(
             RELEVANCE_GATE_SYSTEM,
             f"### user_query\n{q}",
             global_anchor,
-            ProfileApplicabilityPayload,
+            ProfileApplicabilityContract,
             "profile_relevance_gate",
         )
         return out
