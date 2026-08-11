@@ -64,6 +64,7 @@ def _papers_from_urls(
                 source_url=u,
                 pdf_url=pdf_url,
                 source="consensus",
+                arxiv_id=m.group(1) if m else "",
             )
         )
     return papers
@@ -258,6 +259,8 @@ async def _ss_enrich_one_paper(
         pdf_url=h.pdf_url or paper.pdf_url,
         source_url=paper.source_url or h.source_url,
         source="consensus+semantic_scholar",
+        arxiv_id=paper.arxiv_id or h.arxiv_id,
+        doi=paper.doi or h.doi,
     )
 
 
@@ -266,32 +269,46 @@ async def enrich_papers_metadata(
     *,
     ignore_enabled_flag: bool = False,
 ) -> List[ScholarPaper]:
-    """Дополнить abstract через SS по заголовку; skip если abstract уже есть."""
+    """Дополнить abstract через SS по заголовку; затем arXiv id_list hydrate."""
+    from knowledge_engine.src.retrieval.arxiv_hydrate import hydrate_scholar_papers
+
     if not papers:
         return papers
+
+    enriched: List[ScholarPaper] = list(papers)
     if not SEMANTIC_SCHOLAR_ENABLED and not ignore_enabled_flag:
         trace("Consensus enrich ⊘ Semantic Scholar disabled — keep extracted metadata")
-        return papers
+    else:
+        need = sum(1 for p in papers if not _paper_has_usable_abstract(p))
+        skip_n = len(papers) - need
+        if skip_n:
+            trace(f"Consensus enrich ⊘ SS skip | abstract_ok={skip_n}/{len(papers)}")
+        if need > 0:
+            if ignore_enabled_flag:
+                from knowledge_engine.services.curriculum_api_quota_store import (
+                    can_use_semantic_scholar,
+                )
 
-    need = sum(1 for p in papers if not _paper_has_usable_abstract(p))
-    skip_n = len(papers) - need
-    if skip_n:
-        trace(
-            f"Consensus enrich ⊘ SS skip | abstract_ok={skip_n}/{len(papers)}"
-        )
-    if need == 0:
-        return list(papers)
+                allowed, why = can_use_semantic_scholar()
+                if not allowed:
+                    trace(
+                        f"Consensus enrich ⊘ SS quota | {why} — skip {need} title lookups"
+                    )
+                    return await hydrate_scholar_papers(enriched)
 
-    trace(
-        f"Consensus enrich ▶ SS | lookups={need} "
-        f"timeout={SEMANTIC_SCHOLAR_ENRICH_TIMEOUT_SEC:.1f}s per title"
-    )
-    enriched: List[ScholarPaper] = []
-    for p in papers:
-        if _paper_has_usable_abstract(p):
-            enriched.append(p)
-            continue
-        enriched.append(
-            await _ss_enrich_one_paper(p, ignore_enabled_flag=ignore_enabled_flag)
-        )
-    return enriched
+            trace(
+                f"Consensus enrich ▶ SS | lookups={need} "
+                f"timeout={SEMANTIC_SCHOLAR_ENRICH_TIMEOUT_SEC:.1f}s per title"
+            )
+            enriched = []
+            for p in papers:
+                if _paper_has_usable_abstract(p):
+                    enriched.append(p)
+                    continue
+                enriched.append(
+                    await _ss_enrich_one_paper(
+                        p, ignore_enabled_flag=ignore_enabled_flag
+                    )
+                )
+
+    return await hydrate_scholar_papers(enriched)
