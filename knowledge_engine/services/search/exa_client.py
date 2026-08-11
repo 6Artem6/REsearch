@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from knowledge_engine.config import EXA_API_KEY, EXA_EXCLUDE_TEXT, EXCLUDED_SOURCES_BLACKLIST
+from knowledge_engine.config import (
+    EXA_API_KEY,
+    EXA_EXCLUDE_TEXT,
+    EXCLUDED_SOURCES_BLACKLIST,
+)
 from knowledge_engine.services.search.exa_domains import get_clean_exa_domains
 from knowledge_engine.src.source_evaluator.whitelist import APPROVED_SOURCES_WHITELIST
 
@@ -19,14 +23,34 @@ def build_exa_contents_dict(
     *,
     highlight_query: str = DEFAULT_HIGHLIGHT_QUERY,
     highlight_max_characters: int = 2000,
+    highlight_num_sentences: int = 5,
 ) -> dict[str, Any]:
-    """Только highlights — без summary (отдельный платный AI summary в Exa)."""
-    return {
-        "highlights": {
-            "query": (highlight_query or DEFAULT_HIGHLIGHT_QUERY).strip(),
-            "max_characters": max(200, min(highlight_max_characters, 4000)),
-        }
+    """Highlights only — no Exa AI summary."""
+    highlights: dict[str, Any] = {
+        "num_sentences": max(1, min(int(highlight_num_sentences), 12)),
     }
+    q = (highlight_query or DEFAULT_HIGHLIGHT_QUERY).strip()
+    if q:
+        highlights["query"] = q
+    highlights["max_characters"] = max(200, min(highlight_max_characters, 4000))
+    return {"highlights": highlights}
+
+
+def merge_exa_exclude_domains(extra: list[str] | None = None) -> list[str]:
+    """Static blacklist + SQLite anti-bot blocklist (unique, lowercased)."""
+    from knowledge_engine.db.domain_blocklist import get_blocked_domains
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in (
+        list(EXCLUDED_SOURCES_BLACKLIST) + list(extra or []) + get_blocked_domains()
+    ):
+        k = (raw or "").strip().lower()
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        out.append(k)
+    return out
 
 
 def normalize_exa_exclude_text(
@@ -117,7 +141,9 @@ class ExaSearchClient:
         self,
         whitelist_dict: dict[str, list[str]] | None = None,
     ) -> list[str]:
-        wl = whitelist_dict if whitelist_dict is not None else APPROVED_SOURCES_WHITELIST
+        wl = (
+            whitelist_dict if whitelist_dict is not None else APPROVED_SOURCES_WHITELIST
+        )
         return get_clean_exa_domains(wl)
 
     def search(
@@ -131,6 +157,7 @@ class ExaSearchClient:
         exclude_text: list[str] | None = None,
         highlight_query: str = DEFAULT_HIGHLIGHT_QUERY,
         highlight_max_characters: int = 2000,
+        highlight_num_sentences: int = 5,
         whitelist_dict: dict[str, list[str]] | None = None,
     ) -> ExaSearchResponse:
         q = (query or "").strip()
@@ -151,7 +178,7 @@ class ExaSearchClient:
         inc = include_domains
         if inc is None:
             inc = self.whitelist_include_domains(whitelist_dict)
-        exc = list(exclude_domains if exclude_domains is not None else EXCLUDED_SOURCES_BLACKLIST)
+        exc = merge_exa_exclude_domains(exclude_domains)
         if exclude_text is not None:
             excl_text = normalize_exa_exclude_text(exclude_text)
         else:
@@ -161,6 +188,7 @@ class ExaSearchClient:
         contents = build_exa_contents_dict(
             highlight_query=highlight_query,
             highlight_max_characters=highlight_max_characters,
+            highlight_num_sentences=highlight_num_sentences,
         )
         search_kwargs: dict[str, Any] = {
             "include_domains": inc,
