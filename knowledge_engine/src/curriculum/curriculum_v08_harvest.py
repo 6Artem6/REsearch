@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 from knowledge_engine.config import (
@@ -10,12 +11,16 @@ from knowledge_engine.config import (
     CURRICULUM_ON_DEMAND_V08_POOL_SIZE,
     CURRICULUM_V08_MAX_PAPERS,
     CURRICULUM_V08_PAPER_POOL_SIZE,
+    GEMMA_CONCURRENCY,
     PACKAGE_ROOT,
 )
-from knowledge_engine.services.summarizer import summarize_article
+from knowledge_engine.schemas import DocumentSummary
+from knowledge_engine.services.academic_gemma_ingest import ingest_academic_body_gemma
+from knowledge_engine.services.gemma_rate_limiter import get_gemma_token_budget_manager
 from knowledge_engine.services.vector_store import VectorStore
 from knowledge_engine.src.analytics.chunker import extract_structured_chunks
 from knowledge_engine.src.curriculum.schemas import CurriculumSearchHit
+from knowledge_engine.src.guardrails.fast_grounding import get_term_grounding_context
 from knowledge_engine.src.processors.consensus_query_prep import (
     assess_profile_applicability,
     consensus_sanitize_anchor,
@@ -46,8 +51,10 @@ from knowledge_engine.src.retrieval.consensus_session import (
     release_consensus_session,
 )
 from knowledge_engine.src.retrieval.paper_documents import fetch_paper_document
-from knowledge_engine.src.retrieval.semantic_scholar import ScholarPaper, paper_to_document_text
-from knowledge_engine.src.guardrails.fast_grounding import get_term_grounding_context
+from knowledge_engine.src.retrieval.semantic_scholar import (
+    ScholarPaper,
+    paper_to_document_text,
+)
 from knowledge_engine.src.state import ScrapedDocument
 from knowledge_engine.ui.run_log import trace
 
@@ -79,6 +86,28 @@ def _external_paper_url(url: str) -> bool:
     if "consensus.app" in u.lower():
         return False
     return True
+
+
+def _resolve_scholar_paper_url(paper: ScholarPaper) -> str:
+    url = (paper.source_url or "").strip()
+    if _external_paper_url(url):
+        return url
+    pdf = (paper.pdf_url or "").strip()
+    if pdf.startswith("http") and _external_paper_url(pdf):
+        return pdf
+    pid = (paper.paper_id or "").strip()
+    if pid:
+        if pid.startswith("http"):
+            return pid if _external_paper_url(pid) else ""
+        return f"https://www.semanticscholar.org/paper/{pid}"
+    return ""
+
+
+def _paper_with_resolved_url(paper: ScholarPaper) -> ScholarPaper:
+    url = _resolve_scholar_paper_url(paper)
+    if url and url != (paper.source_url or "").strip():
+        return paper.model_copy(update={"source_url": url[:2000]})
+    return paper
 
 
 def _deep_extract_blocks(
@@ -186,7 +215,9 @@ def _hits_from_summary_and_chunks(
         chunk_texts,
     )
     if not extracts and snippet_fallback:
-        extracts = _deep_extract_blocks([], [], [snippet_fallback], min_words=80, max_words=300)
+        extracts = _deep_extract_blocks(
+            [], [], [snippet_fallback], min_words=80, max_words=300
+        )
     if not extracts:
         return None
     return CurriculumSearchHit(
@@ -198,7 +229,89 @@ def _hits_from_summary_and_chunks(
     )
 
 
-def _process_validator_doc(
+def _discovery_hit_from_validator_doc(raw: dict) -> CurriculumSearchHit | None:
+    url = (raw.get("url") or "").strip()
+    if not _external_paper_url(url):
+        return None
+    title = (raw.get("title") or url)[:400]
+    snippet = (raw.get("snippet") or "")[:4000]
+    extracts = _deep_extract_blocks([], [], [snippet], min_words=80, max_words=300)
+    if not extracts:
+        return None
+    return CurriculumSearchHit(
+        url=url[:2000],
+        title=title,
+        snippet=snippet[:1200],
+        key_extracts=extracts[:8],
+        source_tier="consensus",
+        skip_ollama_summary=True,
+    )
+
+
+def _discovery_hit_from_paper(paper: ScholarPaper) -> CurriculumSearchHit | None:
+    url = _resolve_scholar_paper_url(paper)
+    if not _external_paper_url(url):
+        trace(
+            f"CURRICULUM v08 discovery skip paper | no external url | "
+            f"title={(paper.title or '')[:50]}"
+        )
+        return None
+    title = (paper.title or url)[:400]
+    snippet = (paper.abstract or paper.tldr or paper.title or "")[:1200]
+    extracts = _deep_extract_blocks([], [], [snippet], min_words=40, max_words=300)
+    if not extracts and len(snippet.strip()) >= 40:
+        extracts = [snippet[:800]]
+    if not extracts:
+        trace(f"CURRICULUM v08 discovery skip paper | no snippet | " f"{url[:70]}")
+        return None
+    return CurriculumSearchHit(
+        url=url[:2000],
+        title=title,
+        snippet=snippet[:1200],
+        key_extracts=extracts[:8],
+        source_tier="consensus",
+        skip_ollama_summary=True,
+    )
+
+
+def _build_discovery_hits(
+    best_docs: list[dict],
+    enriched: list[ScholarPaper],
+) -> list[CurriculumSearchHit]:
+    hits: list[CurriculumSearchHit] = []
+    seen: set[str] = set()
+    for raw in best_docs:
+        hit = _discovery_hit_from_validator_doc(raw)
+        if not hit:
+            continue
+        key = hit.url.strip().rstrip("/").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        hits.append(hit)
+    for paper in enriched:
+        hit = _discovery_hit_from_paper(paper)
+        if not hit:
+            continue
+        key = hit.url.strip().rstrip("/").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        hits.append(hit)
+    return hits
+
+
+async def _ingest_academic_for_v08(
+    title: str,
+    url: str,
+    body: str,
+    store: VectorStore,
+) -> DocumentSummary | None:
+    ing = await ingest_academic_body_gemma(title, url, body, store)
+    return ing.summary if ing else None
+
+
+async def _process_validator_doc(
     raw: dict,
     anchor: str,
     store: VectorStore,
@@ -211,10 +324,23 @@ def _process_validator_doc(
     snippet = (raw.get("snippet") or "")[:4000]
     body = snippet if len(snippet) >= 80 else f"{title}\n\n{snippet}"
     try:
-        summary = summarize_article(title, url, body[:14000])
-        store.save_summary(summary)
+        summary = await _ingest_academic_for_v08(title, url, body, store)
+        if summary is None:
+            extracts = _deep_extract_blocks(
+                [], [], [snippet], min_words=80, max_words=300
+            )
+            if not extracts:
+                return None
+            seen_urls.add(url)
+            return CurriculumSearchHit(
+                url=url[:2000],
+                title=title,
+                snippet=snippet[:1200],
+                key_extracts=extracts[:8],
+                source_tier="consensus",
+            )
     except Exception as exc:
-        trace(f"CURRICULUM v08 validator doc summarizer skip | {exc}")
+        trace(f"CURRICULUM v08 validator doc ingest skip | {exc}")
         extracts = _deep_extract_blocks([], [], [snippet], min_words=80, max_words=300)
         if not extracts:
             return None
@@ -226,7 +352,9 @@ def _process_validator_doc(
             key_extracts=extracts[:8],
             source_tier="consensus",
         )
-    hit = _hits_from_summary_and_chunks(title, url, summary, [], snippet_fallback=snippet)
+    hit = _hits_from_summary_and_chunks(
+        title, url, summary, [], snippet_fallback=snippet
+    )
     if hit:
         seen_urls.add(url)
     return hit
@@ -258,28 +386,28 @@ async def _process_paper_to_hit(
             trace(f"CURRICULUM v08 reuse LanceDB ✓ | {url[:70]}")
             return hit
 
-    if on_demand:
-        extracts = _deep_extract_blocks([], [], [snippet], min_words=80, max_words=300)
-        if not extracts:
-            return None
-        seen_urls.add(url)
-        return CurriculumSearchHit(
-            url=url[:2000],
-            title=title,
-            snippet=snippet[:1200],
-            key_extracts=extracts[:8],
-            source_tier="consensus",
-            skip_ollama_summary=True,
-        )
-
     doc_sid = resolve_source_anchor_for_url(url, url_map, paper_dicts)
-    doc = await fetch_paper_document(paper, abstract_only=on_demand)
+    doc = await fetch_paper_document(paper, abstract_only=False)
     raw_for_summary = (doc.raw_markdown if doc else "") or paper_to_document_text(paper)
     try:
-        summary = summarize_article(title, url, raw_for_summary[:14000])
-        store.save_summary(summary)
+        summary = await _ingest_academic_for_v08(title, url, raw_for_summary, store)
+        if summary is None:
+            extracts = _deep_extract_blocks(
+                [], [], [snippet], min_words=80, max_words=300
+            )
+            if not extracts:
+                return None
+            seen_urls.add(url)
+            return CurriculumSearchHit(
+                url=url[:2000],
+                title=title,
+                snippet=snippet[:1200],
+                key_extracts=extracts[:8],
+                source_tier="consensus",
+                skip_ollama_summary=True,
+            )
     except Exception as exc:
-        trace(f"CURRICULUM v08 summarizer skip | {url[:60]} | {exc}")
+        trace(f"CURRICULUM v08 paper ingest skip | {url[:60]} | {exc}")
         extracts = _deep_extract_blocks([], [], [snippet], min_words=80, max_words=300)
         if not extracts:
             return None
@@ -298,10 +426,63 @@ async def _process_paper_to_hit(
         synth = _scraped_from_paper(paper)
         if synth:
             chunks = extract_structured_chunks(synth, anchor, doc_sid)
-    hit = _hits_from_summary_and_chunks(title, url, summary, chunks, snippet_fallback=snippet)
+    hit = _hits_from_summary_and_chunks(
+        title, url, summary, chunks, snippet_fallback=snippet
+    )
     if hit:
         seen_urls.add(url)
     return hit
+
+
+async def _parallel_v08_ingest(
+    best_docs: list[dict],
+    enriched: list[ScholarPaper],
+    anchor: str,
+    store: VectorStore,
+    url_map: dict,
+    paper_dicts: list[dict],
+    *,
+    on_demand: bool,
+) -> list[CurriculumSearchHit]:
+    seen_urls: set[str] = set()
+    sem = asyncio.Semaphore(max(1, GEMMA_CONCURRENCY))
+
+    async def _run_validator(raw: dict) -> CurriculumSearchHit | None:
+        async with sem:
+            return await _process_validator_doc(raw, anchor, store, seen_urls)
+
+    async def _run_paper(paper: ScholarPaper) -> CurriculumSearchHit | None:
+        async with sem:
+            return await _process_paper_to_hit(
+                paper,
+                anchor,
+                store,
+                url_map,
+                paper_dicts,
+                seen_urls,
+                on_demand=on_demand,
+            )
+
+    tasks: list[asyncio.Task] = []
+    for raw_doc in best_docs:
+        tasks.append(asyncio.create_task(_run_validator(raw_doc)))
+    for paper in enriched:
+        tasks.append(asyncio.create_task(_run_paper(paper)))
+    if not tasks:
+        return []
+    trace(
+        f"CURRICULUM v08 parallel ingest ▶ | tasks={len(tasks)} "
+        f"concurrency≤{GEMMA_CONCURRENCY} gemma_tpm_cap="
+        f"{get_gemma_token_budget_manager().max_tpm}"
+    )
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    hits: list[CurriculumSearchHit] = []
+    for r in results:
+        if isinstance(r, CurriculumSearchHit):
+            hits.append(r)
+        elif isinstance(r, Exception):
+            trace(f"CURRICULUM v08 parallel ingest skip | {r}")
+    return hits
 
 
 async def harvest_curriculum_sources_v08(
@@ -309,6 +490,8 @@ async def harvest_curriculum_sources_v08(
     anchor: str,
     *,
     on_demand: bool = False,
+    defer_ingest: bool = False,
+    force_playwright: bool = False,
 ) -> list[CurriculumSearchHit]:
     goal = (target_goal or "").strip()
     if len(goal) < 8:
@@ -323,8 +506,10 @@ async def harvest_curriculum_sources_v08(
         else max(CURRICULUM_V08_MAX_PAPERS, min(CURRICULUM_V08_PAPER_POOL_SIZE, 100))
     )
 
-    if on_demand:
-        from knowledge_engine.src.curriculum.on_demand_reuse import hits_from_lancedb_goal
+    if on_demand and not force_playwright:
+        from knowledge_engine.src.curriculum.on_demand_reuse import (
+            hits_from_lancedb_goal,
+        )
 
         reused = hits_from_lancedb_goal(
             goal,
@@ -337,6 +522,11 @@ async def harvest_curriculum_sources_v08(
                 f"LanceDB reuse hits={len(reused)}"
             )
             return reused[:max_papers]
+    elif on_demand and force_playwright:
+        trace(
+            "CURRICULUM v08 on_demand ▶ force Playwright "
+            "(stream / live consensus — skip LanceDB shortcut)"
+        )
 
     trace(
         "CURRICULUM v08 harvest ▶ Consensus Playwright + Lite + Summarizer"
@@ -355,6 +545,7 @@ async def harvest_curriculum_sources_v08(
         profile_effective = await rag.get_relevant_profile_context(goal)
 
     session = await acquire_consensus_session()
+    session_open = True
     hits: list[CurriculumSearchHit] = []
     store = VectorStore()
 
@@ -371,16 +562,31 @@ async def harvest_curriculum_sources_v08(
         trace(f"CURRICULUM v08 Consensus query | {consensus_query[:200]}")
 
         # Один переход: send_message → quick/?q=&oa=true (без отдельного bootstrap goto quick/)
+        from knowledge_engine.config import CONSENSUS_USE_QUICK_PAPER_SEARCH
+
         turn = await session.send_message(consensus_query)
         raw = turn.raw_text
         accumulated: list[ScholarPaper] = list(turn.papers)
-        if not on_demand and len(accumulated) < pool_cap:
+        if (
+            not on_demand
+            and not CONSENSUS_USE_QUICK_PAPER_SEARCH
+            and len(accumulated) < pool_cap
+        ):
             extra = await session.harvest_paper_pool()
             accumulated = merge_scholar_papers(accumulated, extra)
         accumulated = accumulated[:pool_cap]
         trace(
             f"CURRICULUM v08 paper pool | accumulated={len(accumulated)} cap={pool_cap}"
         )
+
+        if session_open:
+            await asyncio.shield(release_consensus_session(session))
+            session_open = False
+            trace(
+                "CURRICULUM v08 Consensus ✓ browser released "
+                "(paper pool captured — Lite/enrich без Playwright)"
+            )
+
         best_docs: list[dict] = []
 
         if on_demand:
@@ -446,10 +652,13 @@ async def harvest_curriculum_sources_v08(
         )
 
         if on_demand:
-            enriched = selected[:max_papers]
-            trace(
-                f"CURRICULUM v08 on_demand ▶ skip SS enrich | papers={len(enriched)}"
+            from knowledge_engine.src.retrieval.arxiv_hydrate import (
+                hydrate_scholar_papers,
             )
+
+            enriched = [_paper_with_resolved_url(p) for p in selected[:max_papers]]
+            enriched = await hydrate_scholar_papers(enriched)
+            trace(f"CURRICULUM v08 on_demand ▶ skip SS enrich | papers={len(enriched)}")
         else:
             enriched = await enrich_papers_metadata(
                 selected,
@@ -458,24 +667,23 @@ async def harvest_curriculum_sources_v08(
         paper_dicts = [p.model_dump() for p in enriched]
         url_map = url_to_source_id_map(build_source_registry(paper_dicts))
 
-        seen_urls: set[str] = set()
-        for raw_doc in best_docs:
-            hit = _process_validator_doc(raw_doc, anchor, store, seen_urls)
-            if hit:
-                hits.append(hit)
-
-        for paper in enriched:
-            hit = await _process_paper_to_hit(
-                paper,
-                anchor,
-                store,
-                url_map,
-                paper_dicts,
-                seen_urls,
-                on_demand=on_demand,
+        if defer_ingest:
+            hits = _build_discovery_hits(best_docs, enriched)
+            trace(
+                f"CURRICULUM v08 discovery ✓ | hits={len(hits)} "
+                "(defer ingest → stream consumer)"
             )
-            if hit:
-                hits.append(hit)
+            return hits[:max_papers]
+
+        hits = await _parallel_v08_ingest(
+            best_docs,
+            enriched,
+            anchor,
+            store,
+            url_map,
+            paper_dicts,
+            on_demand=on_demand,
+        )
 
         deep = sum(1 for h in hits if _word_count(" ".join(h.key_extracts)) >= 120)
         trace(
@@ -490,7 +698,8 @@ async def harvest_curriculum_sources_v08(
         trace(f"CURRICULUM v08 harvest ✗ | {exc}")
         return []
     finally:
-        await release_consensus_session(session)
+        if session_open:
+            await asyncio.shield(release_consensus_session(session))
 
 
 def should_use_v08_consensus(

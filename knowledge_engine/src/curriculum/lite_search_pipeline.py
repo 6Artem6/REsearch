@@ -4,16 +4,44 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from knowledge_engine.config import (
     CURRICULUM_LITE_BATCH_EVAL_FALLBACK_N,
     CURRICULUM_LITE_BATCH_STRICT,
 )
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
-from knowledge_engine.src.curriculum.search_query_builder import build_fallback_quote_queries
+from knowledge_engine.schemas.llm_contracts.lite_curriculum import (
+    ArxivQueryParamsContract,
+)
+from knowledge_engine.schemas.llm_contracts.lite_curriculum import (
+    LiteAcademicQueryContract as LiteAcademicQueryOut,
+)
+from knowledge_engine.schemas.llm_contracts.lite_curriculum import (
+    LiteBatchEvalContract as LiteBatchEvalResult,
+)
+from knowledge_engine.schemas.llm_contracts.lite_curriculum import (
+    LiteHitEvaluationContract as LiteHitEvaluation,
+)
+from knowledge_engine.schemas.llm_contracts.lite_curriculum import (
+    LiteQueryPlanContract as LiteQueryPlan,
+)
+from knowledge_engine.schemas.llm_contracts.lite_curriculum import (
+    LiteSourceBatchContract as LiteSourceBatchResult,
+)
+from knowledge_engine.schemas.llm_contracts.lite_curriculum import (
+    LiteSourceEvalItemContract as LiteSourceEvalItem,
+)
+from knowledge_engine.services.search.arxiv_query_builder import (
+    ArxivQueryParams,
+    heuristic_arxiv_params_from_keywords,
+)
+from knowledge_engine.src.curriculum.search_query_builder import (
+    build_fallback_quote_queries,
+)
 from knowledge_engine.src.source_evaluator.whitelist import APPROVED_SOURCES_WHITELIST
 from knowledge_engine.ui.run_log import trace
 
@@ -39,25 +67,22 @@ _BATCH_SYSTEM = (
 )
 
 
-class LiteQueryPlan(BaseModel):
-    selected_domains: list[str] = Field(default_factory=list)
-    queries: list[str] = Field(default_factory=list)
-
-
-class LiteAcademicQueryOut(BaseModel):
-    academic_query_en: str = Field(
-        description="English CS/engineering literature search query"
-    )
-    notes: str = ""
-
-
 _ACADEMIC_QUERY_SYSTEM = (
     f"{RUSSIAN_OUTPUT_RULE}\n\n"
-    "Ты — Academic Query Architect для Semantic Scholar / arXiv.\n"
-    "Переведи учебную цель на точный английский поисковый запрос (1–2 предложения).\n"
-    "Включи конкретные технические термины (asyncio, RabbitMQ, microservices, message broker…).\n"
-    "НЕ используй одно слово (python, programming). НЕ подменяй тему.\n"
-    "JSON: academic_query_en (string), notes (кратко, русский)."
+    "You are an Academic Query Architect for Semantic Scholar / arXiv.\n"
+    "In ONE pass, produce:\n"
+    "1) academic_query_en — precise English literature query (1–2 sentences) with "
+    "concrete technical terms (asyncio, RabbitMQ, transformers, …). "
+    "Do NOT use a single generic word (python, programming). Do NOT change the topic.\n"
+    "2) arxiv_params — structured arXiv Atom fields for the SAME topic:\n"
+    "   - title_keywords: 1–4 short English phrases for ti:\n"
+    "   - abstract_keywords: 2–6 terms/phrases for abs:\n"
+    "   - categories: arXiv cats for the node topic (e.g. cs.AI, cs.CL, cs.LG, "
+    "stat.ML, cs.DC, cs.SE). Use [] if unsure.\n"
+    "   - exclude_terms: noise to ANDNOT (survey, homework, tutorial) when helpful\n"
+    "   - start_year / end_year: optional ints for submittedDate window, else null\n"
+    "3) notes — brief Russian note about what you translated/kept.\n"
+    "JSON keys: academic_query_en, notes, arxiv_params."
 )
 
 
@@ -65,14 +90,64 @@ def _anchor_academic(goal: str) -> str:
     return f"curriculum_lite_academic_query:{(goal or '').strip()[:500]}"
 
 
-async def build_academic_search_query(
+@dataclass(frozen=True)
+class AcademicSearchPlan:
+    academic_query_en: str
+    arxiv_params: ArxivQueryParams
+    notes: str = ""
+
+
+def _plan_from_contract(
+    out: LiteAcademicQueryOut,
+    *,
+    fallback_goal: str,
+) -> AcademicSearchPlan:
+    q = (out.academic_query_en or "").strip()[:300]
+    params = ArxivQueryParams.from_mapping(
+        out.arxiv_params or ArxivQueryParamsContract()
+    )
+    if not params.has_precision():
+        from knowledge_engine.src.curriculum.search_query_builder import (
+            build_search_queries,
+        )
+
+        built = build_search_queries(fallback_goal or q)
+        params = heuristic_arxiv_params_from_keywords(
+            built.keywords,
+            free_text=q or fallback_goal,
+        )
+    return AcademicSearchPlan(
+        academic_query_en=q,
+        arxiv_params=params,
+        notes=(out.notes or "").strip(),
+    )
+
+
+def _heuristic_academic_plan(goal: str) -> AcademicSearchPlan:
+    from knowledge_engine.src.curriculum.search_query_builder import (
+        build_search_queries,
+    )
+
+    built = build_search_queries(goal)
+    q = (built.academic_query or "").strip()
+    if len(q) < 8:
+        q = goal[:120]
+    params = heuristic_arxiv_params_from_keywords(built.keywords, free_text=q or goal)
+    return AcademicSearchPlan(academic_query_en=q[:300], arxiv_params=params)
+
+
+async def build_academic_search_plan(
     learning_goal: str,
     *,
     anchor: str | None = None,
-) -> str:
+) -> AcademicSearchPlan:
+    """One Lite pass → English query + structured arXiv params."""
     goal = (learning_goal or "").strip()
     if len(goal) < 4:
-        return ""
+        return AcademicSearchPlan(
+            academic_query_en="",
+            arxiv_params=ArxivQueryParams(),
+        )
     trace("CURRICULUM academic query ▶ | Lite Academic Query Architect")
     try:
         out = await _lite_structured(
@@ -82,24 +157,37 @@ async def build_academic_search_query(
             LiteAcademicQueryOut,
             "curriculum / lite_academic_query",
         )
-        q = (out.academic_query_en or "").strip()
+        plan = _plan_from_contract(out, fallback_goal=goal)
+        q = plan.academic_query_en
         if len(q) < 12 or q.lower().split() == ["python"]:
             raise ValueError(f"weak academic query: {q[:80]}")
-        trace(f"CURRICULUM academic query ✓ | Lite | {q[:120]}")
-        return q[:300]
+        trace(
+            f"CURRICULUM academic query ✓ | Lite | {q[:120]} | "
+            f"arxiv_cats={plan.arxiv_params.categories[:4]}"
+        )
+        return plan
     except Exception as exc:
-        from knowledge_engine.src.curriculum.search_query_builder import build_search_queries
-
         trace(f"CURRICULUM academic query fallback | {exc}")
-        built = build_search_queries(goal)
-        q = (built.academic_query or "").strip()
-        if len(q) < 8:
-            q = goal[:120]
-        trace(f"CURRICULUM academic query fallback ✓ | heuristic | {q[:120]}")
-        return q
+        plan = _heuristic_academic_plan(goal)
+        trace(
+            f"CURRICULUM academic query fallback ✓ | heuristic | "
+            f"{plan.academic_query_en[:120]}"
+        )
+        return plan
 
 
-def build_academic_search_query_sync(learning_goal: str, *, anchor: str | None = None) -> str:
+async def build_academic_search_query(
+    learning_goal: str,
+    *,
+    anchor: str | None = None,
+) -> str:
+    plan = await build_academic_search_plan(learning_goal, anchor=anchor)
+    return plan.academic_query_en
+
+
+def build_academic_search_query_sync(
+    learning_goal: str, *, anchor: str | None = None
+) -> str:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -112,31 +200,6 @@ def build_academic_search_query_sync(learning_goal: str, *, anchor: str | None =
             asyncio.run,
             build_academic_search_query(learning_goal, anchor=anchor),
         ).result()
-
-
-class LiteHitEvaluation(BaseModel):
-    id: int
-    is_sufficient: bool = False
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    reason: str = ""
-
-
-class LiteBatchEvalResult(BaseModel):
-    evaluations: list[LiteHitEvaluation] = Field(default_factory=list)
-
-
-class LiteSourceEvalItem(BaseModel):
-    id: int
-    status: Literal["APPROVED", "REJECTED"] = "REJECTED"
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    reason: str = ""
-    suggested_action: Literal[
-        "RETRY_WITH_NEW_SOURCE", "REMOVE_LINK", "KEEP"
-    ] = "KEEP"
-
-
-class LiteSourceBatchResult(BaseModel):
-    evaluations: list[LiteSourceEvalItem] = Field(default_factory=list)
 
 
 _SOURCE_BATCH_SYSTEM = (
@@ -277,14 +340,16 @@ async def batch_lite_eval_hits(
 
     use_strict = strict if strict is not None else CURRICULUM_LITE_BATCH_STRICT
     batch_input = _hits_to_batch_input(raw_hits)
-    n_fb = fallback_approve_n if fallback_approve_n is not None else (
-        CURRICULUM_LITE_BATCH_EVAL_FALLBACK_N
+    n_fb = (
+        fallback_approve_n
+        if fallback_approve_n is not None
+        else (CURRICULUM_LITE_BATCH_EVAL_FALLBACK_N)
     )
 
     if len(goal) < 4:
         if use_strict:
             return []
-        return list(raw_hits[:max(1, n_fb)])
+        return list(raw_hits[: max(1, n_fb)])
 
     user_obj = {"learning_goal": goal[:1200], "raw_hits": batch_input}
     user_payload = json.dumps(user_obj, ensure_ascii=False)
@@ -306,14 +371,14 @@ async def batch_lite_eval_hits(
             trace(f"CURRICULUM lite batch eval strict ⊘ | {exc}")
             return []
         trace(f"CURRICULUM lite batch eval fallback | approve first {n_fb} | {exc}")
-        return list(raw_hits[:max(1, n_fb)])
+        return list(raw_hits[: max(1, n_fb)])
 
     if not by_id:
         if use_strict:
             trace("CURRICULUM lite batch eval strict ⊘ | empty evaluations")
             return []
         trace(f"CURRICULUM lite batch eval empty ⊘ | approve first {n_fb}")
-        return list(raw_hits[:max(1, n_fb)])
+        return list(raw_hits[: max(1, n_fb)])
 
     approved: list[dict[str, Any]] = []
     rejected = 0
@@ -346,7 +411,7 @@ async def batch_lite_eval_hits(
             f"CURRICULUM lite batch fallback | approve first {n_fb} "
             "(Lite не дал evaluations)"
         )
-        return list(raw_hits[:max(1, n_fb)])
+        return list(raw_hits[: max(1, n_fb)])
     return approved
 
 
@@ -383,8 +448,10 @@ async def batch_evaluate_sources(
     if not sources:
         return []
 
-    n_fb = fallback_approve_n if fallback_approve_n is not None else (
-        CURRICULUM_LITE_BATCH_EVAL_FALLBACK_N
+    n_fb = (
+        fallback_approve_n
+        if fallback_approve_n is not None
+        else (CURRICULUM_LITE_BATCH_EVAL_FALLBACK_N)
     )
 
     results: list[LiteSourceEvalItem] = []
@@ -436,7 +503,7 @@ async def batch_evaluate_sources(
             by_id[int(ev.id)] = ev
     except Exception as exc:
         trace(f"SOURCE_EVAL batch fallback | approve first {n_fb} | {exc}")
-        for src in need_lite[:max(1, n_fb)]:
+        for src in need_lite[: max(1, n_fb)]:
             by_id[int(src["id"])] = LiteSourceEvalItem(
                 id=int(src["id"]),
                 status="APPROVED",
@@ -446,7 +513,7 @@ async def batch_evaluate_sources(
             )
 
     if not by_id:
-        for src in need_lite[:max(1, n_fb)]:
+        for src in need_lite[: max(1, n_fb)]:
             by_id[int(src["id"])] = LiteSourceEvalItem(
                 id=int(src["id"]),
                 status="APPROVED",
