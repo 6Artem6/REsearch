@@ -19,6 +19,7 @@ from knowledge_engine.schemas import (
     DomainProfilerBatchResult,
     DomainTrustResult,
 )
+from knowledge_engine.schemas.llm_contracts.domain import DomainProfilerBatchContract
 from knowledge_engine.services.gemini_stateless import (
     is_gemini_available,
     run_stateless_gemini,
@@ -180,7 +181,7 @@ class DomainProfiler:
             system,
             user,
             f"Domain trust batch ({len(keys)} hosts)",
-            DomainProfilerBatchResult,
+            DomainProfilerBatchContract,
             "domain_profiler / batch",
             True,
         )

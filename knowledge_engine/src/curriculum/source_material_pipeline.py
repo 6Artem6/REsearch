@@ -4,30 +4,39 @@ from __future__ import annotations
 
 import asyncio
 import re
+import threading
 
 from knowledge_engine.config import (
+    CURRICULUM_CONSENSUS_MIN_APPROVED_ACADEMIC,
     CURRICULUM_GEMINI_GROUNDING_ENABLED,
     CURRICULUM_GEMINI_WEB_HARVEST_ENABLED,
     CURRICULUM_LITE_SITE_SUGGEST_ENABLED,
-    CURRICULUM_CONSENSUS_MIN_APPROVED_ACADEMIC,
     CURRICULUM_SEARCH_MIN_HITS,
     CURRICULUM_SEARCH_TARGET_HITS,
     CURRICULUM_URL_VALIDATE_TIMEOUT_SEC,
     CURRICULUM_USE_V08_CONSENSUS,
+    KE_INGEST_URL_CONCURRENCY,
 )
+from knowledge_engine.db.domain_blocklist import add_blocked_domain
+from knowledge_engine.ingestion.ingest import ingest_exa_highlights_fallback
+from knowledge_engine.services.academic_gemma_ingest import ingest_academic_body_gemma
 from knowledge_engine.services.gemini_search_grounding import (
     search_grounded_whitelist_blogs_detailed,
 )
 from knowledge_engine.services.summarizer import summarize_article
 from knowledge_engine.services.vector_store import VectorStore
-from knowledge_engine.services.web_extract import smart_fetch_page_text
+from knowledge_engine.services.web_extract import (
+    is_anti_bot_fetch_result,
+    smart_fetch_page_html,
+    smart_fetch_page_text,
+)
 from knowledge_engine.src.curriculum.curriculum_v08_harvest import _deep_extract_blocks
 from knowledge_engine.src.curriculum.schemas import CurriculumGraph, CurriculumSearchHit
+from knowledge_engine.src.curriculum.search_prestep import _normalize_url_key
 from knowledge_engine.src.curriculum.source_hit_curation import (
     collect_archived_practical_hits,
     curate_practical_hits,
 )
-from knowledge_engine.src.curriculum.search_prestep import _normalize_url_key
 from knowledge_engine.src.curriculum.url_validate import validate_and_filter_urls
 from knowledge_engine.ui.run_log import trace
 
@@ -113,10 +122,11 @@ def enrich_search_hits_with_extracts(
         key_lower = hit.url.strip().rstrip("/").lower()
         ds = by_url.get(key_lower)
         extracts: list[str] = list(hit.key_extracts or [])
+        mandatory_academic = hit_requires_mandatory_academic_ingest(hit)
 
         if hit.skip_ollama_summary and _extract_word_total(extracts) >= 100:
             pass
-        elif ds:
+        elif ds and not mandatory_academic:
             lance_extracts = _extracts_from_document_summary(ds)
             if _extract_word_total(lance_extracts) > _extract_word_total(extracts):
                 extracts = lance_extracts
@@ -126,7 +136,7 @@ def enrich_search_hits_with_extracts(
         if not extracts or _extract_word_total(extracts) < 120:
             if hit.skip_ollama_summary:
                 pass
-            elif ds:
+            elif ds and not mandatory_academic:
                 extracts = _extracts_from_document_summary(ds) or extracts
             if not extracts and hit.snippet:
                 extracts = _deep_extract_blocks([], [], [hit.snippet], 150, 300)
@@ -168,11 +178,12 @@ def collect_practical_blog_hits(
     defer_lite_batch: bool = False,
 ) -> list[CurriculumSearchHit]:
     """Практика: архив → CSE → SearXNG → (опц.) DDGS / Gemini web → Lite batch."""
-    from knowledge_engine.src.curriculum.practical_source_fetch import fetch_practical_sources
+    from knowledge_engine.src.curriculum.practical_source_fetch import (
+        fetch_practical_sources,
+    )
 
     exclude: set[str] = set()
     out: list[CurriculumSearchHit] = []
-    grounding_exhausted = False
     anchor = f"curriculum_blogs:{(target_goal or '').strip()[:500]}"
     search_vec = (context_vector or target_goal or "").strip()
 
@@ -227,10 +238,7 @@ def collect_practical_blog_hits(
         except Exception as exc:
             trace(f"CURRICULUM gemini_web skip | {exc}")
 
-    if (
-        CURRICULUM_LITE_SITE_SUGGEST_ENABLED
-        and len(out) < cap
-    ):
+    if CURRICULUM_LITE_SITE_SUGGEST_ENABLED and len(out) < cap:
         from knowledge_engine.src.curriculum.source_discovery_expand import (
             collect_lite_suggested_site_hits,
         )
@@ -256,7 +264,6 @@ def collect_practical_blog_hits(
                 target_goal,
                 context_vector=context_vector,
             )
-            grounding_exhausted = gr.gemini_exhausted
             for g in gr.hits:
                 key = _normalize_url_key(g.url)
                 if not key or key in exclude:
@@ -271,7 +278,6 @@ def collect_practical_blog_hits(
                     )
                 )
         except Exception as exc:
-            grounding_exhausted = True
             trace(f"CURRICULUM gemini_grounding skip | {exc}")
     else:
         trace(
@@ -285,9 +291,7 @@ def collect_practical_blog_hits(
             _collect_whitelist_blog_hits,
         )
 
-        trace(
-            f"CURRICULUM searxng fallback ▶ | have={len(out)} need>={min_blog}"
-        )
+        trace(f"CURRICULUM searxng fallback ▶ | have={len(out)} need>={min_blog}")
         added = _collect_whitelist_blog_hits(
             target_goal,
             limit_per_provider=limit_per_provider,
@@ -330,9 +334,7 @@ def collect_practical_blog_hits(
 
 def _count_academic_hits(hits: list[CurriculumSearchHit]) -> int:
     return sum(
-        1
-        for h in hits
-        if (h.source_tier or "").strip() in _ACADEMIC_SOURCE_TIERS
+        1 for h in hits if (h.source_tier or "").strip() in _ACADEMIC_SOURCE_TIERS
     )
 
 
@@ -625,48 +627,367 @@ def merge_expansion_source_pool(
     return out
 
 
-def _ingest_blog_url(hit: CurriculumSearchHit) -> tuple[list[str], str]:
-    cached = _extracts_from_lancedb_url(hit.url)
-    if cached:
-        trace(f"CURRICULUM summarizer reuse LanceDB ⊘ blog | {hit.url[:60]}")
-        return cached
-    text, _method = smart_fetch_page_text(hit.url)
-    if len((text or "").strip()) < 200:
-        return [], hit.title
-    summary = summarize_article(hit.title or hit.url, hit.url, _text_for_summarizer(text))
-    VectorStore().save_summary(summary)
+def _highlights_text_from_hit(hit: CurriculumSearchHit) -> str:
+    parts = [str(x).strip() for x in (hit.key_extracts or []) if str(x).strip()]
+    if parts:
+        return "\n\n".join(parts)
+    return (hit.snippet or "").strip()
+
+
+def _highlights_char_count(hit: CurriculumSearchHit) -> int:
+    return len(_highlights_text_from_hit(hit))
+
+
+def _ingest_exa_highlights_fallback(
+    hit: CurriculumSearchHit,
+) -> tuple[list[str], str] | None:
+    text = _highlights_text_from_hit(hit)
+    if len(text) < 40:
+        return None
+    n = ingest_exa_highlights_fallback(hit, body_text=text)
+    if n <= 0:
+        return None
+    extracts = _deep_extract_blocks([], [], [text[:3000]], 80, 300)
+    if not extracts:
+        extracts = [text[:1500]]
+    return extracts[:8], (hit.title or hit.url)[:400]
+
+
+def _summary_to_extracts_and_title(
+    hit: CurriculumSearchHit,
+    summary,
+) -> tuple[list[str], str]:
     extracts = _deep_extract_blocks(
         list(summary.key_takeaways or []),
         list(summary.failure_modes or []),
         [],
     )
     if not extracts:
-        extracts = _deep_extract_blocks([], [], [hit.snippet or text[:2000]], 80, 300)
+        fallback = (hit.snippet or "").strip() or " ".join(summary.key_takeaways or [])[
+            :2000
+        ]
+        extracts = _deep_extract_blocks([], [], [fallback], 80, 300)
     return extracts[:8], (summary.title or hit.title)[:400]
+
+
+def _ingest_url_with_spatial_map_reduce(
+    hit: CurriculumSearchHit,
+    html: str,
+    *,
+    tier_label: str,
+) -> tuple[list[str], str]:
+    """Gemma/Ollama BLOG_SPATIAL map-reduce; Ollama summarize_article только как fallback."""
+    from knowledge_engine.services.article_ingestion.blog_spatial_pipeline import (
+        ingest_blog_with_spatial_mapping,
+    )
+
+    sid = (hit.source_id or "").strip()
+    _, summary, _saved = ingest_blog_with_spatial_mapping(
+        hit.title or hit.url,
+        hit.url,
+        sid,
+        raw_html=html,
+        save_lancedb=True,
+    )
+    if summary is None:
+        trace(
+            f"CURRICULUM spatial map-reduce ⊘ | {tier_label} | "
+            f"fallback summarizer | {hit.url[:55]}"
+        )
+        text, _method = smart_fetch_page_text(hit.url)
+        if len((text or "").strip()) < 200:
+            return [], hit.title
+        summary = summarize_article(
+            hit.title or hit.url, hit.url, _text_for_summarizer(text)
+        )
+        VectorStore().save_summary(summary)
+    return _summary_to_extracts_and_title(hit, summary)
+
+
+def _ingest_blog_url(hit: CurriculumSearchHit) -> tuple[list[str], str]:
+    from knowledge_engine.src.parsers.paper_structure_analyzer import (
+        is_academic_pdf_url,
+    )
+
+    if is_academic_pdf_url(hit.url):
+        trace(
+            f"PAPER_STRUCTURE route | academic PDF ingest (not BLOG_SPATIAL map) | "
+            f"{hit.url[:60]}"
+        )
+        text, _method = smart_fetch_page_text(hit.url)
+        if len((text or "").strip()) < 200:
+            fb = _ingest_exa_highlights_fallback(hit)
+            if fb:
+                return fb
+            return [], hit.title
+        store = VectorStore()
+        ing = asyncio.run(
+            ingest_academic_body_gemma(
+                hit.title or hit.url,
+                hit.url,
+                text,
+                store,
+                target_topic=hit.title or hit.url,
+            )
+        )
+        if ing is None:
+            return [], hit.title
+        return _summary_to_extracts_and_title(hit, ing.summary)
+
+    cached = _extracts_from_lancedb_url(hit.url)
+    if cached:
+        trace(f"CURRICULUM summarizer reuse LanceDB ⊘ blog | {hit.url[:60]}")
+        _try_blog_spatial_diagrams(hit)
+        return cached
+    html, fetch_method = smart_fetch_page_html(hit.url)
+    if is_anti_bot_fetch_result("", fetch_method, html=html):
+        add_blocked_domain(hit.url, "anti_bot_detected")
+        trace(f"CURRICULUM ingest anti_bot → exa highlights | blog | {hit.url[:60]}")
+        fb = _ingest_exa_highlights_fallback(hit)
+        if fb:
+            return fb
+        _try_blog_spatial_diagrams(hit)
+        return [], hit.title
+    if len((html or "").strip()) < 200:
+        _try_blog_spatial_diagrams(hit)
+        return [], hit.title
+
+    return _ingest_url_with_spatial_map_reduce(hit, html, tier_label="blog")
+
+
+def _try_blog_spatial_diagrams(hit: CurriculumSearchHit) -> None:
+    try:
+        from knowledge_engine.services.article_ingestion.blog_spatial_pipeline import (
+            run_blog_spatial_diagram_ingest,
+        )
+
+        sid = (hit.source_id or "").strip()
+        run_blog_spatial_diagram_ingest(sid, hit.url)
+    except Exception as exc:
+        trace(f"BLOG_SPATIAL ingest ⊘ | {hit.url[:60]} | {exc}")
+
+
+def _run_auto_article_diagrams_sync(hit: CurriculumSearchHit) -> None:
+    try:
+        from knowledge_engine.services.article_ingestion.auto_ingest import (
+            maybe_ingest_article_diagrams,
+        )
+        from knowledge_engine.services.article_ingestion.pipeline import ArticleFormat
+        from knowledge_engine.src.parsers.paper_structure_analyzer import (
+            get_cached_prefetch_pdf_bytes,
+        )
+
+        sid = (hit.source_id or "").strip()
+        pdf = get_cached_prefetch_pdf_bytes(hit.url)
+        kwargs: dict[str, object] = {}
+        if pdf:
+            kwargs["data"] = pdf
+            kwargs["content_type"] = ArticleFormat.PDF
+        maybe_ingest_article_diagrams(sid, hit.url, **kwargs)
+    except Exception as exc:
+        trace(f"ARTICLE_AUTO_INGEST ⊘ harvest | {hit.url[:60]} | {exc}")
+
+
+def _spawn_auto_article_diagrams_daemon(hit: CurriculumSearchHit) -> None:
+    """Diagram harvest off the asyncio loop (does not block asyncio.run / init job)."""
+    url_preview = (hit.url or "")[:60]
+    thread = threading.Thread(
+        target=_run_auto_article_diagrams_sync,
+        args=(hit,),
+        name=f"article_auto_ingest:{url_preview[:32]}",
+        daemon=True,
+    )
+    thread.start()
+    trace(
+        f"ARTICLE_AUTO_INGEST ▶ daemon | {url_preview} "
+        "(isolated — init/work-jobs not blocked)"
+    )
+
+
+def _try_auto_article_diagrams(hit: CurriculumSearchHit) -> None:
+    try:
+        _spawn_auto_article_diagrams_daemon(hit)
+    except Exception as exc:
+        trace(f"ARTICLE_AUTO_INGEST ⊘ harvest | {hit.url[:60]} | {exc}")
 
 
 def _ingest_academic_url(hit: CurriculumSearchHit) -> tuple[list[str], str]:
     cached = _extracts_from_lancedb_url(hit.url)
     if cached:
         trace(f"CURRICULUM summarizer reuse LanceDB ⊘ academic | {hit.url[:60]}")
+        _try_auto_article_diagrams(hit)
         return cached
-    text = (hit.snippet or "").strip()
-    if len(text) < 200:
-        text, _method = smart_fetch_page_text(hit.url)
-    if len((text or "").strip()) < 200:
+    html, fetch_method = smart_fetch_page_html(hit.url)
+    if is_anti_bot_fetch_result("", fetch_method, html=html):
+        add_blocked_domain(hit.url, "anti_bot_detected")
+        trace(
+            f"CURRICULUM ingest anti_bot → exa highlights | academic | {hit.url[:60]}"
+        )
+        fb = _ingest_exa_highlights_fallback(hit)
+        if fb:
+            _try_auto_article_diagrams(hit)
+            return fb
+        _try_auto_article_diagrams(hit)
         return [], hit.title
-    summary = summarize_article(hit.title or hit.url, hit.url, _text_for_summarizer(text))
-    VectorStore().save_summary(summary)
-    extracts = _deep_extract_blocks(
-        list(summary.key_takeaways or []),
-        list(summary.failure_modes or []),
-        [],
+
+    from knowledge_engine.services.web_extract import smart_fetch_page_text
+
+    text, _method = smart_fetch_page_text(hit.url)
+    if len((text or "").strip()) < 200:
+        hl_chars = _highlights_char_count(hit)
+        if hl_chars >= 40:
+            fb = _ingest_exa_highlights_fallback(hit)
+            if fb:
+                _try_auto_article_diagrams(hit)
+                return fb
+        _try_auto_article_diagrams(hit)
+        return [], hit.title
+
+    store = VectorStore()
+    ing = asyncio.run(
+        ingest_academic_body_gemma(
+            hit.title or hit.url,
+            hit.url,
+            text,
+            store,
+        )
     )
-    return extracts[:8], (summary.title or hit.title)[:400]
+    if ing is None:
+        _try_auto_article_diagrams(hit)
+        return [], hit.title
+    extracts, title = _summary_to_extracts_and_title(hit, ing.summary)
+    _try_auto_article_diagrams(hit)
+    return extracts, title
 
 
 def _hit_extract_words(hit: CurriculumSearchHit) -> int:
     return sum(len((e or "").split()) for e in hit.key_extracts)
+
+
+def hit_requires_mandatory_academic_ingest(hit: CurriculumSearchHit) -> bool:
+    """Quota-approved academic / arXiv PDF — full body ingest, not abstract-only."""
+    from knowledge_engine.src.parsers.paper_structure_analyzer import (
+        is_academic_pdf_url,
+    )
+
+    url = (hit.url or "").strip()
+    if not url.startswith("http"):
+        return False
+    tier = (hit.source_tier or "").strip().lower()
+    if is_academic_pdf_url(url):
+        return True
+    if tier in _ACADEMIC_SOURCE_TIERS or tier.startswith("consensus"):
+        return True
+    if "arxiv.org" in url.lower():
+        return True
+    return False
+
+
+async def ingest_mandatory_academic_hits_async(
+    hits: list[CurriculumSearchHit],
+    *,
+    label: str = "post_replenish",
+    defer_missing: bool = False,
+) -> list[CurriculumSearchHit]:
+    """
+    Post-replenish academic/PDF body ingest.
+
+    Always prefers LanceDB reuse when the URL is already ingested.
+    ``defer_missing`` (on-demand / lazy init): do not block on Gemma for
+    missing URLs — keep snippet extracts and spawn background full ingest.
+    """
+    if not hits:
+        return hits
+
+    out = list(hits)
+    need_full: list[tuple[int, CurriculumSearchHit]] = []
+    reused = 0
+    for i, h in enumerate(hits):
+        if not hit_requires_mandatory_academic_ingest(h):
+            continue
+        cached = _extracts_from_lancedb_url(h.url)
+        if cached:
+            extracts, title = cached
+            out[i] = h.model_copy(update={"title": title, "key_extracts": extracts})
+            reused += 1
+            trace(f"CURRICULUM post-replenish reuse LanceDB | {label} | {h.url[:60]}")
+            _try_auto_article_diagrams(out[i])
+            continue
+        need_full.append((i, h))
+
+    if not need_full:
+        if reused:
+            trace(
+                f"CURRICULUM post-replenish ingest ✓ | {label} | "
+                f"reused_lancedb={reused} full=0"
+            )
+        return out
+
+    if defer_missing:
+        bg_hits = [h for _, h in need_full]
+        _spawn_mandatory_academic_ingest_daemon(bg_hits, label=label)
+        trace(
+            f"CURRICULUM post-replenish ingest ▶ defer | {label} | "
+            f"reused_lancedb={reused} background_full={len(bg_hits)} "
+            "(init not blocked)"
+        )
+        return out
+
+    trace(
+        f"CURRICULUM post-replenish ingest ▶ | {label} | "
+        f"mandatory_academic={len(need_full)} reused_lancedb={reused}"
+    )
+    tasks = [
+        asyncio.create_task(_ingest_academic_hit_async(h, force_full_ingest=True))
+        for _, h in need_full
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    ok = 0
+    for (idx, _), res in zip(need_full, results):
+        if isinstance(res, BaseException):
+            trace(
+                f"CURRICULUM post-replenish ingest ⊘ | {label} | "
+                f"{out[idx].url[:60]} | {res}"
+            )
+            continue
+        if res is not None:
+            out[idx] = res
+            ok += 1
+    trace(
+        f"CURRICULUM post-replenish ingest ✓ | {label} | "
+        f"ingested={ok}/{len(need_full)} reused_lancedb={reused}"
+    )
+    return out
+
+
+def _spawn_mandatory_academic_ingest_daemon(
+    hits: list[CurriculumSearchHit],
+    *,
+    label: str,
+) -> None:
+    """Full Gemma ingest off the init critical path."""
+    if not hits:
+        return
+    snapshot = list(hits)
+
+    def _run() -> None:
+        try:
+            asyncio.run(
+                ingest_mandatory_academic_hits_async(
+                    snapshot,
+                    label=f"{label}:bg",
+                    defer_missing=False,
+                )
+            )
+        except Exception as exc:
+            trace(f"CURRICULUM post-replenish bg ⊘ | {label} | {exc}")
+
+    thread = threading.Thread(
+        target=_run,
+        name=f"mandatory_academic:{label[:40]}",
+        daemon=True,
+    )
+    thread.start()
 
 
 def _extracts_from_lancedb_url(url: str) -> tuple[list[str], str] | None:
@@ -688,7 +1009,7 @@ def _extracts_from_lancedb_url(url: str) -> tuple[list[str], str] | None:
     return extracts[:8], title
 
 
-_INGEST_URL_SEM = asyncio.Semaphore(1)
+_INGEST_URL_SEM = asyncio.Semaphore(max(1, KE_INGEST_URL_CONCURRENCY))
 _SUMMARIZER_MAX_INPUT_CHARS = 2500
 
 
@@ -697,10 +1018,125 @@ def _text_for_summarizer(text: str) -> str:
     return t[:_SUMMARIZER_MAX_INPUT_CHARS] if t else ""
 
 
-async def _ingest_academic_hit_async(hit: CurriculumSearchHit) -> CurriculumSearchHit | None:
+async def _ingest_academic_hit_async(
+    hit: CurriculumSearchHit,
+    *,
+    force_full_ingest: bool = False,
+) -> CurriculumSearchHit | None:
     async with _INGEST_URL_SEM:
         try:
-            extracts, title = await asyncio.to_thread(_ingest_academic_url, hit)
+            from knowledge_engine.src.curriculum.academic_url_canonicalizer import (
+                coerce_arxiv_url_to_pdf,
+            )
+            from knowledge_engine.src.parsers.paper_structure_analyzer import (
+                cache_prefetch_pdf_bytes,
+                is_academic_pdf_url,
+                try_fetch_pdf_bytes_for_url,
+            )
+
+            canon_url = coerce_arxiv_url_to_pdf(hit.url)
+            if canon_url != (hit.url or "").strip():
+                hit = hit.model_copy(update={"url": canon_url})
+
+            cached = _extracts_from_lancedb_url(hit.url)
+            if cached:
+                # force_full_ingest means "ensure body in LanceDB", not "re-run Gemma".
+                trace(
+                    f"CURRICULUM summarizer reuse LanceDB ⊘ academic | {hit.url[:60]}"
+                )
+                _try_auto_article_diagrams(hit)
+                extracts, title = cached
+            elif is_academic_pdf_url(hit.url):
+                pdf_bytes = await asyncio.to_thread(
+                    try_fetch_pdf_bytes_for_url, hit.url
+                )
+                if not pdf_bytes:
+                    fb = _ingest_exa_highlights_fallback(hit)
+                    if fb:
+                        _try_auto_article_diagrams(hit)
+                        extracts, title = fb
+                    else:
+                        return None
+                else:
+                    cache_prefetch_pdf_bytes(hit.url, pdf_bytes)
+                    try:
+                        from knowledge_engine.services.parsers.article_manifest import (
+                            ArticleResourceManifest,
+                        )
+                        from knowledge_engine.services.parsers.article_resource_discoverer import (
+                            get_cached_manifest,
+                            store_manifest,
+                        )
+
+                        manifest = get_cached_manifest(hit.url)
+                        if manifest is None:
+                            manifest = ArticleResourceManifest(
+                                source_id=(hit.source_id or "").strip(),
+                                canonical_url=hit.url,
+                            )
+                        manifest.fetched_pdf_bytes = pdf_bytes
+                        store_manifest(manifest)
+                    except Exception:
+                        pass
+                    body = (hit.snippet or hit.title or hit.url or "")[:800]
+                    store = VectorStore()
+                    ing = await ingest_academic_body_gemma(
+                        hit.title or hit.url,
+                        hit.url,
+                        body,
+                        store,
+                        target_topic=hit.title or hit.url,
+                        pdf_bytes=pdf_bytes,
+                    )
+                    if ing is None:
+                        return None
+                    extracts, title = _summary_to_extracts_and_title(hit, ing.summary)
+                    _try_auto_article_diagrams(hit)
+            else:
+                html, fetch_method = smart_fetch_page_html(hit.url)
+                if is_anti_bot_fetch_result("", fetch_method, html=html):
+                    add_blocked_domain(hit.url, "anti_bot_detected")
+                    fb = _ingest_exa_highlights_fallback(hit)
+                    if fb:
+                        _try_auto_article_diagrams(hit)
+                        extracts, title = fb
+                    else:
+                        return None
+                else:
+                    from knowledge_engine.services.web_extract import (
+                        smart_fetch_page_text,
+                    )
+
+                    text, _ = smart_fetch_page_text(hit.url)
+                    if len((text or "").strip()) < 200:
+                        fb = _ingest_exa_highlights_fallback(hit)
+                        if fb:
+                            extracts, title = fb
+                        else:
+                            return None
+                    else:
+                        store = VectorStore()
+                        from knowledge_engine.src.parsers.paper_structure_analyzer import (
+                            try_fetch_pdf_bytes_for_url,
+                        )
+
+                        pdf_bytes = await asyncio.to_thread(
+                            try_fetch_pdf_bytes_for_url, hit.url
+                        )
+                        ing = await ingest_academic_body_gemma(
+                            hit.title or hit.url,
+                            hit.url,
+                            text,
+                            store,
+                            target_topic=hit.title or hit.url,
+                            pdf_bytes=pdf_bytes,
+                        )
+                        if ing is None:
+                            return None
+                        extracts, title = _summary_to_extracts_and_title(
+                            hit, ing.summary
+                        )
+                        _try_auto_article_diagrams(hit)
             if not extracts:
                 return None
             return hit.model_copy(update={"title": title, "key_extracts": extracts})
@@ -709,7 +1145,43 @@ async def _ingest_academic_hit_async(hit: CurriculumSearchHit) -> CurriculumSear
             return None
 
 
+async def _spatial_blog_diagrams_batch_async(hits: list[CurriculumSearchHit]) -> None:
+    if not hits:
+        return
+    try:
+        from knowledge_engine.services.article_ingestion.blog_spatial_pipeline import (
+            prepare_spatial_diagram_job,
+            run_spatial_diagram_ingest_jobs_async,
+        )
+
+        jobs = []
+        for hit in hits:
+            sid = (hit.source_id or "").strip()
+            prepared = await asyncio.to_thread(
+                prepare_spatial_diagram_job,
+                sid,
+                hit.url,
+            )
+            if prepared is not None:
+                jobs.append(prepared)
+        if jobs:
+            await run_spatial_diagram_ingest_jobs_async(jobs)
+    except Exception as exc:
+        trace(f"BLOG_SPATIAL batch ⊘ | {exc}")
+
+
+async def _spatial_blog_diagrams_async(hit: CurriculumSearchHit) -> None:
+    await _spatial_blog_diagrams_batch_async([hit])
+
+
 async def _ingest_blog_hit_async(hit: CurriculumSearchHit) -> CurriculumSearchHit:
+    from knowledge_engine.src.parsers.paper_structure_analyzer import (
+        is_academic_pdf_url,
+    )
+
+    if is_academic_pdf_url(hit.url):
+        result = await _ingest_academic_hit_async(hit)
+        return result if result is not None else hit
     async with _INGEST_URL_SEM:
         try:
             extracts, title = await asyncio.to_thread(_ingest_blog_url, hit)
@@ -725,7 +1197,11 @@ async def summarize_whitelist_blog_hits_async(
     hits: list[CurriculumSearchHit],
     target_goal: str = "",
 ) -> list[CurriculumSearchHit]:
-    """Последовательный ingest URL (Semaphore 1) для 7B/Ollama — меньше пик UMA."""
+    """Последовательный ingest URL (Semaphore 1); map-reduce Gemma + fallback Ollama."""
+    from knowledge_engine.src.parsers.paper_structure_analyzer import (
+        is_academic_pdf_url,
+    )
+
     blog_hits = [h for h in hits if (h.source_tier or "").strip() in _BLOG_SOURCE_TIERS]
     academic_hits = [
         h for h in hits if (h.source_tier or "").strip() in _ACADEMIC_SOURCE_TIERS
@@ -753,18 +1229,36 @@ async def summarize_whitelist_blog_hits_async(
 
     academic_tasks: list[asyncio.Task] = []
     for h in academic_hits:
+        if hit_requires_mandatory_academic_ingest(h):
+            academic_tasks.append(
+                asyncio.create_task(
+                    _ingest_academic_hit_async(h, force_full_ingest=True)
+                )
+            )
+            continue
         if _hit_extract_words(h) >= 120:
             out.append(h)
             continue
         academic_tasks.append(asyncio.create_task(_ingest_academic_hit_async(h)))
 
     blog_tasks: list[asyncio.Task] = []
+    spatial_hits: list[CurriculumSearchHit] = []
+    diagram_ingest_hits: list[CurriculumSearchHit] = list(academic_hits)
     for h in blog_hits:
+        if is_academic_pdf_url(h.url):
+            academic_tasks.append(
+                asyncio.create_task(
+                    _ingest_academic_hit_async(h, force_full_ingest=True)
+                )
+            )
+            continue
         if h.skip_ollama_summary and h.key_extracts:
             out.append(h)
+            spatial_hits.append(h)
             continue
         if h.key_extracts and _hit_extract_words(h) >= 120:
             out.append(h)
+            spatial_hits.append(h)
             continue
         blog_tasks.append(asyncio.create_task(_ingest_blog_hit_async(h)))
 
@@ -782,6 +1276,18 @@ async def summarize_whitelist_blog_hits_async(
         _collect_academic(),
         _collect_blog(),
     )
+    if spatial_hits:
+        diagram_ingest_hits.extend(spatial_hits)
+    if diagram_ingest_hits:
+        seen_url: set[str] = set()
+        deduped: list[CurriculumSearchHit] = []
+        for h in diagram_ingest_hits:
+            k = _normalize_url_key(h.url)
+            if not k or k in seen_url:
+                continue
+            seen_url.add(k)
+            deduped.append(h)
+        await _spatial_blog_diagrams_batch_async(deduped)
     for done in ac_done:
         if done is not None:
             out.append(done)
@@ -795,14 +1301,12 @@ async def summarize_whitelist_blog_hits_async(
     blog_deep = sum(
         1
         for h in out
-        if h.source_tier in _BLOG_SOURCE_TIERS
-        and _hit_extract_words(h) >= 120
+        if h.source_tier in _BLOG_SOURCE_TIERS and _hit_extract_words(h) >= 120
     )
     academic_deep = sum(
         1
         for h in out
-        if h.source_tier in _ACADEMIC_SOURCE_TIERS
-        and _hit_extract_words(h) >= 120
+        if h.source_tier in _ACADEMIC_SOURCE_TIERS and _hit_extract_words(h) >= 120
     )
     trace(
         f"CURRICULUM summarizer ✓ | deep_blogs={blog_deep} deep_academic={academic_deep}"
@@ -886,14 +1390,12 @@ def _summarize_whitelist_blog_hits_sequential(
     blog_deep = sum(
         1
         for h in out
-        if h.source_tier in _BLOG_SOURCE_TIERS
-        and _hit_extract_words(h) >= 120
+        if h.source_tier in _BLOG_SOURCE_TIERS and _hit_extract_words(h) >= 120
     )
     academic_deep = sum(
         1
         for h in out
-        if h.source_tier in _ACADEMIC_SOURCE_TIERS
-        and _hit_extract_words(h) >= 120
+        if h.source_tier in _ACADEMIC_SOURCE_TIERS and _hit_extract_words(h) >= 120
     )
     trace(
         f"CURRICULUM summarizer ✓ | deep_blogs={blog_deep} deep_academic={academic_deep}"

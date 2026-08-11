@@ -82,7 +82,6 @@ _EN_STOP = frozenset(
         "из",
         "от",
         "до",
-        "при",
         "об",
         "о",
     }
@@ -172,7 +171,9 @@ def build_search_queries(expansion_vector: str) -> BuiltSearchQueries:
     )
 
 
-def build_fallback_quote_queries(learning_goal: str, *, max_queries: int = 6) -> list[str]:
+def build_fallback_quote_queries(
+    learning_goal: str, *, max_queries: int = 6
+) -> list[str]:
     """Fallback если Lite не вернула JSON: кавычечные термы + site: по приоритетным доменам."""
     keywords = _extract_keywords(learning_goal)
     kw = " ".join(keywords[:4])
@@ -197,7 +198,7 @@ def build_fallback_quote_queries(learning_goal: str, *, max_queries: int = 6) ->
         add(f"site:{site} {kw}")
     if not out:
         add(kw or "distributed systems engineering")
-    return out[:max(1, max_queries)]
+    return out[: max(1, max_queries)]
 
 
 def build_practical_searxng_queries(
@@ -227,5 +228,4 @@ def build_practical_searxng_queries(
     for site in _CURRICULUM_PRACTICAL_SITE_WHITELIST[:6]:
         add(f"site:{site} {kw}")
     add(f"{kw} distributed systems engineering blog")
-    return out[:max(1, max_queries)]
-
+    return out[: max(1, max_queries)]

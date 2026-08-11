@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from knowledge_engine.src.curriculum.schemas import CurriculumSearchHit, CurriculumSourceRegistryEntry
-from knowledge_engine.src.curriculum.search_prestep import _normalize_url_key
 from knowledge_engine.services.vector_store import VectorStore
+from knowledge_engine.src.curriculum.schemas import (
+    CurriculumSearchHit,
+    CurriculumSourceRegistryEntry,
+)
+from knowledge_engine.src.curriculum.search_prestep import _normalize_url_key
 from knowledge_engine.ui.run_log import trace
 
 
 def _extracts_from_summary(summary) -> list[str]:
-    from knowledge_engine.src.curriculum.curriculum_v08_harvest import _deep_extract_blocks
+    from knowledge_engine.src.curriculum.curriculum_v08_harvest import (
+        _deep_extract_blocks,
+    )
 
     takeaways = list(summary.key_takeaways or [])
     failures = list(summary.failure_modes or [])

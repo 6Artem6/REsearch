@@ -5,8 +5,6 @@ from __future__ import annotations
 import re
 import uuid
 
-from pydantic import BaseModel, Field
-
 from knowledge_engine.config import (
     CURRICULUM_MODEL_FIRST_MIN_NODES,
     CURRICULUM_MODEL_FIRST_TARGET_NODES,
@@ -14,18 +12,26 @@ from knowledge_engine.config import (
     GEMINI_RPM_PAUSE_SEC,
 )
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
+from knowledge_engine.schemas.llm_contracts.curriculum import (
+    ModelFirstPayloadContract as _ModelFirstPayload,
+)
 from knowledge_engine.services.gemini_stateless import (
     gemini_reasoner_model_chain,
     run_gemini_structured_with_chain,
 )
-from knowledge_engine.src.curriculum.dag_validator import validate_curriculum_dag_full
+from knowledge_engine.src.curriculum.dag_validator import (
+    CURRICULUM_DAG_REPAIR_PRESERVE_ANCHOR_TOPICS,
+    validate_curriculum_dag_full,
+)
 from knowledge_engine.src.curriculum.schemas import (
     CurriculumGenerateInput,
     CurriculumGraph,
     CurriculumNode,
     LearningMaterials,
 )
-from knowledge_engine.src.curriculum.source_registry import sync_route_sources_from_registry
+from knowledge_engine.src.curriculum.source_registry import (
+    sync_route_sources_from_registry,
+)
 from knowledge_engine.ui.run_log import trace
 
 _MODEL_FIRST_SYSTEM = (
@@ -55,24 +61,14 @@ _MODEL_FIRST_SYSTEM = (
     "7. Покрой путь от базовых концептов до сложных инженерных точек (edge cases, "
     "отказоустойчивость, распределённые паттерны).\n"
     "8. curriculum_id (slug), title, description — на русском.\n"
+    "9. **Опорные темы пользователя:** если в цели (target_goal) указаны конкретные темы "
+    "в скобках, через запятую или списком (например, «Архитектура хранилищ (WAL, Ring Buffer, P99)»):\n"
+    "   - Обязательно вплети каждую из этих тем в граф в виде отдельных нод или ключевых concepts.\n"
+    "   - Выстрой вокруг них логичные зависимости (prerequisites): базовые темы размещай раньше, "
+    "продвинутые — в глубоких слоях графа.\n"
+    "   - Сохраняй суть и терминологию предложенных тем, органично адаптируя их названия "
+    "под инженерный стиль курса.\n"
 )
-
-
-class _ModelFirstNode(BaseModel):
-    node_id: str = ""
-    title: str = ""
-    layer: str = ""
-    category: str = ""
-    brief_summary: str = ""
-    core_concepts: list[str] = Field(default_factory=list)
-    prerequisites: list[str] = Field(default_factory=list)
-
-
-class _ModelFirstPayload(BaseModel):
-    curriculum_id: str = ""
-    title: str = ""
-    description: str = ""
-    nodes: list[_ModelFirstNode] = Field(default_factory=list)
 
 
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -104,7 +100,9 @@ def _coerce_model_first_nodes(payload: _ModelFirstPayload) -> list[CurriculumNod
         nid = (raw.node_id or "").strip()
         if len(nid) < 2:
             continue
-        concepts = [c.strip() for c in (raw.core_concepts or []) if c and str(c).strip()][:8]
+        concepts = [
+            c.strip() for c in (raw.core_concepts or []) if c and str(c).strip()
+        ][:8]
         if not concepts:
             concepts = ["ключевая тема"]
         brief = (raw.brief_summary or "").strip()
@@ -202,10 +200,9 @@ def generate_model_first_graph(
     if errors or len(graph.nodes) < min_n:
         hints: list[str] = list(errors)
         if len(graph.nodes) < min_n:
-            hints.append(
-                f"Слишком мало узлов ({len(graph.nodes)}); нужно ≥{min_n}."
-            )
+            hints.append(f"Слишком мало узлов ({len(graph.nodes)}); нужно ≥{min_n}.")
         hint = "\n".join(f"- {h}" for h in hints)
+        hint += f"\n{CURRICULUM_DAG_REPAIR_PRESERVE_ANCHOR_TOPICS}"
         trace(f"CURRICULUM model_first ▶ repair | issues={len(hints)}")
         payload = run_gemini_structured_with_chain(
             GEMINI_FLASH_MODEL,
@@ -221,9 +218,7 @@ def generate_model_first_graph(
         errors = validate_curriculum_dag_full(graph)
 
     if errors:
-        raise ValueError(
-            "Model-First: невалидный DAG: " + "; ".join(errors[:5])
-        )
+        raise ValueError("Model-First: невалидный DAG: " + "; ".join(errors[:5]))
     if len(graph.nodes) < min_n:
         raise ValueError(
             f"Model-First: после repair узлов {len(graph.nodes)} < {min_n}"

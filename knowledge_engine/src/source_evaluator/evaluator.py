@@ -26,9 +26,7 @@ class SourceEvaluatorResult(BaseModel):
     status: Literal["APPROVED", "REJECTED"]
     confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
     reason: str = ""
-    suggested_action: Literal[
-        "RETRY_WITH_NEW_SOURCE", "REMOVE_LINK", "KEEP"
-    ] = "KEEP"
+    suggested_action: Literal["RETRY_WITH_NEW_SOURCE", "REMOVE_LINK", "KEEP"] = "KEEP"
     whitelist_match: bool = False
 
 
@@ -125,19 +123,15 @@ def evaluate_source(
     user_msg = build_evaluator_user_message(url_clean, thesis_clean, excerpt_clean)
     trace(f"SOURCE_EVAL ▶ Lite | {url_clean[:80]}…")
 
-    class _LiteOut(BaseModel):
-        status: Literal["APPROVED", "REJECTED"]
-        confidence_score: float = Field(default=0.5, ge=0.0, le=1.0)
-        reason: str = ""
-        suggested_action: Literal[
-            "RETRY_WITH_NEW_SOURCE", "REMOVE_LINK", "KEEP"
-        ] = "KEEP"
+    from knowledge_engine.schemas.llm_contracts.source_eval import (
+        SourceEvaluatorLiteContract,
+    )
 
     lite = run_gemini_lite_structured(
         system,
         user_msg,
         global_anchor,
-        _LiteOut,
+        SourceEvaluatorLiteContract,
         "source_evaluator_lite",
     )
     status = (lite.status or "REJECTED").strip().upper()

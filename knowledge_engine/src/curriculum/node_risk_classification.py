@@ -8,8 +8,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
-from knowledge_engine.src.curriculum.schemas import CurriculumGraph, CurriculumNode
 from knowledge_engine.src.curriculum.lite_search_pipeline import _lite_structured
+from knowledge_engine.src.curriculum.schemas import CurriculumGraph, CurriculumNode
 from knowledge_engine.ui.run_log import trace
 
 _RISK_SYSTEM = (

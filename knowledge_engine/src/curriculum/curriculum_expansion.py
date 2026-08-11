@@ -8,24 +8,29 @@ from knowledge_engine.config import (
     GEMINI_RPM_PAUSE_SEC,
 )
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
+from knowledge_engine.schemas.llm_contracts.curriculum import ExpansionVectorContract
 from knowledge_engine.services.gemini_stateless import (
     gemini_reasoner_model_chain,
     run_gemini_structured_with_chain,
+)
+from knowledge_engine.src.curriculum.dag_validator import (
+    CURRICULUM_DAG_REPAIR_PRESERVE_ANCHOR_TOPICS,
+)
+from knowledge_engine.src.curriculum.schemas import (
+    CurriculumExpansionEdge,
+    CurriculumExpansionPatch,
+    CurriculumGraph,
+    CurriculumNode,
+    CurriculumSearchHit,
 )
 from knowledge_engine.src.curriculum.search_first_flash import (
     _FlashExpansionPatch,
     coerce_expansion_patch_from_flash,
 )
-from knowledge_engine.src.curriculum.schemas import (
-    CurriculumGraph,
-    CurriculumSearchHit,
-    ExpansionVectorOutput,
-    CurriculumExpansionPatch,
-    CurriculumExpansionEdge,
-    CurriculumNode,
+from knowledge_engine.src.curriculum.search_prestep import (
+    _normalize_url_key,
+    search_hits_as_prompt_json,
 )
-from knowledge_engine.src.curriculum.search_prestep import _normalize_url_key
-from knowledge_engine.src.curriculum.search_prestep import search_hits_as_prompt_json
 from knowledge_engine.ui.run_log import trace
 
 _LITE_EXPANSION_SYSTEM = (
@@ -61,7 +66,16 @@ _FLASH_EXPANSION_SYSTEM = (
     "(new_1 → new_2 → new_3), без ветвления и без ссылок на старый граф.\n"
     "4. new_edges должны отражать ту же цепочку; не добавляй поперечные ребра между new_nodes.\n"
     "5. Не добавляй new_edges, которые привязывают СУЩЕСТВУЮЩИЕ старые ноды к другим старым нодам.\n"
-    "6. ДЕКОМПОЗИЦИЯ: последовательные шаги, не одна финальная SOTA со всеми prereq графа.\n"
+    "6. ДЕКОМПОЗИЦИЯ: последовательные шаги, не одна финальная SOTA со всеми prereq графа.\n\n"
+    "**Опорные темы пользователя:** если в цели маршрута (target_goal / description графа) "
+    "или в user_expansion_request указаны конкретные темы в скобках, через запятую или списком "
+    "(например, «Архитектура хранилищ (WAL, Ring Buffer, P99)»):\n"
+    "   - Обязательно вплети каждую из этих тем в граф в виде отдельных нод или ключевых concepts.\n"
+    "   - Выстрой вокруг них логичные зависимости (prerequisites): базовые темы размещай раньше, "
+    "продвинутые — в глубоких слоях графа.\n"
+    "   - Сохраняй суть и терминологию предложенных тем, органично адаптируя их названия "
+    "под инженерный стиль курса.\n"
+    f"{CURRICULUM_DAG_REPAIR_PRESERVE_ANCHOR_TOPICS}\n"
 )
 
 _NO_FRESH_GROUNDING_USER_BLOCK = (
@@ -81,9 +95,7 @@ def _graph_summary(graph: CurriculumGraph) -> str:
     ]
     for n in graph.nodes[:40]:
         prereq = ",".join(n.prerequisites[:6])
-        lines.append(
-            f"- {n.node_id} | {n.title} | layer={n.layer} | prereq=[{prereq}]"
-        )
+        lines.append(f"- {n.node_id} | {n.title} | layer={n.layer} | prereq=[{prereq}]")
     return "\n".join(lines)
 
 
@@ -91,7 +103,7 @@ def lite_plan_expansion_vector(
     graph: CurriculumGraph,
     user_request: str,
     anchor: str,
-) -> ExpansionVectorOutput:
+) -> ExpansionVectorContract:
     payload = (
         f"### user_expansion_request\n{user_request.strip()}\n\n"
         f"### current_graph\n{_graph_summary(graph)}\n"
@@ -101,7 +113,7 @@ def lite_plan_expansion_vector(
         _LITE_EXPANSION_SYSTEM,
         payload,
         anchor,
-        ExpansionVectorOutput,
+        ExpansionVectorContract,
         "curriculum / expansion_lite",
         rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
         models=[GEMINI_LITE_MODEL],
@@ -313,9 +325,7 @@ def validate_and_repair_expansion_dag(
             trimmed = _pick_anchor_old_prereqs(old_links, by_id, node, max_keep=2)
             removed += len(old_links) - len(trimmed)
             other = [p for p in node.prerequisites if p not in pre_existing_ids]
-            by_id[nid] = node.model_copy(
-                update={"prerequisites": trimmed + other}
-            )
+            by_id[nid] = node.model_copy(update={"prerequisites": trimmed + other})
 
     # Transitive reduction на prerequisites каждой ноды
     for nid, node in list(by_id.items()):
@@ -343,7 +353,9 @@ def validate_and_repair_expansion_dag(
     )
 
     if removed:
-        trace(f"CURRICULUM expand DAG repaired ▶ removed {removed} redundant cross-edges")
+        trace(
+            f"CURRICULUM expand DAG repaired ▶ removed {removed} redundant cross-edges"
+        )
 
     nodes = [by_id[n.node_id] for n in graph.nodes if n.node_id in by_id]
     return graph.model_copy(update={"nodes": nodes, "total_nodes": len(nodes)})
@@ -355,14 +367,14 @@ def merge_graph_source_registry(
 ) -> CurriculumGraph:
     """Добавить новые источники (expand grounding) в curriculum_sources_registry."""
     from knowledge_engine.src.curriculum.search_first_flash import _registry_from_hits
-    from knowledge_engine.src.curriculum.source_registry import sync_route_sources_from_registry
+    from knowledge_engine.src.curriculum.source_registry import (
+        sync_route_sources_from_registry,
+    )
 
-    existing_keys = {_normalize_url_key(e.url) for e in graph.curriculum_sources_registry}
-    extra_hits = [
-        h
-        for h in new_hits
-        if _normalize_url_key(h.url) not in existing_keys
-    ]
+    existing_keys = {
+        _normalize_url_key(e.url) for e in graph.curriculum_sources_registry
+    }
+    extra_hits = [h for h in new_hits if _normalize_url_key(h.url) not in existing_keys]
     if not extra_hits:
         return graph
 

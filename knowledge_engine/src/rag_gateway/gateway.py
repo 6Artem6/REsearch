@@ -1,18 +1,23 @@
-"""Directional RAG Gateway — детерминированный пайплайн без LLM."""
+"""Directional RAG Gateway — векторный поиск, cross-encoder, опционально Gemma-сжатие фактов."""
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
 from knowledge_engine.config import (
+    KE_RAG_TIMEOUT_SEC,
+    RAG_GATEWAY_FINISH_MARGIN_SEC,
     RAG_LATENCY_WARN_MS,
     RAG_RETRIEVAL_PER_DIRECTION,
 )
 from knowledge_engine.src.locks import run_under_uma_lock
 from knowledge_engine.src.memory.light_rag import LightRAG
 from knowledge_engine.src.rag_gateway.cross_encoder import score_relevance_pairs
+from knowledge_engine.src.rag_gateway.fact_compressor import compress_fact_if_needed
+from knowledge_engine.src.rag_gateway.fact_text import FACT_MAX_CHARS
 from knowledge_engine.src.rag_gateway.schemas import (
     DirectionalRAGQuery,
     DirectionalRAGResponse,
@@ -52,8 +57,7 @@ def _deduplicate_facts(
 
 async def query_directional_rag(req: DirectionalRAGQuery) -> DirectionalRAGResponse:
     """
-    Модуль 3: векторный поиск → cross-encoder → cutoff → дедуп → top-N.
-    Без вызовов LLM.
+    Модуль 3: векторный поиск → cross-encoder → cutoff → дедуп → сжатие → top-N.
     """
     t0 = time.perf_counter()
     trace(f"RAG_GATEWAY ▶ directional | node={req.target_node}")
@@ -65,7 +69,7 @@ async def query_directional_rag(req: DirectionalRAGQuery) -> DirectionalRAGRespo
         hits = await rag.vector_search(
             direction.vector_query,
             per_dir,
-            kinds=frozenset({"profile", "fact"}),
+            kinds=frozenset({"fact"}),
         )
         for _cos, text, _meta in hits:
             if text in by_text:
@@ -107,12 +111,29 @@ async def query_directional_rag(req: DirectionalRAGQuery) -> DirectionalRAGRespo
             weighted.append((final, cand.direction_label, text))
 
     deduped = _deduplicate_facts(weighted)
+    top_rows = deduped[:max_facts]
+    context_topic = (req.relevance_criteria or req.target_node).strip()[:500]
+    rag_deadline = t0 + KE_RAG_TIMEOUT_SEC - RAG_GATEWAY_FINISH_MARGIN_SEC
+
+    async def _compress_for_pipeline(text: str) -> str:
+        if len(text) <= FACT_MAX_CHARS:
+            return text
+        remaining = rag_deadline - time.perf_counter()
+        return await compress_fact_if_needed(
+            text,
+            context_topic,
+            gemma_timeout_sec=remaining,
+        )
+
+    compressed_facts = await asyncio.gather(
+        *[_compress_for_pipeline(text) for _score, _direction, text in top_rows]
+    )
     facts_out: list[RankedMemoryFact] = []
-    for score, direction, text in deduped[:max_facts]:
+    for (score, direction, _text), fact in zip(top_rows, compressed_facts):
         facts_out.append(
             RankedMemoryFact(
                 direction=direction,
-                fact=text,
+                fact=fact,
                 relevance_score=round(min(1.0, score), 4),
             )
         )

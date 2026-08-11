@@ -389,9 +389,7 @@ async def sync_profile_from_markdown_if_needed() -> bool:
     """
     current_hash = _user_profile_content_hash()
     if not current_hash:
-        trace(
-            "[PERSONAL_RAG] user_profile.md missing or too short — skip profile sync"
-        )
+        trace("[PERSONAL_RAG] user_profile.md missing or too short — skip profile sync")
         return False
 
     rag = LightRAG()

@@ -11,8 +11,12 @@ from knowledge_engine.src.curriculum.schemas import (
     NodeSourceRef,
     PrimaryWhitelistSource,
 )
-from knowledge_engine.src.curriculum.source_registry import format_resolved_sources_for_lecture
-from knowledge_engine.src.source_evaluator.evaluator import format_whitelist_for_reasoner_prompt
+from knowledge_engine.src.curriculum.source_registry import (
+    format_resolved_sources_for_lecture,
+)
+from knowledge_engine.src.source_evaluator.evaluator import (
+    format_whitelist_for_reasoner_prompt,
+)
 
 
 def curriculum_whitelist_prompt_block() -> str:
@@ -88,8 +92,10 @@ def _merge_node_plan_from_graph(node: Any, curriculum_id: str) -> Any:
                 pass
         if raw.get("node_curriculum_breakdown"):
             try:
-                updates["node_curriculum_breakdown"] = NodeCurriculumBreakdown.model_validate(
-                    raw["node_curriculum_breakdown"]
+                updates["node_curriculum_breakdown"] = (
+                    NodeCurriculumBreakdown.model_validate(
+                        raw["node_curriculum_breakdown"]
+                    )
                 )
             except Exception:
                 pass
@@ -144,9 +150,7 @@ def format_neighborhood_context_block(curriculum_id: str, node_id: str) -> str:
     lines.append(f"- {current_title}")
 
     lines.append("")
-    lines.append(
-        "СЛЕДУЮЩИЕ ТЕМЫ (НЕ углубляйся сюда — это темы будущих уроков):"
-    )
+    lines.append("СЛЕДУЮЩИЕ ТЕМЫ (НЕ углубляйся сюда — это темы будущих уроков):")
     if succs:
         for s in succs:
             title = (s.get("title") or s.get("node_id") or "").strip()
@@ -167,7 +171,9 @@ def format_node_curriculum_context_for_tutor(node: Any, curriculum_id: str = "")
 
     plan = format_node_lesson_plan_for_lecture(node, curriculum_id)
     if plan.strip():
-        body = plan.replace("Ты — IT-Тьютор.\n", "").replace("Ты — IT-Тьютор.", "").strip()
+        body = (
+            plan.replace("Ты — IT-Тьютор.\n", "").replace("Ты — IT-Тьютор.", "").strip()
+        )
         if body:
             parts.append(body)
 
@@ -216,7 +222,8 @@ def enrich_node_learning_materials_from_graph(
 ) -> Any:
     """Подтянуть learning_materials из сохранённого графа, если UI не передал."""
     has_plan = bool(
-        getattr(node, "source_ref", None) or getattr(node, "node_curriculum_breakdown", None)
+        getattr(node, "source_ref", None)
+        or getattr(node, "node_curriculum_breakdown", None)
     )
     if not has_plan:
         lm = getattr(node, "learning_materials", None)
@@ -251,14 +258,33 @@ def enrich_node_learning_materials_from_graph(
                 pass
         if raw.get("node_curriculum_breakdown"):
             try:
-                updates["node_curriculum_breakdown"] = NodeCurriculumBreakdown.model_validate(
-                    raw["node_curriculum_breakdown"]
+                updates["node_curriculum_breakdown"] = (
+                    NodeCurriculumBreakdown.model_validate(
+                        raw["node_curriculum_breakdown"]
+                    )
                 )
             except Exception:
                 pass
         pws = primary_whitelist_from_graph_node(raw)
         if pws:
-            updates["learning_materials"] = LearningMaterials(primary_whitelist_source=pws)
+            updates["learning_materials"] = LearningMaterials(
+                primary_whitelist_source=pws
+            )
+        if raw.get("resource_urls"):
+            updates["resource_urls"] = [
+                str(u).strip()[:2000]
+                for u in (raw.get("resource_urls") or [])
+                if str(u or "").strip().startswith("http")
+            ][:12]
+        if raw.get("learning_resources"):
+            lr_list: list[dict[str, Any]] = []
+            for item in raw.get("learning_resources") or []:
+                if isinstance(item, dict):
+                    lr_list.append(item)
+                elif hasattr(item, "model_dump"):
+                    lr_list.append(item.model_dump())
+            if lr_list:
+                updates["learning_resources"] = lr_list[:8]
         if updates:
             return node.model_copy(update=updates)
         return node

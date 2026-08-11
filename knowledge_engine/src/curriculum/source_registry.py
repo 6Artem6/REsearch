@@ -7,10 +7,12 @@ from typing import Any
 from knowledge_engine.config import CURRICULUM_DEEP_NODE_MAX_HITS
 from knowledge_engine.src.curriculum.schemas import (
     CurriculumGraph,
-    CurriculumNode,
     CurriculumSourceRegistryEntry,
     RouteSourceEntry,
 )
+from knowledge_engine.ui.run_log import trace
+
+_CURRICULUM_SOURCES_REGISTRY_CAP = 32
 
 
 def validate_curriculum_source_links(
@@ -32,7 +34,10 @@ def validate_curriculum_source_links(
         if allow_model_only_nodes:
             status = (n.grounding_status or "model_only").strip()
             risk = (n.node_risk_kind or "BASE").strip()
-            if status in ("model_only", "unverified_deep", "pending_grounding") or risk == "BASE":
+            if (
+                status in ("model_only", "unverified_deep", "pending_grounding")
+                or risk == "BASE"
+            ):
                 continue
         mapped = [m.strip() for m in n.mapped_source_ids if (m or "").strip()]
         if not mapped:
@@ -53,7 +58,9 @@ def validate_curriculum_source_links(
     return errors
 
 
-def registry_index(graph: CurriculumGraph | dict[str, Any]) -> dict[str, dict[str, Any]]:
+def registry_index(
+    graph: CurriculumGraph | dict[str, Any],
+) -> dict[str, dict[str, Any]]:
     """source_id → entry dict (registry + legacy route_sources)."""
     out: dict[str, dict[str, Any]] = {}
     if isinstance(graph, CurriculumGraph):
@@ -125,6 +132,78 @@ def format_resolved_sources_for_lecture(
         if snippet and snippet != why:
             lines.append(f"  snippet: {snippet[:800]}")
     return "\n".join(lines)
+
+
+def cap_curriculum_sources_registry(
+    registry: list[CurriculumSourceRegistryEntry],
+    *,
+    graph: CurriculumGraph | None = None,
+    cap: int = _CURRICULUM_SOURCES_REGISTRY_CAP,
+) -> list[CurriculumSourceRegistryEntry]:
+    """Cap registry size but never drop entries referenced by any node mapped_source_ids."""
+    if len(registry) <= cap:
+        return registry
+    pinned_ids: set[str] = set()
+    if graph is not None:
+        for n in graph.nodes:
+            for raw in n.mapped_source_ids or []:
+                sid = (raw or "").strip()
+                if sid:
+                    pinned_ids.add(sid)
+    pinned: list[CurriculumSourceRegistryEntry] = []
+    for e in registry:
+        if e.source_id in pinned_ids:
+            pinned.append(e)
+    rest = [e for e in registry if e.source_id not in pinned_ids]
+    if len(pinned) > cap:
+        trace(
+            f"CURRICULUM registry cap | pinned={len(pinned)} > cap={cap} "
+            "— drop oldest mapped entries"
+        )
+        pinned = pinned[-cap:]
+    keep_rest = max(0, cap - len(pinned))
+    out = pinned + rest[:keep_rest]
+    return out
+
+
+def normalize_stored_curriculum_graph(raw: dict[str, Any]) -> dict[str, Any]:
+    """Подготовить graph dict из JSON для CurriculumGraph (cap registry)."""
+    if not raw or not isinstance(raw, dict):
+        return raw or {}
+    out = dict(raw)
+    reg_raw = list(out.get("curriculum_sources_registry") or [])
+    if len(reg_raw) <= _CURRICULUM_SOURCES_REGISTRY_CAP:
+        return out
+    nodes_raw = list(out.get("nodes") or [])
+    try:
+        from knowledge_engine.src.curriculum.schemas import CurriculumNode
+
+        nodes = [CurriculumNode.model_validate(n) for n in nodes_raw]
+        registry_entries = [
+            CurriculumSourceRegistryEntry.model_validate(e)
+            for e in reg_raw
+            if isinstance(e, dict)
+        ]
+        tmp = CurriculumGraph(
+            curriculum_id=str(out.get("curriculum_id") or "normalize")[:80],
+            title=str(out.get("title") or "title")[:300],
+            description=str(out.get("description") or "description")[:4000],
+            total_nodes=max(3, len(nodes)),
+            nodes=nodes,
+            curriculum_sources_registry=registry_entries,
+        )
+        capped = cap_curriculum_sources_registry(registry_entries, graph=tmp)
+        synced = sync_route_sources_from_registry(
+            tmp.model_copy(update={"curriculum_sources_registry": capped})
+        )
+        out["curriculum_sources_registry"] = [
+            e.model_dump() for e in synced.curriculum_sources_registry
+        ]
+        out["route_sources"] = [e.model_dump() for e in synced.route_sources]
+    except Exception as exc:
+        trace(f"CURRICULUM graph normalize fallback | {exc}")
+        out["curriculum_sources_registry"] = reg_raw[:_CURRICULUM_SOURCES_REGISTRY_CAP]
+    return out
 
 
 def sync_route_sources_from_registry(graph: CurriculumGraph) -> CurriculumGraph:

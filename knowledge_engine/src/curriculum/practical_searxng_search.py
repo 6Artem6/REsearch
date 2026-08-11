@@ -15,8 +15,12 @@ from knowledge_engine.src.curriculum.lite_search_pipeline import (
     build_search_queries,
     flatten_whitelist_domains,
 )
-from knowledge_engine.src.curriculum.practical_url_filters import filter_practical_search_row
-from knowledge_engine.src.curriculum.search_query_builder import build_practical_searxng_queries
+from knowledge_engine.src.curriculum.practical_url_filters import (
+    filter_practical_search_row,
+)
+from knowledge_engine.src.curriculum.search_query_builder import (
+    build_practical_searxng_queries,
+)
 from knowledge_engine.ui.run_log import trace
 
 # Жёстко: только general → Google/Bing (не science / arXiv).
@@ -52,7 +56,7 @@ async def _searxng_queries_for_goal(
         if q not in seen:
             seen.add(q)
             out.append(q)
-    return out[:max(1, max_queries)]
+    return out[: max(1, max_queries)]
 
 
 async def collect_searxng_practical_rows(
@@ -65,11 +69,15 @@ async def collect_searxng_practical_rows(
 ) -> list[dict[str, str]]:
     """SearXNG practical: categories=['general'], engines google,bing."""
     if not SEARXNG_ENABLED:
-        trace("CURRICULUM searxng ⊘ | SEARXNG_ENABLED=false (docker compose up -d searxng)")
+        trace(
+            "CURRICULUM searxng ⊘ | SEARXNG_ENABLED=false (docker compose up -d searxng)"
+        )
         return []
 
     cap = limit if limit is not None else CURRICULUM_PRACTICAL_SEARXNG_LIMIT
-    max_q = max_queries if max_queries is not None else CURRICULUM_PRACTICAL_SEARXNG_QUERIES
+    max_q = (
+        max_queries if max_queries is not None else CURRICULUM_PRACTICAL_SEARXNG_QUERIES
+    )
     if lite_query_plan:
         queries = await _searxng_queries_for_goal(
             expansion_vector,

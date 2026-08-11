@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
-
+from knowledge_engine.schemas.llm_contracts.lite_curriculum import (
+    LiteSiteSuggestionsContract,
+)
 from knowledge_engine.services.search.registry import default_registry
 from knowledge_engine.services.search.url_filter import is_blocked_url
 from knowledge_engine.src.curriculum.schemas import CurriculumSearchHit
@@ -13,11 +14,6 @@ from knowledge_engine.src.source_evaluator.curriculum_source_pool import (
     normalize_site_host,
 )
 from knowledge_engine.ui.run_log import trace
-
-
-class _LiteSiteSuggestions(BaseModel):
-    sites: list[str] = Field(default_factory=list, max_length=6)
-    rationale: str = ""
 
 
 def _suggest_extra_sites(
@@ -30,8 +26,7 @@ def _suggest_extra_sites(
 
     goal = (target_goal or "").strip()
     seed_block = "\n".join(
-        f"- {(h.title or h.url)[:200]} | {h.url}"
-        for h in seeds[:10]
+        f"- {(h.title or h.url)[:200]} | {h.url}" for h in seeds[:10]
     )
     system = (
         f"{RUSSIAN_OUTPUT_RULE}\n\n"
@@ -47,7 +42,7 @@ def _suggest_extra_sites(
             system,
             user,
             anchor,
-            _LiteSiteSuggestions,
+            LiteSiteSuggestionsContract,
             "curriculum / lite_site_suggest",
         )
     except Exception as exc:
@@ -88,7 +83,9 @@ def collect_lite_suggested_site_hits(
     goal = (target_goal or "").strip()
     if len(goal) < 8 or max_hits <= 0:
         return []
-    sites = _suggest_extra_sites(goal, seeds, anchor or f"curriculum_sites:{goal[:400]}")
+    sites = _suggest_extra_sites(
+        goal, seeds, anchor or f"curriculum_sites:{goal[:400]}"
+    )
     if not sites:
         return []
 

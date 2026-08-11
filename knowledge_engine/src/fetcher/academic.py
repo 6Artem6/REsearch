@@ -9,12 +9,12 @@ import httpx
 from bs4 import BeautifulSoup
 
 from knowledge_engine.config import UNPAYWALL_EMAIL
-from knowledge_engine.src.fetcher.context import fast_academic_fetch_enabled
 from knowledge_engine.src.fetcher.cleaner import (
     CleanedDocument,
     clean_pdf_bytes,
     clean_text_document,
 )
+from knowledge_engine.src.fetcher.context import fast_academic_fetch_enabled
 from knowledge_engine.ui.run_log import trace
 
 _USER_AGENT = "KnowledgeEngine/0.7 AcademicCascade (+local research)"
@@ -24,6 +24,7 @@ _FAST_TIMEOUT = httpx.Timeout(8.0, connect=3.0)
 
 def _active_http_timeout() -> httpx.Timeout:
     return _FAST_TIMEOUT if fast_academic_fetch_enabled() else _TIMEOUT
+
 
 _DOI_URL_RE = re.compile(r"doi\.org/(10\.\d{4,9}/[^\s?#]+)", re.I)
 _DOI_RAW_RE = re.compile(r"(10\.\d{4,9}/[^\s]+)", re.I)
@@ -166,12 +167,16 @@ def _scihub_pdf_url(target: str) -> str | None:
             ) as client:
                 resp = client.get(url)
                 resp.raise_for_status()
-                ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+                ctype = (
+                    (resp.headers.get("content-type") or "")
+                    .split(";")[0]
+                    .strip()
+                    .lower()
+                )
                 if "pdf" in ctype or url.lower().endswith(".pdf"):
                     trace("ACADEMIC tier2 ✓ Sci-Hub direct PDF bytes")
                     return "__bytes__"
                 html = resp.text
-                pdf_bytes = None
             soup = BeautifulSoup(html, "html.parser")
             iframe = soup.find("iframe", id="pdf")
             if iframe and iframe.get("src"):
@@ -209,7 +214,9 @@ def _is_publisher_pdf_host(url: str) -> bool:
             host = host[4:]
     except Exception:
         return False
-    return any(host == s or host.endswith(f".{s}") for s in _PUBLISHER_PDF_HOST_SUFFIXES)
+    return any(
+        host == s or host.endswith(f".{s}") for s in _PUBLISHER_PDF_HOST_SUFFIXES
+    )
 
 
 def _fetch_scihub_pdf_bytes(target: str) -> bytes | None:
@@ -233,12 +240,16 @@ def _fetch_scihub_pdf_bytes(target: str) -> bytes | None:
             ) as client:
                 resp = client.get(url)
                 resp.raise_for_status()
-                ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+                ctype = (
+                    (resp.headers.get("content-type") or "")
+                    .split(";")[0]
+                    .strip()
+                    .lower()
+                )
                 if "pdf" in ctype:
                     trace("ACADEMIC tier2 ✓ Sci-Hub direct PDF bytes")
                     return resp.content
                 html = resp.text
-                direct = None
             soup = BeautifulSoup(html, "html.parser")
             iframe = soup.find("iframe", id="pdf")
             src = iframe.get("src") if iframe else None
@@ -328,9 +339,7 @@ def resolve_academic_document(url: str) -> CleanedDocument | None:
         if tier1_publisher_pdf_failed or (
             doi and pdf_url and _is_publisher_pdf_host(pdf_url)
         ):
-            trace(
-                f"ACADEMIC tier2 ▶ Sci-Hub cascade | target={scihub_target[:80]}"
-            )
+            trace(f"ACADEMIC tier2 ▶ Sci-Hub cascade | target={scihub_target[:80]}")
         pdf_bytes = _fetch_scihub_pdf_bytes(scihub_target)
         if pdf_bytes:
             cleaned = clean_pdf_bytes(pdf_bytes, source_url=url, title=title_hint)

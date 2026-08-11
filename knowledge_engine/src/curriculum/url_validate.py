@@ -37,7 +37,9 @@ def _normalize_check_url(url: str) -> str:
     return u.split("#")[0].rstrip("/")
 
 
-async def _fetch_head_or_get(client: httpx.AsyncClient, url: str) -> tuple[int, str, str]:
+async def _fetch_head_or_get(
+    client: httpx.AsyncClient, url: str
+) -> tuple[int, str, str]:
     """(status_code, title_hint, body_snippet)"""
     status = 0
     title_hint = ""
@@ -164,4 +166,3 @@ def validate_and_filter_urls(
             validate_and_filter_urls_async(hits, timeout=timeout),
         )
         return fut.result()
-

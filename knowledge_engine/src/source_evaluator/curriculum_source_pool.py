@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import Iterable, TypeVar
-
 from urllib.parse import urlparse
 
 from knowledge_engine.config import SOURCE_ARCHIVE_ENABLED
@@ -68,7 +67,7 @@ def normalize_site_host(raw: str) -> str:
     s = (raw or "").strip().lower()
     for prefix in ("https://", "http://", "www."):
         if s.startswith(prefix):
-            s = s[len(prefix):]
+            s = s[len(prefix) :]
     return s.split("/")[0].strip()
 
 

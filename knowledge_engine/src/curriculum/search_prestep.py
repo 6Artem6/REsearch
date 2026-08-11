@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse, urlunparse
@@ -10,12 +9,16 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 
 from knowledge_engine.config import (
+    CURRICULUM_OPEN_SEARCH_QUERY_CONCURRENCY,
     CURRICULUM_SEARCH_MIN_HITS,
     CURRICULUM_SEARCH_PROBE_URLS,
     CURRICULUM_SEARCH_TARGET_HITS,
 )
 from knowledge_engine.services.search.registry import default_registry
-from knowledge_engine.services.search.url_filter import is_blocked_url, url_priority_score
+from knowledge_engine.services.search.url_filter import (
+    is_blocked_url,
+    url_priority_score,
+)
 from knowledge_engine.src.curriculum.curriculum_search_sites import (
     CURRICULUM_PRIORITY_ENGINEERING_SITES,
 )
@@ -42,7 +45,9 @@ def build_curriculum_search_queries(target_goal: str) -> list[str]:
     goal = (target_goal or "").strip()
     if len(goal) < 8:
         return []
-    from knowledge_engine.src.source_evaluator.whitelist import APPROVED_SOURCES_WHITELIST
+    from knowledge_engine.src.source_evaluator.whitelist import (
+        APPROVED_SOURCES_WHITELIST,
+    )
 
     queries = [
         f"{goal} system design best practices articles",
@@ -172,30 +177,36 @@ def _collect_search_registry_hits(
         return []
 
     registry = default_registry()
+    conc = max(1, CURRICULUM_OPEN_SEARCH_QUERY_CONCURRENCY)
+    trace(
+        f"CURRICULUM open search batch ▶ | queries={len(queries)} "
+        f"concurrency={conc} limit_per_provider={limit_per_provider}"
+    )
+    raw_hits = registry.multi_search_queries_batch_sync(
+        queries,
+        limit_per_provider=limit_per_provider,
+        concurrency=conc,
+    )
+
     merged: list[CurriculumSearchHit] = []
     seen: set[str] = set()
 
-    for q in queries:
-        hits = registry.multi_search_sync(
-            q,
-            limit_per_provider=limit_per_provider,
-        )
-        for h in hits:
-            key = _normalize_url_key(h.url)
-            if not key or key in seen or is_blocked_url(h.url):
-                continue
-            seen.add(key)
-            merged.append(
-                CurriculumSearchHit(
-                    url=h.url.strip()[:2000],
-                    title=(h.title or h.url).strip()[:400],
-                    snippet=(h.snippet or "").strip()[:1200],
-                    published_date=(h.published_date or "").strip()[:32],
-                    key_extracts=list(h.key_extracts or [])[:12],
-                    source_tier=(h.source or "whitelist_blog").strip()[:24],
-                    skip_ollama_summary=bool(h.skip_ollama_summary),
-                )
+    for h in raw_hits:
+        key = _normalize_url_key(h.url)
+        if not key or key in seen or is_blocked_url(h.url):
+            continue
+        seen.add(key)
+        merged.append(
+            CurriculumSearchHit(
+                url=h.url.strip()[:2000],
+                title=(h.title or h.url).strip()[:400],
+                snippet=(h.snippet or "").strip()[:1200],
+                published_date=(h.published_date or "").strip()[:32],
+                key_extracts=list(h.key_extracts or [])[:12],
+                source_tier=(h.source or "whitelist_blog").strip()[:24],
+                skip_ollama_summary=bool(h.skip_ollama_summary),
             )
+        )
 
     merged.sort(key=lambda x: url_priority_score(x.url))
     cap = CURRICULUM_SEARCH_TARGET_HITS

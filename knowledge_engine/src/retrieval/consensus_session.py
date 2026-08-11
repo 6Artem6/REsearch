@@ -15,16 +15,19 @@ from knowledge_engine.config import (
     CONSENSUS_BOOTSTRAP_INPUT_TIMEOUT_SEC,
     CONSENSUS_BROWSER_HEADLESS,
     CONSENSUS_CLOSE_AFTER_EACH_HARVEST,
+    CONSENSUS_HAR_PATH,
     CONSENSUS_INPUT_SELECTOR,
+    CONSENSUS_LOG_JSON_TRAFFIC,
     CONSENSUS_MIN_RESPONSE_CHARS,
     CONSENSUS_NEW_DIALOG_MAX_WAIT_SEC,
     CONSENSUS_NEW_THREAD_EACH_RUN,
-    CONSENSUS_PAPER_HARVEST_PAUSE_SEC,
     CONSENSUS_PAPER_HARVEST_PASSES,
-    CONSENSUS_QUICK_OPEN_ACCESS,
+    CONSENSUS_PAPER_HARVEST_PAUSE_SEC,
     CONSENSUS_QUICK_BASE_URL,
     CONSENSUS_QUICK_LOAD_MORE_CLICKS,
+    CONSENSUS_QUICK_OPEN_ACCESS,
     CONSENSUS_QUICK_RESULTS_MAX_WAIT_SEC,
+    CONSENSUS_RECORD_HAR,
     CONSENSUS_RESPONSE_FIRST_TIMEOUT_SEC,
     CONSENSUS_RESPONSE_MAX_SEC,
     CONSENSUS_RESPONSE_SELECTOR,
@@ -34,6 +37,7 @@ from knowledge_engine.config import (
     CONSENSUS_STREAM_POLL_SEC,
     CONSENSUS_STREAM_STABLE_ROUNDS,
     CONSENSUS_UI_POLL_SEC,
+    CONSENSUS_USE_DIRECT_API,
     CONSENSUS_USE_QUICK_PAPER_SEARCH,
 )
 from knowledge_engine.services.search.playwright_launch import (
@@ -101,34 +105,97 @@ async def shutdown_shared_consensus_session() -> None:
     """Корректно закрыть браузер (сохранить cookies в profile) при остановке API."""
     global _shared_session
     async with _shared_session_lock:
-        if _shared_session is None:
-            return
-        trace("Consensus ▶ shutdown | сохранение profile …")
-        await _shared_session.close()
-        _shared_session = None
+        if _shared_session is not None:
+            trace("Consensus ▶ shutdown | сохранение profile …")
+            await _shared_session.close()
+            _shared_session = None
+    try:
+        from knowledge_engine.services.search.consensus_direct_client import (
+            shutdown_consensus_direct_client,
+        )
+
+        await shutdown_consensus_direct_client()
+    except Exception as exc:
+        trace(f"Consensus Direct shutdown ⊘ | {exc}")
 
 
 class ConsensusSessionManager:
     """Держит живую страницу Consensus для первичного и уточняющих запросов (RETRY)."""
 
-    def __init__(self, headless: bool = CONSENSUS_BROWSER_HEADLESS) -> None:
+    def __init__(
+        self,
+        headless: bool = CONSENSUS_BROWSER_HEADLESS,
+        *,
+        record_har_path: Optional[str] = None,
+        log_json_traffic: Optional[bool] = None,
+    ) -> None:
         self.headless = headless
+        if record_har_path is not None:
+            self.record_har_path: Optional[str] = record_har_path or None
+        elif CONSENSUS_RECORD_HAR:
+            self.record_har_path = str(CONSENSUS_HAR_PATH)
+        else:
+            self.record_har_path = None
+        self.log_json_traffic = (
+            CONSENSUS_LOG_JSON_TRAFFIC
+            if log_json_traffic is None
+            else bool(log_json_traffic)
+        )
+        if self.record_har_path:
+            self.log_json_traffic = True
         self._playwright: Optional[Playwright] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         self._started = False
         self._on_thread = False
         self._api_papers: list[ScholarPaper] = []
+        self._json_traffic_log: list[dict[str, Any]] = []
 
     async def _on_network_response(self, response) -> None:
         try:
             if response.status != 200:
                 return
             url = response.url or ""
-            if "consensus" not in url:
-                return
             ct = (response.headers.get("content-type") or "").lower()
-            if "json" not in ct and not url.rstrip("/").endswith(".json"):
+            is_json = (
+                "application/json" in ct
+                or "json" in ct
+                or url.rstrip("/").endswith(".json")
+            )
+            if not is_json:
+                return
+
+            method = "GET"
+            try:
+                method = (response.request.method or "GET").upper()
+            except Exception:
+                pass
+
+            body = ""
+            try:
+                body = await response.text()
+            except Exception:
+                body = ""
+
+            if self.log_json_traffic:
+                preview = (body or "").replace("\n", " ")[:200]
+                line = (
+                    f"Consensus JSON | {method} {response.status} {url[:180]} | "
+                    f"{preview}"
+                )
+                trace(line)
+                print(line, flush=True)
+                self._json_traffic_log.append(
+                    {
+                        "method": method,
+                        "status": response.status,
+                        "url": url,
+                        "content_type": ct,
+                        "preview": preview,
+                    }
+                )
+
+            if "consensus" not in url.lower():
                 return
             if not any(
                 tok in url.lower()
@@ -140,17 +207,19 @@ class ConsensusSessionManager:
                     "thread",
                     "message",
                     "citation",
+                    "results",
+                    "query",
                 )
             ):
                 return
-            body = await response.text()
             if len(body) < 40:
                 return
             found = papers_from_json_text_relaxed(body)
             if found:
                 self._api_papers = merge_scholar_papers(self._api_papers, found)
                 trace(
-                    f"Consensus ✓ API capture | +{len(found)} papers | total={len(self._api_papers)}"
+                    f"Consensus ✓ API capture | +{len(found)} papers | "
+                    f"total={len(self._api_papers)}"
                 )
         except Exception:
             return
@@ -314,7 +383,9 @@ class ConsensusSessionManager:
         last_trace = 0.0
         trace("Consensus ▶ wait quick results …")
         while loop.time() < deadline:
-            if await self._handle_pro_limit_modal_if_present(page, wait_visible_ms=1200):
+            if await self._handle_pro_limit_modal_if_present(
+                page, wait_visible_ms=1200
+            ):
                 await asyncio.sleep(0.8)
             state = await self._probe_quick_results_state(page)
             links = int(state.get("academic_links") or 0)
@@ -381,9 +452,30 @@ class ConsensusSessionManager:
         except Exception:
             return ""
 
+    async def _send_direct_api_once(self, prompt_text: str) -> ConsensusMessageResult:
+        """Hybrid Direct API: curl_cffi + Playwright warmup (без DOM/кликов)."""
+        from knowledge_engine.services.search.consensus_direct_client import (
+            acquire_consensus_direct_client,
+            papers_to_raw_text,
+        )
+
+        q = (prompt_text or "").strip()
+        trace(f"Consensus ▶ direct API search | q={q[:120]}")
+        client = await acquire_consensus_direct_client()
+        papers = await client.search_papers(q, limit=20)
+        text = papers_to_raw_text(papers, q)
+        self._api_papers = list(papers)
+        from knowledge_engine.ui.llm_trace import trace_plain_io
+
+        trace_plain_io("Consensus (direct API)", q, text[:8000])
+        trace(f"Consensus ✓ direct API | papers={len(papers)} text={len(text)} sym")
+        return ConsensusMessageResult(raw_text=text, papers=papers)
+
     async def _send_quick_paper_search_once(
         self, prompt_text: str
     ) -> ConsensusMessageResult:
+        if CONSENSUS_USE_DIRECT_API:
+            return await self._send_direct_api_once(prompt_text)
         page = self.page
         assert page is not None
         q = (prompt_text or "").strip()
@@ -408,9 +500,7 @@ class ConsensusSessionManager:
         from knowledge_engine.ui.llm_trace import trace_plain_io
 
         trace_plain_io("Consensus (quick paper search)", q, text[:8000])
-        trace(
-            f"Consensus ✓ quick search | text={len(text)} sym | papers={len(papers)}"
-        )
+        trace(f"Consensus ✓ quick search | text={len(text)} sym | papers={len(papers)}")
         return ConsensusMessageResult(raw_text=text, papers=papers)
 
     async def _detect_login_wall(self, page: Page) -> bool:
@@ -461,7 +551,11 @@ class ConsensusSessionManager:
                 }"""
             )
         except Exception:
-            return {"url": page.url or "", "new_thread_input": False, "search_input": False}
+            return {
+                "url": page.url or "",
+                "new_thread_input": False,
+                "search_input": False,
+            }
 
     async def _wait_usable_input_surface(
         self,
@@ -471,7 +565,9 @@ class ConsensusSessionManager:
         label: str = "input",
     ) -> bool:
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + (max_sec if max_sec is not None else CONSENSUS_NEW_DIALOG_MAX_WAIT_SEC)
+        deadline = loop.time() + (
+            max_sec if max_sec is not None else CONSENSUS_NEW_DIALOG_MAX_WAIT_SEC
+        )
         last_trace = 0.0
         while loop.time() < deadline:
             state = await self._probe_surface_state(page)
@@ -491,7 +587,9 @@ class ConsensusSessionManager:
                     f"search={state.get('search_input')}"
                 )
             await asyncio.sleep(CONSENSUS_UI_POLL_SEC)
-        trace(f"Consensus ⊘ {label} | timeout {max_sec or CONSENSUS_NEW_DIALOG_MAX_WAIT_SEC}s")
+        trace(
+            f"Consensus ⊘ {label} | timeout {max_sec or CONSENSUS_NEW_DIALOG_MAX_WAIT_SEC}s"
+        )
         return False
 
     async def _wait_new_dialog_input(self) -> None:
@@ -558,7 +656,9 @@ class ConsensusSessionManager:
         on_thread = self._on_thread or _RESULTS_URL_RE.search(url) or "/threads/" in url
 
         if not on_thread:
-            if await self._wait_usable_input_surface(page, max_sec=3.0, label="home input"):
+            if await self._wait_usable_input_surface(
+                page, max_sec=3.0, label="home input"
+            ):
                 self._on_thread = False
                 return
 
@@ -568,7 +668,9 @@ class ConsensusSessionManager:
                 await self._goto_start_url()
             except Exception as exc:
                 trace(f"Consensus ⊘ goto home | {exc}")
-            if await self._wait_usable_input_surface(page, label="home after leave thread"):
+            if await self._wait_usable_input_surface(
+                page, label="home after leave thread"
+            ):
                 self._on_thread = False
                 return
 
@@ -585,9 +687,19 @@ class ConsensusSessionManager:
         page = self.page
         if page is None:
             return list(self._api_papers)
+        from knowledge_engine.config import CURRICULUM_V08_PAPER_POOL_SIZE
+
+        target = max(15, min(CURRICULUM_V08_PAPER_POOL_SIZE, 100))
         passes = max(1, CONSENSUS_PAPER_HARVEST_PASSES)
         trace(f"Consensus ▶ paper pool | passes={passes}")
+        last_logged = len(self._api_papers)
         for i in range(passes):
+            if len(self._api_papers) >= target:
+                trace(
+                    f"Consensus ✓ paper pool early | papers={len(self._api_papers)} "
+                    f">= target={target}"
+                )
+                break
             try:
                 await page.evaluate(
                     "() => window.scrollBy(0, Math.min(1400, window.innerHeight || 800))"
@@ -597,6 +709,9 @@ class ConsensusSessionManager:
             dom = await extract_paper_cards_from_page(page)
             if dom:
                 self._api_papers = merge_scholar_papers(self._api_papers, dom)
+                if len(self._api_papers) != last_logged:
+                    trace(f"Consensus ✓ DOM papers={len(self._api_papers)}")
+                    last_logged = len(self._api_papers)
             if i < passes - 1:
                 await asyncio.sleep(CONSENSUS_PAPER_HARVEST_PAUSE_SEC)
         trace(f"Consensus ✓ paper pool | papers={len(self._api_papers)}")
@@ -637,13 +752,25 @@ class ConsensusSessionManager:
         await self._hard_auth_recovery(cycle)
 
     async def _bootstrap_browser(self) -> None:
+        if CONSENSUS_USE_DIRECT_API and CONSENSUS_USE_QUICK_PAPER_SEARCH:
+            trace(
+                "Consensus ✓ bootstrap | direct API mode — "
+                "Playwright warmup inside ConsensusDirectClient"
+            )
+            self._started = True
+            self._on_thread = False
+            return
         trace(
             f"Consensus ▶ Playwright bootstrap | profile={BROWSER_PROFILE_PATH} "
             f"| headless={self.headless}"
         )
         self._playwright = await async_playwright().start()
+        if self.record_har_path:
+            trace(f"Consensus ▶ HAR record | {self.record_har_path}")
         self.context = await launch_persistent_context_async(
-            self._playwright, headless=self.headless
+            self._playwright,
+            headless=self.headless,
+            record_har_path=self.record_har_path,
         )
         self.page = await self._pick_work_page()
         self._wire_network_capture(self.page)
@@ -663,6 +790,10 @@ class ConsensusSessionManager:
         trace(f"Consensus ✓ bootstrap | url={self.page.url[:80]}")
 
     async def _start_with_auth_recovery(self) -> None:
+        if CONSENSUS_USE_DIRECT_API and CONSENSUS_USE_QUICK_PAPER_SEARCH:
+            if not self._started:
+                await self._bootstrap_browser()
+            return
         if self._started and self._page_is_alive():
             return
         if self._started and not self._page_is_alive():
@@ -751,6 +882,17 @@ class ConsensusSessionManager:
 
     async def send_message(self, prompt_text: str) -> ConsensusMessageResult:
         """Отправить сообщение; при login wall — recovery без входа (до N циклов)."""
+        if CONSENSUS_USE_DIRECT_API and CONSENSUS_USE_QUICK_PAPER_SEARCH:
+            if not self._started:
+                await self._start_with_auth_recovery()
+            try:
+                return await self._send_direct_api_once(prompt_text)
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "login" in msg or "__session" in msg or "consensus-login" in msg:
+                    raise ConsensusLoginRequiredError(str(exc)) from exc
+                raise
+
         last_err: Exception | None = None
         for cycle in range(CONSENSUS_AUTH_RECOVERY_CYCLES + 1):
             try:
@@ -856,7 +998,9 @@ class ConsensusSessionManager:
         selectors = [
             s.strip() for s in CONSENSUS_INPUT_SELECTOR.split(",") if s.strip()
         ]
-        per_sel = max(8.0, CONSENSUS_BOOTSTRAP_INPUT_TIMEOUT_SEC / max(1, len(selectors)))
+        per_sel = max(
+            8.0, CONSENSUS_BOOTSTRAP_INPUT_TIMEOUT_SEC / max(1, len(selectors))
+        )
         for sel in selectors:
             try:
                 await page.wait_for_selector(sel, timeout=int(per_sel * 1000))

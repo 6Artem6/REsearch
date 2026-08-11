@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 from urllib.parse import urlparse
 
 from knowledge_engine.config import (
@@ -14,14 +15,20 @@ from knowledge_engine.config import (
     CURRICULUM_GEMINI_WEB_URL_RETRY_MAX,
     CURRICULUM_URL_VALIDATE_TIMEOUT_SEC,
 )
-from knowledge_engine.services.ai_dialogue.gemini_session import BrowserGeminiDialogueSession
-from knowledge_engine.services.curriculum_whitelist_prompt import curriculum_whitelist_prompt_block
+from knowledge_engine.services.ai_dialogue.gemini_session import (
+    BrowserGeminiDialogueSession,
+)
+from knowledge_engine.services.curriculum_whitelist_prompt import (
+    curriculum_whitelist_prompt_block,
+)
+from knowledge_engine.src.curriculum.curriculum_search_sites import (
+    format_sites_for_prompt,
+)
 from knowledge_engine.src.curriculum.schemas import CurriculumSearchHit
+from knowledge_engine.src.curriculum.url_validate import validate_and_filter_urls
 from knowledge_engine.src.source_evaluator.curriculum_source_pool import (
     is_collectible_article_url,
 )
-from knowledge_engine.src.curriculum.curriculum_search_sites import format_sites_for_prompt
-from knowledge_engine.src.curriculum.url_validate import validate_and_filter_urls
 from knowledge_engine.ui.run_log import trace
 
 _MD_LINK_RE = re.compile(r"\[([^\]]{2,200})\]\((https?://[^\)]+)\)")

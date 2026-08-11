@@ -15,30 +15,39 @@ from knowledge_engine.config import (
     GEMINI_RPM_PAUSE_SEC,
 )
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
+from knowledge_engine.schemas.llm_contracts.curriculum import CurriculumReasonerContract
+from knowledge_engine.services.curriculum_whitelist_prompt import (
+    curriculum_whitelist_prompt_block,
+)
 from knowledge_engine.services.gemini_stateless import (
     GeminiUnavailableError,
     gemini_reasoner_model_chain,
     is_gemini_available,
     run_gemini_structured_with_chain,
 )
-from knowledge_engine.src.curriculum.dag_validator import validate_curriculum_dag
+from knowledge_engine.src.curriculum.dag_validator import (
+    CURRICULUM_DAG_REPAIR_PRESERVE_ANCHOR_TOPICS,
+    validate_curriculum_dag,
+)
 from knowledge_engine.src.curriculum.schemas import (
     CurriculumGenerateInput,
     CurriculumGraph,
-    CurriculumReasonerPayload,
 )
-from knowledge_engine.services.curriculum_whitelist_prompt import curriculum_whitelist_prompt_block
-from knowledge_engine.src.curriculum.search_first_flash import generate_curriculum_search_first
+from knowledge_engine.src.curriculum.search_first_flash import (
+    generate_curriculum_search_first,
+)
 from knowledge_engine.src.curriculum.search_prestep import (
     assign_source_ids,
     collect_curriculum_source_hits,
     search_hits_as_prompt_json,
 )
+from knowledge_engine.src.curriculum.source_enrichment import (
+    enrich_curriculum_whitelist_sources,
+)
 from knowledge_engine.src.curriculum.source_material_pipeline import (
     enrich_search_hits_with_extracts,
     summarize_whitelist_blog_hits,
 )
-from knowledge_engine.src.curriculum.source_enrichment import enrich_curriculum_whitelist_sources
 from knowledge_engine.src.curriculum.targeted_node_grounding import (
     generate_curriculum_targeted_grounding,
 )
@@ -62,7 +71,14 @@ _CURRICULUM_SYSTEM_BASE = (
     "7. **learning_materials.primary_whitelist_source** — ОБЯЗАТЕЛЬНО на каждую ноду: "
     "source_name, chapter_or_article, core_concepts (из whitelist-источника).\n"
     "8. **learning_resources** / resource_urls — опционально, только whitelist URL.\n"
-    "9. **Порядок:** от простого к сложному; без изолированных узлов.\n\n"
+    "9. **Порядок:** от простого к сложному; без изолированных узлов.\n"
+    "10. **Опорные темы пользователя:** если в цели (target_goal) указаны конкретные темы "
+    "в скобках, через запятую или списком (например, «Архитектура хранилищ (WAL, Ring Buffer, P99)»):\n"
+    "   - Обязательно вплети каждую из этих тем в граф в виде отдельных нод или ключевых concepts.\n"
+    "   - Выстрой вокруг них логичные зависимости (prerequisites): базовые темы размещай раньше, "
+    "продвинутые — в глубоких слоях графа.\n"
+    "   - Сохраняй суть и терминологию предложенных тем, органично адаптируя их названия "
+    "под инженерный стиль курса.\n\n"
     "Формат: JSON по схеме. Текст — русский; node_id — латиница.\n"
     "Ориентир: 10–15 узлов.\n"
 )
@@ -92,7 +108,7 @@ def _normalize_slug(raw: str, fallback: str) -> str:
     return s[:80]
 
 
-def _finalize_graph(payload: CurriculumReasonerPayload) -> CurriculumGraph:
+def _finalize_graph(payload: CurriculumReasonerContract) -> CurriculumGraph:
     cid = (payload.curriculum_id or "").strip()
     if not cid or not _SLUG_RE.match(cid):
         cid = _normalize_slug(cid, f"curriculum_{uuid.uuid4().hex[:12]}")
@@ -132,13 +148,13 @@ def _invoke_reasoner(
     user_payload: str,
     anchor: str,
     label: str,
-) -> CurriculumReasonerPayload:
+) -> CurriculumReasonerContract:
     return run_gemini_structured_with_chain(
         GEMINI_REASONER_MODEL,
         system_instruction,
         user_payload,
         anchor,
-        CurriculumReasonerPayload,
+        CurriculumReasonerContract,
         label,
         rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
         models=gemini_reasoner_model_chain(),
@@ -164,6 +180,7 @@ def _generate_legacy_reasoner(
             "Предыдущий граф отклонён валидатором. Исправь:\n"
             + "\n".join(f"- {e}" for e in errors)
             + "\nСохрани curriculum_id и исправь только проблемные связи/слои."
+            + f"\n{CURRICULUM_DAG_REPAIR_PRESERVE_ANCHOR_TOPICS}"
         )
         trace(f"CURRICULUM ▶ repair | errors={len(errors)}")
         payload = _invoke_reasoner(
@@ -194,9 +211,7 @@ def generate_curriculum_graph(
     Fallback: Reasoner DAG + Lite whitelist enrich.
     """
     if not is_gemini_available():
-        raise GeminiUnavailableError(
-            "Gemini недоступен для Curriculum Generator"
-        )
+        raise GeminiUnavailableError("Gemini недоступен для Curriculum Generator")
 
     if isinstance(inp, dict):
         data = dict(inp)

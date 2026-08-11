@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from knowledge_engine.src.curriculum.schemas import CurriculumGraph, CurriculumNode
 
+# Дополнение к user repair_feedback при LLM-исправлении графа (не программный repair).
+CURRICULUM_DAG_REPAIR_PRESERVE_ANCHOR_TOPICS = (
+    "- Убедись, что все явные опорные темы, запрошенные пользователем в цели, "
+    "сохранены в итоговом графе и не потерялись при исправлении/расширении."
+)
+
 
 def validate_curriculum_dag(graph: CurriculumGraph) -> list[str]:
     """

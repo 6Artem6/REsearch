@@ -5,10 +5,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse
 
-from knowledge_engine.config import (
-    CURRICULUM_ACADEMIC_SEARXNG_LIMIT,
-    SEARXNG_ENABLED,
-)
+from knowledge_engine.config import CURRICULUM_ACADEMIC_SEARXNG_LIMIT, SEARXNG_ENABLED
 from knowledge_engine.services.searxng_client import searxng_search_json
 from knowledge_engine.ui.run_log import trace
 

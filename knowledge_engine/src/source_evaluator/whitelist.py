@@ -50,6 +50,9 @@ APPROVED_SOURCES_WHITELIST = {
     # 5. Практика и русскоязычные инженерные блоги
     "community_blogs": [
         "habr.com",
+        "vc.ru",
+        "avito.tech",
+        "selectel.ru",
     ],
 }
 
@@ -72,4 +75,3 @@ def format_whitelist_compact() -> str:
     for category, entries in APPROVED_SOURCES_WHITELIST.items():
         lines.append(f"- {category}: {', '.join(entries)}")
     return "\n".join(lines)
-

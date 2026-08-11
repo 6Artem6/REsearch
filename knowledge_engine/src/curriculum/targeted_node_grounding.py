@@ -4,9 +4,18 @@ from __future__ import annotations
 
 import time
 
-from knowledge_engine.config import CURRICULUM_DEEP_NODE_MAX_HITS, CURRICULUM_MODEL_FIRST_MIN_NODES
+from knowledge_engine.config import (
+    CURRICULUM_DEEP_NODE_MAX_HITS,
+    CURRICULUM_MODEL_FIRST_MIN_NODES,
+)
+from knowledge_engine.src.curriculum.curriculum_lancedb_persist import (
+    persist_approved_curriculum_hits_to_lancedb,
+)
+from knowledge_engine.src.curriculum.dag_validator import validate_curriculum_dag
 from knowledge_engine.src.curriculum.model_first_flash import generate_model_first_graph
-from knowledge_engine.src.curriculum.node_risk_classification import classify_and_apply_node_risks
+from knowledge_engine.src.curriculum.node_risk_classification import (
+    classify_and_apply_node_risks,
+)
 from knowledge_engine.src.curriculum.schemas import (
     CurriculumGenerateInput,
     CurriculumGraph,
@@ -20,6 +29,7 @@ from knowledge_engine.src.curriculum.source_material_pipeline import (
     summarize_whitelist_blog_hits_async,
 )
 from knowledge_engine.src.curriculum.source_registry import (
+    cap_curriculum_sources_registry,
     sync_route_sources_from_registry,
     validate_curriculum_source_links,
 )
@@ -27,10 +37,6 @@ from knowledge_engine.src.curriculum.targeted_node_search import (
     hit_to_registry_entry,
     search_sources_for_deep_node_async,
 )
-from knowledge_engine.src.curriculum.curriculum_lancedb_persist import (
-    persist_approved_curriculum_hits_to_lancedb,
-)
-from knowledge_engine.src.curriculum.dag_validator import validate_curriculum_dag
 from knowledge_engine.ui.run_log import trace
 
 
@@ -77,7 +83,9 @@ def _attach_hit_to_node(
     hit,
     source_id: str,
 ) -> CurriculumNode:
-    extracts = [e.strip() for e in (hit.key_extracts or []) if e and str(e).strip()][:12]
+    extracts = [e.strip() for e in (hit.key_extracts or []) if e and str(e).strip()][
+        :12
+    ]
     if not extracts and hit.snippet:
         extracts = [hit.snippet[:800]]
     ref = NodeSourceRef(
@@ -171,8 +179,7 @@ def generate_curriculum_targeted_grounding(
     errors = validate_curriculum_dag(graph)
     if errors:
         raise ValueError(
-            "Targeted Grounding: DAG invalid после risk: "
-            + "; ".join(errors[:5])
+            "Targeted Grounding: DAG invalid после risk: " + "; ".join(errors[:5])
         )
     if len(graph.nodes) < CURRICULUM_MODEL_FIRST_MIN_NODES:
         raise ValueError(
@@ -203,12 +210,17 @@ async def lazy_ground_deep_node_on_demand(
     target_goal: str,
     source_policy: str,
     anchor: str,
+    reground_academic: bool = False,
 ) -> tuple[CurriculumGraph, CurriculumNode]:
     """Один DEEP-нода: Exa / Consensus / academic → registry + LanceDB."""
     if node.node_risk_kind != "DEEP":
         return graph, node
     status = (node.grounding_status or "").strip()
-    if status == "grounded" and node.source_ref:
+    if status == "grounded" and node.source_ref and not reground_academic:
+        trace(
+            f"NODE_DIVE lazy grounding ⊘ | node_id={node.node_id} "
+            "already grounded — skip full search"
+        )
         return graph, node
     if status not in ("pending_grounding", "unverified_deep", "model_only", ""):
         return graph, node
@@ -232,7 +244,18 @@ async def lazy_ground_deep_node_on_demand(
         registry_entries=registry,
     )
     if hits:
-        hits = await summarize_whitelist_blog_hits_async(hits, target_goal)
+        need_summarize = [
+            h
+            for h in hits
+            if sum(len((e or "").split()) for e in (h.key_extracts or [])) < 100
+            or not (h.key_extracts or [])
+        ]
+        if need_summarize:
+            summarized = await summarize_whitelist_blog_hits_async(
+                need_summarize, target_goal
+            )
+            by_url = {h.url.strip().rstrip("/").lower(): h for h in summarized}
+            hits = [by_url.get(h.url.strip().rstrip("/").lower(), h) for h in hits]
         hits = enrich_search_hits_with_extracts(hits, target_goal)
         persist_approved_curriculum_hits_to_lancedb(
             hits,
@@ -253,9 +276,7 @@ async def lazy_ground_deep_node_on_demand(
             sids.append(sid)
             registry_hits.append(hit)
         updated_node = _attach_hits_to_node(node, registry_hits, sids)
-        tiers = ", ".join(
-            sorted({(h.source_tier or "?")[:12] for h in registry_hits})
-        )
+        tiers = ", ".join(sorted({(h.source_tier or "?")[:12] for h in registry_hits}))
         trace(
             f"NODE_DIVE lazy grounding ✓ | node_id={node.node_id} "
             f"status=grounded registry+={len(batch)} mapped={sids} tiers={tiers} "
@@ -277,14 +298,31 @@ async def lazy_ground_deep_node_on_demand(
             "status=unverified_deep (search empty / Lite reject)"
         )
 
-    new_nodes = [
-        updated_node if n.node_id == node.node_id else n for n in graph.nodes
-    ]
-    graph = graph.model_copy(
-        update={
-            "nodes": new_nodes,
-            "curriculum_sources_registry": registry[:20],
-        }
-    )
+    new_nodes = [updated_node if n.node_id == node.node_id else n for n in graph.nodes]
+    graph = graph.model_copy(update={"nodes": new_nodes})
+    registry = cap_curriculum_sources_registry(registry, graph=graph)
+    graph = graph.model_copy(update={"curriculum_sources_registry": registry})
     graph = sync_route_sources_from_registry(graph)
+
+    ingest_urls = [
+        str(h.url or "").strip()
+        for h in (hits or [])
+        if str(h.url or "").startswith("http")
+    ]
+    if ingest_urls or hits:
+        from knowledge_engine.src.node_deep_dive.diagram_session import (
+            refresh_node_session_diagrams_from_articles,
+        )
+
+        n = refresh_node_session_diagrams_from_articles(
+            graph.curriculum_id,
+            updated_node,
+            extra_urls=ingest_urls,
+            rebuild=True,
+        )
+        trace(
+            f"NODE_DIVE hydrate session diagrams | node={node.node_id} "
+            f"content_diagrams={n} extra_urls={len(ingest_urls)}"
+        )
+
     return graph, updated_node

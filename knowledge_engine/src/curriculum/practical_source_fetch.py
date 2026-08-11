@@ -18,8 +18,12 @@ from knowledge_engine.config import (
     GOOGLE_CSE_ID,
 )
 from knowledge_engine.src.curriculum.curriculum_v08_harvest import _deep_extract_blocks
-from knowledge_engine.src.curriculum.practical_url_filters import filter_practical_search_row
-from knowledge_engine.src.curriculum.practical_searxng_search import collect_searxng_practical_rows
+from knowledge_engine.src.curriculum.practical_searxng_search import (
+    collect_searxng_practical_rows,
+)
+from knowledge_engine.src.curriculum.practical_url_filters import (
+    filter_practical_search_row,
+)
 from knowledge_engine.src.curriculum.schemas import CurriculumSearchHit
 from knowledge_engine.src.curriculum.search_query_builder import build_search_queries
 from knowledge_engine.src.curriculum.url_validate import validate_and_filter_urls_async
@@ -38,7 +42,9 @@ def _normalize_href(href: str) -> str:
     return u.split("#")[0].rstrip("/")
 
 
-async def _search_google_cse(query: str, limit: int) -> tuple[list[dict[str, str]], bool]:
+async def _search_google_cse(
+    query: str, limit: int
+) -> tuple[list[dict[str, str]], bool]:
     """(rows, quota_exhausted)"""
     if not CURRICULUM_GOOGLE_CSE_ENABLED:
         trace(
@@ -72,7 +78,9 @@ async def _search_google_cse(query: str, limit: int) -> tuple[list[dict[str, str
             resp = await client.get(_GOOGLE_CSE_URL, params=params)
             if resp.status_code == 429:
                 trace("CURRICULUM google_cse ✗ | 429 quota")
-                record_google_cse_result(ok=False, http_status=429, quota_exhausted=True)
+                record_google_cse_result(
+                    ok=False, http_status=429, quota_exhausted=True
+                )
                 return [], True
             if resp.status_code >= 400:
                 trace(f"CURRICULUM google_cse ✗ | HTTP {resp.status_code}")
@@ -123,7 +131,9 @@ def _search_ddgs(query: str, limit: int) -> list[dict[str, str]]:
                     {
                         "url": href,
                         "title": str(item.get("title") or href)[:400],
-                        "snippet": str(item.get("body") or item.get("snippet") or "")[:1200],
+                        "snippet": str(item.get("body") or item.get("snippet") or "")[
+                            :1200
+                        ],
                     }
                 )
     except Exception as exc:
@@ -181,7 +191,9 @@ def _merge_row_lists(
 
 
 async def _search_exa_practical(query: str, limit: int) -> list[CurriculumSearchHit]:
-    from knowledge_engine.services.search.exa_transform import fetch_exa_curriculum_hits_simple
+    from knowledge_engine.services.search.exa_transform import (
+        fetch_exa_curriculum_hits_simple,
+    )
 
     return await fetch_exa_curriculum_hits_simple(
         query,
@@ -220,7 +232,9 @@ async def fetch_practical_sources_async(
     cse_rows: list[dict[str, str]] = []
     cse_exhausted = False
     if need_fallback and CURRICULUM_GOOGLE_CSE_ENABLED:
-        cse_rows, cse_exhausted = await _search_google_cse(q, CURRICULUM_PRACTICAL_CSE_LIMIT)
+        cse_rows, cse_exhausted = await _search_google_cse(
+            q, CURRICULUM_PRACTICAL_CSE_LIMIT
+        )
     if cse_rows:
         parts.append((cse_rows, "google_cse"))
 
@@ -234,7 +248,11 @@ async def fetch_practical_sources_async(
             parts.append((sx_rows, "searxng"))
 
     total_rows = sum(len(p[0]) for p in parts)
-    if need_fallback and total_rows < cap - len(merged) and CURRICULUM_PRACTICAL_DDGS_ENABLED:
+    if (
+        need_fallback
+        and total_rows < cap - len(merged)
+        and CURRICULUM_PRACTICAL_DDGS_ENABLED
+    ):
         ddgs_rows = _search_ddgs(q, CURRICULUM_PRACTICAL_DDGS_LIMIT)
         if ddgs_rows:
             parts.append((ddgs_rows, "ddgs"))
@@ -267,4 +285,6 @@ def fetch_practical_sources(
     *,
     max_hits: int = 8,
 ) -> list[CurriculumSearchHit]:
-    return asyncio.run(fetch_practical_sources_async(expansion_vector, max_hits=max_hits))
+    return asyncio.run(
+        fetch_practical_sources_async(expansion_vector, max_hits=max_hits)
+    )

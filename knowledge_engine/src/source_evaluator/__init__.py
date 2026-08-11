@@ -10,11 +10,11 @@ from knowledge_engine.src.source_evaluator.curriculum_source_pool import (
     resolve_source_provenance,
 )
 from knowledge_engine.src.source_evaluator.evaluator import (
+    SourceEvaluatorResult,
     evaluate_source,
     format_whitelist_for_reasoner_prompt,
     lite_curriculum_hit_approved,
     match_whitelist,
-    SourceEvaluatorResult,
 )
 from knowledge_engine.src.source_evaluator.whitelist import APPROVED_SOURCES_WHITELIST
 

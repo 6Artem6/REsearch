@@ -58,6 +58,8 @@ async def harvest_consensus_for_node(
     reason: str,
     *,
     on_demand: bool = False,
+    defer_ingest: bool = False,
+    force_playwright: bool = False,
 ) -> list[CurriculumSearchHit]:
     """Playwright Consensus harvest с явным reason в логе."""
     if not CURRICULUM_USE_V08_CONSENSUS:
@@ -79,6 +81,8 @@ async def harvest_consensus_for_node(
             vec,
             f"{anchor}:consensus:{node.node_id}",
             on_demand=on_demand,
+            defer_ingest=defer_ingest,
+            force_playwright=force_playwright,
         )
         trace(
             f"CURRICULUM consensus ✓ | node={node.node_id} reason={reason} "
@@ -86,7 +90,5 @@ async def harvest_consensus_for_node(
         )
         return hits
     except Exception as exc:
-        trace(
-            f"CURRICULUM consensus ✗ | node={node.node_id} reason={reason} | {exc}"
-        )
+        trace(f"CURRICULUM consensus ✗ | node={node.node_id} reason={reason} | {exc}")
         return []

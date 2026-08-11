@@ -26,6 +26,9 @@ _PRACTICAL_API_DOC_PATH_MARKERS: tuple[str, ...] = (
     "v1_operations",
     "v2_operations",
     "/sdk/",
+    "/swagger/",
+    "/openapi/",
+    "/apidocs/",
 )
 
 

@@ -5,16 +5,27 @@ from __future__ import annotations
 import re
 import uuid
 
-from pydantic import BaseModel, Field
-
 from knowledge_engine.config import GEMINI_FLASH_MODEL, GEMINI_RPM_PAUSE_SEC
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
+from knowledge_engine.schemas.llm_contracts.curriculum import (
+    FlashCurriculumPayloadContract as _FlashCurriculumPayload,
+)
+from knowledge_engine.schemas.llm_contracts.curriculum import (
+    FlashExpansionPatchContract as _FlashExpansionPatch,
+)
+from knowledge_engine.schemas.llm_contracts.curriculum import (
+    FlashSourceRefContract as _FlashSourceRef,
+)
 from knowledge_engine.services.gemini_stateless import (
     gemini_reasoner_model_chain,
     run_gemini_structured_with_chain,
 )
-from knowledge_engine.src.curriculum.dag_validator import validate_curriculum_dag_full
+from knowledge_engine.src.curriculum.dag_validator import (
+    CURRICULUM_DAG_REPAIR_PRESERVE_ANCHOR_TOPICS,
+    validate_curriculum_dag_full,
+)
 from knowledge_engine.src.curriculum.schemas import (
+    CurriculumExpansionPatch,
     CurriculumGenerateInput,
     CurriculumGraph,
     CurriculumNode,
@@ -24,7 +35,10 @@ from knowledge_engine.src.curriculum.schemas import (
     NodeCurriculumBreakdown,
     NodeSourceRef,
 )
-from knowledge_engine.src.curriculum.search_prestep import _normalize_url_key, search_hit_index
+from knowledge_engine.src.curriculum.search_prestep import (
+    _normalize_url_key,
+    search_hit_index,
+)
 from knowledge_engine.src.curriculum.source_registry import (
     sync_route_sources_from_registry,
     validate_curriculum_source_links,
@@ -57,59 +71,22 @@ _METHODIST_SYSTEM = (
     "раскрывая обширную цель по шагам; не схлопывай маршрут в 2–3 ноды.\n"
     "ЗАПРЕЩЕНО: абстрактные темы без выдержек; сторонние URL; при богатом пуле — "
     "искусственно мало нод.\n"
+    "8. **Опорные темы пользователя:** если в цели (target_goal) указаны конкретные темы "
+    "в скобках, через запятую или списком (например, «Архитектура хранилищ (WAL, Ring Buffer, P99)»):\n"
+    "   - Обязательно вплети каждую из этих тем в граф в виде отдельных нод или ключевых concepts.\n"
+    "   - Выстрой вокруг них логичные зависимости (prerequisites): базовые темы размещай раньше, "
+    "продвинутые — в глубоких слоях графа.\n"
+    "   - Сохраняй суть и терминологию предложенных тем, органично адаптируя их названия "
+    "под инженерный стиль курса.\n"
 )
-
-
-class _FlashSourceRef(BaseModel):
-    source_id: str = ""
-    url: str = ""
-    relevant_extracts: list[str] = Field(default_factory=list)
-
-
-class _FlashBreakdown(BaseModel):
-    key_concepts: list[str] = Field(default_factory=list)
-    architectural_focus: str = ""
-
-
-class _FlashNode(BaseModel):
-    node_id: str = ""
-    title: str = ""
-    layer: str = ""
-    category: str = ""
-    brief_summary: str = ""
-    prerequisites: list[str] = Field(default_factory=list)
-    source_ref: _FlashSourceRef = Field(default_factory=_FlashSourceRef)
-    node_curriculum_breakdown: _FlashBreakdown = Field(default_factory=_FlashBreakdown)
-
-
-class _FlashCurriculumPayload(BaseModel):
-    curriculum_id: str = ""
-    title: str = ""
-    description: str = ""
-    nodes: list[_FlashNode] = Field(default_factory=list)
-
-
-class _FlashExpansionEdge(BaseModel):
-    from_node_id: str = ""
-    to_node_id: str = ""
-
-
-class _FlashExpansionPatch(BaseModel):
-    """Лёгкая схема для Gemini structured output (expand)."""
-
-    new_nodes: list[_FlashNode] = Field(default_factory=list)
-    new_edges: list[_FlashExpansionEdge] = Field(default_factory=list)
 
 
 def coerce_expansion_patch_from_flash(
     raw: _FlashExpansionPatch,
     hits: list[CurriculumSearchHit],
     registry: list[CurriculumSourceRegistryEntry],
-) -> "CurriculumExpansionPatch":
-    from knowledge_engine.src.curriculum.schemas import (
-        CurriculumExpansionEdge,
-        CurriculumExpansionPatch,
-    )
+) -> CurriculumExpansionPatch:
+    from knowledge_engine.src.curriculum.schemas import CurriculumExpansionEdge
 
     nodes = _coerce_nodes(
         _FlashCurriculumPayload(nodes=list(raw.new_nodes or [])),
@@ -123,7 +100,9 @@ def coerce_expansion_patch_from_flash(
         if len(fr) < 2 or len(to) < 2:
             continue
         try:
-            edges.append(CurriculumExpansionEdge(from_node_id=fr[:80], to_node_id=to[:80]))
+            edges.append(
+                CurriculumExpansionEdge(from_node_id=fr[:80], to_node_id=to[:80])
+            )
         except Exception:
             continue
     return CurriculumExpansionPatch(new_nodes=nodes, new_edges=edges)
@@ -172,14 +151,18 @@ def _build_user_payload(inp: CurriculumGenerateInput, repair_hint: str = "") -> 
     return "\n\n".join(parts)
 
 
-def _registry_from_hits(hits: list[CurriculumSearchHit]) -> list[CurriculumSourceRegistryEntry]:
+def _registry_from_hits(
+    hits: list[CurriculumSearchHit],
+) -> list[CurriculumSourceRegistryEntry]:
     registry: list[CurriculumSourceRegistryEntry] = []
     for i, hit in enumerate(hits, start=1):
         sid = _norm_src_id(hit.source_id, i)
         matched, cat = resolve_source_provenance(hit.url)
         from urllib.parse import urlparse
 
-        domain = cat if cat != "open_candidate" else (urlparse(hit.url).netloc or "").lower()
+        domain = (
+            cat if cat != "open_candidate" else (urlparse(hit.url).netloc or "").lower()
+        )
         extracts = list(hit.key_extracts or [])
         why = (hit.snippet or "")[:800]
         if extracts and not why:
@@ -291,7 +274,9 @@ def _coerce_nodes(
                     learning_goal=arch_focus[:600],
                     learning_materials=LearningMaterials(),
                     learning_resources=[],
-                    resource_urls=[source_ref.url] if source_ref and source_ref.url else [],
+                    resource_urls=(
+                        [source_ref.url] if source_ref and source_ref.url else []
+                    ),
                     source_ref=source_ref,
                     node_curriculum_breakdown=breakdown,
                 )
@@ -355,6 +340,7 @@ def generate_curriculum_search_first(
         hint = (
             "Граф отклонён валидатором. Исправь только prerequisites/слои/DAG:\n"
             + "\n".join(f"- {e}" for e in errors)
+            + f"\n{CURRICULUM_DAG_REPAIR_PRESERVE_ANCHOR_TOPICS}"
         )
         trace(f"CURRICULUM search_first ▶ repair | errors={len(errors)}")
         payload = run_gemini_structured_with_chain(
@@ -371,9 +357,7 @@ def generate_curriculum_search_first(
         errors = validate_curriculum_dag_full(graph)
 
     if errors:
-        raise ValueError(
-            "Search-First: невалидный DAG: " + "; ".join(errors[:5])
-        )
+        raise ValueError("Search-First: невалидный DAG: " + "; ".join(errors[:5]))
 
     link_errors = validate_curriculum_source_links(graph)
     if link_errors:
