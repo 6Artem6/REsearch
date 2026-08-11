@@ -35,7 +35,11 @@ class DocumentSummary(BaseModel):
         default_factory=list, description="Концепты на русском"
     )
     key_takeaways: List[str] = Field(
-        default_factory=list, description="Выжимки на русском"
+        default_factory=list,
+        description=(
+            "Выжимки на русском; желательно с префиксом "
+            "[SCOPE: PRINCIPLE|MECHANIC|INSTANCE]"
+        ),
     )
     failure_modes: List[str] = Field(
         default_factory=list, description="Failure modes на русском"

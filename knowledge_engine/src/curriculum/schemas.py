@@ -60,14 +60,16 @@ class CurriculumGenerateInput(BaseModel):
     @field_validator("source_policy", mode="before")
     @classmethod
     def _norm_source_policy(cls, v: str) -> str:
-        from knowledge_engine.src.curriculum.source_policy import normalize_source_policy
+        from knowledge_engine.src.curriculum.source_policy import (
+            normalize_source_policy,
+        )
 
         return normalize_source_policy(v, default="practical_only")
 
     @field_validator("generation_mode", mode="before")
     @classmethod
     def _norm_generation_mode(cls, v: str) -> str:
-        m = (str(v or "fast").strip().lower())
+        m = str(v or "fast").strip().lower()
         if m in ("deep", "consensus"):
             return "consensus"
         return "fast"
@@ -144,6 +146,10 @@ class CurriculumSearchHit(BaseModel):
         default=False,
         description="Exa highlights уже достаточны — не гонять 7B summarizer",
     )
+    exa_relevance_score: float | None = Field(
+        default=None,
+        description="Exa neural relevance score (если API вернул score)",
+    )
 
 
 class LearningMaterials(BaseModel):
@@ -216,7 +222,9 @@ class CurriculumNode(BaseModel):
 
     @field_validator("learning_materials", mode="before")
     @classmethod
-    def _norm_learning_materials(cls, v: LearningMaterials | dict | None) -> LearningMaterials:
+    def _norm_learning_materials(
+        cls, v: LearningMaterials | dict | None
+    ) -> LearningMaterials:
         if v is None:
             return LearningMaterials()
         if isinstance(v, LearningMaterials):
@@ -265,7 +273,7 @@ class CurriculumGraph(BaseModel):
     total_nodes: int = Field(ge=1, le=40)
     curriculum_sources_registry: list[CurriculumSourceRegistryEntry] = Field(
         default_factory=list,
-        max_length=20,
+        max_length=32,
     )
     route_sources: list[RouteSourceEntry] = Field(default_factory=list, max_length=24)
     nodes: list[CurriculumNode] = Field(min_length=3, max_length=40)
@@ -308,4 +316,6 @@ class CurriculumExpansionPatch(BaseModel):
     """Flash: JSON Patch для expand_curriculum."""
 
     new_nodes: list[CurriculumNode] = Field(default_factory=list, max_length=20)
-    new_edges: list[CurriculumExpansionEdge] = Field(default_factory=list, max_length=40)
+    new_edges: list[CurriculumExpansionEdge] = Field(
+        default_factory=list, max_length=40
+    )
