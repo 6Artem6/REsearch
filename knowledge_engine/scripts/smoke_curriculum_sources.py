@@ -18,9 +18,13 @@ from knowledge_engine.config import (
 )
 from knowledge_engine.services.curriculum_api_quota_store import get_quota_summary
 from knowledge_engine.src.curriculum.academic_source_fetch import fetch_academic_sources
-from knowledge_engine.src.curriculum.practical_source_fetch import fetch_practical_sources
+from knowledge_engine.src.curriculum.practical_source_fetch import (
+    fetch_practical_sources,
+)
 from knowledge_engine.src.curriculum.search_query_builder import build_search_queries
-from knowledge_engine.src.curriculum.source_material_pipeline import collect_sources_by_policy
+from knowledge_engine.src.curriculum.source_material_pipeline import (
+    collect_sources_by_policy,
+)
 from knowledge_engine.src.retrieval.semantic_scholar import (
     _SS_SEARCH_URL,
     get_semantic_scholar_paper_by_id,
@@ -108,7 +112,9 @@ def main() -> int:
         ]
         if papers and papers[0].paper_id:
             pid = papers[0].paper_id
-            report["semantic_scholar"]["paper_id_probe"] = await _probe_ss_paper_endpoint(pid)
+            report["semantic_scholar"]["paper_id_probe"] = (
+                await _probe_ss_paper_endpoint(pid)
+            )
         else:
             async with httpx.AsyncClient(timeout=20.0) as client:
                 from knowledge_engine.src.retrieval.semantic_scholar_rate_limit import (
@@ -174,19 +180,29 @@ def main() -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         print(f"goal: {goal}")
-        print(f"CSE enabled: {report['env']['google_cse_enabled']} configured: {report['env']['google_cse_configured']}")
-        print(f"SS key set: {report['env']['semantic_scholar_key_set']} (search works without)")
+        print(
+            f"CSE enabled: {report['env']['google_cse_enabled']} configured: {report['env']['google_cse_configured']}"
+        )
+        print(
+            f"SS key set: {report['env']['semantic_scholar_key_set']} (search works without)"
+        )
         print(f"queries: academic={built.academic_query[:70]}…")
         print(
             f"SS search: {report['semantic_scholar'].get('search_papers')} papers | "
             f"probe: {report['semantic_scholar'].get('paper_id_probe')}"
         )
         print(f"arXiv: {report['arxiv'].get('papers')} papers")
-        print(f"practical fetch: {report['practical']['hits']} ({report['practical']['tiers']})")
+        print(
+            f"practical fetch: {report['practical']['hits']} ({report['practical']['tiers']})"
+        )
         print(f"academic fetch: {report['academic_fetch']['hits']}")
         if report.get("collect_policy"):
             print(f"collect {args.policy}: {report['collect_policy']}")
-        print("quota:", report["quota"].get("google_cse"), report["quota"].get("semantic_scholar"))
+        print(
+            "quota:",
+            report["quota"].get("google_cse"),
+            report["quota"].get("semantic_scholar"),
+        )
 
     ok = (
         report["semantic_scholar"].get("search_papers", 0) > 0

@@ -16,7 +16,9 @@ from knowledge_engine.config import (
     SEMANTIC_SCHOLAR_API_KEY,
 )
 from knowledge_engine.services.search.searxng_health import check_searxng
-from knowledge_engine.src.curriculum.practical_searxng_search import collect_searxng_practical_rows
+from knowledge_engine.src.curriculum.practical_searxng_search import (
+    collect_searxng_practical_rows,
+)
 from knowledge_engine.src.curriculum.search_query_builder import build_search_queries
 from knowledge_engine.src.retrieval.semantic_scholar import (
     search_arxiv_fallback,
@@ -141,7 +143,9 @@ def main() -> int:
     practical_ok = report["pipeline_ready"]["practical"]
     if academic_ok and practical_ok:
         print("\n✓ Можно проверять в деле: smoke + curriculum generate")
-        print("  python -m knowledge_engine.scripts.smoke_curriculum_sources --with-collect --policy hybrid")
+        print(
+            "  python -m knowledge_engine.scripts.smoke_curriculum_sources --with-collect --policy hybrid"
+        )
         return 0
     if academic_ok or practical_ok:
         print("\n~ Частично: можно generate с academic_only или practical_only")

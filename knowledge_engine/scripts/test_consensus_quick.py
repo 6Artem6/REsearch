@@ -11,8 +11,8 @@ import sys
 os.environ.setdefault("KE_TRACE_STDOUT", "1")
 
 from knowledge_engine.config import (
-    CONSENSUS_USE_QUICK_PAPER_SEARCH,
     BROWSER_PROFILE_PATH,
+    CONSENSUS_USE_QUICK_PAPER_SEARCH,
 )
 from knowledge_engine.src.retrieval.consensus_session import ConsensusSessionManager
 

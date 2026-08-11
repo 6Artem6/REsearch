@@ -18,8 +18,6 @@ def main() -> None:
     )
     args = parser.parse_args()
     if args.clear_ss_block:
-        from pathlib import Path
-
         from knowledge_engine.config import PACKAGE_ROOT
 
         path = (PACKAGE_ROOT / ".runs" / "curriculum_api_quota_state.json").resolve()

@@ -25,6 +25,7 @@ from knowledge_engine.config import (
     GEMINI_GROUNDING_MODEL,
     SKIP_GEMINI,
 )
+from knowledge_engine.services.gemini_quota_store import extract_quota_fields_from_blob
 from knowledge_engine.services.gemini_search_grounding import (
     _extract_grounding_hits,
     _whitelist_grounding_hits,
@@ -40,7 +41,6 @@ from knowledge_engine.services.gemini_stateless import (
     gemini_api_key_pool,
     is_gemini_available,
 )
-from knowledge_engine.services.gemini_quota_store import extract_quota_fields_from_blob
 
 _DEFAULT_QUERY = (
     "Find one authoritative article about HTTP caching. "
@@ -106,7 +106,9 @@ def _interpret_grounding(row: dict[str, Any]) -> str:
                 "или другая модель"
             )
         if row.get("retry_after_sec") is not None:
-            return f"rate limit — retry ~{row['retry_after_sec']:.0f}s (RPM/короткое окно)"
+            return (
+                f"rate limit — retry ~{row['retry_after_sec']:.0f}s (RPM/короткое окно)"
+            )
         return "RESOURCE_EXHAUSTED — квота Search grounding или generate_content"
     if "google_search" in (row.get("error_preview") or "").lower():
         return "ошибка явно связана с google_search tool — модель может не поддерживать tooling"
@@ -277,7 +279,9 @@ def main() -> None:
         default=3.0,
         help="Пауза между моделями (сек)",
     )
-    parser.add_argument("--query", default=_DEFAULT_QUERY, help="Текст grounding запроса")
+    parser.add_argument(
+        "--query", default=_DEFAULT_QUERY, help="Текст grounding запроса"
+    )
     parser.add_argument(
         "--compare-plain",
         action="store_true",
@@ -334,7 +338,9 @@ def main() -> None:
     }
 
     for key_idx, api_key in enumerate(keys):
-        client = _client_for_api_key(api_key) if api_key != GEMINI_API_KEY else GEMINI_CLIENT
+        client = (
+            _client_for_api_key(api_key) if api_key != GEMINI_API_KEY else GEMINI_CLIENT
+        )
         if client is None:
             client = _client_for_api_key(api_key)
 
@@ -368,7 +374,9 @@ def main() -> None:
 
         out_path = (PACKAGE_ROOT / ".runs" / "gemini_grounding_probe.json").resolve()
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        out_path.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         report["saved_path"] = str(out_path)
 
     if args.json:

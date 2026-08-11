@@ -10,8 +10,8 @@ import sys
 async def _run(force: bool) -> int:
     from knowledge_engine.config import USER_PROFILE_PATH
     from knowledge_engine.src.memory.light_rag import (
-        LightRAG,
         _PROFILE_SYNC_HASH_FILE,
+        LightRAG,
         sync_profile_from_markdown_if_needed,
     )
 

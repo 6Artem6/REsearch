@@ -22,9 +22,7 @@ def _model_key(step_title: str) -> str:
     if t.startswith("Consensus"):
         return "consensus-playwright"
     parts = [p.strip() for p in t.split("/")]
-    if parts and (
-        parts[-1] == "ollama" or parts[-1].startswith("gemini-")
-    ):
+    if parts and (parts[-1] == "ollama" or parts[-1].startswith("gemini-")):
         return parts[-1]
     return parts[-1] if parts else t
 
@@ -80,7 +78,7 @@ def extract_by_model_and_function(
         "INDEX (модель | функция | вызовов в полном логе | примеров здесь):",
     ]
     summary: list[tuple[str, str, int]] = []
-    for (model, func) in sorted(all_funcs.keys()):
+    for model, func in sorted(all_funcs.keys()):
         cnt = seen.get((model, func), 0)
         lines.append(
             f"  - {model} | {func} | full_log={all_funcs[(model, func)]} | sample={cnt}"
@@ -131,7 +129,9 @@ def main() -> int:
         print(f"Missing: {src}", file=__import__("sys").stderr)
         return 1
     text = src.read_text(encoding="utf-8")
-    out_text, _ = extract_by_model_and_function(text, max_per_function=args.max_per_function)
+    out_text, _ = extract_by_model_and_function(
+        text, max_per_function=args.max_per_function
+    )
     out = args.out or src.with_name(src.stem + "-BY-MODEL-FUNCTION.txt")
     out.write_text(out_text, encoding="utf-8")
     steps = out_text.count("### STEP ")

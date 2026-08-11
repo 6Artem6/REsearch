@@ -65,11 +65,12 @@ def main() -> None:
     os.chdir(ROOT)
     os.environ.setdefault("PYTHONPATH", str(ROOT))
 
+    from watchfiles import watch
+
     from knowledge_engine.config import (
         KE_WORKER_RELOAD_DEBOUNCE_SEC,
         KE_WORKER_STOP_TIMEOUT_SEC,
     )
-    from watchfiles import watch
 
     proc: subprocess.Popen | None = None
     min_gap = KE_WORKER_RELOAD_DEBOUNCE_SEC

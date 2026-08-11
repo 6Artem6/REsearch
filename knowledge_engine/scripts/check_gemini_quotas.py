@@ -28,17 +28,16 @@ from knowledge_engine.config import (
     GEMINI_REASONER_MODEL,
     SKIP_GEMINI,
 )
+from knowledge_engine.services.gemini_quota_store import (
+    apply_probe_result,
+    default_daily_limit_rpd,
+    extract_quota_fields_from_blob,
+)
 from knowledge_engine.services.gemini_stateless import (
     _gemini_error_blob,
     _google_retry_delay_sec,
     _is_daily_per_model_quota,
     is_gemini_available,
-)
-from knowledge_engine.services.gemini_quota_store import (
-    apply_probe_result,
-    default_daily_limit_rpd,
-    extract_quota_fields_from_blob,
-    get_quota_summary,
 )
 
 
@@ -195,10 +194,20 @@ def main() -> None:
             apply_probe_result(row, count_probe=True)
 
     if args.json:
-        print(json.dumps({"models_checked": models, "results": results}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {"models_checked": models, "results": results},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return
 
-    key_hint = f"{GEMINI_API_KEY[:6]}…{GEMINI_API_KEY[-4:]}" if len(GEMINI_API_KEY) > 12 else "(set)"
+    key_hint = (
+        f"{GEMINI_API_KEY[:6]}…{GEMINI_API_KEY[-4:]}"
+        if len(GEMINI_API_KEY) > 12
+        else "(set)"
+    )
     print(f"GEMINI_API_KEY: {key_hint}")
     print(f"Модели ({len(models)}): {', '.join(models)}")
     print()
@@ -207,7 +216,9 @@ def main() -> None:
         rpd = default_daily_limit_rpd(model)
         print(f"── {model} (ориентир RPD ~{rpd}) ──")
         if row["status"] == "ok":
-            print(f"  ✓ OK ({row['elapsed_sec']}s) preview={row.get('response_preview')!r}")
+            print(
+                f"  ✓ OK ({row['elapsed_sec']}s) preview={row.get('response_preview')!r}"
+            )
         else:
             print(f"  ✗ {row['error_type']} ({row['elapsed_sec']}s)")
             if row.get("quota_details"):
@@ -225,9 +236,13 @@ def main() -> None:
 
     ok = sum(1 for r in results if r["status"] == "ok")
     rl = sum(1 for r in results if r.get("is_rate_limit"))
-    print(f"Итого: {ok} OK, {rl} rate-limit/quota errors, {len(results) - ok - rl} other errors")
+    print(
+        f"Итого: {ok} OK, {rl} rate-limit/quota errors, {len(results) - ok - rl} other errors"
+    )
     if args.save:
-        from knowledge_engine.services.gemini_quota_store import get_quota_summary as _summary
+        from knowledge_engine.services.gemini_quota_store import (
+            get_quota_summary as _summary,
+        )
 
         print()
         print("Локальный store:", _summary()["state_path"])
