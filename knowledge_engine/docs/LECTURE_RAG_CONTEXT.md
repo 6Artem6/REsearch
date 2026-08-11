@@ -7,7 +7,9 @@
 ## Когда вызывается
 
 - `POST /node/chat` с `[mode:lecture]` или явным запросом плотной лекции.
-- `engine.run_node_deep_dive` → `needs_dense` → `retrieve_lecture_rag_context()` → `generate_dense_material()`.
+- `engine.run_node_deep_dive` → `needs_dense` → `retrieve_lecture_rag_context()` → (условно) `fetch_verified_external_sources()` → `generate_dense_material()`.
+
+Перед **LECTURE_SEARCH** (Exa / Semantic Scholar / Consensus): если после RAG достаточно локальных фрагментов (`local_sources_count >= LECTURE_MIN_LOCAL_SOURCES`, по умолчанию 3) или есть pinned whitelist — первичный внешний поиск пропускается (`[LECTURE_PIPELINE] External search bypassed…`). Жёсткое отключение: `LECTURE_EXTERNAL_SEARCH_ENABLED=false`. Запрос модели `search_external_materials` после лекции по-прежнему вызывает внешний поиск без этого guardrail.
 
 **Не вызывается** на каждый turn диалога (`dialogue_feedback`) — там только `memory.rag_profile_compressed` (из init) + sliding window + fact manifest.
 
@@ -33,6 +35,48 @@ Top LECTURE_RAG_MMR_TOP_K → склейка с pinned
 ```
 
 ### Step 1 — Candidate retrieval
+
+Fine `rag_chunks` ranking uses `final_score = vector_similarity × trust_score`
+(`metadata.trust_score`, default `1.0` for legacy rows). Trust scores come from
+OpenAlex at ingest (`OPENALEX_TRUST_*`) for **any** work with a DOI or arXiv id
+(Consensus / Semantic Scholar / arXiv). Vendor docs stay at `1.0`. URLs without
+DOI/arXiv get a soft fallback (`0.3`), not a free pass.
+
+### Hybrid academic rerank (optional)
+
+When `ACADEMIC_RERANK_ENABLED=true`, candidates are **pre-sorted** before CE/MMR with:
+
+```text
+score = α·relevance_sim + β·trust_score + γ·log1p(cites)/log1p(C_sat) + δ·recency
+```
+
+Defaults: `ACADEMIC_RERANK_WEIGHTS=0.45,0.25,0.20,0.10`, `C_sat=40`,
+recency half-life `ACADEMIC_RERANK_RECENCY_HALF_LIFE_YEARS=6`. Flag defaults to
+**false** so production behavior stays `sim × trust` until explicitly enabled.
+
+### Academic relaxation cascade (curriculum search)
+
+If academic hits &lt; `ACADEMIC_RELAXATION_MIN_HITS` (default 3), arXiv precision
+params are softened in levels:
+
+| Level | Name | Effect |
+|-------|------|--------|
+| 0 | Strict | Year window + min trust/citations gates |
+| 1 | Soft date & cites | Drop/widen dates; lower citation floor |
+| 2 | Broad relevance | Drop `cat:` / excludes; prefer semantic relevance |
+
+Implemented in `src/retrieval/academic_rerank.py`, wired from
+`academic_source_fetch` and lecture RAG pre-sort.
+
+Hard cutoff (`RAG_TRUST_HARD_CUTOFF`): drop chunks with `trust < 0.2` **and**
+`vector_similarity < 0.85`. Applied as **early exit** immediately after LanceDB
+vector hits are scored (`search_rag_chunk_rows`) and again on the candidate pool
+**before** CE / cross-attention / MMR — never after Map-Lite or prompt stitch.
+Surviving chunks are ordered by trust (desc) before `[R#]` assignment.
+Dialog `chat_history` is untouched — trust markers appear only in RAG context blocks.
+
+Note: blog/academic **Map-Reduce ingest** summarizes article windows (not vector
+hits). Hard cutoff gates **retrieval → lecture context**, not window splitting.
 
 | Источник | Модуль | Лимит |
 |----------|--------|--------|
@@ -67,16 +111,21 @@ Top LECTURE_RAG_MMR_TOP_K → склейка с pinned
 
 | Ситуация | Поведение |
 |----------|-----------|
+| Таймаут collect (`LECTURE_RAG_COLLECT_TIMEOUT_SEC`) | minimal fallback: whitelist foundation + route URLs, без LanceDB hybrid |
+| Таймаут LightRAG (`LECTURE_RAG_LIGHT_TIMEOUT_SEC`) | пул без vector hits |
 | Таймаут CE/MMR (`LECTURE_RAG_RERANK_TIMEOUT_SEC`) | `fallback_dedupe_candidates` — URL + exact-text, лимит как legacy |
 | Ошибка всего блока rerank | полный fallback: сбор пула + legacy dedupe |
 | CE недоступен | уже внутри `cross_encoder.py` → Ollama cosine |
 
-Тяжёлые операции: `run_under_uma_lock` + `asyncio.wait_for` (не блокировать event loop без лимита времени).
+Тяжёлые операции: `run_blocking_timed` + пулы `blocking_pools` (`pool_rag_io`, `pool_rag_ce`) для collect/CE (без глобального UMA-lock на весь collect — иначе таймаут оставляет «зомби»-поток).
 
 ## Логи (trace)
 
 | Префикс | Смысл |
 |---------|--------|
+| `LECTURE_RAG ▶ collect` / `collect ✓` | старт / конец сбора кандидатов |
+| `LECTURE_RAG collect timeout` | превышен `LECTURE_RAG_COLLECT_TIMEOUT_SEC` |
+| `LECTURE_RAG light_rag timeout` | превышен `LECTURE_RAG_LIGHT_TIMEOUT_SEC` |
 | `LECTURE_RAG pool ▶` | размер пула до rerank |
 | `LECTURE_RAG rerank ▶` | старт CE |
 | `LECTURE_RAG ce_filter` / `ce_drop` | прошли / отсечены по score |
@@ -93,6 +142,8 @@ Top LECTURE_RAG_MMR_TOP_K → склейка с pinned
 | `LECTURE_RAG_CE_MIN_SCORE` | 0.38 | Мин. CE score |
 | `LECTURE_RAG_MMR_LAMBDA` | 0.62 | Баланс rel / diversity |
 | `LECTURE_RAG_RERANK_TIMEOUT_SEC` | 60 | Таймаут rerank+MMR |
+| `LECTURE_RAG_COLLECT_TIMEOUT_SEC` | 90 | Таймаут LanceDB/Ollama collect (в thread) |
+| `LECTURE_RAG_LIGHT_TIMEOUT_SEC` | 45 | Таймаут LightRAG vector_search |
 | `LECTURE_RAG_KNODE_CANDIDATE_LIMIT` | 4 | Knowledge nodes в пуле |
 | `LECTURE_RAG_TOP_K` | 3 | Legacy лимит при full fallback |
 | `RAG_CROSS_ENCODER_MODEL` | bge-reranker-v2-m3 | CE (общий с Gateway) |

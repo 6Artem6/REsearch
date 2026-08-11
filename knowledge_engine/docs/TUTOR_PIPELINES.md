@@ -8,11 +8,14 @@
 
 | Документ | Тема |
 |----------|------|
-| [SKILL_TREE_UI.md](SKILL_TREE_UI.md) | UI, worker, Redis, localStorage |
+| [SKILL_TREE_UI.md](SKILL_TREE_UI.md) | UI, worker, Redis, explain SSE |
 | [CURRICULUM_MODULE_1.md](CURRICULUM_MODULE_1.md) | API Modуль 1, env по источникам |
 | [NODE_DEEP_DIVE_MODULE_2.md](NODE_DEEP_DIVE_MODULE_2.md) | Тьютор ноды, память, фазы |
 | [LECTURE_RAG_CONTEXT.md](LECTURE_RAG_CONTEXT.md) | Плотная лекция: LanceDB → CE → MMR |
 | [TUTOR_PROMPT_AND_UI_TEXT.md](TUTOR_PROMPT_AND_UI_TEXT.md) | Compositor, manifest, JSON в UI |
+| [LLM_CONTRACTS.md](LLM_CONTRACTS.md) | Реестр Pydantic Gemini contracts |
+| [EXA_SEARCH.md](EXA_SEARCH.md) | Exa: query plan, rank, domains, EXA_* |
+| [ARTICLE_DIAGRAMS.md](ARTICLE_DIAGRAMS.md) | Схемы источников: ingestion, VLM, Mermaid и нода |
 | [SOURCE_POOL.md](SOURCE_POOL.md) | Провайдеры и квоты |
 | [ARCHITECTURE_DEDUP.md](ARCHITECTURE_DEDUP.md) | Где единая точка сбора источников |
 | [RAG_GATEWAY_MODULE_3.md](RAG_GATEWAY_MODULE_3.md) | Directional RAG на init/chat |
@@ -44,7 +47,7 @@ flowchart TB
     WH["work_handlers"]
     Gen["generate_curriculum_graph"]
     Exp["expand_curriculum"]
-    Dive["node_deep_dive engine"]
+    Dive["run_node_deep_dive LangGraph"]
   end
 
   subgraph Store["Персистентность"]
@@ -108,7 +111,7 @@ flowchart TB
 | `CURRICULUM_SEARCH_FIRST_ENABLED` | `false` | Search-First (если targeted выключен) |
 | иначе | — | Legacy Reasoner + Lite whitelist |
 
-Другие важные env: `EXA_API_KEY`, `EXA_SEARCH_ENABLED`, `CURRICULUM_USE_V08_CONSENSUS`, `CURRICULUM_GEMINI_GROUNDING_ENABLED`, `SEARXNG_ENABLED` — см. `.env.example` и [SOURCE_POOL.md](SOURCE_POOL.md).
+Другие важные env: `EXA_API_KEY`, `EXA_SEARCH_ENABLED`, `CURRICULUM_USE_V08_CONSENSUS`, `CURRICULUM_GEMINI_GROUNDING_ENABLED`, `SEARXNG_ENABLED` — см. [EXA_SEARCH.md](EXA_SEARCH.md), `.env.example` и [SOURCE_POOL.md](SOURCE_POOL.md).
 
 ---
 
@@ -292,38 +295,59 @@ Expand **не** перезапускает Targeted Grounding для сущес�
 
 ---
 
-## 8. Тьютор ноды (контент урока, Modуль 2)
+## 8. Тьютор ноды (контент урока, Модуль 2)
 
-Не создаёт DAG, но часть продукта «AI Tutor» после генерации графа.
+Не создаёт curriculum DAG. Оркестрация — **LangGraph** (`get_compiled_tutor_graph().ainvoke`), фасад `run_node_deep_dive`. Полная карта: [NODE_DEEP_DIVE_MODULE_2.md](NODE_DEEP_DIVE_MODULE_2.md).
+
+**Инварианты потока**
+
+| | |
+|--|--|
+| Entry | `engine.run_node_deep_dive` → graph |
+| `thread_id` | `anchor` = `node_deep_dive:{curriculum_id}:{node_id}` |
+| Checkpoint | `MemorySaver` (in-process) |
+| Single-writer coverage | статусы `sub_concepts` пишет только `sub_concept_eval`; tutor LLM не мутирует карту |
 
 ```mermaid
-flowchart TB
-  Init["POST /node/init"]
-  RAG["prepare_node_init_rag directional RAG"]
-  Intro["Gemini intro_assessment"]
-  Chat["POST /node/chat"]
-  Pipe["step_pipeline intent phase"]
-  Tutor["Gemini tutor tiered memory"]
-  Verify["POST /node/verify"]
-  Dense["dense material lecture RAG"]
+flowchart TD
+  ingest["ingest"]
+  routeIn{"route_after_ingest"}
+  init["init"]
+  equiv["equivalence"]
+  lazy["lazy_intro"]
+  step["step_analysis"]
+  eval["sub_concept_eval"]
+  router["coverage_router"]
+  routeOut{"tutor / dense / skip"}
+  tutor["tutor_generate"]
+  dense["dense_lecture"]
+  commit["commit_turn"]
+  persist["persist"]
+  fin["finalize_response"]
 
-  Init --> RAG --> Intro
-  Chat --> Pipe --> Tutor
-  Verify --> Pipe --> Tutor
-  Chat --> Dense
+  ingest --> routeIn
+  routeIn -->|init| init --> persist
+  routeIn -->|equivalence| equiv --> commit
+  routeIn -->|lazy_intro| lazy --> commit
+  routeIn -->|chat/verify| step --> eval --> router --> routeOut
+  routeOut -->|tutor| tutor --> commit
+  routeOut -->|dense| dense --> commit
+  routeOut -->|notice| persist
+  commit --> persist --> fin
 ```
 
-| Action | API | Код |
-|--------|-----|-----|
-| `init` | `POST /node/init` | `prepare_node_init_rag` + `complete_node_init_gemini` |
-| `chat` | `POST /node/chat` | `run_node_deep_dive` + `process_user_message_pipeline` |
-| `verify` | `POST /node/verify` | то же, action verify |
+| Action | API | Путь в графе |
+|--------|-----|--------------|
+| `init` | `POST /node/init` | `ingest` → `init` → `persist` → `finalize_response` |
+| `chat` / `verify` | `POST /node/chat`, `/verify` | `ingest` → (опц. `equivalence` / `lazy_intro`) → `step_analysis` → `sub_concept_eval` → `coverage_router` → `tutor_generate` \| `dense_lecture` → `commit_turn` → `persist` → `finalize_response` |
 
-Режимы в `user_message`: `[mode:lecture]`, `[mode:blitz]`, `[mode:socratic]`.
+Режимы в `user_message`: `[mode:lecture]`, `[mode:blitz]`, `[mode:socratic]` → `coverage_router` / `interaction_mode`.
 
-RAG: `src/rag_gateway` + LanceDB; контекст графа — `format_node_curriculum_context_for_tutor`. Сессии: `.runs/node_deep_dive_sessions.json`.
+RAG: `src/rag_gateway` + LanceDB; dense — [LECTURE_RAG_CONTEXT.md](LECTURE_RAG_CONTEXT.md). Сессии: `.runs/node_deep_dive_sessions.json`.
+Диаграммы источников: [ARTICLE_DIAGRAMS.md](ARTICLE_DIAGRAMS.md).
 
-Синхронные в API (без worker): `POST /node/suggest-questions`, `POST /node/explain-selection`.
+Синхронно в API (вне graph): `POST /node/suggest-questions`, `POST /node/explain-selection-stream` (SSE).  
+Explain: `[R*]` из `lecture_rag_inspector` приоритетнее `[S*]` registry — [SKILL_TREE_UI.md](SKILL_TREE_UI.md) § Explain, [LLM_CONTRACTS.md](LLM_CONTRACTS.md).
 
 ---
 
@@ -346,7 +370,7 @@ RAG: `src/rag_gateway` + LanceDB; контекст графа — `format_node_c
 | Search-First Flash | `src/curriculum/search_first_flash.py` |
 | Expand | `services/curriculum_service.py`, `curriculum_expansion.py` |
 | Сохранение графа | `services/skill_tree_store.py` |
-| Тьютор | `src/node_deep_dive/engine.py`, `step_pipeline.py` |
+| Тьютор (фасад + graph) | `src/node_deep_dive/engine.py`, `src/node_deep_dive/graph/` |
 
 ---
 
