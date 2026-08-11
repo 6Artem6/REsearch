@@ -12,7 +12,7 @@ from knowledge_engine.services.job_store import JobStatus, job_store
 from knowledge_engine.services.v07_run_service import run_v07_job
 from knowledge_engine.services.v07_run_store import V07RunStatus, v07_run_store
 from knowledge_engine.services.work_handlers import format_work_error, run_work_job
-from knowledge_engine.services.work_job_store import WorkJobStatus, work_job_store
+from knowledge_engine.services.work_job_store import work_job_store
 from knowledge_engine.ui.run_log import trace
 
 
@@ -42,8 +42,11 @@ def _handle_work_job(job_id: str) -> bool:
     if not job:
         return False
     trace(f"WORKER ▶ work_job {job.kind.value} id={job.id}")
+    from knowledge_engine.services.worker_busy import worker_busy_scope
+
     try:
-        result = run_work_job(job)
+        with worker_busy_scope(f"work_job:{job.id}"):
+            result = run_work_job(job)
         work_job_store.complete(job.id, result)
         trace(f"WORKER ✓ work_job id={job.id}")
     except Exception as exc:

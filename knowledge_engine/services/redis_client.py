@@ -14,14 +14,19 @@ def redis_enabled() -> bool:
     return cfg.KE_USE_REDIS and bool(cfg.REDIS_URL)
 
 
-def _redis_client_kwargs() -> dict[str, Any]:
+def _redis_client_kwargs(*, for_pubsub: bool = False) -> dict[str, Any]:
+    """
+    Command clients keep TCP alive (idle Redis/Docker often drops quiet sockets).
+    Pub/sub must not run redis-py health PINGs on the subscribed connection.
+    """
     return {
         "decode_responses": True,
         "socket_connect_timeout": 5,
         "socket_timeout": cfg.REDIS_SOCKET_TIMEOUT_SEC,
         "retry_on_timeout": True,
-        # health_check_interval>0 + next_health_check=0 → PING во время on_connect
-        "health_check_interval": 0,
+        "socket_keepalive": True,
+        # Avoid health_check on pub/sub: PING on a SUBSCRIBEd connection breaks it.
+        "health_check_interval": 0 if for_pubsub else 30,
     }
 
 
@@ -35,7 +40,7 @@ def get_redis() -> Any:
 
         _command_client = redis.Redis.from_url(
             cfg.REDIS_URL,
-            **_redis_client_kwargs(),
+            **_redis_client_kwargs(for_pubsub=False),
         )
         _command_client.ping()
     return _command_client
@@ -51,7 +56,7 @@ def get_redis_pubsub_client() -> Any:
 
         _pubsub_client = redis.Redis.from_url(
             cfg.REDIS_URL,
-            **_redis_client_kwargs(),
+            **_redis_client_kwargs(for_pubsub=True),
         )
         _pubsub_client.ping()
     return _pubsub_client
@@ -66,6 +71,17 @@ def reset_redis_pubsub_client() -> None:
         except Exception:
             pass
     _pubsub_client = None
+
+
+def reset_redis_command_client() -> None:
+    """После ошибки команды Redis пересоздать отдельный command-клиент."""
+    global _command_client
+    if _command_client is not None:
+        try:
+            _command_client.close()
+        except Exception:
+            pass
+    _command_client = None
 
 
 def redis_ping() -> bool:

@@ -47,7 +47,9 @@ class BrowserGeminiSession:
     ) -> None:
         self.headless = headless
         self._response_max_sec = float(
-            response_max_sec if response_max_sec is not None else GEMINI_RESPONSE_MAX_SEC
+            response_max_sec
+            if response_max_sec is not None
+            else GEMINI_RESPONSE_MAX_SEC
         )
         self._response_first_timeout_sec = float(
             response_first_timeout_sec
@@ -55,7 +57,9 @@ class BrowserGeminiSession:
             else GEMINI_RESPONSE_FIRST_TIMEOUT_SEC
         )
         self._min_response_chars = int(
-            min_response_chars if min_response_chars is not None else GEMINI_MIN_RESPONSE_CHARS
+            min_response_chars
+            if min_response_chars is not None
+            else GEMINI_MIN_RESPONSE_CHARS
         )
         self._playwright: Optional[Playwright] = None
         self.context: Optional[BrowserContext] = None

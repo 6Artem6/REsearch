@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
-from knowledge_engine.config import PACKAGE_ROOT, KE_WORKER_STALE_RUNNING_SEC
+from knowledge_engine.config import KE_WORKER_STALE_RUNNING_SEC, PACKAGE_ROOT
 from knowledge_engine.services.redis_client import get_redis, redis_enabled
 from knowledge_engine.services.redis_tasks import publish_work_job
 
@@ -164,6 +164,118 @@ class WorkJobStore:
         self._reload_from_disk()
         with self._lock:
             return self._jobs.get(job_id)
+
+    def find_active_node_deep_dive(
+        self,
+        curriculum_id: str,
+        node_id: str,
+        *,
+        user_action: str = "init",
+        exclude_job_id: str | None = None,
+    ) -> Optional[WorkJob]:
+        """PENDING/RUNNING node_deep_dive для той же ноды (коалесинг повторного init)."""
+        cid = str(curriculum_id or "").strip()
+        nid = str(node_id or "").strip()
+        action = str(user_action or "init").strip().lower()
+        if not cid or not nid:
+            return None
+        stale_sec = KE_WORKER_STALE_RUNNING_SEC
+        now = datetime.now(timezone.utc)
+        active_status = {WorkJobStatus.PENDING, WorkJobStatus.RUNNING}
+
+        def _matches(job: WorkJob) -> bool:
+            if job.kind != WorkJobKind.NODE_DEEP_DIVE:
+                return False
+            if job.status not in active_status:
+                return False
+            if exclude_job_id and job.id == exclude_job_id:
+                return False
+            if job.status == WorkJobStatus.RUNNING:
+                age = (now - job.updated_at).total_seconds()
+                if age > stale_sec:
+                    return False
+            p = job.payload or {}
+            if str(p.get("user_action") or "init").strip().lower() != action:
+                return False
+            pc = str(p.get("curriculum_id") or "").strip()
+            pn = str((p.get("node_data") or {}).get("node_id") or "").strip()
+            return pc == cid and pn == nid
+
+        if redis_enabled():
+            r = get_redis()
+            candidates: list[WorkJob] = []
+            for key in r.scan_iter(match=f"{_RKEY_JOB}*"):
+                try:
+                    raw = r.get(key)
+                    if not raw:
+                        continue
+                    job = _from_dict(json.loads(raw))
+                    if _matches(job):
+                        candidates.append(job)
+                except Exception:
+                    continue
+            if not candidates:
+                return None
+            return min(candidates, key=lambda j: j.created_at)
+
+        self._reload_from_disk()
+        with self._lock:
+            candidates = [j for j in self._jobs.values() if _matches(j)]
+            if not candidates:
+                return None
+            return min(candidates, key=lambda j: j.created_at)
+
+    def find_latest_completed_node_deep_dive(
+        self,
+        curriculum_id: str,
+        node_id: str,
+        *,
+        user_action: str = "init",
+    ) -> Optional[WorkJob]:
+        """Latest COMPLETED node_deep_dive with a non-empty result for the node."""
+        cid = str(curriculum_id or "").strip()
+        nid = str(node_id or "").strip()
+        action = str(user_action or "init").strip().lower()
+        if not cid or not nid:
+            return None
+
+        def _matches(job: WorkJob) -> bool:
+            if job.kind != WorkJobKind.NODE_DEEP_DIVE:
+                return False
+            if job.status != WorkJobStatus.COMPLETED:
+                return False
+            if not isinstance(job.result, dict) or not job.result:
+                return False
+            p = job.payload or {}
+            if str(p.get("user_action") or "init").strip().lower() != action:
+                return False
+            pc = str(p.get("curriculum_id") or "").strip()
+            pn = str((p.get("node_data") or {}).get("node_id") or "").strip()
+            return pc == cid and pn == nid
+
+        if redis_enabled():
+            r = get_redis()
+            candidates: list[WorkJob] = []
+            for key in r.scan_iter(match=f"{_RKEY_JOB}*"):
+                try:
+                    raw = r.get(key)
+                    if not raw:
+                        continue
+                    job = _from_dict(json.loads(raw))
+                    if _matches(job):
+                        candidates.append(job)
+                except Exception:
+                    continue
+            if not candidates:
+                return None
+            return max(candidates, key=lambda j: j.updated_at)
+
+        self._reload_from_disk()
+        with self._lock:
+            candidates = [j for j in self._jobs.values() if _matches(j)]
+            if not candidates:
+                return None
+            return max(candidates, key=lambda j: j.updated_at)
 
     def try_claim(self, job_id: str) -> Optional[WorkJob]:
         if not redis_enabled():
@@ -319,6 +431,41 @@ def count_running_work_jobs(max_age_sec: float | None = None) -> int:
     return n
 
 
+def list_pending_work_job_ids() -> list[str]:
+    """All PENDING work job ids (Redis). Empty when Redis is off."""
+    if not redis_enabled():
+        return []
+    r = get_redis()
+    out: list[str] = []
+    for key in r.scan_iter(match=f"{_RKEY_JOB}*"):
+        try:
+            raw = r.get(key)
+            if not raw:
+                continue
+            data = json.loads(raw)
+            if data.get("status") != WorkJobStatus.PENDING.value:
+                continue
+            jid = str(data.get("id") or "").strip()
+            if jid:
+                out.append(jid)
+        except Exception:
+            continue
+    return out
+
+
+def republish_pending_work_jobs() -> int:
+    """
+    Re-notify worker for PENDING jobs (lost pub/sub after restart / duplicate coalesce).
+    Returns number of publish attempts.
+    """
+    if not redis_enabled():
+        return 0
+    ids = list_pending_work_job_ids()
+    for jid in ids:
+        publish_work_job(jid)
+    return len(ids)
+
+
 def recover_stale_running_work_jobs() -> int:
     """Пометить зависшие running jobs как failed (после краша/kill worker)."""
     if not redis_enabled():
@@ -339,6 +486,13 @@ def recover_stale_running_work_jobs() -> int:
             age = (now - updated).total_seconds()
             if age <= stale_sec:
                 continue
+            try:
+                from knowledge_engine.services.worker_busy import worker_busy_for_reload
+
+                if worker_busy_for_reload():
+                    continue
+            except Exception:
+                pass
             data["status"] = WorkJobStatus.FAILED.value
             data["error"] = (
                 f"Work job stale (running {int(age)}s > {int(stale_sec)}s). "
@@ -350,6 +504,79 @@ def recover_stale_running_work_jobs() -> int:
         except Exception:
             continue
     return recovered
+
+
+def requeue_running_work_jobs_on_startup() -> int:
+    """
+    Worker boot: any RUNNING job is orphaned (previous process is gone).
+    Requeue as PENDING, drop node grounding locks, republish.
+    Age-based fail (``recover_stale_running_work_jobs``) alone is too slow
+    (default 2h) and leaves the UI blocked on a dead ``running`` job.
+    """
+    if not redis_enabled():
+        return 0
+    now = datetime.now(timezone.utc)
+    r = get_redis()
+    requeued: list[dict] = []
+    for key in r.scan_iter(match=f"{_RKEY_JOB}*"):
+        try:
+            raw = r.get(key)
+            if not raw:
+                continue
+            data = json.loads(raw)
+            if data.get("status") != WorkJobStatus.RUNNING.value:
+                continue
+            data["status"] = WorkJobStatus.PENDING.value
+            data["error"] = None
+            data["updated_at"] = now.isoformat()
+            r.set(key, json.dumps(data, ensure_ascii=False))
+            requeued.append(data)
+        except Exception:
+            continue
+
+    if not requeued:
+        return 0
+
+    try:
+        from knowledge_engine.services.node_grounding_lock import (
+            force_release_node_grounding_lock,
+        )
+        from knowledge_engine.services.worker_busy import clear_worker_busy_file
+
+        clear_worker_busy_file()
+        for data in requeued:
+            jid = str(data.get("id") or "").strip()
+            if jid:
+                try:
+                    r.delete(f"ke:lock:work:{jid}")
+                except Exception:
+                    pass
+            payload = data.get("payload") or {}
+            if str(data.get("kind") or "") != WorkJobKind.NODE_DEEP_DIVE.value:
+                continue
+            cid = str(payload.get("curriculum_id") or "").strip()
+            nid = str((payload.get("node_data") or {}).get("node_id") or "").strip()
+            if cid and nid:
+                force_release_node_grounding_lock(cid, nid)
+    except Exception:
+        pass
+
+    for data in requeued:
+        jid = str(data.get("id") or "").strip()
+        if jid:
+            publish_work_job(jid)
+    return len(requeued)
+
+
+def force_release_work_claim_lock(job_id: str) -> bool:
+    """Delete Redis claim lock ``ke:lock:work:{id}`` left after kill/cancel."""
+    jid = str(job_id or "").strip()
+    if not jid or not redis_enabled():
+        return False
+    try:
+        return bool(get_redis().delete(f"ke:lock:work:{jid}"))
+    except Exception:
+        return False
 
 
 def write_worker_heartbeat(pid: int) -> None:

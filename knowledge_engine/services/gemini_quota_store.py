@@ -5,22 +5,25 @@ from __future__ import annotations
 import json
 import re
 import threading
+import time
+from collections import deque
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from knowledge_engine.config import GEMINI_RPM_BLOCK_SEC, PACKAGE_ROOT
+from knowledge_engine.config import (
+    GEMINI_QUOTA_SAFETY_RATIO,
+    GEMINI_RPM_BLOCK_SEC,
+    PACKAGE_ROOT,
+)
 from knowledge_engine.ui.run_log import trace
 
 _STATE_PATH = (PACKAGE_ROOT / ".runs" / "gemini_quota_state.json").resolve()
 _LOCK = threading.RLock()
 _PACIFIC = ZoneInfo("America/Los_Angeles")
 
-# Free tier (Google AI Studio), ориентиры — обновляются из 429 limit: N
+# Free tier (Google AI Studio) — flash-lite RPD overridden by GEMINI_FLASH_LITE_MAX_RPD
 _DEFAULT_RPD_BY_SUBSTRING: tuple[tuple[str, int], ...] = (
-    ("flash-lite", 500),
-    ("flash_lite", 500),
     ("gemma-4", 14400),
     ("flash-preview", 20),
     ("flash", 20),
@@ -40,7 +43,11 @@ def _now_iso() -> str:
 
 
 def default_daily_limit_rpd(model: str) -> int:
+    from knowledge_engine.config import GEMINI_FLASH_LITE_MAX_RPD
+
     m = (model or "").lower()
+    if "flash-lite" in m or "flash_lite" in m:
+        return max(1, int(GEMINI_FLASH_LITE_MAX_RPD))
     for needle, limit in _DEFAULT_RPD_BY_SUBSTRING:
         if needle in m:
             return limit
@@ -160,7 +167,9 @@ def _rpm_block_until_default() -> str:
 
 def _is_daily_quota_blob(blob: str) -> bool:
     norm = blob.lower().replace("_", "").replace("-", "")
-    return "requestsperdayperprojectpermodel" in norm or "generaterequestsperday" in norm
+    return (
+        "requestsperdayperprojectpermodel" in norm or "generaterequestsperday" in norm
+    )
 
 
 def _classify_429(blob: str, details: dict[str, Any]) -> str:
@@ -229,6 +238,150 @@ def model_usable(model: str, state: dict[str, Any] | None = None) -> tuple[bool,
         return True, "ok"
 
 
+class _GeminiMinuteGuard:
+    """Per-model 60s sliding RPM/TPM guard.
+
+    Hard RPM never exceeds default_rpm_limit_for_model (Flash Lite ≤14).
+    Soft cap (GEMINI_QUOTA_SAFETY_RATIO) is used only by filter_models_for_quota
+    to fail over early; try_reserve enforces the hard ceiling atomically.
+    """
+
+    def __init__(self, model: str) -> None:
+        from knowledge_engine.services.gemini_stateless import (
+            default_rpm_limit_for_model,
+            default_tpm_limit_for_model,
+        )
+
+        ratio = max(0.5, min(1.0, float(GEMINI_QUOTA_SAFETY_RATIO)))
+        self._model = (model or "").strip()
+        hard_rpm = max(1, int(default_rpm_limit_for_model(self._model)))
+        hard_tpm = max(100, int(default_tpm_limit_for_model(self._model)))
+        self._hard_rpm = hard_rpm
+        self._hard_tpm = hard_tpm
+        # Soft caps for early chain switch (must stay ≤ hard)
+        self._soft_rpm = max(1, min(hard_rpm, int(hard_rpm * ratio)))
+        self._soft_tpm = max(100, min(hard_tpm, int(hard_tpm * ratio)))
+        self._max_rpm = hard_rpm  # alias for diagnostics
+        self._max_tpm = hard_tpm
+        self._window = 60.0
+        self._req_times: deque[float] = deque()
+        self._token_events: deque[tuple[float, int]] = deque()
+
+    def _evict(self, now: float) -> None:
+        cutoff = now - self._window
+        while self._req_times and self._req_times[0] <= cutoff:
+            self._req_times.popleft()
+        while self._token_events and self._token_events[0][0] <= cutoff:
+            self._token_events.popleft()
+
+    def _would_exceed(self, now: float, est: int, *, soft: bool) -> bool:
+        self._evict(now)
+        rpm_cap = self._soft_rpm if soft else self._hard_rpm
+        tpm_cap = self._soft_tpm if soft else self._hard_tpm
+        if len(self._req_times) >= rpm_cap:
+            return True
+        tpm = sum(t for _, t in self._token_events)
+        return tpm + est > tpm_cap
+
+    def try_reserve(self, estimated_tokens: int) -> bool:
+        """Atomic hard-cap reserve before HTTP (prevents 15→16 races)."""
+        est = max(1, int(estimated_tokens))
+        with _LOCK:
+            now = time.time()
+            if self._would_exceed(now, est, soft=False):
+                return False
+            self._req_times.append(now)
+            self._token_events.append((now, est))
+            return True
+
+    def confirm_actual(self, total_tokens: int) -> None:
+        """Reconcile last reservation TPM; does not add another RPM slot."""
+        actual = max(1, int(total_tokens))
+        with _LOCK:
+            now = time.time()
+            self._evict(now)
+            if self._token_events:
+                ts, _old = self._token_events[-1]
+                self._token_events[-1] = (ts, actual)
+
+    def release_last(self) -> None:
+        """Drop last reservation if the HTTP call never left (rare)."""
+        with _LOCK:
+            if self._req_times:
+                self._req_times.pop()
+            if self._token_events:
+                self._token_events.pop()
+
+    def record_event(self, total_tokens: int) -> None:
+        """Legacy append (prefer try_reserve + confirm_actual)."""
+        if self.try_reserve(total_tokens):
+            self.confirm_actual(total_tokens)
+
+    def record_actual(self, total_tokens: int) -> None:
+        self.confirm_actual(total_tokens)
+
+    def rpm_used(self) -> int:
+        with _LOCK:
+            self._evict(time.time())
+            return len(self._req_times)
+
+
+_minute_guards: dict[str, _GeminiMinuteGuard] = {}
+
+
+def _minute_guard(model: str) -> _GeminiMinuteGuard:
+    m = (model or "").strip()
+    g = _minute_guards.get(m)
+    if g is None:
+        g = _GeminiMinuteGuard(m)
+        _minute_guards[m] = g
+    return g
+
+
+def reserve_gemini_minute_slot(
+    model: str,
+    estimated_tokens: int = 800,
+) -> bool:
+    """Reserve one hard RPM slot before an API call. False → at hard ceiling."""
+    ok = _minute_guard(model).try_reserve(estimated_tokens)
+    if not ok:
+        g = _minute_guard(model)
+        trace(
+            f"GEMINI RPM hard_cap ⊘ | model={(model or '').strip()} "
+            f"used={g.rpm_used()}/{g._hard_rpm} (refuse >{g._hard_rpm}/min)"
+        )
+    return ok
+
+
+def confirm_gemini_minute_slot(model: str, total_tokens: int) -> None:
+    _minute_guard(model).confirm_actual(total_tokens)
+
+
+def release_gemini_minute_slot(model: str) -> None:
+    _minute_guard(model).release_last()
+
+
+def record_gemini_minute_usage(model: str, total_tokens: int) -> None:
+    """Fallback when caller did not reserve (still hard-capped)."""
+    g = _minute_guard(model)
+    if not g.try_reserve(total_tokens):
+        trace(
+            f"GEMINI RPM hard_cap drop | model={(model or '').strip()} "
+            f"— usage not recorded (already at {g._hard_rpm}/min)"
+        )
+        return
+    g.confirm_actual(total_tokens)
+
+
+def model_minute_guard_ok(model: str, estimated_tokens: int = 800) -> bool:
+    """Soft-cap check for chain filter (early failover before hard ceiling)."""
+    g = _minute_guard(model)
+    with _LOCK:
+        return not g._would_exceed(
+            time.time(), max(1, int(estimated_tokens)), soft=True
+        )
+
+
 def filter_models_for_quota(models: list[str]) -> list[str]:
     """Локальный RPD + RPM из store. Не дергает API (сбор квот — раз в день: check_gemini_quotas --save)."""
     with _LOCK:
@@ -237,14 +390,37 @@ def filter_models_for_quota(models: list[str]) -> list[str]:
         out: list[str] = []
         for model in models:
             ok, _reason = model_usable(model, state)
-            if ok:
-                out.append(model)
+            if not ok:
+                continue
+            if not model_minute_guard_ok(model):
+                continue
+            out.append(model)
         if out != models:
             _save_unlocked(state)
         return out
 
 
-def record_gemini_success(model: str, count_local: bool = True) -> None:
+def set_model_daily_limit_rpd(model: str, limit: int) -> None:
+    """Синхронизировать локальный RPD cap с VLM_GEMINI_MAX_RPD из .env."""
+    m = (model or "").strip()
+    if not m:
+        return
+    cap = max(1, int(limit))
+    with _LOCK:
+        state = _load_unlocked()
+        _roll_day(state)
+        row = _ensure_model(state, m)
+        row["daily_limit_rpd"] = cap
+        _save_unlocked(state)
+
+
+def record_gemini_success(
+    model: str,
+    count_local: bool = True,
+    *,
+    total_tokens: int | None = None,
+    minute_already_reserved: bool = False,
+) -> None:
     with _LOCK:
         state = _load_unlocked()
         _roll_day(state)
@@ -254,6 +430,11 @@ def record_gemini_success(model: str, count_local: bool = True) -> None:
         row["last_status"] = "ok"
         row["last_request_at"] = _now_iso()
         _save_unlocked(state)
+    tok = total_tokens if total_tokens is not None else 800
+    if minute_already_reserved:
+        confirm_gemini_minute_slot(model, tok)
+    else:
+        record_gemini_minute_usage(model, tok)
 
 
 def record_gemini_error(model: str, exc: BaseException) -> None:
@@ -314,7 +495,9 @@ def apply_probe_result(row: dict[str, Any], count_probe: bool = False) -> None:
             mrow["unavailable_reason"] = ""
             mrow["daily_blocked"] = False
             if count_probe:
-                mrow["local_requests_today"] = int(mrow.get("local_requests_today") or 0) + 1
+                mrow["local_requests_today"] = (
+                    int(mrow.get("local_requests_today") or 0) + 1
+                )
         else:
             mrow["last_status"] = "error"
             code = details.get("http_like_code")

@@ -49,20 +49,18 @@ def init_log(log_id: str, header: str) -> None:
 def write_heartbeat(pid: int) -> None:
     if not redis_enabled():
         return
-    try:
-        get_redis().setex(
-            "ke:worker:heartbeat",
-            45,
-            json.dumps(
-                {
-                    "pid": pid,
-                    "ts": datetime.now().isoformat(),
-                },
-                ensure_ascii=False,
-            ),
-        )
-    except Exception:
-        pass
+    # Do NOT swallow Timeout/ConnectionError — worker must reset the command client.
+    get_redis().setex(
+        "ke:worker:heartbeat",
+        45,
+        json.dumps(
+            {
+                "pid": pid,
+                "ts": datetime.now().isoformat(),
+            },
+            ensure_ascii=False,
+        ),
+    )
 
 
 def worker_heartbeat_alive(max_age_sec: float = 45.0) -> bool:

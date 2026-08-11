@@ -7,7 +7,6 @@ import os
 import threading
 import time
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Iterator
 
 from knowledge_engine.config import PACKAGE_ROOT
@@ -46,6 +45,28 @@ def worker_busy_scope(label: str = "") -> Iterator[None]:
         with _lock:
             _active = max(0, _active - 1)
             _write_state()
+
+
+def clear_worker_busy_file() -> bool:
+    """
+    Drop stale ``worker_dev_busy.json`` after cancel/kill.
+    Dev watch otherwise defers reload forever while count stays > 0.
+    """
+    global _active
+    cleared = False
+    with _lock:
+        if _active:
+            _active = 0
+            cleared = True
+        try:
+            if _BUSY_PATH.is_file():
+                _BUSY_PATH.unlink(missing_ok=True)
+                cleared = True
+        except OSError:
+            pass
+        else:
+            _write_state()
+    return cleared
 
 
 def worker_busy_for_reload() -> bool:

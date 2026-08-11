@@ -7,33 +7,36 @@ from typing import Any, Literal
 from urllib.parse import urlparse
 
 from knowledge_engine.config import (
+    CURRICULUM_GEMINI_GROUNDING_ENABLED,
     CURRICULUM_GEMINI_GROUNDING_MAX_URLS,
+    GEMINI_GROUNDING_ENABLED,
     GEMINI_RETRY_BACKOFF_SEC,
     GEMINI_RPM_PAUSE_SEC,
 )
 from knowledge_engine.services.gemini_stateless import (
     GeminiUnavailableError,
-    curriculum_grounding_model_chain,
-    gemini_api_key_pool,
-    is_gemini_available,
     _client_for_api_key,
     _extract_status_code,
-    _google_retry_delay_sec,
     _gemini_error_blob,
+    _google_retry_delay_sec,
     _is_daily_per_model_quota,
     _is_hard_quota_exhausted,
     _is_retryable,
     _rpm_pause_for_model,
     _sleep_with_jitter,
+    curriculum_grounding_model_chain,
+    gemini_api_key_pool,
+    is_gemini_available,
+)
+from knowledge_engine.src.curriculum.curriculum_search_sites import (
+    CURRICULUM_PRIORITY_ENGINEERING_SITES,
 )
 from knowledge_engine.src.source_evaluator.curriculum_source_pool import (
     cap_collectible_items,
 )
+from knowledge_engine.src.source_evaluator.whitelist import APPROVED_SOURCES_WHITELIST
 from knowledge_engine.ui.run_log import trace
 
-from knowledge_engine.src.curriculum.curriculum_search_sites import (
-    CURRICULUM_PRIORITY_ENGINEERING_SITES,
-)
 GroundingNextAction = Literal["ok", "next_key", "next_model"]
 
 
@@ -180,9 +183,7 @@ def _grounding_with_model_retry(
                 return [], "next_model"
 
             if _is_rate_limit_429(exc) and allow_key_switch:
-                trace(
-                    "CURRICULUM grounding 429 ▶ Switching to fallback API key..."
-                )
+                trace("CURRICULUM grounding 429 ▶ Switching to fallback API key...")
                 return [], "next_key"
 
             if not _is_retryable(exc):
@@ -248,7 +249,11 @@ def search_grounded_whitelist_blogs_detailed(
 ) -> GroundingSearchResult:
     """
     Gemini + Google Search tool; URL из grounding_metadata + whitelist.
-  """
+    """
+    if not GEMINI_GROUNDING_ENABLED or not CURRICULUM_GEMINI_GROUNDING_ENABLED:
+        trace("CURRICULUM gemini_grounding ⊘ | disabled (GEMINI_GROUNDING_ENABLED)")
+        return GroundingSearchResult(hits=[], gemini_exhausted=False)
+
     if not is_gemini_available():
         raise GeminiUnavailableError("Gemini недоступен для Search Grounding")
 
@@ -266,12 +271,15 @@ def search_grounded_whitelist_blogs_detailed(
         f"Тема / запрос: {goal}\n"
     )
     if (context_vector or "").strip():
-        user_prompt += f"\nКонтекст вектора расширения:\n{context_vector.strip()[:2000]}\n"
-    user_prompt += (
-        "\nВерни краткий обзор найденного; ссылки должны быть реальными страницами статей."
-    )
+        user_prompt += (
+            f"\nКонтекст вектора расширения:\n{context_vector.strip()[:2000]}\n"
+        )
+    user_prompt += "\nВерни краткий обзор найденного; ссылки должны быть реальными страницами статей."
 
     models = curriculum_grounding_model_chain()
+    if not models:
+        trace("CURRICULUM gemini_grounding ⊘ | empty model chain")
+        return GroundingSearchResult(hits=[], gemini_exhausted=False)
     keys = gemini_api_key_pool()
     trace(
         f"CURRICULUM gemini_grounding ▶ | chain={' → '.join(models[:5])} | "

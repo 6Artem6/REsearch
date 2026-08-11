@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import threading
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from knowledge_engine.config import (
@@ -64,7 +63,9 @@ def _load() -> dict[str, Any]:
 def _save(state: dict[str, Any]) -> None:
     state["updated_at"] = _now_iso()
     _STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    _STATE_PATH.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 def _roll_day(state: dict[str, Any]) -> None:
@@ -199,4 +200,3 @@ def get_quota_summary() -> dict[str, Any]:
         _roll_day(state)
         _save(state)
         return dict(state)
-

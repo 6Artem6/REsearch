@@ -6,6 +6,11 @@ import asyncio
 import concurrent.futures
 from typing import Any
 
+from knowledge_engine.config import (
+    KE_NODE_DIVE_ASYNC_TIMEOUT_SEC,
+    KE_NODE_DIVE_INIT_ASYNC_TIMEOUT_SEC,
+    KE_NODE_DIVE_TIMEOUT_SEC,
+)
 from knowledge_engine.services.analysis_service import (
     run_analysis_job,
     run_unravel_for_job,
@@ -17,21 +22,10 @@ from knowledge_engine.services.v07_run_store import v07_run_store
 from knowledge_engine.services.work_job_store import WorkJob, WorkJobKind
 from knowledge_engine.src.curriculum.generator import generate_curriculum_graph
 from knowledge_engine.src.curriculum.schemas import CurriculumGenerateInput
-from knowledge_engine.src.node_deep_dive.engine import (
-    complete_node_init_gemini,
-    finalize_node_init_after_grounding,
-    fetch_node_init_rag_facts,
-    run_node_deep_dive,
-    _apply_lazy_grounding_for_init,
-)
+from knowledge_engine.src.node_deep_dive.engine import run_node_deep_dive
 from knowledge_engine.src.node_deep_dive.schemas import (
     NodeDataInput,
     NodeDeepDiveRequest,
-)
-from knowledge_engine.config import (
-    KE_NODE_DIVE_ASYNC_TIMEOUT_SEC,
-    KE_NODE_DIVE_TIMEOUT_SEC,
-    KE_RAG_TIMEOUT_SEC,
 )
 from knowledge_engine.ui.errors import format_error_with_cause
 
@@ -47,12 +41,11 @@ def run_work_job(job: WorkJob) -> dict[str, Any]:
 
 
 def _run_curriculum_generate(payload: dict[str, Any]) -> dict[str, Any]:
-    from knowledge_engine.ui.run_log import get_run_log_path, init_run_log, trace
-
     from knowledge_engine.src.curriculum.source_policy import (
         depth_for_source_policy,
         resolve_source_policy,
     )
+    from knowledge_engine.ui.run_log import get_run_log_path, init_run_log, trace
 
     goal_preview = str(payload.get("target_goal") or "")[:56]
     init_run_log(f"curriculum generate | {goal_preview}")
@@ -125,8 +118,9 @@ def _run_curriculum_expand(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run_node_deep_dive(payload: dict[str, Any]) -> dict[str, Any]:
-    from knowledge_engine.ui.run_log import trace
     import time
+
+    from knowledge_engine.ui.run_log import trace
 
     action = str(payload.get("user_action") or "init")
     cid = str(payload.get("curriculum_id") or "")
@@ -140,55 +134,55 @@ def _run_node_deep_dive(payload: dict[str, Any]) -> dict[str, Any]:
         user_action=str(payload.get("user_action") or "init"),
         user_message=str(payload.get("user_message") or ""),
     )
-    timeout = KE_NODE_DIVE_TIMEOUT_SEC
-
-    dive_async_timeout = KE_NODE_DIVE_ASYNC_TIMEOUT_SEC
-
-    async def _run_init_pipeline() -> tuple[tuple[str, str, Any, int, list[str]], NodeDeepDiveRequest]:
-        trace("WORKER init parallel ▶ | lazy_grounding ∥ directional RAG")
-        grounded_req, rag_facts = await asyncio.gather(
-            _apply_lazy_grounding_for_init(req),
-            asyncio.wait_for(fetch_node_init_rag_facts(req), timeout=KE_RAG_TIMEOUT_SEC),
-        )
-        rag_tuple = await finalize_node_init_after_grounding(grounded_req, *rag_facts)
-        return rag_tuple, grounded_req
+    dive_async_timeout = (
+        KE_NODE_DIVE_INIT_ASYNC_TIMEOUT_SEC
+        if action == "init"
+        else KE_NODE_DIVE_ASYNC_TIMEOUT_SEC
+    )
 
     async def _run_dive() -> Any:
-        return await asyncio.wait_for(
-            run_node_deep_dive(req),
-            timeout=dive_async_timeout,
-        )
+        if action == "init":
+            trace(
+                f"NODE_DIVE worker init ▶ | no asyncio job timeout "
+                f"(grounding budget≤{dive_async_timeout:.0f}s in graph)"
+            )
+            return await run_node_deep_dive(req)
+        try:
+            return await asyncio.wait_for(
+                run_node_deep_dive(req),
+                timeout=dive_async_timeout,
+            )
+        except asyncio.TimeoutError:
+            try:
+                from knowledge_engine.src.retrieval.consensus_session import (
+                    shutdown_shared_consensus_session,
+                )
+
+                await shutdown_shared_consensus_session()
+            except Exception as exc:
+                trace(f"Consensus shutdown after dive timeout ⊘ | {exc}")
+            raise
 
     def _in_thread() -> dict[str, Any]:
         try:
-            if req.user_action == "init":
-                (
-                    intro_payload,
-                    anchor,
-                    chat_mgr,
-                    rag_facts_count,
-                    rag_fact_labels,
-                ), grounded_req = asyncio.run(_run_init_pipeline())
-                result = complete_node_init_gemini(
-                    grounded_req,
-                    intro_payload,
-                    anchor,
-                    chat_mgr,
-                    rag_facts_count,
-                    rag_fact_labels,
-                )
-                return result.model_dump()
             result = asyncio.run(_run_dive())
             return result.model_dump()
         except asyncio.TimeoutError as exc:
             raise TimeoutError(
-                f"Node Deep-Dive async timeout "
-                f"(RAG≤{KE_RAG_TIMEOUT_SEC:.0f}s / dive≤{dive_async_timeout:.0f}s)"
+                f"Node Deep-Dive async timeout (dive≤{dive_async_timeout:.0f}s)"
             ) from exc
+        except Exception as exc:
+            from knowledge_engine.ui.errors import trace_exception
+
+            trace_exception(exc, "NODE_DIVE worker")
+            raise
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         fut = pool.submit(_in_thread)
-        result = fut.result(timeout=timeout)
+        if action == "init":
+            result = fut.result()
+        else:
+            result = fut.result(timeout=KE_NODE_DIVE_TIMEOUT_SEC)
     trace(
         f"WORKER node_deep_dive ✓ {action} | {cid}/{nid} | "
         f"{time.perf_counter() - t_job:.1f}s"
@@ -235,10 +229,15 @@ def process_pending_v07_run() -> bool:
 
 def format_work_error(exc: BaseException) -> str:
     if isinstance(exc, (concurrent.futures.TimeoutError, TimeoutError)):
+        init_hint = ""
+        if isinstance(exc, TimeoutError) and "Node Deep-Dive async timeout" in str(exc):
+            init_hint = (
+                " (init grounding — увеличьте KE_NODE_DIVE_INIT_ASYNC_TIMEOUT_SEC)"
+            )
         return (
             f"Node Deep-Dive timeout "
             f"(outer={KE_NODE_DIVE_TIMEOUT_SEC:.0f}s, "
-            f"RAG≤{KE_RAG_TIMEOUT_SEC:.0f}s). "
+            f"async≤{KE_NODE_DIVE_ASYNC_TIMEOUT_SEC:.0f}s){init_hint}. "
             "Проверьте Gemini RPM/RPD и что запущен один KE worker."
         )
     if isinstance(exc, GeminiUnavailableError):
