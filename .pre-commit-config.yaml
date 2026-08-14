@@ -1,0 +1,49 @@
+# Установка: make dev-deps && make pre-commit-install
+# Ручная проверка всего дерева: make pre-commit-run
+
+default_language_version:
+  python: python3
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^knowledge_engine/web/static/skill-tree/skill-tree\.bundle\.js$
+      - id: end-of-file-fixer
+        exclude: ^knowledge_engine/web/static/skill-tree/skill-tree\.bundle\.js$
+      - id: check-yaml
+        args: [--unsafe]
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+
+  - repo: https://github.com/PyCQA/autoflake
+    rev: v2.3.1
+    hooks:
+      - id: autoflake
+        args:
+          - --in-place
+          - --remove-all-unused-imports
+          - --remove-unused-variables
+          - --ignore-init-module-imports
+        files: ^knowledge_engine/.*\.py$
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        files: ^knowledge_engine/.*\.py$
+
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        files: ^knowledge_engine/.*\.py$
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+        additional_dependencies:
+          - flake8-bugbear==24.12.12
+        files: ^knowledge_engine/.*\.py$

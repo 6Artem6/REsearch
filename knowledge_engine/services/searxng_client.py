@@ -70,8 +70,9 @@ async def searxng_search_json(
 
     engines_chain: list[str] = []
     if engines:
-        engines_chain.append(engines)
-    engines_chain.extend(["bing", "google", SEARXNG_DEFAULT_ENGINES, ""])
+        engines_chain.append(engines.strip())
+    else:
+        engines_chain.extend(["bing", "google", SEARXNG_DEFAULT_ENGINES, ""])
 
     categories_param = ",".join(c for c in (categories or []) if c.strip())
 

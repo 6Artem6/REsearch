@@ -41,7 +41,37 @@ APPROVED_SOURCES_WHITELIST = {
     "foundational_docs": [
         "developer.mozilla.org",
         "learn.microsoft.com",
+        "docs.python.org",
+        "docs.pydantic.dev",
+        "realpython.com",
         "docs.aws.amazon.com",
         "aws.amazon.com/architecture",
     ],
+    # 5. Практика и русскоязычные инженерные блоги
+    "community_blogs": [
+        "habr.com",
+        "vc.ru",
+        "avito.tech",
+        "selectel.ru",
+    ],
 }
+
+
+def format_whitelist_detailed() -> str:
+    """Многострочный список для Reasoner / curriculum промптов."""
+    lines = [
+        "СТАРТОВЫЙ WHITELIST (пополняется архивом после Lite-валидации):",
+    ]
+    for category, entries in APPROVED_SOURCES_WHITELIST.items():
+        lines.append(f"  [{category}]")
+        for e in entries:
+            lines.append(f"    - {e}")
+    return "\n".join(lines)
+
+
+def format_whitelist_compact() -> str:
+    """Одна строка на категорию — для Lite evaluator prompt."""
+    lines: list[str] = []
+    for category, entries in APPROVED_SOURCES_WHITELIST.items():
+        lines.append(f"- {category}: {', '.join(entries)}")
+    return "\n".join(lines)

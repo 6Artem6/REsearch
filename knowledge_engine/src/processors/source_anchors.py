@@ -110,6 +110,7 @@ def build_source_registry(papers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         idx += 1
         sid = f"S{idx}"
         doi = _doi_from_paper(raw)
+        course_source_id = (raw.get("course_source_id") or "").strip()
         entry = {
             "id": sid,
             "tag": f"[{sid}]",
@@ -123,6 +124,8 @@ def build_source_registry(papers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             )[:800],
             "venue": raw.get("venue") or "",
         }
+        if course_source_id:
+            entry["course_source_id"] = course_source_id
         registry.append(entry)
         raw["source_anchor"] = sid
     return registry
@@ -209,6 +212,57 @@ def format_valid_docs_for_reasoner(
             lines.append(f"[{sid}] {title}\n   URL: {url}\n   {snippet}")
         return "\n".join(lines) if lines else "(нет valid_docs)"
     return "(нет реестра — см. scholarly_papers)"
+
+
+def retarget_source_anchor_tags(
+    text: str,
+    old_registry: List[Dict[str, Any]] | None,
+    new_registry: List[Dict[str, Any]] | None,
+) -> str:
+    """
+    Переназначить [Sx] по URL: old S8 (arxiv) → new S1 после сжатия реестра.
+    Теги без URL в новом реестре удаляются.
+    """
+    if not text or not new_registry:
+        return text or ""
+    old_by_id = {str(e.get("id")): e for e in (old_registry or []) if e.get("id")}
+    new_ids = {str(e.get("id")) for e in new_registry if e.get("id")}
+    new_url_map = url_to_source_id_map(new_registry)
+
+    def _resolve_sid(old_num: str) -> str:
+        old_sid = f"S{old_num}"
+        ent = old_by_id.get(old_sid)
+        if ent:
+            url = _normalize_url(str(ent.get("url") or ""))
+            if url and url in new_url_map:
+                return new_url_map[url]
+            return ""
+        if old_sid in new_ids:
+            return old_sid
+        return ""
+
+    def _repl_plain(m: re.Match[str]) -> str:
+        sid = _resolve_sid(m.group(1))
+        return f"[{sid}]" if sid else ""
+
+    def _repl_md(m: re.Match[str]) -> str:
+        sid = _resolve_sid(m.group(1))
+        if not sid:
+            return ""
+        ent = next(
+            (e for e in new_registry if str(e.get("id")) == sid),
+            None,
+        )
+        url = (ent.get("url") or "").strip() if ent else ""
+        if url:
+            return f"[[{sid}]]({url})"
+        return f"[{sid}]"
+
+    s = _MD_SOURCE_ANCHOR_LINK_RE.sub(_repl_md, text)
+    s = _SOURCE_TAG_RE.sub(_repl_plain, s)
+    s = re.sub(r"\s+([.,;:])", r"\1", s)
+    s = re.sub(r"\s{2,}", " ", s)
+    return s
 
 
 def expand_source_tags_to_markdown_links(

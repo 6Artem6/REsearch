@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from knowledge_engine.config import PLAYWRIGHT_BROWSERS_PATH
+
 
 def venv_local_browsers_path() -> Path:
     import playwright
@@ -17,7 +19,7 @@ def ensure_playwright_browsers_path() -> str:
     dev-native выставляет PLAYWRIGHT_BROWSERS_PATH; CLI без этого ищет ms-playwright в Cache.
     Подхватываем chromium из .venv, если он установлен через install-playwright.sh.
     """
-    raw = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    raw = PLAYWRIGHT_BROWSERS_PATH or os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
     if raw and raw != "0" and Path(raw).is_dir():
         return raw
 

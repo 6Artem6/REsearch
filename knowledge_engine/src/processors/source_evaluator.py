@@ -7,7 +7,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from knowledge_engine.src.source_evaluator.evaluator import evaluate_source as evaluate_source_url
 from knowledge_engine.ui.run_log import trace
 
 _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
@@ -111,7 +110,11 @@ def evaluate_source(
     source_info: str,
     global_anchor: str,
 ) -> SourceEvaluationResult:
-    """Оценка пары тезис+источник (адаптер для Reasoner Re-Act)."""
+    """Один источник (legacy); для Re-Act используйте build_react_feedback (batch)."""
+    from knowledge_engine.src.curriculum.lite_search_pipeline import (
+        batch_evaluate_sources_sync,
+    )
+
     info = (source_info or "").strip()
     url = ""
     excerpt = ""
@@ -125,18 +128,29 @@ def evaluate_source(
         link_m = re.search(r"(https?://[^\s)]+)", info)
         if link_m:
             url = link_m.group(1)
-    raw = evaluate_source_url(
-        url or info,
+    batch = batch_evaluate_sources_sync(
         (statement or "").strip(),
-        excerpt,
-        global_anchor,
+        [
+            {
+                "id": 1,
+                "url": url or info,
+                "title": excerpt[:400],
+                "snippet": (
+                    f"Тезис: {(statement or '')[:500]}\n" f"Источник: {info[:400]}"
+                ),
+            }
+        ],
+        anchor=global_anchor,
     )
+    ev = batch[0] if batch else None
+    if not ev:
+        return SourceEvaluationResult(status="REJECTED", reason="batch empty")
     return SourceEvaluationResult(
-        status=raw.get("status", "REJECTED"),
-        reason=str(raw.get("reason") or ""),
-        confidence_score=float(raw.get("confidence_score") or 0.0),
-        suggested_action=str(raw.get("suggested_action") or "KEEP"),
-        whitelist_match=bool(raw.get("whitelist_match")),
+        status=ev.status,
+        reason=ev.reason,
+        confidence_score=float(ev.confidence or 0.0),
+        suggested_action=ev.suggested_action,
+        whitelist_match=ev.reason == "whitelist instant pass",
     )
 
 
@@ -146,20 +160,40 @@ def build_react_feedback(
 ) -> str:
     if not candidates:
         return ""
+    from knowledge_engine.src.curriculum.lite_search_pipeline import (
+        batch_evaluate_sources_sync,
+    )
+
+    batch_src: list[dict[str, Any]] = []
+    for i, cand in enumerate(candidates, start=1):
+        batch_src.append(
+            {
+                "id": i,
+                "url": cand.url or "",
+                "title": (cand.excerpt or cand.source_info)[:400],
+                "snippet": (
+                    f"Тезис: {(cand.statement or '')[:500]}\n"
+                    f"Источник: {cand.source_info[:400]}"
+                ),
+            }
+        )
+    evals = batch_evaluate_sources_sync("", batch_src, anchor=global_anchor)
+    by_id = {e.id: e for e in evals}
     lines: list[str] = []
-    for cand in candidates:
-        ev = evaluate_source(cand.statement, cand.source_info, global_anchor)
-        if ev.status == "REJECTED":
-            src = cand.url or cand.source_info[:120]
-            action_hint = ""
-            if ev.suggested_action == "RETRY_WITH_NEW_SOURCE":
-                action_hint = " Замени ссылку на источник из Whitelist Matrix."
-            elif ev.suggested_action == "REMOVE_LINK":
-                action_hint = " Убери ссылку и объясни тезис без неё."
-            lines.append(
-                f"[Системный отклик: Источник отклонён ({src}). "
-                f"Причина: {ev.reason}.{action_hint}]"
-            )
+    for i, cand in enumerate(candidates, start=1):
+        ev = by_id.get(i)
+        if not ev or ev.status != "REJECTED":
+            continue
+        src = cand.url or cand.source_info[:120]
+        action_hint = ""
+        if ev.suggested_action == "RETRY_WITH_NEW_SOURCE":
+            action_hint = " Замени ссылку на источник из Whitelist Matrix."
+        elif ev.suggested_action == "REMOVE_LINK":
+            action_hint = " Убери ссылку и объясни тезис без неё."
+        lines.append(
+            f"[Системный отклик: Источник отклонён ({src}). "
+            f"Причина: {ev.reason}.{action_hint}]"
+        )
     return "\n".join(lines)
 
 

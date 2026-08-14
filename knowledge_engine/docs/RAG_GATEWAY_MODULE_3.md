@@ -49,9 +49,14 @@ POST /api/v1/rag-gateway/facts
 | Переменная | По умолчанию |
 |------------|----------------|
 | `RAG_CROSS_ENCODER_MODEL` | `BAAI/bge-reranker-v2-m3` |
-| `RAG_DEFAULT_MIN_RELEVANCE` | `0.75` |
+| `RAG_CE_TORCH_DTYPE` | `auto` → fp16 на MPS/CUDA |
+| `RAG_CE_AUTO_UNLOAD` | `false` — выгрузка CE после idle |
+| `RAG_CE_AUTO_UNLOAD_IDLE_SEC` | `300` |
+| `RAG_DEFAULT_MIN_RELEVANCE` | `0.55` |
 | `RAG_RETRIEVAL_PER_DIRECTION` | `5` |
 | `RAG_LATENCY_WARN_MS` | `100` |
+
+Память (Apple Silicon): `RAG_CE_TORCH_DTYPE=auto` загружает CE в fp16 на MPS; после predict — `inference_mode`, `gc.collect()`, `mps.empty_cache()`. `unload_cross_encoder()` + `RAG_CE_AUTO_UNLOAD=true` снимает веса после idle.
 
 ## Код
 

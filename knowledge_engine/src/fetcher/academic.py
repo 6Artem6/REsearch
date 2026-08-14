@@ -14,10 +14,17 @@ from knowledge_engine.src.fetcher.cleaner import (
     clean_pdf_bytes,
     clean_text_document,
 )
+from knowledge_engine.src.fetcher.context import fast_academic_fetch_enabled
 from knowledge_engine.ui.run_log import trace
 
 _USER_AGENT = "KnowledgeEngine/0.7 AcademicCascade (+local research)"
 _TIMEOUT = httpx.Timeout(45.0, connect=12.0)
+_FAST_TIMEOUT = httpx.Timeout(8.0, connect=3.0)
+
+
+def _active_http_timeout() -> httpx.Timeout:
+    return _FAST_TIMEOUT if fast_academic_fetch_enabled() else _TIMEOUT
+
 
 _DOI_URL_RE = re.compile(r"doi\.org/(10\.\d{4,9}/[^\s?#]+)", re.I)
 _DOI_RAW_RE = re.compile(r"(10\.\d{4,9}/[^\s]+)", re.I)
@@ -85,7 +92,7 @@ def is_challenge_or_empty(text: str, min_len: int = 120) -> bool:
 
 def _http_get_text(url: str) -> tuple[str, str, bytes | None]:
     with httpx.Client(
-        timeout=_TIMEOUT,
+        timeout=_active_http_timeout(),
         follow_redirects=True,
         headers={"User-Agent": _USER_AGENT},
     ) as client:
@@ -99,7 +106,7 @@ def _http_get_text(url: str) -> tuple[str, str, bytes | None]:
 
 def _http_get_bytes(url: str) -> bytes:
     with httpx.Client(
-        timeout=_TIMEOUT,
+        timeout=_active_http_timeout(),
         follow_redirects=True,
         headers={"User-Agent": _USER_AGENT},
     ) as client:
@@ -113,7 +120,7 @@ def _unpaywall_pdf_url(doi: str) -> str | None:
     trace(f"ACADEMIC tier1 ▶ Unpaywall | doi={doi}")
     try:
         with httpx.Client(
-            timeout=_TIMEOUT, headers={"User-Agent": _USER_AGENT}
+            timeout=_active_http_timeout(), headers={"User-Agent": _USER_AGENT}
         ) as client:
             resp = client.get(api)
             resp.raise_for_status()
@@ -140,14 +147,36 @@ def _unpaywall_pdf_url(doi: str) -> str | None:
 
 
 def _scihub_pdf_url(target: str) -> str | None:
+    if fast_academic_fetch_enabled():
+        trace("ACADEMIC tier2 ⊘ Sci-Hub skipped (fast academic / node init)")
+        return None
+    from knowledge_engine.config import ACADEMIC_SCIHUB_TIMEOUT_SEC
+
+    scihub_timeout = httpx.Timeout(
+        max(0.5, ACADEMIC_SCIHUB_TIMEOUT_SEC),
+        connect=min(1.0, ACADEMIC_SCIHUB_TIMEOUT_SEC),
+    )
     for mirror in _SCIHUB_MIRRORS:
         url = f"{mirror}/{target}"
         trace(f"ACADEMIC tier2 ▶ Sci-Hub | {mirror}")
         try:
-            html, _, pdf_bytes = _http_get_text(url)
-            if pdf_bytes:
-                trace("ACADEMIC tier2 ✓ Sci-Hub direct PDF bytes")
-                return "__bytes__"
+            with httpx.Client(
+                timeout=scihub_timeout,
+                follow_redirects=True,
+                headers={"User-Agent": _USER_AGENT},
+            ) as client:
+                resp = client.get(url)
+                resp.raise_for_status()
+                ctype = (
+                    (resp.headers.get("content-type") or "")
+                    .split(";")[0]
+                    .strip()
+                    .lower()
+                )
+                if "pdf" in ctype or url.lower().endswith(".pdf"):
+                    trace("ACADEMIC tier2 ✓ Sci-Hub direct PDF bytes")
+                    return "__bytes__"
+                html = resp.text
             soup = BeautifulSoup(html, "html.parser")
             iframe = soup.find("iframe", id="pdf")
             if iframe and iframe.get("src"):
@@ -169,13 +198,58 @@ def _scihub_pdf_url(target: str) -> str | None:
     return None
 
 
+_PUBLISHER_PDF_HOST_SUFFIXES = (
+    "acm.org",
+    "ieee.org",
+    "springer.com",
+    "sciencedirect.com",
+    "wiley.com",
+)
+
+
+def _is_publisher_pdf_host(url: str) -> bool:
+    try:
+        host = (urlparse((url or "").strip()).hostname or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+    except Exception:
+        return False
+    return any(
+        host == s or host.endswith(f".{s}") for s in _PUBLISHER_PDF_HOST_SUFFIXES
+    )
+
+
 def _fetch_scihub_pdf_bytes(target: str) -> bytes | None:
+    if fast_academic_fetch_enabled():
+        trace("ACADEMIC tier2 ⊘ Sci-Hub bytes skipped (fast academic / node init)")
+        return None
+    from knowledge_engine.config import ACADEMIC_SCIHUB_TIMEOUT_SEC
+
+    scihub_timeout = httpx.Timeout(
+        max(0.5, ACADEMIC_SCIHUB_TIMEOUT_SEC),
+        connect=min(1.0, ACADEMIC_SCIHUB_TIMEOUT_SEC),
+    )
     for mirror in _SCIHUB_MIRRORS:
         url = f"{mirror}/{target}"
+        trace(f"ACADEMIC tier2 ▶ Sci-Hub | {mirror} | {target[:80]}")
         try:
-            html, _, direct = _http_get_text(url)
-            if direct:
-                return direct
+            with httpx.Client(
+                timeout=scihub_timeout,
+                follow_redirects=True,
+                headers={"User-Agent": _USER_AGENT},
+            ) as client:
+                resp = client.get(url)
+                resp.raise_for_status()
+                ctype = (
+                    (resp.headers.get("content-type") or "")
+                    .split(";")[0]
+                    .strip()
+                    .lower()
+                )
+                if "pdf" in ctype:
+                    trace("ACADEMIC tier2 ✓ Sci-Hub direct PDF bytes")
+                    return resp.content
+                html = resp.text
             soup = BeautifulSoup(html, "html.parser")
             iframe = soup.find("iframe", id="pdf")
             src = iframe.get("src") if iframe else None
@@ -183,12 +257,15 @@ def _fetch_scihub_pdf_bytes(target: str) -> bytes | None:
                 embed = soup.find("embed", attrs={"type": "application/pdf"})
                 src = embed.get("src") if embed else None
             if not src:
+                trace(f"ACADEMIC tier2 ⊘ Sci-Hub no embed | {mirror}")
                 continue
             src = str(src).strip()
             if src.startswith("//"):
                 src = "https:" + src
+            trace(f"ACADEMIC tier2 ✓ Sci-Hub fetch embed | {src[:90]}")
             return _http_get_bytes(src)
-        except Exception:
+        except Exception as exc:
+            trace(f"ACADEMIC tier2 ✗ {mirror} | {exc}")
             continue
     return None
 
@@ -204,13 +281,21 @@ def resolve_academic_document(url: str) -> CleanedDocument | None:
 
     doi = extract_doi(url)
     title_hint = urlparse(url).path.rsplit("/", 1)[-1]
+    pdf_url: str | None = None
 
     # Tier 1: Unpaywall
+    tier1_publisher_pdf_failed = False
     if doi:
         pdf_url = _unpaywall_pdf_url(doi)
         if pdf_url and pdf_url != "__bytes__":
-            try:
-                if pdf_url.lower().endswith(".pdf") or "pdf" in pdf_url.lower():
+            skip_publisher_pdf = _is_publisher_pdf_host(pdf_url)
+            if skip_publisher_pdf:
+                trace(
+                    "ACADEMIC tier1 ⊘ skip publisher PDF fetch "
+                    f"(Sci-Hub first) | {pdf_url[:90]}"
+                )
+            elif pdf_url.lower().endswith(".pdf") or "pdf" in pdf_url.lower():
+                try:
                     pdf_bytes = _http_get_bytes(pdf_url)
                     cleaned = clean_pdf_bytes(
                         pdf_bytes,
@@ -223,31 +308,46 @@ def resolve_academic_document(url: str) -> CleanedDocument | None:
                             f"{len(cleaned.clean_text)} chars"
                         )
                         return cleaned
-                html, _, embedded = _http_get_text(pdf_url)
-                if embedded:
-                    cleaned = clean_pdf_bytes(
-                        embedded, source_url=url, title=title_hint
-                    )
-                    if cleaned and len(cleaned.clean_text) >= 80:
-                        return cleaned
-                if html and not is_challenge_or_empty(html, 200):
-                    cleaned = clean_text_document(
-                        html, source_url=url, title=title_hint, is_pdf=False
-                    )
-                    if cleaned and len(cleaned.clean_text) >= 80:
-                        trace("ACADEMIC ✓ HTML via Unpaywall landing")
-                        return cleaned
-            except Exception as exc:
-                trace(f"ACADEMIC tier1 fetch ✗ | {exc}")
+                except Exception as exc:
+                    tier1_publisher_pdf_failed = True
+                    trace(f"ACADEMIC tier1 fetch ✗ | {exc}")
+            if not skip_publisher_pdf and not tier1_publisher_pdf_failed:
+                try:
+                    if not (
+                        pdf_url.lower().endswith(".pdf") or "pdf" in pdf_url.lower()
+                    ):
+                        html, _, embedded = _http_get_text(pdf_url)
+                        if embedded:
+                            cleaned = clean_pdf_bytes(
+                                embedded, source_url=url, title=title_hint
+                            )
+                            if cleaned and len(cleaned.clean_text) >= 80:
+                                return cleaned
+                        if html and not is_challenge_or_empty(html, 200):
+                            cleaned = clean_text_document(
+                                html, source_url=url, title=title_hint, is_pdf=False
+                            )
+                            if cleaned and len(cleaned.clean_text) >= 80:
+                                trace("ACADEMIC ✓ HTML via Unpaywall landing")
+                                return cleaned
+                except Exception as exc:
+                    trace(f"ACADEMIC tier1 landing ✗ | {exc}")
 
-    # Tier 2: Sci-Hub
-    scihub_target = doi or url
-    pdf_bytes = _fetch_scihub_pdf_bytes(scihub_target)
-    if pdf_bytes:
-        cleaned = clean_pdf_bytes(pdf_bytes, source_url=url, title=title_hint)
-        if cleaned and len(cleaned.clean_text) >= 80:
-            trace(f"ACADEMIC ✓ PDF via Sci-Hub | {len(cleaned.clean_text)} chars")
-            return cleaned
+    # Tier 2: Sci-Hub (doi или URL; после 403 на ACM/IEEE PDF)
+    if not fast_academic_fetch_enabled():
+        scihub_target = doi or url
+        if tier1_publisher_pdf_failed or (
+            doi and pdf_url and _is_publisher_pdf_host(pdf_url)
+        ):
+            trace(f"ACADEMIC tier2 ▶ Sci-Hub cascade | target={scihub_target[:80]}")
+        pdf_bytes = _fetch_scihub_pdf_bytes(scihub_target)
+        if pdf_bytes:
+            cleaned = clean_pdf_bytes(pdf_bytes, source_url=url, title=title_hint)
+            if cleaned and len(cleaned.clean_text) >= 80:
+                trace(f"ACADEMIC ✓ PDF via Sci-Hub | {len(cleaned.clean_text)} chars")
+                return cleaned
+    else:
+        trace("ACADEMIC tier2 ⊘ Sci-Hub cascade skipped (fast academic / node init)")
 
     trace("ACADEMIC tier3 ⊘ cascade incomplete — caller may use HTTP/trafilatura")
     return None

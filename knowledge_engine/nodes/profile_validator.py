@@ -16,8 +16,9 @@ from knowledge_engine.schemas import (
     GeminiSourceExtraction,
     ProfileValidationResult,
 )
-from knowledge_engine.services.context_manager import load_user_profile
+from knowledge_engine.services.context_manager import load_personal_orchestrator_focus
 from knowledge_engine.services.vector_store import VectorStore
+from knowledge_engine.src.prompts.engineering_context import GLOBAL_ENGINEERING_CRITERIA
 from knowledge_engine.ui.logger import set_status
 from knowledge_engine.ui.run_log import node_end, node_start
 
@@ -30,14 +31,16 @@ def profile_validator_node(state: EngineGraphState) -> dict[str, Any]:
         return {"last_validator_signal": "REJECTED: нет выжимки источника"}
 
     extraction = GeminiSourceExtraction.model_validate(parsed.last_extraction)
-    profile = load_user_profile()
+    profile = load_personal_orchestrator_focus()
 
     structured = structured_chat(ROUTER_MODEL, ProfileValidationResult, temperature=0.1)
     system = SystemMessage(
         content=(
             f"{RUSSIAN_ROUTER_RULE} "
-            "Ты Personal Profile Validator. Оцени выжимку источника СТРОГО по user_profile.md:\n"
-            "- Практическая ценность для Fullstack/Python/PHP/Node?\n"
+            "Ты Personal Profile Validator. Оцени выжимку источника по инженерным критериям "
+            "и личному фокусу разработчика:\n"
+            f"{GLOBAL_ENGINEERING_CRITERIA}\n"
+            "- Практическая ценность для заявленного фокуса?\n"
             "- Реальные failure modes (OOM, tail latency, stale reads)?\n"
             "- Нет ли маркетинговой абстракции?\n"
             "Если ценно: is_valuable=true, actions включает save_to_lancedb. "

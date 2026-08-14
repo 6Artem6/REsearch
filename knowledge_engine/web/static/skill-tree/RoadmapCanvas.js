@@ -10,6 +10,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import { skillNodeTypes } from "./SkillNode.js";
+import { resolveMasteryScore } from "./NodeMasteryPanel.js";
 import { curriculumToFlow, layoutFlowNodes } from "./layout.js";
 
 const FIT_PADDING = 0.22;
@@ -36,11 +37,30 @@ function RoadmapFlowInner({
   onNodeClick,
   tutorBusyNodeId,
   sessions,
+  layoutEpoch = 0,
 }) {
   const { fitView, getNodesBounds } = useReactFlow();
+
+  const masteryByNode = useMemo(() => {
+    const out = {};
+    for (const [nodeId, sess] of Object.entries(sessions || {})) {
+      out[nodeId] = resolveMasteryScore(
+        sess?.masteryDashboard,
+        sess?.topicMasteryScore,
+      ).score;
+    }
+    return out;
+  }, [sessions]);
+
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
-    () => curriculumToFlow(curriculum, statuses, selectedNodeId),
-    [curriculum, statuses, selectedNodeId],
+    () =>
+      curriculumToFlow(
+        curriculum,
+        statuses,
+        selectedNodeId,
+        masteryByNode,
+      ),
+    [curriculum, statuses, selectedNodeId, masteryByNode],
   );
 
   const laidOut = useMemo(
@@ -65,16 +85,17 @@ function RoadmapFlowInner({
       curriculum,
       statuses,
       selectedNodeId,
+      masteryByNode,
     );
     const positioned = layoutFlowNodes(curriculum?.nodes || [], n, e);
     setNodes(positioned);
     setEdges(e);
-  }, [curriculum, statuses, selectedNodeId, setNodes, setEdges]);
+  }, [curriculum, statuses, selectedNodeId, masteryByNode, setNodes, setEdges]);
 
   useEffect(() => {
     const t = window.setTimeout(() => fitMapToView(), 50);
     return () => window.clearTimeout(t);
-  }, [curriculum?.curriculum_id, nodes.length, fitMapToView]);
+  }, [curriculum?.curriculum_id, nodes.length, layoutEpoch, fitMapToView]);
 
   return React.createElement(
     "div",

@@ -7,8 +7,8 @@ from fastapi import APIRouter
 import knowledge_engine.config as cfg
 from knowledge_engine.api.schemas.responses import ConfigResponse, HealthResponse
 from knowledge_engine.services.gemini_stateless import is_gemini_available
-from knowledge_engine.services.search_service import searxng_health
 from knowledge_engine.services.redis_client import redis_ping
+from knowledge_engine.services.search_service import searxng_health
 from knowledge_engine.services.work_job_store import worker_is_alive
 
 router = APIRouter(tags=["health"])

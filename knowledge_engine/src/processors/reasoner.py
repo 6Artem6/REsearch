@@ -4,29 +4,36 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
-
 from knowledge_engine.config import GEMINI_REASONER_MODEL, GEMINI_RPM_PAUSE_SEC
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
+from knowledge_engine.schemas.llm_contracts.reasoner import FinalResponseContract
+from knowledge_engine.services.context_manager import load_personal_orchestrator_focus
 from knowledge_engine.services.gemini_stateless import (
     GeminiUnavailableError,
     gemini_reasoner_model_chain,
     is_gemini_available,
     run_gemini_structured_with_chain,
 )
+from knowledge_engine.src.processors.question_formation_rules import (
+    QUESTION_FORMATION_RULES,
+)
 from knowledge_engine.src.processors.source_anchors import (
     REASONER_SOURCE_ATTRIBUTION_PROMPT,
     format_registry_for_prompt,
     format_valid_docs_for_reasoner,
 )
-from knowledge_engine.src.source_evaluator.evaluator import format_whitelist_for_reasoner_prompt
 from knowledge_engine.src.processors.source_evaluator import (
     MAX_REACT_SOURCE_ITERATIONS,
     audit_answer_sources_react,
 )
+from knowledge_engine.src.prompts.engineering_context import GLOBAL_ENGINEERING_CRITERIA
+from knowledge_engine.src.source_evaluator.evaluator import (
+    format_whitelist_for_reasoner_prompt,
+)
 from knowledge_engine.ui.run_log import trace
 
-FOLLOW_UP_RULES = """
+FOLLOW_UP_RULES = (
+    """
 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО В СЛЕДУЮЩИХ ШАГАХ:
 - Запрещено предлагать организационные, командные или менеджерские действия (например: «Провести аудит кодовой базы», «Внедрить CI/CD», «Организовать фасилитацию Event Storming», «Обучить команду»).
 - Запрещено давать операционные задачи или «домашние задания» по разработке.
@@ -40,6 +47,8 @@ FOLLOW_UP_RULES = """
 
 Каждый пункт должен быть сформулирован как увлекательный исследовательский вопрос или тема для следующего запроса, а НЕ как задача для исполнения.
 """
+    + QUESTION_FORMATION_RULES
+)
 
 FAST_MODE_REASONER_PROMPT = """Ты — Главный Системный Архитектор. Твоя задача — объяснить архитектурную концепцию или паттерн доступным, наглядным и фактологичным языком.
 
@@ -57,7 +66,9 @@ FAST_MODE_REASONER_PROMPT = """Ты — Главный Системный Арх
 - ⚖️ **Компромиссы и когда применять**: Плюсы, минусы, узкие места и альтернативы.
 - 📚 **Эталонные материалы**: Список из 2-4 конкретных статей/разделов из белого списка для чтения.
 - 🧭 **Исследовательские векторы (Следующие шаги)**: 3 вопроса (Шаг вглубь, Шаг в сторону, Шаг назад).
-""".format(whitelist_block=format_whitelist_for_reasoner_prompt())
+""".format(
+    whitelist_block=format_whitelist_for_reasoner_prompt()
+)
 
 REASONER_REACT_CORRECTION_RULES = """
 КОРРЕКЦИЯ ПО РЕЗУЛЬТАТАМ АУДИТА ИСТОЧНИКОВ (Re-Act):
@@ -97,16 +108,12 @@ developer_profile_context может быть пустым — тогда не �
 - user_final_answer — готовый текст для пользователя без мета-объяснений про пайплайн.
 - fact_nuggets — атомарные факты для памяти (короткие, проверяемые); **без** тегов [S1] и URL — только чистый текст для Light RAG.
 
+{GLOBAL_ENGINEERING_CRITERIA}
 """
     + REASONER_SOURCE_ATTRIBUTION_PROMPT
 )
 
-
-class FinalResponsePayload(BaseModel):
-    user_final_answer: str = Field(
-        description="Готовый глубокий ответ для пользователя"
-    )
-    fact_nuggets: list[str] = Field(default_factory=list)
+FinalResponsePayload = FinalResponseContract
 
 
 def _invoke_reasoner_structured(
@@ -114,13 +121,13 @@ def _invoke_reasoner_structured(
     user_payload: str,
     global_anchor: str,
     label: str,
-) -> FinalResponsePayload:
+) -> FinalResponseContract:
     return run_gemini_structured_with_chain(
         GEMINI_REASONER_MODEL,
         system_instruction,
         user_payload,
         global_anchor,
-        FinalResponsePayload,
+        FinalResponseContract,
         label,
         rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
         models=gemini_reasoner_model_chain(),
@@ -187,11 +194,14 @@ def run_reasoner(
         papers_block or registry_section or "(нет структурированного списка статей)"
     )
     valid_section = format_valid_docs_for_reasoner(valid_docs, registry)
-    profile_block = user_profile[:8000] if user_profile else "(empty)"
-    if not apply_personal_profile:
-        profile_block = (
-            "(пусто — общий/академический вопрос; apply_personal_profile=false)"
-        )
+    profile_block = (
+        load_personal_orchestrator_focus()[:2000]
+        if apply_personal_profile
+        else "(пусто — общий/академический вопрос; apply_personal_profile=false)"
+    )
+    if user_profile and apply_personal_profile:
+        # Совместимость: явно переданный профиль не расширяем — только фокус оркестратора
+        _ = user_profile
     light_rag_block = (
         light_rag_context or ""
     ).strip() or "(нет релевантных фактов Light RAG)"

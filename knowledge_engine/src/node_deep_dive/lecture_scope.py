@@ -1,4 +1,4 @@
-"""Роутинг full_node_lecture vs targeted_lecture и фокус для диалога."""
+"""Lecture scope routing: full_node vs targeted, anchored to active sub-concept."""
 
 from __future__ import annotations
 
@@ -19,6 +19,37 @@ _GENERIC_LECTURE_STUBS = (
 )
 
 _MODE_PREFIX_RE = re.compile(r"^\[mode:\w+\]\s*", re.I)
+
+
+def strip_mode_prefix(text: str) -> str:
+    return _MODE_PREFIX_RE.sub("", (text or "").strip()).strip()
+
+
+def is_lecture_request_message(text: str) -> bool:
+    """
+    True for UI [mode:lecture] button / explicit dense-material ask.
+
+    These turns must NOT run the sub-concept gap evaluator (only real answers do).
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if raw.lower().startswith("[mode:lecture]"):
+        return True
+    body = strip_mode_prefix(raw)
+    if is_generic_lecture_stub(body):
+        return True
+    low = body.lower()
+    return any(
+        k in low
+        for k in (
+            "дай лекцию",
+            "дай плотн",
+            "плотный материал",
+            "dense material",
+            "лекцию по",
+        )
+    )
 
 
 def _norm_stub(text: str) -> str:
@@ -77,24 +108,57 @@ def last_tutor_thread_prompt(memory: SessionMemory) -> str:
     return ""
 
 
+def _active_subconcept_focus(memory: SessionMemory) -> tuple[str, str]:
+    """Return (id, label) for active generation focus; never from chat_history."""
+    from knowledge_engine.src.node_deep_dive.subconcept_invariants import (
+        resolve_active_subconcept_id,
+        resolve_active_subconcept_label,
+    )
+
+    active_id = resolve_active_subconcept_id(memory)
+    if not active_id:
+        return "", ""
+    label = resolve_active_subconcept_label(memory, active_id)
+    return active_id, label
+
+
 def resolve_lecture_scope(
     user_message: str,
     memory: SessionMemory,
     lecture_button_pressed: bool = False,
 ) -> tuple[LectureScope, str]:
     """
-    targeted_lecture: конкретный вопрос пользователя или активная ветка диалога.
-    full_node_lecture: обзор по всей ноде.
+    Resolve lecture scope + focus text.
+
+    Invariant: when a concept-map active_subconcept_id exists, lecture topic is
+    taken ONLY from that id — never from chat_history / prior tutor turns.
     """
     focus = _MODE_PREFIX_RE.sub("", (user_message or "").strip())
+    active_id, active_label = _active_subconcept_focus(memory)
+
+    if active_id:
+        # Hard anchor — chat_history must not choose the lecture topic
+        base = f"{active_label} [subconcept_id={active_id}]"
+        if focus and not is_generic_lecture_stub(focus):
+            return (
+                "targeted_lecture",
+                f"{base}\nuser_angle: {focus[:500]}",
+            )
+        return "targeted_lecture", base
+
+    # No concept-map focus yet — legacy fallbacks (intro / empty map)
     if focus and not is_generic_lecture_stub(focus):
         return "targeted_lecture", focus
+    if lecture_button_pressed and is_generic_lecture_stub(focus or user_message):
+        return "full_node_lecture", focus
     if lecture_button_pressed or chat_subtopic_active(memory):
         sub = last_substantive_user_message(memory)
-        if not sub:
-            sub = last_tutor_thread_prompt(memory)
         if sub:
             return "targeted_lecture", sub
+        if not is_generic_lecture_stub(focus or user_message):
+            sub = last_tutor_thread_prompt(memory)
+            if sub:
+                return "targeted_lecture", sub
     return "full_node_lecture", focus
 
 
@@ -122,11 +186,14 @@ def is_topic_question(text: str) -> bool:
 
 
 def dialogue_focus_text(user_message: str, memory: SessionMemory) -> str:
-    """Фокус для mode:dialogue_feedback / mini-lecture без сброса на всю ноду."""
+    """Focus for dialogue_feedback; prefer active sub-concept over chat_history."""
     msg = _MODE_PREFIX_RE.sub("", (user_message or "").strip())
     if msg and not is_generic_lecture_stub(msg):
         if is_topic_question(msg) or len(msg) >= 24:
             return msg[:800]
+    active_id, active_label = _active_subconcept_focus(memory)
+    if active_id:
+        return f"{active_label} [subconcept_id={active_id}]"
     sub = last_substantive_user_message(memory)
     if sub and chat_subtopic_active(memory):
         return sub[:800]

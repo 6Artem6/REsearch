@@ -344,9 +344,7 @@ class V07RunStore:
         self._reload_from_disk()
         with self._lock:
             pending = [
-                r
-                for r in self._runs.values()
-                if r.status == V07RunStatus.PENDING
+                r for r in self._runs.values() if r.status == V07RunStatus.PENDING
             ]
             if not pending:
                 return None

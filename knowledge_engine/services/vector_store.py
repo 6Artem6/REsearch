@@ -1,15 +1,47 @@
-"""LanceDB: DocumentSummary (legacy) + KnowledgeNode graph (v0.3)."""
+"""LanceDB: DocumentSummary (legacy) + KnowledgeNode graph (v0.3) + rag_chunks."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
-from typing import Callable, List, Optional, TypeVar
+from typing import Any, Callable, List, Optional, TypeVar
 
 import lancedb
+import numpy as np
 from langchain_ollama import OllamaEmbeddings
 
 from knowledge_engine.config import EMBED_MODEL, LANCE_DB_PATH, OLLAMA_BASE_URL
+from knowledge_engine.db.knowledge_atoms_schema import (
+    COL_CONTEXT_QUOTE as KA_COL_CONTEXT_QUOTE,
+)
+from knowledge_engine.db.knowledge_atoms_schema import COL_DOC_ID as KA_COL_DOC_ID
+from knowledge_engine.db.knowledge_atoms_schema import COL_ID as KA_COL_ID
+from knowledge_engine.db.knowledge_atoms_schema import COL_SCOPE as KA_COL_SCOPE
+from knowledge_engine.db.knowledge_atoms_schema import (
+    COL_SOURCE_CHUNK_IDS as KA_COL_SOURCE_CHUNK_IDS,
+)
+from knowledge_engine.db.knowledge_atoms_schema import COL_STATEMENT as KA_COL_STATEMENT
+from knowledge_engine.db.knowledge_atoms_schema import COL_URL as KA_COL_URL
+from knowledge_engine.db.knowledge_atoms_schema import COL_VECTOR as KA_COL_VECTOR
+from knowledge_engine.db.knowledge_atoms_schema import (
+    KNOWLEDGE_ATOMS_TABLE,
+)
+from knowledge_engine.db.rag_chunks_schema import (
+    COL_CHUNK_ID,
+    COL_CHUNK_INDEX,
+    COL_CHUNK_TEXT,
+    COL_CHUNK_VECTOR,
+    COL_CHUNKS_IN_DOC,
+    COL_DOC_ID,
+    COL_DOC_META_VECTOR,
+    COL_DOC_SUMMARY_TEXT,
+    COL_TITLE,
+    COL_TRUST_SCORE,
+    COL_URL,
+    COL_WINDOW_SUMMARY,
+    RAG_CHUNKS_TABLE,
+)
 from knowledge_engine.schemas import DocumentSummary, KnowledgeNode
 from knowledge_engine.services.lance_db_maintenance import (
     is_lance_format_error,
@@ -71,7 +103,12 @@ class VectorStore:
             raise RuntimeError("LanceDB table empty — сначала save_summary")
         return self._db.open_table(TABLE_NAME)
 
-    def save_summary(self, summary: DocumentSummary) -> None:
+    def save_summary(
+        self,
+        summary: DocumentSummary,
+        *,
+        skip_rag_ingest: bool = False,
+    ) -> None:
         document = _summary_document(summary)
         trace(f"EMBED ▶ {EMBED_MODEL} | LanceDB save {summary.url[:60]}")
         from knowledge_engine.ui.logger import set_phase, set_status
@@ -99,6 +136,754 @@ class VectorStore:
                 pass
         else:
             self._table().add([row])
+        if skip_rag_ingest:
+            return
+        try:
+            from knowledge_engine.ingestion.ingest import ingest_document_summary
+
+            ingest_document_summary(summary, body_text=document, store=self)
+        except Exception as exc:
+            trace(f"RAG_CHUNKS ingest skip | {exc}")
+
+    def _rag_chunks_table(self, *, create: bool = False):
+        if RAG_CHUNKS_TABLE not in self._db.table_names():
+            if not create:
+                return None
+            return None
+        return self._db.open_table(RAG_CHUNKS_TABLE)
+
+    def _add_rag_chunk_rows(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        doc_id: str | None = None,
+    ) -> None:
+        from knowledge_engine.db.rag_chunks_schema import (
+            COL_DETAIL_INSTRUCTION,
+            COL_DOC_ID,
+            COL_SOURCE_TYPE,
+            COL_TRUST_SCORE,
+        )
+
+        table = self._rag_chunks_table(create=False)
+        if table is not None:
+            if doc_id:
+                try:
+                    table.delete(f"{COL_DOC_ID} = '{self._sql_literal(doc_id)}'")
+                except Exception:
+                    pass
+            try:
+                table.add(rows)
+            except Exception as exc:
+                msg = str(exc).lower()
+                omit: set[str] = set()
+                if "source_type" in msg or "detail_instruction" in msg:
+                    omit.update({COL_SOURCE_TYPE, COL_DETAIL_INSTRUCTION})
+                if "trust_score" in msg:
+                    omit.add(COL_TRUST_SCORE)
+                if "window_summary" in msg:
+                    omit.add(COL_WINDOW_SUMMARY)
+                if omit:
+                    slim = [
+                        {k: v for k, v in row.items() if k not in omit} for row in rows
+                    ]
+                    trace("RAG_CHUNKS schema fallback | omit " + ",".join(sorted(omit)))
+                    table.add(slim)
+                else:
+                    raise
+        else:
+            self._db.create_table(RAG_CHUNKS_TABLE, data=rows)
+            try:
+                self._db.open_table(RAG_CHUNKS_TABLE).create_fts_index(COL_CHUNK_TEXT)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _resolve_chunk_trust_score(
+        url: str,
+        *,
+        source_type: str | None = None,
+    ) -> float:
+        from knowledge_engine.src.services.openalex_evaluator import (
+            resolve_source_trust_score,
+        )
+
+        try:
+            score = resolve_source_trust_score(url, source_type=source_type)
+            trace(f"RAG_CHUNKS trust_score={score:.3f} | {(url or '')[:70]}")
+            return float(score)
+        except Exception as exc:
+            trace(f"RAG_CHUNKS trust_score fallback=1.0 | {exc}")
+            return 1.0
+
+    @staticmethod
+    def doc_id_for_url(url: str) -> str:
+        key = (url or "").strip().lower().rstrip("/")
+        if not key:
+            return hashlib.sha256(b"local").hexdigest()[:24]
+        return hashlib.sha256(key.encode("utf-8")).hexdigest()[:24]
+
+    def upsert_rag_chunks_from_summary(
+        self,
+        summary: DocumentSummary,
+        *,
+        body_text: str | None = None,
+    ) -> int:
+        from knowledge_engine.config import RAG_CHUNK_OVERLAP, RAG_CHUNK_SIZE
+        from knowledge_engine.services.rag_chunk_splitter import split_sliding_window
+
+        url = (summary.url or "").strip()
+        title = (summary.title or url or "source")[:400]
+        doc_id = self.doc_id_for_url(url or title)
+        doc_summary_text = _summary_document(summary)[:8000]
+        chunk_source = (body_text or doc_summary_text).strip()
+        pieces = split_sliding_window(
+            chunk_source,
+            chunk_size=RAG_CHUNK_SIZE,
+            overlap=RAG_CHUNK_OVERLAP,
+        )
+        if not pieces:
+            return 0
+
+        doc_meta_vector = self._embeddings.embed_query(doc_summary_text[:8000])
+        chunk_vectors = [self._embeddings.embed_query(p[:8000]) for p in pieces]
+        trust = self._resolve_chunk_trust_score(url)
+        n_chunks = len(pieces)
+        rows: list[dict[str, Any]] = []
+        for i, (text, vec) in enumerate(zip(pieces, chunk_vectors), 1):
+            rows.append(
+                {
+                    COL_CHUNK_ID: f"{doc_id}_chunk_{i}",
+                    COL_DOC_ID: doc_id,
+                    COL_URL: url,
+                    COL_TITLE: title,
+                    COL_CHUNK_TEXT: text,
+                    COL_CHUNK_VECTOR: vec,
+                    COL_DOC_SUMMARY_TEXT: doc_summary_text,
+                    COL_DOC_META_VECTOR: doc_meta_vector,
+                    COL_CHUNK_INDEX: i,
+                    COL_CHUNKS_IN_DOC: n_chunks,
+                    COL_TRUST_SCORE: trust,
+                }
+            )
+
+        self._add_rag_chunk_rows(rows, doc_id=doc_id)
+        return len(rows)
+
+    def upsert_rag_academic_map_windows(
+        self,
+        url: str,
+        title: str,
+        map_window_texts: list[str],
+        summary: DocumentSummary,
+        *,
+        window_summaries: list[str | None] | None = None,
+    ) -> int:
+        """Persist each MAP window body as rag_chunks row (+ shared doc meta from REDUCE)."""
+        url = (url or "").strip()
+        pieces = [t.strip() for t in map_window_texts if (t or "").strip()]
+        if not url.startswith("http") or not pieces:
+            return 0
+        title = (title or url)[:400]
+        doc_id = self.doc_id_for_url(url)
+        doc_summary_text = _summary_document(summary)[:8000]
+        doc_meta_vector = self._embeddings.embed_query(doc_summary_text[:8000])
+        chunk_vectors = [self._embeddings.embed_query(p[:8000]) for p in pieces]
+        trust = self._resolve_chunk_trust_score(url)
+        n_chunks = len(pieces)
+        summaries = list(window_summaries or [])
+        rows: list[dict[str, Any]] = []
+        for i, (text, vec) in enumerate(zip(pieces, chunk_vectors), 1):
+            win_sum = ""
+            if i - 1 < len(summaries) and summaries[i - 1] is not None:
+                win_sum = str(summaries[i - 1] or "").strip()[:8000]
+            rows.append(
+                {
+                    COL_CHUNK_ID: f"{doc_id}_map_{i}",
+                    COL_DOC_ID: doc_id,
+                    COL_URL: url,
+                    COL_TITLE: title,
+                    COL_CHUNK_TEXT: text[:8000],
+                    COL_CHUNK_VECTOR: vec,
+                    COL_DOC_SUMMARY_TEXT: doc_summary_text,
+                    COL_DOC_META_VECTOR: doc_meta_vector,
+                    COL_CHUNK_INDEX: i,
+                    COL_CHUNKS_IN_DOC: n_chunks,
+                    COL_TRUST_SCORE: trust,
+                    COL_WINDOW_SUMMARY: win_sum,
+                }
+            )
+        table = self._rag_chunks_table(create=False)
+        if table is not None:
+            self._add_rag_chunk_rows(rows, doc_id=doc_id)
+        else:
+            self._db.create_table(RAG_CHUNKS_TABLE, data=rows)
+            try:
+                self._db.open_table(RAG_CHUNKS_TABLE).create_fts_index(COL_CHUNK_TEXT)
+            except Exception:
+                pass
+        return len(rows)
+
+    def upsert_knowledge_atoms(
+        self,
+        url: str,
+        atoms: list[Any],
+        *,
+        doc_id: str | None = None,
+    ) -> int:
+        """Replace knowledge_atoms rows for a document (statement vectors for fact RAG)."""
+        from knowledge_engine.schemas.extraction import KnowledgeAtom
+
+        url = (url or "").strip()
+        did = (doc_id or "").strip() or (self.doc_id_for_url(url) if url else "")
+        if not did:
+            return 0
+        normalized: list[KnowledgeAtom] = []
+        for item in atoms or []:
+            if isinstance(item, KnowledgeAtom):
+                normalized.append(item)
+            elif isinstance(item, dict):
+                try:
+                    normalized.append(KnowledgeAtom.model_validate(item))
+                except Exception:
+                    continue
+        if not normalized:
+            # Still clear stale atoms for this doc when REDUCE produced none.
+            if KNOWLEDGE_ATOMS_TABLE in self._db.table_names():
+                try:
+                    self._db.open_table(KNOWLEDGE_ATOMS_TABLE).delete(
+                        f"{KA_COL_DOC_ID} = '{self._sql_literal(did)}'"
+                    )
+                except Exception:
+                    pass
+            return 0
+
+        rows: list[dict[str, Any]] = []
+        for atom in normalized:
+            stmt = (atom.statement or "").strip()
+            if not stmt:
+                continue
+            vec = self._embeddings.embed_query(stmt[:8000])
+            rows.append(
+                {
+                    KA_COL_ID: str(uuid.uuid4()),
+                    KA_COL_DOC_ID: did,
+                    KA_COL_URL: url,
+                    KA_COL_STATEMENT: stmt[:2000],
+                    KA_COL_SCOPE: atom.scope.value,
+                    KA_COL_SOURCE_CHUNK_IDS: list(atom.source_chunk_ids or []),
+                    KA_COL_CONTEXT_QUOTE: (atom.context_quote or "")[:800],
+                    KA_COL_VECTOR: vec,
+                }
+            )
+        if not rows:
+            return 0
+
+        def _write() -> int:
+            if KNOWLEDGE_ATOMS_TABLE not in self._db.table_names():
+                self._db.create_table(KNOWLEDGE_ATOMS_TABLE, data=rows)
+                try:
+                    self._db.open_table(KNOWLEDGE_ATOMS_TABLE).create_fts_index(
+                        KA_COL_STATEMENT
+                    )
+                except Exception:
+                    pass
+                return len(rows)
+            table = self._db.open_table(KNOWLEDGE_ATOMS_TABLE)
+            try:
+                table.delete(f"{KA_COL_DOC_ID} = '{self._sql_literal(did)}'")
+            except Exception:
+                pass
+            try:
+                table.add(rows)
+            except Exception as exc:
+                # Older tables may store source_chunk_ids as JSON string.
+                msg = str(exc).lower()
+                if "source_chunk_ids" in msg or "list" in msg:
+                    slim = []
+                    for row in rows:
+                        r = dict(row)
+                        r[KA_COL_SOURCE_CHUNK_IDS] = json.dumps(
+                            list(row.get(KA_COL_SOURCE_CHUNK_IDS) or []),
+                            ensure_ascii=False,
+                        )
+                        slim.append(r)
+                    table.add(slim)
+                else:
+                    raise
+            return len(rows)
+
+        n = self._with_lance_recovery(_write)
+        trace(
+            f"KNOWLEDGE_ATOMS upsert ✓ | doc_id={did[:12]}… "
+            f"atoms={n} | {(url or '')[:55]}"
+        )
+        return n
+
+    def search_knowledge_atoms(
+        self,
+        query: str,
+        *,
+        limit: int = 8,
+        allowed_doc_ids: list[str] | None = None,
+        min_score: float = 0.0,
+    ) -> list[dict[str, Any]]:
+        """
+        Vector search over ``knowledge_atoms.statement`` (no parent-chunk expand).
+
+        Returns rows with ``_score`` (cosine similarity) plus schema fields.
+        """
+        q = (query or "").strip()
+        if not q or KNOWLEDGE_ATOMS_TABLE not in self._db.table_names():
+            return []
+        allow = [d for d in (allowed_doc_ids or []) if (d or "").strip()]
+        if allowed_doc_ids is not None and not allow:
+            return []
+
+        try:
+            table = self._db.open_table(KNOWLEDGE_ATOMS_TABLE)
+            if table.count_rows() == 0:
+                return []
+        except Exception:
+            return []
+
+        qv = np.asarray(self._embeddings.embed_query(q[:8000]), dtype=np.float64)
+        qn = float(np.linalg.norm(qv))
+        if qn > 0:
+            qv = qv / qn
+
+        try:
+            builder = table.search(qv.tolist())
+            if allow:
+                where = self._where_doc_ids_in(allow)
+                if where:
+                    try:
+                        builder = builder.where(where, prefilter=True)
+                    except TypeError:
+                        builder = builder.where(where)
+            results = builder.limit(max(1, int(limit) * 3)).to_list()
+        except Exception as exc:
+            trace(f"KNOWLEDGE_ATOMS search skip | {exc}")
+            return []
+
+        floor = max(0.0, float(min_score))
+        out: list[dict[str, Any]] = []
+        for row in results:
+            vec = row.get(KA_COL_VECTOR)
+            if vec is None:
+                continue
+            cv = np.asarray(vec, dtype=np.float64)
+            cn = float(np.linalg.norm(cv))
+            score = float(np.dot(qv, cv / cn)) if cn > 0 else 0.0
+            if score < floor:
+                continue
+            did = str(row.get(KA_COL_DOC_ID) or "").strip()
+            if allow and did not in set(allow):
+                continue
+            item = dict(row)
+            item["_score"] = score
+            out.append(item)
+        out.sort(key=lambda r: float(r.get("_score") or 0.0), reverse=True)
+        return out[: max(1, int(limit))]
+
+    def count_knowledge_atoms(self, doc_id: str) -> int:
+        """Number of knowledge_atoms rows for ``doc_id`` (0 if table missing)."""
+        did = (doc_id or "").strip()
+        if not did or KNOWLEDGE_ATOMS_TABLE not in self._db.table_names():
+            return 0
+        try:
+            table = self._db.open_table(KNOWLEDGE_ATOMS_TABLE)
+            return int(
+                table.count_rows(filter=f"{KA_COL_DOC_ID} = '{self._sql_literal(did)}'")
+            )
+        except Exception:
+            try:
+                rows = self._db.open_table(KNOWLEDGE_ATOMS_TABLE).to_arrow().to_pylist()
+            except Exception:
+                return 0
+            return sum(1 for r in rows if str(r.get(KA_COL_DOC_ID) or "") == did)
+
+    def knowledge_atom_doc_ids(self) -> set[str]:
+        """Set of doc_ids that already have at least one knowledge atom."""
+        if KNOWLEDGE_ATOMS_TABLE not in self._db.table_names():
+            return set()
+        try:
+            rows = self._db.open_table(KNOWLEDGE_ATOMS_TABLE).to_arrow().to_pylist()
+        except Exception:
+            return set()
+        out: set[str] = set()
+        for row in rows:
+            did = str(row.get(KA_COL_DOC_ID) or "").strip()
+            if did:
+                out.add(did)
+        return out
+
+    def list_rag_documents(self) -> list[dict[str, Any]]:
+        """
+        Aggregate ``rag_chunks`` by doc_id.
+
+        Each item: doc_id, url, title, chunk_count, missing_window_summary_count.
+        """
+        table = self._rag_chunks_table(create=False)
+        if table is None or table.count_rows() == 0:
+            return []
+        try:
+            rows = table.to_arrow().to_pylist()
+        except Exception:
+            return []
+        by_doc: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            did = str(row.get(COL_DOC_ID) or "").strip()
+            if not did:
+                continue
+            meta = by_doc.get(did)
+            if meta is None:
+                meta = {
+                    "doc_id": did,
+                    "url": str(row.get(COL_URL) or "").strip(),
+                    "title": str(row.get(COL_TITLE) or "").strip(),
+                    "chunk_count": 0,
+                    "missing_window_summary_count": 0,
+                }
+                by_doc[did] = meta
+            meta["chunk_count"] = int(meta["chunk_count"]) + 1
+            if not meta.get("url"):
+                meta["url"] = str(row.get(COL_URL) or "").strip()
+            if not meta.get("title"):
+                meta["title"] = str(row.get(COL_TITLE) or "").strip()
+            ws = row.get(COL_WINDOW_SUMMARY)
+            if ws is None or not str(ws).strip():
+                meta["missing_window_summary_count"] = (
+                    int(meta["missing_window_summary_count"]) + 1
+                )
+        return sorted(by_doc.values(), key=lambda m: str(m.get("doc_id") or ""))
+
+    @staticmethod
+    def passport_is_filled(summary: DocumentSummary | None) -> bool:
+        """True when document_summaries / passport has usable takeaways."""
+        if summary is None:
+            return False
+        takes = [
+            str(t).strip() for t in (summary.key_takeaways or []) if str(t).strip()
+        ]
+        if not takes:
+            return False
+        return sum(len(t) for t in takes) >= 40
+
+    def fetch_latest_summary_for_url(self, url: str) -> DocumentSummary | None:
+        """Latest document_summaries row for URL (last matching row wins)."""
+        key = (url or "").strip().rstrip("/").lower()
+        if not key.startswith("http") or TABLE_NAME not in self._db.table_names():
+            return None
+        try:
+            rows = self._table().to_arrow().to_pylist()
+        except Exception:
+            return None
+        found: DocumentSummary | None = None
+        for row in rows:
+            u = (row.get("url") or "").strip().rstrip("/").lower()
+            if u == key:
+                found = self._row_to_summary(row)
+        return found
+
+    def update_rag_window_summaries(
+        self,
+        doc_id: str,
+        summaries_by_chunk_id: dict[str, str],
+    ) -> int:
+        """
+        Rewrite ``rag_chunks`` for ``doc_id``, filling ``window_summary`` by chunk_id.
+
+        Preserves existing chunk_text / vectors (no re-embed).
+        """
+        did = (doc_id or "").strip()
+        if not did or not summaries_by_chunk_id:
+            return 0
+        rows = self.fetch_rag_chunks_by_doc_id(did)
+        if not rows:
+            return 0
+        updated = 0
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            r = dict(row)
+            cid = str(r.get(COL_CHUNK_ID) or "").strip()
+            if cid and cid in summaries_by_chunk_id:
+                r[COL_WINDOW_SUMMARY] = str(summaries_by_chunk_id[cid] or "").strip()[
+                    :8000
+                ]
+                updated += 1
+            elif COL_WINDOW_SUMMARY not in r:
+                r[COL_WINDOW_SUMMARY] = ""
+            for key in (COL_CHUNK_VECTOR, COL_DOC_META_VECTOR):
+                val = r.get(key)
+                if val is not None and hasattr(val, "tolist"):
+                    r[key] = list(val)
+            out.append(r)
+        if updated == 0:
+            return 0
+        self._add_rag_chunk_rows(out, doc_id=did)
+        trace(
+            f"RAG_CHUNKS window_summary ✓ | doc_id={did[:12]}… "
+            f"updated={updated}/{len(out)}"
+        )
+        return updated
+
+    def upsert_rag_exa_highlights_fallback(
+        self,
+        url: str,
+        title: str,
+        body_text: str,
+        *,
+        source_type: str | None = None,
+        detail_instruction: str | None = None,
+    ) -> int:
+        from knowledge_engine.db.rag_chunks_schema import (
+            COL_DETAIL_INSTRUCTION,
+            COL_SOURCE_TYPE,
+            EXA_HIGHLIGHTS_FALLBACK_DETAIL_INSTRUCTION,
+            EXA_HIGHLIGHTS_FALLBACK_SOURCE_TYPE,
+        )
+
+        url = (url or "").strip()
+        text = (body_text or "").strip()
+        if not url.startswith("http") or len(text) < 40:
+            return 0
+        title = (title or url)[:400]
+        doc_id = self.doc_id_for_url(url)
+        st = (source_type or EXA_HIGHLIGHTS_FALLBACK_SOURCE_TYPE).strip()[:64]
+        detail = (
+            detail_instruction or EXA_HIGHLIGHTS_FALLBACK_DETAIL_INSTRUCTION
+        ).strip()[:500]
+        doc_summary_text = f"{title}\n{url}\n{detail}\n{text[:6000]}"
+        doc_meta_vector = self._embeddings.embed_query(doc_summary_text[:8000])
+        chunk_vector = self._embeddings.embed_query(text[:8000])
+        trust = self._resolve_chunk_trust_score(url, source_type=st)
+        row = {
+            COL_CHUNK_ID: f"{doc_id}_chunk_exa_hl_1",
+            COL_DOC_ID: doc_id,
+            COL_URL: url,
+            COL_TITLE: title,
+            COL_CHUNK_TEXT: text[:8000],
+            COL_CHUNK_VECTOR: chunk_vector,
+            COL_DOC_SUMMARY_TEXT: doc_summary_text[:8000],
+            COL_DOC_META_VECTOR: doc_meta_vector,
+            COL_CHUNK_INDEX: 1,
+            COL_CHUNKS_IN_DOC: 1,
+            COL_SOURCE_TYPE: st,
+            COL_DETAIL_INSTRUCTION: detail,
+            COL_TRUST_SCORE: trust,
+        }
+        table = self._rag_chunks_table(create=False)
+        if table is not None:
+            self._add_rag_chunk_rows([row], doc_id=doc_id)
+        else:
+            self._db.create_table(RAG_CHUNKS_TABLE, data=[row])
+            try:
+                self._db.open_table(RAG_CHUNKS_TABLE).create_fts_index(COL_CHUNK_TEXT)
+            except Exception:
+                pass
+        return 1
+
+    def delete_rag_chunks_for_urls(self, urls: list[str]) -> int:
+        removed = 0
+        for raw in urls:
+            u = (raw or "").strip()
+            if not u.startswith("http"):
+                continue
+            did = self.doc_id_for_url(u)
+            table = self._rag_chunks_table(create=False)
+            if table is None:
+                continue
+            try:
+                before = len(
+                    table.search()
+                    .where(f"{COL_DOC_ID} = '{self._sql_literal(did)}'")
+                    .limit(500)
+                    .to_list()
+                )
+                if before:
+                    table.delete(f"{COL_DOC_ID} = '{self._sql_literal(did)}'")
+                    removed += before
+            except Exception:
+                continue
+        return removed
+
+    def delete_summaries_for_urls(self, urls: list[str]) -> int:
+        want = {
+            (u or "").strip().rstrip("/").lower()
+            for u in urls
+            if (u or "").startswith("http")
+        }
+        if not want or TABLE_NAME not in self._db.table_names():
+            return 0
+        table = self._table()
+        removed = 0
+        try:
+            rows = table.to_arrow().to_pylist()
+        except Exception:
+            return 0
+        for row in rows:
+            url = (row.get("url") or "").strip()
+            key = url.rstrip("/").lower()
+            if key not in want:
+                continue
+            try:
+                table.delete(f"url = '{self._sql_literal(url)}'")
+                removed += 1
+            except Exception:
+                pass
+        return removed
+
+    @staticmethod
+    def _sql_literal(value: str) -> str:
+        return (value or "").replace("'", "''")
+
+    @classmethod
+    def _where_doc_ids_in(cls, doc_ids: list[str]) -> str:
+        safe = [cls._sql_literal(d) for d in doc_ids if (d or "").strip()]
+        if not safe:
+            return ""
+        if len(safe) == 1:
+            return f"{COL_DOC_ID} = '{safe[0]}'"
+        inner = ", ".join(f"'{d}'" for d in safe[:256])
+        return f"{COL_DOC_ID} IN ({inner})"
+
+    def count_rag_chunks_in_scope(self, allowed_doc_ids: list[str] | None) -> int:
+        table = self._rag_chunks_table(create=False)
+        if table is None:
+            return 0
+        allow = [d for d in (allowed_doc_ids or []) if (d or "").strip()]
+        if not allow:
+            try:
+                return int(table.count_rows())
+            except Exception:
+                return 0
+        try:
+            where = self._where_doc_ids_in(allow)
+            if not where:
+                return 0
+            return len(table.search().where(where).limit(10_000).to_list())
+        except Exception:
+            return 0
+
+    def search_rag_chunk_rows(
+        self,
+        query: str,
+        *,
+        limit: int = 64,
+        doc_gate_threshold: float = 0.0,
+        allowed_doc_ids: list[str] | None = None,
+        prefilter: bool = True,
+        relevance_penalty: float = 1.0,
+    ) -> list[dict[str, Any]]:
+        """Vector search on fine chunks; LanceDB prefilter on doc_id when allow-list set."""
+        table = self._rag_chunks_table(create=False)
+        if table is None or table.count_rows() == 0:
+            return []
+
+        allow = [d for d in (allowed_doc_ids or []) if (d or "").strip()]
+        if allowed_doc_ids is not None and not allow:
+            return []
+
+        qv = np.asarray(
+            self._embeddings.embed_query((query or "")[:8000]), dtype=np.float64
+        )
+        qn = float(np.linalg.norm(qv))
+        if qn > 0:
+            qv = qv / qn
+
+        results: list[dict[str, Any]] = []
+        try:
+            builder = table.search(qv.tolist())
+            if allow:
+                where = self._where_doc_ids_in(allow)
+                if where:
+                    try:
+                        builder = builder.where(where, prefilter=True)
+                    except TypeError:
+                        builder = builder.where(where)
+            results = builder.limit(limit).to_list()
+        except Exception:
+            return []
+
+        # --- Early exit: score + hard cutoff BEFORE any CE/MMR / Lite context ---
+        penalty = max(0.0, min(1.0, float(relevance_penalty)))
+        from knowledge_engine.src.services.openalex_evaluator import (
+            coerce_trust_score,
+            final_retrieval_score,
+            passes_trust_hard_cutoff,
+        )
+
+        scored: list[dict[str, Any]] = []
+        for row in results:
+            doc_vec = row.get(COL_DOC_META_VECTOR)
+            chunk_vec = row.get(COL_CHUNK_VECTOR)
+            if chunk_vec is None:
+                continue
+            if doc_gate_threshold > 0 and doc_vec is not None:
+                dv = np.asarray(doc_vec, dtype=np.float64)
+                dn = float(np.linalg.norm(dv))
+                if dn > 0:
+                    cos_doc = float(np.dot(qv, dv / dn))
+                    if cos_doc < doc_gate_threshold:
+                        continue
+            cv = np.asarray(chunk_vec, dtype=np.float64)
+            cn = float(np.linalg.norm(cv))
+            cos_chunk = float(np.dot(qv, cv / cn)) if cn > 0 else 0.0
+            if penalty < 1.0:
+                cos_chunk *= penalty
+            trust = coerce_trust_score(row.get(COL_TRUST_SCORE), default=1.0)
+            item = dict(row)
+            item["_cosine_raw"] = cos_chunk
+            item["_trust_score"] = trust
+            if doc_vec is not None:
+                dv = np.asarray(doc_vec, dtype=np.float64)
+                dn = float(np.linalg.norm(dv))
+                item["_cosine_doc"] = float(np.dot(qv, dv / dn)) if dn > 0 else 0.0
+            if penalty < 1.0:
+                item["_scope_penalty"] = penalty
+            scored.append(item)
+
+        out: list[dict[str, Any]] = []
+        dropped_hard = 0
+        for item in scored:
+            cos_chunk = float(item.get("_cosine_raw") or 0.0)
+            trust = float(item.get("_trust_score") or 1.0)
+            if not passes_trust_hard_cutoff(cos_chunk, trust):
+                dropped_hard += 1
+                continue
+            item["_cosine_chunk"] = final_retrieval_score(cos_chunk, trust)
+            out.append(item)
+        out.sort(key=lambda r: float(r.get("_cosine_chunk") or 0.0), reverse=True)
+        if dropped_hard:
+            trace(
+                f"RAG_CHUNKS hard_cutoff early_exit ⊘ | dropped={dropped_hard} "
+                f"kept={len(out)} (before CE/MMR)"
+            )
+        return out
+
+    def fetch_rag_chunks_by_doc_id(self, doc_id: str) -> list[dict[str, Any]]:
+        """All fine chunks for a parent document, ordered by chunk_index."""
+        did = (doc_id or "").strip()
+        if not did:
+            return []
+        table = self._rag_chunks_table(create=False)
+        if table is None or table.count_rows() == 0:
+            return []
+        try:
+            rows = (
+                table.search()
+                .where(f"{COL_DOC_ID} = '{self._sql_literal(did)}'")
+                .limit(500)
+                .to_list()
+            )
+        except Exception:
+            rows = []
+            for row in table.to_arrow().to_pylist():
+                if str(row.get(COL_DOC_ID) or "") == did:
+                    rows.append(row)
+        rows.sort(key=lambda r: int(r.get(COL_CHUNK_INDEX) or 0))
+        return rows
 
     def hybrid_search(self, query: str, limit: int = 3) -> List[DocumentSummary]:
         if TABLE_NAME not in self._db.table_names():
@@ -121,19 +906,48 @@ class VectorStore:
 
         summaries: list[DocumentSummary] = []
         for row in results:
-            summaries.append(
-                DocumentSummary(
-                    title=row.get("title") or "",
-                    url=row.get("url") or "",
-                    cs_concepts=json.loads(row.get("cs_concepts") or "[]"),
-                    key_takeaways=json.loads(row.get("key_takeaways") or "[]"),
-                    failure_modes=json.loads(row.get("failure_modes") or "[]"),
-                    diagram_descriptions=json.loads(
-                        row.get("diagram_descriptions") or "[]"
-                    ),
-                )
-            )
+            summaries.append(self._row_to_summary(row))
         return summaries
+
+    def _row_to_summary(self, row: dict) -> DocumentSummary:
+        return DocumentSummary(
+            title=row.get("title") or "",
+            url=row.get("url") or "",
+            cs_concepts=json.loads(row.get("cs_concepts") or "[]"),
+            key_takeaways=json.loads(row.get("key_takeaways") or "[]"),
+            failure_modes=json.loads(row.get("failure_modes") or "[]"),
+            diagram_descriptions=json.loads(row.get("diagram_descriptions") or "[]"),
+        )
+
+    def hybrid_search_with_vectors(
+        self, query: str, limit: int = 3
+    ) -> list[tuple[DocumentSummary, list[float]]]:
+        """Hybrid search with LanceDB document vectors (doc-level embedding)."""
+        if TABLE_NAME not in self._db.table_names():
+            return []
+
+        table = self._table()
+        if table.count_rows() == 0:
+            return []
+
+        query_vector = self._embeddings.embed_query(query)
+        try:
+            results = (
+                table.search(query, query_type="hybrid")
+                .vector(query_vector)
+                .limit(limit)
+                .to_list()
+            )
+        except Exception:
+            results = table.search(query_vector).limit(limit).to_list()
+
+        out: list[tuple[DocumentSummary, list[float]]] = []
+        for row in results:
+            vec = row.get("vector")
+            if vec is None:
+                continue
+            out.append((self._row_to_summary(row), list(vec)))
+        return out
 
     def fetch_summaries_by_urls(
         self,
@@ -163,21 +977,45 @@ class VectorStore:
             if key not in want or key in seen:
                 continue
             seen.add(key)
-            summaries.append(
-                DocumentSummary(
-                    title=row.get("title") or "",
-                    url=url,
-                    cs_concepts=json.loads(row.get("cs_concepts") or "[]"),
-                    key_takeaways=json.loads(row.get("key_takeaways") or "[]"),
-                    failure_modes=json.loads(row.get("failure_modes") or "[]"),
-                    diagram_descriptions=json.loads(
-                        row.get("diagram_descriptions") or "[]"
-                    ),
-                )
-            )
+            summaries.append(self._row_to_summary(row))
             if len(summaries) >= limit:
                 break
         return summaries
+
+    def fetch_summaries_by_urls_with_vectors(
+        self,
+        urls: list[str],
+        limit: int = 8,
+    ) -> list[tuple[DocumentSummary, list[float]]]:
+        want: set[str] = set()
+        for raw in urls:
+            u = (raw or "").strip()
+            if u.startswith("http"):
+                want.add(u.rstrip("/").lower())
+        if not want or TABLE_NAME not in self._db.table_names():
+            return []
+        table = self._table()
+        if table.count_rows() == 0:
+            return []
+        out: list[tuple[DocumentSummary, list[float]]] = []
+        seen: set[str] = set()
+        try:
+            rows = table.to_arrow().to_pylist()
+        except Exception:
+            rows = []
+        for row in rows:
+            url = (row.get("url") or "").strip()
+            key = url.rstrip("/").lower()
+            if key not in want or key in seen:
+                continue
+            vec = row.get("vector")
+            if vec is None:
+                continue
+            seen.add(key)
+            out.append((self._row_to_summary(row), list(vec)))
+            if len(out) >= limit:
+                break
+        return out
 
     def _nodes_table(self):
         if NODES_TABLE not in self._db.table_names():
@@ -287,3 +1125,39 @@ class VectorStore:
                 )
             )
         return nodes
+
+    def hybrid_search_nodes_with_vectors(
+        self, query: str, limit: int = 5
+    ) -> list[tuple[KnowledgeNode, list[float]]]:
+        table = self._nodes_table()
+        if table is None or table.count_rows() == 0:
+            return []
+        query_vector = self._embeddings.embed_query(query)
+        try:
+            results = (
+                table.search(query, query_type="hybrid")
+                .vector(query_vector)
+                .limit(limit)
+                .to_list()
+            )
+        except Exception:
+            results = table.search(query_vector).limit(limit).to_list()
+
+        out: list[tuple[KnowledgeNode, list[float]]] = []
+        for row in results:
+            vec = row.get("vector")
+            if vec is None:
+                continue
+            out.append(
+                (
+                    KnowledgeNode(
+                        id=row.get("id") or "",
+                        level=row.get("level") or "",
+                        parent_id=(row.get("parent_id") or None) or None,
+                        content=row.get("content") or "",
+                        source_url=(row.get("source_url") or None) or None,
+                    ),
+                    list(vec),
+                )
+            )
+        return out

@@ -58,6 +58,9 @@ def _paper_from_dict(obj: dict[str, Any]) -> ScholarPaper | None:
         return None
     if not title:
         title = url or "publication"
+    # Навигация / UI labels из JSON API (не публикации)
+    if not url and not doi and len(abstract) < 40 and len(title.split()) <= 3:
+        return None
 
     year_raw = obj.get("year")
     year = int(year_raw) if isinstance(year_raw, int) else None

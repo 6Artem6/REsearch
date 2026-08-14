@@ -34,3 +34,6 @@ extend_skip_glob = [
 
 [tool.flake8]
 # Конфиг дублируется в .flake8 (flake8 не читает [tool.flake8] без плагина)
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

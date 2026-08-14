@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -15,7 +14,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
 
-from knowledge_engine.config import PACKAGE_ROOT
+from knowledge_engine.config import KE_API_BASE, PACKAGE_ROOT
 from knowledge_engine.schemas import AnalysisReport
 from knowledge_engine.ui.errors import trace_exception
 from knowledge_engine.ui.job_report import (
@@ -32,8 +31,7 @@ _LAST_WAIT = PACKAGE_ROOT / ".runs" / "last-wait-response.json"
 
 
 def _base_url() -> str:
-    port = os.getenv("KE_API_PORT", "8765")
-    return os.getenv("KE_API_BASE", f"http://127.0.0.1:{port}")
+    return KE_API_BASE
 
 
 def _load_payload(path: Optional[Path]) -> dict[str, Any]:

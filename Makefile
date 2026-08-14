@@ -1,6 +1,6 @@
 # Knowledge Engine — быстрые команды (из корня REsearch)
 
-.PHONY: infra ollama python dev api worker sync-venv setup smoke-v07 v08 format lint check skill-tree-ui ship
+.PHONY: infra ollama python dev api worker sync-venv setup smoke-v07 v08 format lint check pre-commit-install pre-commit-run skill-tree-ui ship check-gemini-grounding
 
 PYTHON ?= ./.venv/bin/python
 BLACK ?= ./.venv/bin/black
@@ -56,13 +56,27 @@ check:
 	$(ISORT) --check-only $(KE_PY_DIRS)
 	$(FLAKE8) $(KE_PY_DIRS)
 
+PRE_COMMIT ?= ./.venv/bin/pre-commit
+
+pre-commit-install:
+	$(PRE_COMMIT) install --install-hooks
+
+pre-commit-run:
+	$(PRE_COMMIT) run --all-files
+
 dev-deps:
 	./.venv/bin/pip install -q -r knowledge_engine/requirements-dev.txt
 
 skill-tree-ui:
 	./knowledge_engine/scripts/build-skill-tree-ui.sh
 
-# git add . + commit + push origin main
+check-gemini-grounding:
+	$(PYTHON) -m knowledge_engine.scripts.check_gemini_grounding --save
+
+check-gemini-grounding-all:
+	$(PYTHON) -m knowledge_engine.scripts.check_gemini_grounding --all-candidates --compare-plain --metadata --save
+
+# git add . + commit + push origin main (на commit — pre-commit: autoflake/isort/black/flake8)
 # Пример: make ship MSG="fix: redis worker pubsub"
 ship:
 	@test -n "$(MSG)" || (echo 'Usage: make ship MSG="your commit message"'; exit 1)

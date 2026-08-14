@@ -2,27 +2,30 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from knowledge_engine.config import (
-    MAIN_MODEL,
-    SUMMARIZER_MAX_INPUT_CHARS,
-    SUMMARIZER_MAX_PROFILE_CHARS,
-    USER_PROFILE_PATH,
-)
+from knowledge_engine.config import MAIN_MODEL, SUMMARIZER_MAX_INPUT_CHARS
 from knowledge_engine.llm import invoke_logged, structured_chat
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.schemas import DocumentSummary
+from knowledge_engine.services.context_manager import load_personal_orchestrator_focus
+from knowledge_engine.src.prompts.engineering_context import (
+    GLOBAL_ENGINEERING_CRITERIA,
+    format_optional_context_overrides,
+)
 from knowledge_engine.ui.logger import set_status
 
 
-def _load_user_profile() -> str:
-    path = Path(USER_PROFILE_PATH)
-    if not path.is_file():
-        return "(user_profile.md не найден)"
-    return path.read_text(encoding="utf-8")[:SUMMARIZER_MAX_PROFILE_CHARS]
+def _profile_and_criteria_block() -> str:
+    focus = load_personal_orchestrator_focus()
+    overrides = format_optional_context_overrides()
+    parts = [
+        GLOBAL_ENGINEERING_CRITERIA,
+        f"### Личный фокус (оркестратор)\n{focus}",
+    ]
+    if overrides:
+        parts.append(overrides)
+    return "\n\n".join(parts)
 
 
 def summarize_article(
@@ -31,10 +34,7 @@ def summarize_article(
     raw_text: str,
     diagram_descriptions: list[str] | None = None,
 ) -> DocumentSummary:
-    """
-    Сжать текст с учётом user_profile.md → структура DocumentSummary.
-    """
-    profile = _load_user_profile()
+    """Сжать текст с учётом критериев качества и личного фокуса → DocumentSummary."""
     diagrams = diagram_descriptions or []
     set_status(f"[Summarizer] сжатие: {title[:60]}…")
 
@@ -42,14 +42,13 @@ def summarize_article(
     system = SystemMessage(
         content=(
             f"{RUSSIAN_OUTPUT_RULE} "
-            "Ты research-аналитик. Сжимай материал строго под интересы разработчика "
-            "из профиля. Выход — JSON DocumentSummary. diagram_descriptions дополни "
-            "переданными описаниями схем."
+            "Ты research-аналитик. Сжимай материал по инженерным критериям и личному фокусу. "
+            "Выход — JSON DocumentSummary. diagram_descriptions дополни переданными описаниями схем."
         )
     )
     human = HumanMessage(
         content=(
-            f"Профиль разработчика:\n{profile}\n\n"
+            f"{_profile_and_criteria_block()}\n\n"
             f"URL: {url}\nTitle: {title}\n\n"
             f"Описания диаграмм (если есть):\n{diagrams}\n\n"
             f"Исходный текст (фрагмент):\n{raw_text[:SUMMARIZER_MAX_INPUT_CHARS]}"
@@ -60,7 +59,6 @@ def summarize_article(
     )
     if result is None:
         raise RuntimeError("Summarizer: structured output returned None")
-    # URL/title из источника — надёжнее, чем из модели
     result.url = url
     if not result.title:
         result.title = title
@@ -79,7 +77,6 @@ def summarize_gemini_bundle(
     api_snippets: list[str],
 ) -> DocumentSummary:
     """Один вызов 7B: сжать ответы Gemini + сниппеты API для LanceDB."""
-    profile = _load_user_profile()
     parts: list[str] = []
     for turn in dialogue_history:
         if turn.get("role") == "assistant":
@@ -99,7 +96,7 @@ def summarize_gemini_bundle(
     )
     human = HumanMessage(
         content=(
-            f"Профиль:\n{profile}\n\nЗадача: {user_problem}\n\n"
+            f"{_profile_and_criteria_block()}\n\nЗадача: {user_problem}\n\n"
             f"Пакет:\n{bundle[:SUMMARIZER_MAX_INPUT_CHARS]}"
         )
     )

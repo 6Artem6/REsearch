@@ -46,7 +46,11 @@ python -m knowledge_engine.main analyze -c "…" "…" --matrix-only
 | `MAX_FETCH_URLS` | 3 | Лимит URL с парсингом + summarizer |
 | `MULTI_SEARCH_SKIP_VISION` | true | Без vision pipeline |
 | `SKIP_GEMINI` | false | true → без Playwright Gemini |
-| `OLLAMA_NUM_PREDICT` | 1024 | Лимит токенов генерации |
+| `OLLAMA_NUM_PREDICT` | 1024 | Лимит токенов генерации (legacy alias → heavy ctx) |
+| `OLLAMA_ROUTER_NUM_CTX` | 2048 | KV для 1.5B / router |
+| `OLLAMA_HEAVY_NUM_CTX` | 4096 | KV для 7B / summarizer |
+| `OLLAMA_ROUTER_KEEP_ALIVE` | 2m | Выгрузка router после паузы |
+| `OLLAMA_GUARDRAILS_NUM_PREDICT` | 1536 | Guardrails JSON |
 | `OLLAMA_STRUCTURE_NUM_PREDICT` | 3072 | JSON AnalysisReport после Gemini (без обрезки 3-го option) |
 | `MAX_AI_DIALOGUE_TURNS` | 3 | Реплики Gemini (если не SKIP) |
 

@@ -1,4 +1,9 @@
-"""Персистентные сессии нод (curriculum_id + node_id)."""
+"""Персистентные сессии нод (curriculum_id + node_id).
+
+Хранилище: ``.runs/node_deep_dive_sessions.json`` (атомарная запись под lock).
+Поле ``memory`` — JSON blob ``SessionMemory``; ``covered_subtopics`` и ``introduced_terms``
+дублируются на верхнем уровне записи, чтобы реестры переживали re-init диалога.
+"""
 
 from __future__ import annotations
 
@@ -8,16 +13,39 @@ from datetime import datetime, timezone
 from typing import Any
 
 from knowledge_engine.config import PACKAGE_ROOT
-from knowledge_engine.src.node_deep_dive.schemas import NodeContentBlock, NodeStatus
+from knowledge_engine.src.node_deep_dive.dialog_ids import (
+    _normalize_user_dialog_content,
+    clean_dialog_rows,
+    ensure_msg_ids,
+    max_msg_id,
+    parse_msg_id,
+    reconcile_dialog_history,
+)
 from knowledge_engine.src.node_deep_dive.memory_schemas import SessionMemory
-from knowledge_engine.web.llm_text_repair import repair_diagram_markdown
-from knowledge_engine.src.node_deep_dive.tiered_memory import memory_from_blob, memory_to_blob
+from knowledge_engine.src.node_deep_dive.schemas import NodeContentBlock, NodeStatus
+from knowledge_engine.src.node_deep_dive.term_registry import (
+    carry_introduced_terms,
+    load_introduced_terms_from_blob,
+    normalize_introduced_terms,
+)
+from knowledge_engine.src.node_deep_dive.tiered_memory import (
+    memory_from_blob,
+    memory_to_blob,
+)
+from knowledge_engine.web.llm_text_repair import repair_llm_display_text
 
 _STORE_PATH = PACKAGE_ROOT / ".runs" / "node_deep_dive_sessions.json"
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 _VALID_STATUSES = frozenset(
-    {"in_progress", "deep_understanding", "mastered", "gap"}
+    {
+        "unexplored",
+        "in_progress",
+        "deep_understanding",
+        "mastered",
+        "gap",
+        "passed_by_equivalence",
+    }
 )
 
 
@@ -25,122 +53,142 @@ def _session_key(curriculum_id: str, node_id: str) -> str:
     return f"{curriculum_id.strip()}::{node_id.strip()}"
 
 
+def _normalize_covered_subtopics(raw: Any) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, str] = {}
+    for k, v in raw.items():
+        key = str(k or "").strip()[:64]
+        val = str(v or "").strip()[:600]
+        if key and val:
+            out[key] = val
+    return out
+
+
+def load_covered_subtopics_from_blob(blob: dict[str, Any]) -> dict[str, str]:
+    """Реестр покрытия: top-level `covered_subtopics` + поле в `memory` (memory blob)."""
+    top = _normalize_covered_subtopics(blob.get("covered_subtopics"))
+    mem = memory_from_blob(blob.get("memory"))
+    from_mem = _normalize_covered_subtopics(
+        (mem.covered_subtopics if mem is not None else None) or {}
+    )
+    if not from_mem:
+        return top
+    if not top:
+        return from_mem
+    merged = dict(from_mem)
+    for key, summary in top.items():
+        merged.setdefault(key, summary)
+    return merged
+
+
+def carry_covered_subtopics(
+    preserved: dict[str, str] | None,
+    memory: SessionMemory,
+) -> None:
+    """Сохранить реестр при сбросе диалога / re-init memory (не обнулять прочитанное)."""
+    prev = _normalize_covered_subtopics(preserved or {})
+    if not prev:
+        return
+    current = _normalize_covered_subtopics(memory.covered_subtopics or {})
+    merged = dict(prev)
+    merged.update(current)
+    memory.covered_subtopics = merged
+
+
+def persist_session_memory(
+    curriculum_id: str,
+    node_id: str,
+    memory: SessionMemory,
+) -> None:
+    """Атомарно записать memory blob (+ зеркало covered_subtopics) в store сессии ноды."""
+    key = _session_key(curriculum_id, node_id)
+    mem_blob = memory_to_blob(memory)
+    reg = _normalize_covered_subtopics(memory.covered_subtopics)
+    terms = normalize_introduced_terms(memory.introduced_terms)
+    with _lock:
+        all_data = _load_all()
+        prev = dict(all_data.get(key) or {})
+        prev["memory"] = mem_blob
+        prev["covered_subtopics"] = reg
+        prev["introduced_terms"] = terms
+        prev["updated_at"] = datetime.now(timezone.utc).isoformat()
+        all_data[key] = prev
+        _save_all(all_data)
+
+
 def normalize_dialog_history(
     history: list[dict[str, str]] | None,
 ) -> list[dict[str, str]]:
-    """Исправляет legacy-порядок tutor→user на user→tutor в каждом обмене."""
-    cleaned: list[dict[str, str]] = []
-    for item in history or []:
-        role = str(item.get("role") or "").strip()
-        content = str(item.get("content") or "").strip()
-        if not content:
-            continue
-        if role not in ("user", "tutor"):
-            role = "tutor"
-        cleaned.append({"role": role, "content": content})
-    fixed: list[dict[str, str]] = []
-    i = 0
-    while i < len(cleaned):
+    """Очистка полей; порядок реплик не меняется (хронология — reconcile / active_window)."""
+    return clean_dialog_rows(history)
+
+
+def _repair_memory_dialog_ids(memory: SessionMemory | None) -> None:
+    if memory is None:
+        return
+    seq = max(int(memory.dialog_seq or 0), max_msg_id(memory.active_window))
+    window, seq = ensure_msg_ids(memory.active_window, start_seq=seq)
+    memory.active_window = window
+    memory.dialog_seq = max(int(memory.dialog_seq or 0), seq)
+
+
+def _collapse_adjacent_duplicate_users(
+    rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """
+    Collapse only *adjacent* identical user rows (same normalized text).
+
+    Distinct turns with the same button text (e.g. repeated [mode:lecture]) MUST
+    keep separate msg_ids — never dedupe the whole history by content/hash.
+    """
+    out: list[dict[str, str]] = []
+    for m in rows:
         if (
-            i + 1 < len(cleaned)
-            and i > 0
-            and cleaned[i]["role"] == "tutor"
-            and cleaned[i + 1]["role"] == "user"
+            out
+            and (m.get("role") or "").strip() == "user"
+            and (out[-1].get("role") or "").strip() == "user"
+            and _normalize_user_dialog_content(str(m.get("content") or ""))
+            == _normalize_user_dialog_content(str(out[-1].get("content") or ""))
+            and _normalize_user_dialog_content(str(m.get("content") or ""))
         ):
-            fixed.append(cleaned[i + 1])
-            fixed.append(cleaned[i])
-            i += 2
-        else:
-            fixed.append(cleaned[i])
-            i += 1
-    return fixed
-
-
-def _history_key(m: dict[str, str]) -> tuple[str, str]:
-    return (m["role"], m["content"])
-
-
-def _history_severely_corrupt(hist: list[dict[str, str]]) -> bool:
-    if len(hist) < 3:
-        return False
-    consec = 0
-    last_role: str | None = None
-    for h in hist:
-        r = h["role"]
-        if r == last_role:
-            consec += 1
-            if consec >= 2:
-                return True
-        else:
-            consec = 1
-            last_role = r
-    users_run = 0
-    for h in hist:
-        if h["role"] == "user":
-            users_run += 1
-            if users_run >= 3:
-                return True
-        else:
-            users_run = 0
-    tutors_run = 0
-    for h in hist:
-        if h["role"] == "tutor":
-            tutors_run += 1
-            if tutors_run >= 3:
-                return True
-        else:
-            tutors_run = 0
-    return False
+            # Keep the higher msg_id at this slot.
+            if (parse_msg_id(m) or 0) >= (parse_msg_id(out[-1]) or 0):
+                out[-1] = m
+            continue
+        out.append(m)
+    return out
 
 
 def repair_history_with_memory(
     history: list[dict[str, str]] | None,
     memory: SessionMemory | None,
 ) -> list[dict[str, str]]:
-    """Синхронизирует history с active_window без «prefix+window» (ломал порядок)."""
-    hist = normalize_dialog_history(history)
+    """Синхронизирует history с active_window: порядок + msg_id."""
+    from knowledge_engine.src.node_deep_dive.dialog_ids import sort_by_msg_id
+
+    hist = clean_dialog_rows(history)
     if not memory or not memory.active_window:
-        return hist
-    window = normalize_dialog_history(memory.active_window)
-    if not window:
-        return hist
-
-    hk = [_history_key(h) for h in hist]
-    wk = [_history_key(w) for w in window]
-
-    if len(wk) <= len(hk) and hk[-len(wk):] == wk:
-        return hist
-
-    best_overlap = 0
-    for i in range(1, min(len(hk), len(wk)) + 1):
-        if hk[-i:] == wk[:i]:
-            best_overlap = i
-
-    if best_overlap:
-        merged = hist[:-best_overlap] + window
-        return normalize_dialog_history(merged)
-
-    if _history_severely_corrupt(hist):
-        intro: list[dict[str, str]] = []
-        if (
-            hist
-            and hist[0]["role"] == "tutor"
-            and window
-            and window[0]["role"] != "tutor"
-        ):
-            intro = [hist[0]]
-        return normalize_dialog_history(intro + window)
-
-    if hk and wk and hk[-1] == wk[0] and len(wk) > 1:
-        return normalize_dialog_history(hist + window[1:])
-
-    return normalize_dialog_history(hist + window)
+        repaired, seq = reconcile_dialog_history(hist, None, start_seq=0)
+        repaired = sort_by_msg_id(_collapse_adjacent_duplicate_users(repaired))
+        if memory is not None:
+            memory.dialog_seq = max(
+                int(memory.dialog_seq or 0), seq, max_msg_id(repaired)
+            )
+        return repaired
+    _repair_memory_dialog_ids(memory)
+    window = clean_dialog_rows(memory.active_window)
+    start = max(int(memory.dialog_seq or 0), max_msg_id(hist))
+    merged, seq = reconcile_dialog_history(hist, window, start_seq=start)
+    merged = sort_by_msg_id(_collapse_adjacent_duplicate_users(merged))
+    memory.dialog_seq = max(int(memory.dialog_seq or 0), seq, max_msg_id(merged))
+    return merged
 
 
 class _SessionRecord:
     def __init__(
         self,
-        node_status: NodeStatus = "in_progress",
+        node_status: NodeStatus = "unexplored",
         content: NodeContentBlock | None = None,
         history: list[dict[str, str]] | None = None,
         memory: SessionMemory | None = None,
@@ -173,7 +221,20 @@ def _normalize_status(raw: str) -> NodeStatus:
     s = (raw or "").strip()
     if s in _VALID_STATUSES:
         return s
-    return "in_progress"
+    if s in ("passed", "skipped"):
+        return "passed_by_equivalence"
+    return "unexplored"
+
+
+def _repair_tutor_history_markdown(history: list[dict[str, str]]) -> None:
+    for item in history:
+        if (item.get("role") or "").strip() != "tutor":
+            continue
+        raw = str(item.get("content") or "")
+        if not raw.strip():
+            continue
+        item["content"] = repair_llm_display_text(raw)
+        item.pop("content_html", None)
 
 
 def get_session(curriculum_id: str, node_id: str) -> _SessionRecord:
@@ -182,17 +243,30 @@ def get_session(curriculum_id: str, node_id: str) -> _SessionRecord:
         blob = _load_all().get(key) or {}
     content_raw = blob.get("content") or {}
     content = NodeContentBlock.model_validate(content_raw)
-    if (content.diagram or "").strip():
-        content = NodeContentBlock(
-            **{
-                **content.model_dump(),
-                "diagram": repair_diagram_markdown(content.diagram),
-            }
-        )
-    history = normalize_dialog_history(blob.get("history") or [])
+    from knowledge_engine.src.node_deep_dive.content_assets import (
+        normalize_node_content_diagrams,
+    )
+
+    content = normalize_node_content_diagrams(content)
+    history = clean_dialog_rows(blob.get("history") or [])
     memory = memory_from_blob(blob.get("memory"))
+    registry = load_covered_subtopics_from_blob(blob if isinstance(blob, dict) else {})
+    terms = load_introduced_terms_from_blob(blob if isinstance(blob, dict) else {})
+    if memory is None and (registry or terms):
+        memory = SessionMemory(
+            covered_subtopics=registry,
+            introduced_terms=terms,
+        )
+    elif memory is not None:
+        if registry:
+            carry_covered_subtopics(registry, memory)
+        if terms:
+            carry_introduced_terms(terms, memory)
+    if memory is not None:
+        _repair_memory_dialog_ids(memory)
     history = repair_history_with_memory(history, memory)
-    status = _normalize_status(str(blob.get("node_status") or "in_progress"))
+    _repair_tutor_history_markdown(history)
+    status = _normalize_status(str(blob.get("node_status") or "unexplored"))
     return _SessionRecord(
         node_status=status,
         content=content,
@@ -214,17 +288,37 @@ def save_session(
     key = _session_key(curriculum_id, node_id)
     labels = [str(x).strip() for x in (rag_fact_labels or []) if str(x).strip()][:8]
     norm_history = repair_history_with_memory(history, memory)
-    content_dump = {
-        k: v
-        for k, v in content.model_dump().items()
-        if k != "summary_html"
-    }
-    if content_dump.get("diagram"):
-        content_dump["diagram"] = repair_diagram_markdown(
-            str(content_dump.get("diagram") or "")
+    if memory is not None:
+        from knowledge_engine.src.node_deep_dive.dialog_ids import (
+            patch_last_tutor_history_content,
         )
+        from knowledge_engine.src.node_deep_dive.tutor_dialogue import (
+            recover_tutor_display_from_chat_sessions,
+        )
+
+        full = (memory.last_tutor_display_message or "").strip()
+        if not full:
+            full, fu = recover_tutor_display_from_chat_sessions(memory)
+            if full:
+                memory.last_tutor_display_message = full[:12_000]
+                if fu:
+                    memory.last_tutor_follow_up_question = fu[:2000]
+        if full:
+            norm_history = patch_last_tutor_history_content(norm_history, full)
+    _repair_tutor_history_markdown(norm_history)
+    from knowledge_engine.src.node_deep_dive.content_assets import (
+        normalize_node_content_diagrams,
+    )
+
+    content = normalize_node_content_diagrams(content)
+    content_dump = {
+        k: v for k, v in content.model_dump().items() if k != "summary_html"
+    }
     mem_blob: dict[str, Any] = {}
     if memory is not None:
+        from knowledge_engine.schemas.global_knowledge import utc_now_iso
+
+        memory.memory_updated_at = utc_now_iso()
         mem_blob = memory_to_blob(memory)
     with _lock:
         all_data = _load_all()
@@ -239,10 +333,30 @@ def save_session(
         }
         if mem_blob:
             entry["memory"] = mem_blob
-        if source_registry:
-            entry["source_registry"] = source_registry[:12]
+        if memory is not None:
+            entry["covered_subtopics"] = _normalize_covered_subtopics(
+                memory.covered_subtopics
+            )
+            entry["introduced_terms"] = normalize_introduced_terms(
+                memory.introduced_terms
+            )
+        if source_registry is not None:
+            entry["source_registry"] = list(source_registry)[:12]
         all_data[key] = entry
         _save_all(all_data)
+        if memory is not None:
+            from knowledge_engine.src.curriculum.global_tracker import (
+                commit_session_and_global_registry,
+            )
+
+            commit_session_and_global_registry(
+                "default",
+                curriculum_id,
+                node_id,
+                memory,
+                session_updated_at=entry["updated_at"],
+                node_title="",
+            )
     return key
 
 
@@ -268,7 +382,9 @@ def get_node_statuses_for_curriculum(curriculum_id: str) -> dict[str, str]:
             if not key.startswith(prefix):
                 continue
             node_id = key.split("::", 1)[-1]
-            out[node_id] = _normalize_status(str(blob.get("node_status") or "in_progress"))
+            out[node_id] = _normalize_status(
+                str(blob.get("node_status") or "unexplored")
+            )
     return out
 
 
@@ -280,3 +396,15 @@ def discover_curriculum_ids_from_sessions() -> set[str]:
             if "::" in key:
                 ids.add(key.split("::", 1)[0].strip())
     return ids
+
+
+def clear_node_session(curriculum_id: str, node_id: str) -> bool:
+    """Удалить запись сессии ноды (контент, память, история, прогресс)."""
+    key = _session_key(curriculum_id, node_id)
+    with _lock:
+        all_data = _load_all()
+        if key not in all_data:
+            return False
+        del all_data[key]
+        _save_all(all_data)
+    return True

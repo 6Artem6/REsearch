@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from knowledge_engine.config import (
     GUARDRAILS_OLLAMA_MODEL,
-    OLLAMA_STRUCTURE_NUM_PREDICT,
+    OLLAMA_GUARDRAILS_NUM_PREDICT,
 )
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.local_llm_stateless import run_local_structured
@@ -78,7 +78,7 @@ def _generate_validated_query_spec_sync(
         anchor,
         "guardrails / ValidatedQuerySpec",
         temperature=0.05,
-        num_predict=OLLAMA_STRUCTURE_NUM_PREDICT,
+        num_predict=OLLAMA_GUARDRAILS_NUM_PREDICT,
     )
     trace(
         f"GUARDRAILS raw ✓ keywords={len(spec.target_keywords)} "

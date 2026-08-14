@@ -8,7 +8,8 @@ from rich.console import Console
 
 from knowledge_engine.config import MAX_RESEARCH_DEPTH
 from knowledge_engine.llm_locale import GEMINI_RUSSIAN_ROLE, RUSSIAN_OUTPUT_RULE
-from knowledge_engine.schemas import EngineGraphState, ResearchEvaluation
+from knowledge_engine.schemas import EngineGraphState
+from knowledge_engine.schemas.llm_contracts.v04_gemini import ResearchEvaluationContract
 from knowledge_engine.services.gemini_stateless import (
     global_anchor_from_state,
     run_stateless_gemini,
@@ -59,7 +60,7 @@ def research_evaluator_node_v04(state: EngineGraphState) -> dict[str, Any]:
         system,
         user,
         anchor,
-        response_schema=ResearchEvaluation,
+        response_schema=ResearchEvaluationContract,
         label="v04 evaluator / ResearchEvaluation",
         rpm_pause=True,
     )

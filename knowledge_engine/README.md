@@ -4,7 +4,7 @@
 
 Локальный CLI для архитектурного анализа: декомпозиция на CS-абстракции, поиск по **трём горизонтам** (SOTA / Infra / Prod), Trade-off матрица и точечная раскрутка выбранного варианта (графы 0.4–0.7).
 
-Подробно: [docs/SEARCH_HORIZONS.md](docs/SEARCH_HORIZONS.md) · **legacy 0.4–0.6:** [docs/V0_6_CURRENT_SOLUTION.md](docs/V0_6_CURRENT_SOLUTION.md)
+Подробно: [docs/SEARCH_HORIZONS.md](docs/SEARCH_HORIZONS.md) · **Skill Tree / Tutor пайплайны:** [docs/TUTOR_PIPELINES.md](docs/TUTOR_PIPELINES.md) · **диаграммы из источников:** [docs/ARTICLE_DIAGRAMS.md](docs/ARTICLE_DIAGRAMS.md) · **legacy 0.4–0.6:** [docs/V0_6_CURRENT_SOLUTION.md](docs/V0_6_CURRENT_SOLUTION.md)
 
 **История изменений и архитектурные решения:** [CHANGELOG.md](CHANGELOG.md)
 
@@ -120,13 +120,13 @@ tail -f knowledge_engine/.runs/*.log
 
 ## Поток графа (0.4, `GRAPH_VERSION=0.4`)
 
-1. **decomposition** (Gemini) — L0, CS-абстракции  
-2. **query_expansion** (7B) + **query_expander** (site/minus операторы)  
-3. **discovery** — SearXNG v0.6, Domain Trust, архив ссылок  
-4. **document_fetch** → **structure_filter** (7B) → **deep_extractor** (Gemini)  
-5. **research_evaluator** (Gemini) → **decision_router** (Re-Act, лимиты URL/depth)  
-6. **matrix** (Gemini) → **lancedb_save**  
-7. Interrupt — выбор варианта (CLI/API)  
+1. **decomposition** (Gemini) — L0, CS-абстракции
+2. **query_expansion** (7B) + **query_expander** (site/minus операторы)
+3. **discovery** — SearXNG v0.6, Domain Trust, архив ссылок
+4. **document_fetch** → **structure_filter** (7B) → **deep_extractor** (Gemini)
+5. **research_evaluator** (Gemini) → **decision_router** (Re-Act, лимиты URL/depth)
+6. **matrix** (Gemini) → **lancedb_save**
+7. Interrupt — выбор варианта (CLI/API)
 8. **unraveling** (Gemini) — отдельный `POST /unravel` или `unravel-analysis.sh`
 
 Детали: [docs/V0_6_CURRENT_SOLUTION.md](docs/V0_6_CURRENT_SOLUTION.md)
@@ -140,7 +140,7 @@ tail -f knowledge_engine/.runs/*.log
 5. Пауза (interrupt) — выбор ID в CLI
 6. **unraveling** — детальный разбор (7B)
 
-Перед Gemini в CLI: `python -m knowledge_engine.main browser-login`.  
+Перед Gemini в CLI: `python -m knowledge_engine.main browser-login`.
 **v0.8:** Consensus login — `./knowledge_engine/scripts/consensus-login.sh` ([V0_8_CONSENSUS_AGENT.md](docs/V0_8_CONSENSUS_AGENT.md)).
 
 ## Поток v0.8 (`GRAPH_VERSION=0.8`)

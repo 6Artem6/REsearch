@@ -2,29 +2,45 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from knowledge_engine.api.helpers.work_enqueue import enqueue_node_deep_dive
 from knowledge_engine.services.gemini_stateless import GeminiUnavailableError
-from knowledge_engine.services.llm_markdown_service import llm_markdown_to_html
-from knowledge_engine.services.node_selection_explain import run_node_selection_explain
-from knowledge_engine.services.node_source_registry import build_registry_from_references
+from knowledge_engine.services.node_selection_explain import (
+    explain_result_to_api_dict,
+    iter_node_selection_explain_stream,
+    run_node_selection_explain,
+)
+from knowledge_engine.services.node_session_reset import (
+    reset_node_deep_dive_persistence,
+)
+from knowledge_engine.services.node_source_registry import (
+    build_session_source_registry,
+)
+from knowledge_engine.services.skill_tree_store import get_curriculum_graph
 from knowledge_engine.services.work_job_store import WorkJobStatus, work_job_store
+from knowledge_engine.src.node_deep_dive.engine import (
+    complete_node_prepare_response,
+    iter_node_deep_dive_chat_stream,
+)
 from knowledge_engine.src.node_deep_dive.schemas import (
     NodeDataInput,
-    NodeDeepDiveResponse,
+    NodeDeepDiveRequest,
 )
 from knowledge_engine.src.node_deep_dive.session_store import (
-    _load_all,
-    _session_key,
+    get_all_sessions_for_curriculum,
     get_node_statuses_for_curriculum,
     get_session,
 )
-from knowledge_engine.src.processors.explainer import DEFAULT_EXPLAIN_QUESTION
-from knowledge_engine.src.processors.selection_prompts import suggest_selection_questions
+from knowledge_engine.src.processors.selection_prompts import (
+    suggest_selection_questions,
+)
 from knowledge_engine.ui.run_log import trace
 
 router = APIRouter(prefix="/node", tags=["skill-tree-node"])
@@ -50,6 +66,69 @@ class NodeJobAccepted(BaseModel):
     status: str
 
 
+def _session_init_ready(curriculum_id: str, node_id: str) -> bool:
+    """True when init prepare already persisted memory for this node."""
+    session = get_session(curriculum_id, node_id)
+    return session.memory is not None
+
+
+def _build_init_result_from_session(
+    curriculum_id: str,
+    node_data: NodeDataInput,
+) -> dict[str, Any] | None:
+    """Rebuild NodeDeepDiveResponse from a prepared session (no new worker job)."""
+    cid = curriculum_id.strip()
+    nid = node_data.node_id.strip()
+    if not _session_init_ready(cid, nid):
+        return None
+    blob = get_all_sessions_for_curriculum(cid).get(nid) or {}
+    labels = [str(x) for x in (blob.get("rag_fact_labels") or []) if str(x).strip()]
+    rag_count = len(labels)
+    req = NodeDeepDiveRequest(
+        curriculum_id=cid,
+        node_data=node_data,
+        user_action="init",
+        user_message="",
+    )
+    resp = asyncio.run(complete_node_prepare_response(req, rag_count, labels))
+    return resp.model_dump()
+
+
+def _resolve_ready_init_result(
+    curriculum_id: str,
+    node_data: NodeDataInput,
+) -> dict[str, Any] | None:
+    """
+    Immediate init payload when work already finished:
+    1) session memory from a prior init
+    2) else latest completed init job.result (non-orphan)
+    Also completes any active orphan init job so waiters/duplicates unlock.
+    """
+    cid = curriculum_id.strip()
+    nid = node_data.node_id.strip()
+    result = _build_init_result_from_session(cid, node_data)
+    if result is None:
+        done = work_job_store.find_latest_completed_node_deep_dive(
+            cid, nid, user_action="init"
+        )
+        if done and isinstance(done.result, dict) and done.result:
+            # Skip synthetic results from cancel_work_job --complete orphans.
+            if not done.result.get("closed_orphan_job"):
+                result = dict(done.result)
+
+    if result is None:
+        return None
+
+    active = work_job_store.find_active_node_deep_dive(cid, nid, user_action="init")
+    if active is not None:
+        work_job_store.complete(active.id, result)
+        trace(
+            f"WORK init ready → complete orphan | {cid}/{nid} "
+            f"job={active.id} was={active.status.value}"
+        )
+    return result
+
+
 def _enqueue_and_maybe_inline(
     action: str,
     body: NodeSessionBody,
@@ -70,9 +149,33 @@ def _enqueue_and_maybe_inline(
     return {"job_id": job_id, "status": "pending"}
 
 
-@router.post("/init", status_code=status.HTTP_202_ACCEPTED)
-def post_node_init(body: NodeSessionBody) -> dict[str, Any]:
-    trace(f"API ▶ POST /node/init (queue) | {body.curriculum_id}/{body.node_data.node_id}")
+@router.post("/init")
+def post_node_init(body: NodeSessionBody, response: Response) -> dict[str, Any]:
+    cid = body.curriculum_id.strip()
+    nid = body.node_data.node_id.strip()
+    ready = _resolve_ready_init_result(cid, body.node_data)
+    if ready is not None:
+        trace(f"API ▶ POST /node/init (ready) | {cid}/{nid}")
+        response.status_code = status.HTTP_200_OK
+        return ready
+    trace(f"API ▶ POST /node/init (queue) | {cid}/{nid}")
+    out = _enqueue_and_maybe_inline("init", body)
+    if "job_id" in out:
+        response.status_code = status.HTTP_202_ACCEPTED
+        return out
+    response.status_code = status.HTTP_200_OK
+    return out
+
+
+@router.post("/restart", status_code=status.HTTP_202_ACCEPTED)
+def post_node_restart(body: NodeSessionBody) -> dict[str, Any]:
+    """
+    Сброс прогресса и материалов ноды + повторный init (RAG, memory, registry).
+    """
+    cid = body.curriculum_id.strip()
+    nid = body.node_data.node_id.strip()
+    trace(f"API ▶ POST /node/restart (queue) | {cid}/{nid}")
+    reset_node_deep_dive_persistence(cid, nid)
     out = _enqueue_and_maybe_inline("init", body)
     if "job_id" in out:
         return out
@@ -88,6 +191,41 @@ def post_node_chat(body: NodeChatBody) -> dict[str, Any]:
     if "job_id" in out:
         return out
     return out
+
+
+@router.post("/chat-stream")
+async def post_node_chat_stream(body: NodeChatBody) -> StreamingResponse:
+    trace(
+        f"API ▶ POST /node/chat-stream (SSE) | "
+        f"{body.curriculum_id}/{body.node_data.node_id}"
+    )
+    req = NodeDeepDiveRequest(
+        curriculum_id=body.curriculum_id.strip(),
+        node_data=body.node_data,
+        user_action="chat",
+        user_message=body.user_message.strip(),
+    )
+
+    async def event_stream():
+        try:
+            async for evt in iter_node_deep_dive_chat_stream(req):
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        except Exception as exc:
+            from knowledge_engine.ui.errors import trace_exception
+
+            detail = trace_exception(exc, "NODE_DIVE chat-stream")
+            err = {
+                "type": "error",
+                "detail": detail,
+                "error_type": type(exc).__name__,
+            }
+            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/verify", status_code=status.HTTP_202_ACCEPTED)
@@ -107,14 +245,35 @@ def get_node_statuses(curriculum_id: str) -> dict[str, Any]:
     return {"curriculum_id": curriculum_id, "statuses": statuses}
 
 
+@router.get("/source-registry/{curriculum_id}/{node_id}")
+def get_node_source_registry(curriculum_id: str, node_id: str) -> dict[str, Any]:
+    """Реестр [Sx] строго из текущих mapped_source_ids (без stale session JSON)."""
+    cid = curriculum_id.strip()
+    nid = node_id.strip()
+    registry = _node_source_registry(cid, nid)
+    return {
+        "curriculum_id": cid,
+        "node_id": nid,
+        "source_registry": registry,
+    }
+
+
 def _node_source_registry(curriculum_id: str, node_id: str) -> list[dict[str, Any]]:
-    key = _session_key(curriculum_id.strip(), node_id.strip())
-    blob = _load_all().get(key) or {}
-    registry = list(blob.get("source_registry") or [])
-    if registry:
-        return registry
-    session = get_session(curriculum_id, node_id)
-    return build_registry_from_references(session.content.references)
+    cid = curriculum_id.strip()
+    nid = node_id.strip()
+    graph = get_curriculum_graph(cid) or {}
+    mapped: list[str] = []
+    for n in graph.get("nodes") or []:
+        if not isinstance(n, dict):
+            continue
+        if str(n.get("node_id") or n.get("id") or "").strip() == nid:
+            mapped = [
+                str(x).strip()
+                for x in (n.get("mapped_source_ids") or [])
+                if str(x).strip()
+            ]
+            break
+    return build_session_source_registry(cid, mapped)
 
 
 @router.post("/suggest-questions")
@@ -153,20 +312,54 @@ def post_node_explain_selection(body: NodeSelectionBody) -> dict[str, Any]:
             rag_profile,
             registry,
             anchor,
+            memory=memory,
+            curriculum_id=body.curriculum_id.strip(),
+            node=body.node_data,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except GeminiUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    explanation_html = llm_markdown_to_html(result.explanation, registry)
-    return {
-        "explanation": result.explanation,
-        "explanation_html": explanation_html,
-        "source_ref": {
-            "title": result.source_ref.title,
-            "url": result.source_ref.url,
-            "source_id": result.source_ref.source_id,
-        },
-        "default_question": DEFAULT_EXPLAIN_QUESTION,
-    }
+    return explain_result_to_api_dict(result, registry)
+
+
+@router.post("/explain-selection-stream")
+async def post_node_explain_selection_stream(
+    body: NodeSelectionBody,
+) -> StreamingResponse:
+    trace(
+        f"API ▶ POST /node/explain-selection-stream (SSE) | "
+        f"{body.curriculum_id}/{body.node_data.node_id}"
+    )
+    session = get_session(body.curriculum_id.strip(), body.node_data.node_id)
+    registry = _node_source_registry(body.curriculum_id, body.node_data.node_id)
+    memory = session.memory
+    rag_profile = (memory.rag_profile_compressed or "") if memory else ""
+    anchor = f"node_deep_dive:{body.curriculum_id}:{body.node_data.node_id}"
+
+    async def event_stream():
+        try:
+            async for evt in iter_node_selection_explain_stream(
+                body.node_data.title,
+                body.selected_text,
+                body.user_question,
+                body.surrounding_paragraph,
+                session.content.summary,
+                rag_profile,
+                registry,
+                anchor,
+                memory=memory,
+                curriculum_id=body.curriculum_id.strip(),
+                node=body.node_data,
+            ):
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        except GeminiUnavailableError as exc:
+            err = {"type": "error", "detail": str(exc)}
+            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Type, TypeVar
 
 from pydantic import BaseModel
@@ -13,6 +14,7 @@ from knowledge_engine.config import (
 )
 from knowledge_engine.services.gemini_stateless import (
     GeminiUnavailableError,
+    gemini_lite_model_chain,
     is_gemini_available,
     run_gemini_structured_with_chain,
     run_gemini_text_with_chain,
@@ -27,9 +29,12 @@ def run_gemini_lite_structured(
     global_anchor: str,
     response_schema: Type[T],
     label: str,
+    stream_callback: Callable[[str], None] | None = None,
+    stream_text_field: str | None = None,
 ) -> T:
     if not is_gemini_available():
         raise GeminiUnavailableError("Gemini недоступен для v0.7 analytics")
+    models = gemini_lite_model_chain(GEMINI_LITE_MODEL)
     return run_gemini_structured_with_chain(
         GEMINI_LITE_MODEL,
         system_instruction,
@@ -38,6 +43,9 @@ def run_gemini_lite_structured(
         response_schema,
         f"v07 lite / {label}",
         rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
+        stream_callback=stream_callback,
+        stream_text_field=stream_text_field,
+        models=models,
     )
 
 
@@ -46,9 +54,11 @@ def run_gemini_lite_text(
     user_payload: str,
     global_anchor: str,
     label: str,
+    stream_callback: Callable[[str], None] | None = None,
 ) -> str:
     if not is_gemini_available():
         raise GeminiUnavailableError("Gemini недоступен для v0.7 analytics")
+    models = gemini_lite_model_chain(GEMINI_LITE_MODEL)
     return run_gemini_text_with_chain(
         GEMINI_LITE_MODEL,
         system_instruction,
@@ -56,6 +66,8 @@ def run_gemini_lite_text(
         global_anchor,
         label,
         rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
+        stream_callback=stream_callback,
+        models=models,
     )
 
 
@@ -68,6 +80,7 @@ def run_gemini_flash_structured(
 ) -> T:
     if not is_gemini_available():
         raise GeminiUnavailableError("Gemini недоступен для v0.7 analytics")
+    models = gemini_lite_model_chain(GEMINI_FLASH_MODEL)
     return run_gemini_structured_with_chain(
         GEMINI_FLASH_MODEL,
         system_instruction,
@@ -76,6 +89,7 @@ def run_gemini_flash_structured(
         response_schema,
         f"v07 flash / {label}",
         rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
+        models=models,
     )
 
 

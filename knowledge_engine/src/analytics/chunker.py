@@ -7,7 +7,9 @@ from typing import List
 
 from knowledge_engine.llm_locale import GEMINI_RUSSIAN_ROLE, RUSSIAN_OUTPUT_RULE
 from knowledge_engine.src.analytics.gemini_v07 import run_gemini_lite_structured
-from knowledge_engine.src.analytics.schemas import ChunkExtractionResult
+from knowledge_engine.src.analytics.schemas import (
+    ChunkExtractionResult as ChunkExtractionContract,
+)
 from knowledge_engine.src.processors.source_anchors import (
     SOURCE_ANCHOR_RETENTION_PROMPT,
 )
@@ -62,7 +64,7 @@ def extract_structured_chunks(
         system,
         user,
         anchor,
-        ChunkExtractionResult,
+        ChunkExtractionContract,
         "chunker / ChunkExtractionResult",
     )
 

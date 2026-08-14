@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse, urlunparse
@@ -10,12 +9,19 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 
 from knowledge_engine.config import (
+    CURRICULUM_OPEN_SEARCH_QUERY_CONCURRENCY,
     CURRICULUM_SEARCH_MIN_HITS,
     CURRICULUM_SEARCH_PROBE_URLS,
     CURRICULUM_SEARCH_TARGET_HITS,
 )
 from knowledge_engine.services.search.registry import default_registry
-from knowledge_engine.services.search.url_filter import is_blocked_url, url_priority_score
+from knowledge_engine.services.search.url_filter import (
+    is_blocked_url,
+    url_priority_score,
+)
+from knowledge_engine.src.curriculum.curriculum_search_sites import (
+    CURRICULUM_PRIORITY_ENGINEERING_SITES,
+)
 from knowledge_engine.src.curriculum.schemas import CurriculumSearchHit
 from knowledge_engine.ui.run_log import trace
 
@@ -39,11 +45,31 @@ def build_curriculum_search_queries(target_goal: str) -> list[str]:
     goal = (target_goal or "").strip()
     if len(goal) < 8:
         return []
-    return [
+    from knowledge_engine.src.source_evaluator.whitelist import (
+        APPROVED_SOURCES_WHITELIST,
+    )
+
+    queries = [
         f"{goal} system design best practices articles",
-        f"{goal} architecture patterns blog",
-        f"{goal} engineering deep dive tutorial",
+        f"{goal} architecture patterns engineering blog",
+        f"{goal} deep dive production case study",
     ]
+    for site in CURRICULUM_PRIORITY_ENGINEERING_SITES:
+        queries.append(f"site:{site} {goal[:120]}")
+    for entries in APPROVED_SOURCES_WHITELIST.values():
+        for raw in entries[:2]:
+            host = (raw or "").split("/")[0].strip()
+            if host and host not in CURRICULUM_PRIORITY_ENGINEERING_SITES:
+                queries.append(f"site:{host} {goal[:100]}")
+    # dedupe preserve order
+    seen: set[str] = set()
+    out: list[str] = []
+    for q in queries:
+        q = q.strip()
+        if q and q not in seen:
+            seen.add(q)
+            out.append(q)
+    return out[:12]
 
 
 def _probe_url_reachable(url: str, timeout: float = 8.0) -> bool:
@@ -79,70 +105,23 @@ def collect_curriculum_source_hits(
     limit_per_provider: int = 4,
     depth_level: str = "",
     generation_mode: str = "fast",
+    source_policy: str | None = None,
 ) -> list[CurriculumSearchHit]:
-    mode = (generation_mode or "fast").strip().lower()
-    if mode in ("consensus", "deep"):
-        return _collect_consensus_source_hits(
-            target_goal,
-            limit_per_provider=limit_per_provider,
-        )
-    return _collect_fast_source_hits(
+    from knowledge_engine.src.curriculum.source_material_pipeline import (
+        collect_sources_by_policy,
+    )
+    from knowledge_engine.src.curriculum.source_policy import resolve_source_policy
+
+    policy = resolve_source_policy(
+        source_policy,
+        generation_mode,
+        default="practical_only",
+    )
+    return collect_sources_by_policy(
         target_goal,
+        source_policy=policy,
         limit_per_provider=limit_per_provider,
     )
-
-
-def _collect_fast_source_hits(
-    target_goal: str,
-    limit_per_provider: int = 4,
-) -> list[CurriculumSearchHit]:
-    """⚡ Fast: SearXNG → whitelist-блоги, без Playwright Consensus."""
-    trace("CURRICULUM fast ▶ SearXNG + whitelist (без Consensus)")
-    hits = _collect_whitelist_blog_hits(
-        target_goal,
-        limit_per_provider=limit_per_provider,
-        max_hits=CURRICULUM_SEARCH_TARGET_HITS,
-        exclude_url_keys=set(),
-    )
-    if not hits:
-        trace("CURRICULUM fast ⊘ | whitelist-поиск пуст")
-    return hits
-
-
-def _collect_consensus_source_hits(
-    target_goal: str,
-    limit_per_provider: int = 4,
-) -> list[CurriculumSearchHit]:
-    """🔬 Consensus: v0.8 harvest + whitelist-дополнение."""
-    consensus: list[CurriculumSearchHit] = []
-    from knowledge_engine.src.curriculum.curriculum_v08_harvest import (
-        harvest_curriculum_sources_v08,
-    )
-
-    anchor = f"curriculum:{target_goal.strip()[:500]}"
-    try:
-        consensus = asyncio.run(harvest_curriculum_sources_v08(target_goal, anchor))
-    except Exception as exc:
-        trace(f"CURRICULUM v08 harvest failed | {exc}")
-
-    trace(f"CURRICULUM consensus | consensus_hits={len(consensus)}")
-
-    exclude = {_normalize_url_key(h.url) for h in consensus}
-    cap_left = max(0, CURRICULUM_SEARCH_TARGET_HITS - len(consensus))
-    supplement: list[CurriculumSearchHit] = []
-    if cap_left > 0:
-        supplement = _collect_whitelist_blog_hits(
-            target_goal,
-            limit_per_provider=limit_per_provider,
-            max_hits=cap_left,
-            exclude_url_keys=exclude,
-        )
-        trace(f"CURRICULUM consensus | whitelist_blog_supplement={len(supplement)}")
-
-    merged = list(consensus) + supplement
-    if not merged:
-        trace("CURRICULUM consensus ⊘ | harvest и whitelist пусты")
-    return merged
 
 
 def collect_curriculum_search_hits(
@@ -165,7 +144,9 @@ def _collect_whitelist_blog_hits(
     max_hits: int = 8,
     exclude_url_keys: set[str] | None = None,
 ) -> list[CurriculumSearchHit]:
-    from knowledge_engine.src.source_evaluator.evaluator import match_whitelist
+    from knowledge_engine.src.source_evaluator.curriculum_source_pool import (
+        is_collectible_article_url,
+    )
 
     exclude = exclude_url_keys or set()
     raw = _collect_search_registry_hits(target_goal, limit_per_provider)
@@ -176,19 +157,13 @@ def _collect_whitelist_blog_hits(
         key = _normalize_url_key(h.url)
         if not key or key in exclude:
             continue
-        matched, _cat = match_whitelist(h.url)
-        if not matched:
+        if not is_collectible_article_url(h.url):
             continue
         exclude.add(key)
-        out.append(
-            h.model_copy(
-                update={
-                    "source_tier": "whitelist_blog",
-                }
-            )
-        )
+        tier = (h.source_tier or "").strip() or "whitelist_blog"
+        out.append(h.model_copy(update={"source_tier": tier}))
     trace(
-        f"CURRICULUM whitelist blogs ✓ | from_search={len(raw)} accepted={len(out)}"
+        f"CURRICULUM open search blogs ✓ | from_search={len(raw)} accepted={len(out)}"
     )
     return out
 
@@ -202,26 +177,36 @@ def _collect_search_registry_hits(
         return []
 
     registry = default_registry()
+    conc = max(1, CURRICULUM_OPEN_SEARCH_QUERY_CONCURRENCY)
+    trace(
+        f"CURRICULUM open search batch ▶ | queries={len(queries)} "
+        f"concurrency={conc} limit_per_provider={limit_per_provider}"
+    )
+    raw_hits = registry.multi_search_queries_batch_sync(
+        queries,
+        limit_per_provider=limit_per_provider,
+        concurrency=conc,
+    )
+
     merged: list[CurriculumSearchHit] = []
     seen: set[str] = set()
 
-    for q in queries:
-        hits = registry.multi_search_sync(
-            q,
-            limit_per_provider=limit_per_provider,
-        )
-        for h in hits:
-            key = _normalize_url_key(h.url)
-            if not key or key in seen or is_blocked_url(h.url):
-                continue
-            seen.add(key)
-            merged.append(
-                CurriculumSearchHit(
-                    url=h.url.strip()[:2000],
-                    title=(h.title or h.url).strip()[:400],
-                    snippet=(h.snippet or "").strip()[:1200],
-                )
+    for h in raw_hits:
+        key = _normalize_url_key(h.url)
+        if not key or key in seen or is_blocked_url(h.url):
+            continue
+        seen.add(key)
+        merged.append(
+            CurriculumSearchHit(
+                url=h.url.strip()[:2000],
+                title=(h.title or h.url).strip()[:400],
+                snippet=(h.snippet or "").strip()[:1200],
+                published_date=(h.published_date or "").strip()[:32],
+                key_extracts=list(h.key_extracts or [])[:12],
+                source_tier=(h.source or "whitelist_blog").strip()[:24],
+                skip_ollama_summary=bool(h.skip_ollama_summary),
             )
+        )
 
     merged.sort(key=lambda x: url_priority_score(x.url))
     cap = CURRICULUM_SEARCH_TARGET_HITS
@@ -261,6 +246,7 @@ def search_hits_as_prompt_json(hits: list[CurriculumSearchHit]) -> str:
                 "title": h.title,
                 "url": h.url,
                 "source_tier": h.source_tier or "",
+                "published_date": (h.published_date or "").strip(),
                 "key_extracts": extracts[:8],
             }
         )

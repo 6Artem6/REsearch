@@ -9,28 +9,38 @@ from pydantic import BaseModel, Field
 
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.v07_run_store import v07_run_store
+from knowledge_engine.src.node_deep_dive.interaction_prompt_layout import (
+    BLOCK_STATIC_PRESET_HEADER,
+    LAYOUT_AND_TYPOGRAPHY_RULES,
+)
 from knowledge_engine.src.processors.source_anchors import strip_source_anchor_tags
 
 _SOURCE_TAG_RE = re.compile(r"\[S(\d+)\]", re.I)
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
 
-EXPLAINER_SYSTEM = f"""Ты — исследовательский аналитик. Пользователь выделил фразу в кратком summary и просит глубже объяснить.
+EXPLAINER_SYSTEM = f"""{BLOCK_STATIC_PRESET_HEADER}
+You are a research analyst. The user highlighted a phrase in a short summary and wants deeper explanation.
 
 {RUSSIAN_OUTPUT_RULE}
-Вопрос пользователя может быть на английском (для сохранения терминов) — ответ всё равно полностью на русском.
-Термины, аббревиатуры и названия из статьи (microservices, HNSW, RPC) можно оставить в оригинале.
+User questions may be in English (to preserve terms); the answer body must still be fully in Russian.
+Keep article terms (microservices, HNSW, RPC) in the original form when appropriate.
 
-ЗАДАЧА:
-Разберись в RAW SOURCE TEXT из научной статьи. Найди механики, причины и определения, на которые опираются авторы.
+TASK:
+Read RAW SOURCE TEXT from the paper. Extract mechanisms, causes, and definitions the authors rely on.
 
-ПРАВИЛА:
-1. НЕ пересказывай выделенный текст summary.
-2. Вытащи из источника детали, которые summary опустило (протоколы, архитектурные ограничения, эксперименты, формулы).
-3. Если в источнике нет глубины для «почему/что» — явно скажи по-русски, что статья упоминает факт без механики, и дай короткое стандартное CS-пояснение.
+{LAYOUT_AND_TYPOGRAPHY_RULES}
 
-Структура (заголовки на русском):
-- 🔍 **Деталь из статьи ([S_x])**: что именно описывают авторы?
-- 💡 **Коротко**: простой перевод смысла для инженера.
+RULES:
+1. Do NOT paraphrase the highlighted summary text.
+2. Pull details the summary omitted (protocols, constraints, experiments, formulas).
+3. If the source lacks depth for \"why/how\" — state clearly in Russian that the paper names the fact without mechanism, then give a short standard CS gloss.
+
+Structure (Russian section headers):
+- **Detail from source ([S_x])**: what do the authors describe?
+- **In short**: engineer-friendly takeaway.
+"""
+"""
+RU (пояснение): Explain v08 статьи — RAW SOURCE, [S*], структура «из источника / коротко».
 """
 
 DEFAULT_EXPLAIN_QUESTION = "Объясни, что это значит?"
@@ -390,7 +400,8 @@ def run_contextual_explain(
     )
     chunk_label = source_ref.source_id or chunk.get("source_anchor") or "Sx"
 
-    from knowledge_engine.src.analytics.gemini_v07 import run_gemini_lite_text
+    from knowledge_engine.schemas.llm_contracts.tutor import NodeExplainContract
+    from knowledge_engine.src.analytics.gemini_v07 import run_gemini_lite_structured
 
     user_payload = (
         f"Highlighted Text:\n{selected}\n\n"
@@ -400,12 +411,14 @@ def run_contextual_explain(
         f"{expanded_material}"
     )
     anchor = f"Explain fragment for run {run_id} | source {chunk_label}"
-    explanation = run_gemini_lite_text(
+    out = run_gemini_lite_structured(
         EXPLAINER_SYSTEM,
         user_payload,
         anchor,
+        NodeExplainContract,
         "contextual_explainer",
-    ).strip()
+    )
+    explanation = (out.explanation or "").strip()
 
     return ExplainResult(
         explanation=explanation,

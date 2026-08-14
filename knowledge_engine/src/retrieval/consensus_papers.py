@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any, List
 from urllib.parse import unquote
 
 from playwright.async_api import Page
 
+from knowledge_engine.config import (
+    CURRICULUM_ACADEMIC_ABSTRACT_MIN_CHARS,
+    SEMANTIC_SCHOLAR_ENABLED,
+    SEMANTIC_SCHOLAR_ENRICH_TIMEOUT_SEC,
+)
 from knowledge_engine.src.retrieval.consensus_capture import (
     is_generic_consensus_url,
     normalize_paper_urls,
@@ -58,22 +64,30 @@ def _papers_from_urls(
                 source_url=u,
                 pdf_url=pdf_url,
                 source="consensus",
+                arxiv_id=m.group(1) if m else "",
             )
         )
     return papers
 
 
 async def extract_paper_cards_from_page(page: Page) -> List[ScholarPaper]:
-    """Собрать ссылки на публикации из последнего блока ответа Consensus."""
+    """Собрать ссылки на публикации из UI (quick search / thread answer)."""
     try:
         raw_links: list[dict[str, Any]] = await page.evaluate(
             """() => {
                 const sel = 'a[href*="doi.org"], a[href*="arxiv.org"], a[href*="semanticscholar"], '
                     + 'a[href*="pubmed"], a[href*="consensus.app/papers"], a[href*="consensus.app/paper"], '
-                    + '[data-testid*="source"] a, [data-testid*="citation"] a, [data-testid*="paper"] a';
+                    + '[data-testid*="source"] a, [data-testid*="citation"] a, [data-testid*="paper"] a, '
+                    + '[data-testid*="Paper"] a, [data-testid*="result"] a';
                 const anchors = Array.from(document.querySelectorAll(sel));
                 const main = document.querySelector('main') || document.body;
                 const extra = Array.from(main.querySelectorAll('a[href]'));
+                const cardRoots = Array.from(
+                    main.querySelectorAll(
+                        '[data-testid*="paper"], [data-testid*="Paper"], '
+                        + '[data-testid*="result"], article, li'
+                    )
+                );
                 const all = [...anchors, ...extra];
                 const seen = new Set();
                 const out = [];
@@ -81,13 +95,28 @@ async def extract_paper_cards_from_page(page: Page) -> List[ScholarPaper]:
                     const href = a.href;
                     if (!href || seen.has(href)) continue;
                     seen.add(href);
-                    const block = (a.closest('[data-testid*="source"], article, li, [class*="Paper"]')
+                    const block = (a.closest('[data-testid*="paper"], [data-testid*="Paper"], article, li')
                         || a.parentElement)?.innerText?.slice(0, 800) || '';
                     out.push({
                         href,
                         text: (a.innerText || a.textContent || '').trim().slice(0, 300),
                         block
                     });
+                }
+                for (const card of cardRoots.slice(0, 120)) {
+                    const t = (card.innerText || '').trim().slice(0, 900);
+                    if (t.length < 40) continue;
+                    const innerLinks = card.querySelectorAll('a[href]');
+                    for (const a of innerLinks) {
+                        const href = a.href;
+                        if (!href || seen.has(href)) continue;
+                        seen.add(href);
+                        out.push({
+                            href,
+                            text: (a.innerText || '').trim().slice(0, 300),
+                            block: t
+                        });
+                    }
                 }
                 return out;
             }"""
@@ -104,13 +133,22 @@ async def extract_paper_cards_from_page(page: Page) -> List[ScholarPaper]:
             continue
         text = str(item.get("text") or "").strip()
         block = str(item.get("block") or "").strip()
-        snippet = text or block.split("\n")[0]
+        snippet = block if len(block) > len(text) else text
+        if not snippet and block:
+            snippet = block.split("\n")[0]
         context_map[href] = snippet
         urls.append(href)
 
     papers = normalize_paper_urls(_papers_from_urls(urls, context_map))
-    trace(f"Consensus ✓ DOM papers={len(papers)}")
-    return papers
+    enriched: List[ScholarPaper] = []
+    for p in papers:
+        blk = context_map.get((p.source_url or "").strip(), "")
+        if blk and len(blk) > 60 and len((p.abstract or "")) < 40:
+            enriched.append(p.model_copy(update={"abstract": blk[:800]}))
+        else:
+            enriched.append(p)
+    trace(f"Consensus ✓ DOM papers={len(enriched)}")
+    return enriched
 
 
 def extract_papers_from_text(raw_text: str) -> List[ScholarPaper]:
@@ -168,44 +206,109 @@ def consensus_docs_to_papers(docs: list[dict[str, Any]]) -> List[ScholarPaper]:
     return papers
 
 
-async def enrich_papers_metadata(papers: List[ScholarPaper]) -> List[ScholarPaper]:
-    """Дополнить abstract/tldr через Semantic Scholar по заголовку (если API включён)."""
-    from knowledge_engine.config import SEMANTIC_SCHOLAR_ENABLED
+def _paper_has_usable_abstract(paper: ScholarPaper) -> bool:
+    return len((paper.abstract or "").strip()) >= CURRICULUM_ACADEMIC_ABSTRACT_MIN_CHARS
 
-    if not SEMANTIC_SCHOLAR_ENABLED:
-        trace("Consensus enrich ⊘ Semantic Scholar disabled — keep extracted metadata")
-        return papers
+
+async def _ss_enrich_one_paper(
+    paper: ScholarPaper,
+    *,
+    ignore_enabled_flag: bool,
+) -> ScholarPaper:
+    if _paper_has_usable_abstract(paper):
+        return paper
+    title = (paper.title or "").strip()
+    if len(title) < 8:
+        return paper
 
     from knowledge_engine.src.retrieval.semantic_scholar import search_semantic_scholar
 
-    enriched: List[ScholarPaper] = []
-    for p in papers:
-        if (p.abstract or p.tldr) and len(p.title) > 8:
-            enriched.append(p)
-            continue
-        if len(p.title) < 8:
-            enriched.append(p)
-            continue
-        hits = await search_semantic_scholar(p.title, limit=1)
-        if not hits:
-            enriched.append(p)
-            continue
-        h = hits[0]
-        if not h.title or h.title.lower()[:20] not in p.title.lower()[:40]:
-            enriched.append(p)
-            continue
-        enriched.append(
-            ScholarPaper(
-                paper_id=h.paper_id or p.paper_id,
-                title=p.title or h.title,
-                year=h.year or p.year,
-                tldr=h.tldr or p.tldr,
-                abstract=h.abstract or p.abstract,
-                citation_count=h.citation_count,
-                venue=h.venue or p.venue,
-                pdf_url=h.pdf_url or p.pdf_url,
-                source_url=p.source_url or h.source_url,
-                source="consensus+semantic_scholar",
-            )
+    timeout = max(0.5, SEMANTIC_SCHOLAR_ENRICH_TIMEOUT_SEC)
+    try:
+        hits = await asyncio.wait_for(
+            search_semantic_scholar(
+                title,
+                limit=1,
+                ignore_enabled_flag=ignore_enabled_flag,
+            ),
+            timeout=timeout,
         )
-    return enriched
+    except asyncio.TimeoutError:
+        trace(
+            f"Consensus enrich ⊘ SS timeout ({timeout:.1f}s) | "
+            f"{title[:60]} — keep as-is"
+        )
+        return paper
+    except Exception as exc:
+        trace(f"Consensus enrich ⊘ SS | {title[:50]} | {exc}")
+        return paper
+
+    if not hits:
+        return paper
+    h = hits[0]
+    if not h.title or h.title.lower()[:20] not in title.lower()[:40]:
+        return paper
+    return ScholarPaper(
+        paper_id=h.paper_id or paper.paper_id,
+        title=paper.title or h.title,
+        year=h.year or paper.year,
+        tldr=h.tldr or paper.tldr,
+        abstract=h.abstract or paper.abstract,
+        citation_count=h.citation_count,
+        venue=h.venue or paper.venue,
+        pdf_url=h.pdf_url or paper.pdf_url,
+        source_url=paper.source_url or h.source_url,
+        source="consensus+semantic_scholar",
+        arxiv_id=paper.arxiv_id or h.arxiv_id,
+        doi=paper.doi or h.doi,
+    )
+
+
+async def enrich_papers_metadata(
+    papers: List[ScholarPaper],
+    *,
+    ignore_enabled_flag: bool = False,
+) -> List[ScholarPaper]:
+    """Дополнить abstract через SS по заголовку; затем arXiv id_list hydrate."""
+    from knowledge_engine.src.retrieval.arxiv_hydrate import hydrate_scholar_papers
+
+    if not papers:
+        return papers
+
+    enriched: List[ScholarPaper] = list(papers)
+    if not SEMANTIC_SCHOLAR_ENABLED and not ignore_enabled_flag:
+        trace("Consensus enrich ⊘ Semantic Scholar disabled — keep extracted metadata")
+    else:
+        need = sum(1 for p in papers if not _paper_has_usable_abstract(p))
+        skip_n = len(papers) - need
+        if skip_n:
+            trace(f"Consensus enrich ⊘ SS skip | abstract_ok={skip_n}/{len(papers)}")
+        if need > 0:
+            if ignore_enabled_flag:
+                from knowledge_engine.services.curriculum_api_quota_store import (
+                    can_use_semantic_scholar,
+                )
+
+                allowed, why = can_use_semantic_scholar()
+                if not allowed:
+                    trace(
+                        f"Consensus enrich ⊘ SS quota | {why} — skip {need} title lookups"
+                    )
+                    return await hydrate_scholar_papers(enriched)
+
+            trace(
+                f"Consensus enrich ▶ SS | lookups={need} "
+                f"timeout={SEMANTIC_SCHOLAR_ENRICH_TIMEOUT_SEC:.1f}s per title"
+            )
+            enriched = []
+            for p in papers:
+                if _paper_has_usable_abstract(p):
+                    enriched.append(p)
+                    continue
+                enriched.append(
+                    await _ss_enrich_one_paper(
+                        p, ignore_enabled_flag=ignore_enabled_flag
+                    )
+                )
+
+    return await hydrate_scholar_papers(enriched)

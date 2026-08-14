@@ -39,16 +39,20 @@ if ! curl -sf "${OLLAMA_BASE_URL}/api/tags" >/dev/null 2>&1; then
 fi
 
 echo ""
-echo "==> KE Worker (Gemini / граф / Skill Tree)"
+echo "==> KE Worker (watch → auto-reload на .py, как API)"
 if pgrep -f "[-m ]knowledge_engine\\.worker" >/dev/null 2>&1; then
   echo "    WARN: останавливаем старые процессы knowledge_engine.worker"
   pkill -f "[-m ]knowledge_engine\\.worker" 2>/dev/null || true
   sleep 0.6
 fi
-"${ROOT}/.venv/bin/python" -m knowledge_engine.worker &
-WORKER_PID=$!
-echo "    worker pid=$WORKER_PID (логи WORKER ▶ в этом терминале)"
-trap 'kill "$WORKER_PID" 2>/dev/null || true' EXIT INT TERM
+if pgrep -f "dev_worker_watch\\.py" >/dev/null 2>&1; then
+  pkill -f "dev_worker_watch\\.py" 2>/dev/null || true
+  sleep 0.3
+fi
+"${ROOT}/.venv/bin/python" "${ROOT}/knowledge_engine/scripts/dev_worker_watch.py" &
+WORKER_WATCH_PID=$!
+echo "    worker watch pid=$WORKER_WATCH_PID (reload при правках knowledge_engine/**/*.py)"
+trap 'kill "$WORKER_WATCH_PID" 2>/dev/null || true; pkill -f "[-m ]knowledge_engine\\.worker" 2>/dev/null || true' EXIT INT TERM
 
 echo ""
 echo "==> Native API reload → http://${KE_API_HOST}:${KE_API_PORT}/docs"

@@ -1085,7 +1085,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher.useContext(Context);
         }
-        function useState6(initialState) {
+        function useState7(initialState) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useState(initialState);
         }
@@ -1093,11 +1093,11 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useReducer(reducer, initialArg, init2);
         }
-        function useRef8(initialValue) {
+        function useRef9(initialValue) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useRef(initialValue);
         }
-        function useEffect8(create2, deps) {
+        function useEffect10(create2, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useEffect(create2, deps);
         }
@@ -1113,7 +1113,7 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useCallback(callback, deps);
         }
-        function useMemo3(create2, deps) {
+        function useMemo6(create2, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useMemo(create2, deps);
         }
@@ -1880,15 +1880,15 @@ var require_react_development = __commonJS({
         exports.useContext = useContext2;
         exports.useDebugValue = useDebugValue2;
         exports.useDeferredValue = useDeferredValue;
-        exports.useEffect = useEffect8;
+        exports.useEffect = useEffect10;
         exports.useId = useId;
         exports.useImperativeHandle = useImperativeHandle;
         exports.useInsertionEffect = useInsertionEffect;
         exports.useLayoutEffect = useLayoutEffect2;
-        exports.useMemo = useMemo3;
+        exports.useMemo = useMemo6;
         exports.useReducer = useReducer;
-        exports.useRef = useRef8;
-        exports.useState = useState6;
+        exports.useRef = useRef9;
+        exports.useState = useState7;
         exports.useSyncExternalStore = useSyncExternalStore;
         exports.useTransition = useTransition;
         exports.version = ReactVersion;
@@ -2384,9 +2384,9 @@ var require_react_dom_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var React15 = require_react();
+        var React20 = require_react();
         var Scheduler = require_scheduler();
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React20.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         var suppressWarning = false;
         function setSuppressWarning(newSuppressWarning) {
           {
@@ -3993,7 +3993,7 @@ var require_react_dom_development = __commonJS({
           {
             if (props.value == null) {
               if (typeof props.children === "object" && props.children !== null) {
-                React15.Children.forEach(props.children, function(child) {
+                React20.Children.forEach(props.children, function(child) {
                   if (child == null) {
                     return;
                   }
@@ -23589,7 +23589,7 @@ var require_react_jsx_runtime_development = __commonJS({
     if (true) {
       (function() {
         "use strict";
-        var React15 = require_react();
+        var React20 = require_react();
         var REACT_ELEMENT_TYPE = Symbol.for("react.element");
         var REACT_PORTAL_TYPE = Symbol.for("react.portal");
         var REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
@@ -23615,7 +23615,7 @@ var require_react_jsx_runtime_development = __commonJS({
           }
           return null;
         }
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React20.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function error(format) {
           {
             {
@@ -24496,7 +24496,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
         return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
       }
       function useSyncExternalStore$2(subscribe, getSnapshot) {
-        didWarnOld18Alpha || void 0 === React15.startTransition || (didWarnOld18Alpha = true, console.error(
+        didWarnOld18Alpha || void 0 === React20.startTransition || (didWarnOld18Alpha = true, console.error(
           "You are using an outdated, pre-release alpha of React 18 that does not support useSyncExternalStore. The use-sync-external-store shim will not work correctly. Upgrade to a newer pre-release."
         ));
         var value = getSnapshot();
@@ -24506,7 +24506,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
             "The result of getSnapshot should be cached to avoid an infinite loop"
           ), didWarnUncachedGetSnapshot = true);
         }
-        cachedValue = useState6({
+        cachedValue = useState7({
           inst: { value, getSnapshot }
         });
         var inst = cachedValue[0].inst, forceUpdate = cachedValue[1];
@@ -24518,7 +24518,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
           },
           [subscribe, value, getSnapshot]
         );
-        useEffect8(
+        useEffect10(
           function() {
             checkIfSnapshotChanged(inst) && forceUpdate({ inst });
             return subscribe(function() {
@@ -24544,8 +24544,8 @@ var require_use_sync_external_store_shim_development = __commonJS({
         return getSnapshot();
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React15 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is, useState6 = React15.useState, useEffect8 = React15.useEffect, useLayoutEffect2 = React15.useLayoutEffect, useDebugValue2 = React15.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
-      exports.useSyncExternalStore = void 0 !== React15.useSyncExternalStore ? React15.useSyncExternalStore : shim;
+      var React20 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is, useState7 = React20.useState, useEffect10 = React20.useEffect, useLayoutEffect2 = React20.useLayoutEffect, useDebugValue2 = React20.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
+      exports.useSyncExternalStore = void 0 !== React20.useSyncExternalStore ? React20.useSyncExternalStore : shim;
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
     })();
   }
@@ -24572,14 +24572,14 @@ var require_with_selector_development = __commonJS({
         return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React15 = require_react(), shim = require_shim(), objectIs = "function" === typeof Object.is ? Object.is : is, useSyncExternalStore = shim.useSyncExternalStore, useRef8 = React15.useRef, useEffect8 = React15.useEffect, useMemo3 = React15.useMemo, useDebugValue2 = React15.useDebugValue;
+      var React20 = require_react(), shim = require_shim(), objectIs = "function" === typeof Object.is ? Object.is : is, useSyncExternalStore = shim.useSyncExternalStore, useRef9 = React20.useRef, useEffect10 = React20.useEffect, useMemo6 = React20.useMemo, useDebugValue2 = React20.useDebugValue;
       exports.useSyncExternalStoreWithSelector = function(subscribe, getSnapshot, getServerSnapshot, selector, isEqual) {
-        var instRef = useRef8(null);
+        var instRef = useRef9(null);
         if (null === instRef.current) {
           var inst = { hasValue: false, value: null };
           instRef.current = inst;
         } else inst = instRef.current;
-        instRef = useMemo3(
+        instRef = useMemo6(
           function() {
             function memoizedSelector(nextSnapshot) {
               if (!hasMemo) {
@@ -24615,7 +24615,7 @@ var require_with_selector_development = __commonJS({
           [getSnapshot, getServerSnapshot, selector, isEqual]
         );
         var value = useSyncExternalStore(subscribe, instRef[0], instRef[1]);
-        useEffect8(
+        useEffect10(
           function() {
             inst.hasValue = true;
             inst.value = value;
@@ -28144,14 +28144,109 @@ var require_dagre = __commonJS({
 });
 
 // main.js
-var import_react18 = __toESM(require_react(), 1);
+var import_react23 = __toESM(require_react(), 1);
 var import_client = __toESM(require_client(), 1);
 
+// mermaidRuntime.js
+var MERMAID_INIT = {
+  startOnLoad: false,
+  theme: "dark",
+  securityLevel: "loose",
+  themeVariables: {
+    fontSize: "14px",
+    fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif",
+    primaryTextColor: "#eceff4",
+    lineColor: "#7eb8b8",
+    primaryBorderColor: "#4ec9b0"
+  },
+  flowchart: {
+    useMaxWidth: false,
+    htmlLabels: true,
+    padding: 28,
+    nodeSpacing: 56,
+    rankSpacing: 64,
+    curve: "basis"
+  },
+  sequence: {
+    useMaxWidth: false,
+    wrap: true,
+    width: 240,
+    messageFontSize: 11,
+    noteFontSize: 11,
+    actorFontSize: 12,
+    messageMargin: 48,
+    boxMargin: 10,
+    mirrorActors: false
+  }
+};
+var initialized = false;
+var runChain = Promise.resolve();
+function ensureMermaidInitialized() {
+  if (!window.mermaid) return false;
+  if (!initialized) {
+    window.mermaid.initialize(MERMAID_INIT);
+    initialized = true;
+  }
+  return true;
+}
+function waitForMermaidLibrary(timeoutMs = 4e3) {
+  if (window.mermaid) {
+    ensureMermaidInitialized();
+    return Promise.resolve(true);
+  }
+  const start2 = Date.now();
+  return new Promise((resolve) => {
+    function tick() {
+      if (window.mermaid) {
+        ensureMermaidInitialized();
+        resolve(true);
+        return;
+      }
+      if (Date.now() - start2 >= timeoutMs) {
+        resolve(false);
+        return;
+      }
+      setTimeout(tick, 40);
+    }
+    tick();
+  });
+}
+function queueMermaidRun(task) {
+  const job = runChain.then(() => task());
+  runChain = job.catch(() => {
+  });
+  return job;
+}
+if (typeof window !== "undefined" && window.mermaid) {
+  ensureMermaidInitialized();
+}
+function waitForElementSize(el, minW = 32, minH = 32, maxFrames = 48) {
+  if (!el) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let frames = 0;
+    function tick() {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w >= minW && h >= minH) {
+        resolve(true);
+        return;
+      }
+      frames += 1;
+      if (frames >= maxFrames) {
+        resolve(w > 0 && h > 0);
+        return;
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
 // RoadmapDashboard.js
-var import_react17 = __toESM(require_react(), 1);
+var import_react22 = __toESM(require_react(), 1);
 
 // RoadmapCanvas.js
-var import_react5 = __toESM(require_react(), 1);
+var import_react6 = __toESM(require_react(), 1);
 
 // node_modules/@xyflow/react/dist/esm/index.js
 var import_jsx_runtime = __toESM(require_jsx_runtime());
@@ -37122,17 +37217,32 @@ var NodeResizeControl = (0, import_react2.memo)(ResizeControl);
 
 // SkillNode.js
 var import_react3 = __toESM(require_react(), 1);
+function layerClass(layer) {
+  if (layer === "sota") return "layer-sota";
+  if (layer === "advanced") return "layer-advanced";
+  return "layer-foundation";
+}
+function layerLabel(layer) {
+  if (layer === "sota") return "SOTA";
+  if (layer === "advanced") return "Advanced";
+  return "Foundation";
+}
 function SkillNode({ data }) {
   const layer = data.layer || "foundation";
   const status = data.status || "unexplored";
   const selected2 = data.selected;
+  const masteryPct = Math.min(
+    100,
+    Math.max(0, Number(data.masteryPct) || 0)
+  );
+  const barPct = masteryPct > 0 ? Math.max(masteryPct, 4) : 0;
   const classes = [
     "skill-node-card",
-    layer === "sota" ? "layer-sota" : "layer-foundation",
+    layerClass(layer),
     `status-${status}`,
     selected2 ? "selected" : ""
   ].join(" ");
-  const layerLabel = layer === "sota" ? "\u26A1 SOTA / Advanced" : "Foundation";
+  const layerLabelText = layerLabel(layer);
   return import_react3.default.createElement(
     "div",
     { className: classes },
@@ -37141,9 +37251,22 @@ function SkillNode({ data }) {
       position: Position.Top,
       style: { opacity: 0.4 }
     }),
-    import_react3.default.createElement("div", { className: "layer-badge" }, layerLabel),
+    import_react3.default.createElement("div", { className: "layer-badge" }, layerLabelText),
     import_react3.default.createElement("div", { className: "node-title" }, data.label),
     import_react3.default.createElement("div", { className: "node-cat" }, data.category || ""),
+    masteryPct > 0 && import_react3.default.createElement(
+      "div",
+      { className: "node-mastery-row" },
+      import_react3.default.createElement(
+        "div",
+        { className: "node-mastery-bar" },
+        import_react3.default.createElement("div", {
+          className: "node-mastery-fill",
+          style: { width: `${barPct}%` }
+        })
+      ),
+      import_react3.default.createElement("span", { className: "node-mastery-pct" }, `${masteryPct}%`)
+    ),
     import_react3.default.createElement(Handle, {
       type: "source",
       position: Position.Bottom,
@@ -37152,6 +37275,425 @@ function SkillNode({ data }) {
   );
 }
 var skillNodeTypes = { skillNode: SkillNode };
+
+// NodeMasteryPanel.js
+var import_react5 = __toESM(require_react(), 1);
+var PHASE_LABELS = {
+  intro_assessment: "\u042D\u043A\u0441\u043F\u0440\u0435\u0441\u0441-\u0441\u0440\u0435\u0437",
+  dense_material: "\u041F\u043B\u043E\u0442\u043D\u044B\u0439 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B",
+  checkpoint: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430",
+  pathway_decision: "\u0412\u044B\u0431\u043E\u0440 \u043F\u0443\u0442\u0438",
+  socratic_focus: "\u0422\u043E\u0447\u0435\u0447\u043D\u044B\u0439 \u0421\u043E\u043A\u0440\u0430\u0442"
+};
+var MODE_LABELS = {
+  lecture: "\u041B\u0435\u043A\u0446\u0438\u044F",
+  express_blitz: "\u042D\u043A\u0441\u043F\u0440\u0435\u0441\u0441-\u0431\u043B\u0438\u0446",
+  socratic_point: "\u0421\u043E\u043A\u0440\u0430\u0442 (\u0442\u043E\u0447\u0435\u0447\u043D\u043E)"
+};
+var LAYER_META = [
+  { id: "why", key: "WHY", title: "WHY", subtitle: "\u0417\u0430\u0447\u0435\u043C / \u043A\u043E\u043D\u0446\u0435\u043F\u0446\u0438\u044F", flag: "why_passed" },
+  { id: "how", key: "HOW", title: "HOW", subtitle: "\u041A\u0430\u043A / \u0430\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u0430", flag: "how_passed" },
+  {
+    id: "mechanic",
+    key: "MECHANIC",
+    title: "MECHANICS",
+    subtitle: "\u041C\u0435\u0445\u0430\u043D\u0438\u043A\u0438 / \u0440\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F",
+    flag: "mechanic_passed"
+  }
+];
+var LAYER_STATUS_CLS = {
+  passed: "depth-layer-passed",
+  in_progress: "depth-layer-active",
+  locked: "depth-layer-locked",
+  failed: "depth-layer-failed",
+  gloss: "depth-layer-gloss"
+};
+var LAYER_STATUS_LABEL = {
+  passed: "\u0417\u0430\u0447\u0442\u0435\u043D\u043E",
+  in_progress: "\u0421\u0435\u0439\u0447\u0430\u0441",
+  locked: "\u0415\u0449\u0451 \u043D\u0435 \u043F\u0440\u043E\u0439\u0434\u0435\u043D",
+  failed: "\u041D\u0435 \u0437\u0430\u0447\u0442\u0435\u043D\u043E",
+  gloss: "Gloss"
+};
+function itemFlag(item, flag) {
+  if (typeof item?.[flag] === "boolean") return item[flag];
+  const camel = flag.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+  if (typeof item?.[camel] === "boolean") return item[camel];
+  return false;
+}
+function layersFromItems(items, backendLayers, activeLayer) {
+  if (!items?.length) return null;
+  const n = items.length;
+  const frac = (flag) => items.filter((i) => itemFlag(i, flag)).length / n;
+  const active = String(activeLayer || "").trim().toUpperCase();
+  const build = (id2, flag, key) => {
+    const score = frac(flag);
+    const be = backendLayers?.[id2];
+    let status = "locked";
+    if (score >= 1) status = "passed";
+    else if (active === key || score > 0) status = "in_progress";
+    if (id2 === "mechanic" && score < 1 && (be?.status === "gloss" || frac("why_passed") >= 1 && frac("how_passed") >= 1)) {
+      status = "gloss";
+    } else if (be?.status === "passed" && score >= 1) {
+      status = "passed";
+    }
+    return { status, score };
+  };
+  return {
+    why: build("why", "why_passed", "WHY"),
+    how: build("how", "how_passed", "HOW"),
+    mechanic: build("mechanic", "mechanic_passed", "MECHANIC")
+  };
+}
+function normalizeBackendLayers(coverage) {
+  const raw = coverage?.layers;
+  if (!raw || typeof raw !== "object") return null;
+  const pick = (k) => {
+    const row = raw[k] || {};
+    return {
+      status: String(row.status || "locked").toLowerCase(),
+      score: Math.min(1, Math.max(0, Number(row.score) || 0))
+    };
+  };
+  return { why: pick("why"), how: pick("how"), mechanic: pick("mechanic") };
+}
+function layerOverallScore(layers) {
+  if (!layers) return null;
+  return Math.round(
+    100 * (layers.why.score + layers.how.score + layers.mechanic.score) / 3
+  );
+}
+function resolveMasteryScore(masteryDashboard, topicMasteryScore) {
+  const dash = masteryDashboard || {};
+  const coverage = dash.coverage_summary || dash.coverageSummary || null;
+  const items = coverage?.items || [];
+  const active = String(
+    coverage?.active_layer || coverage?.activeLayer || ""
+  ).trim().toUpperCase();
+  const layers = items.length ? layersFromItems(items, normalizeBackendLayers(coverage), active) : null;
+  const layerScore = layerOverallScore(layers);
+  const backendOverall = coverage && coverage.overall_score != null ? Number(coverage.overall_score) : coverage && coverage.overallScore != null ? Number(coverage.overallScore) : null;
+  const score = layers ? Number.isFinite(backendOverall) && backendOverall >= 0 ? backendOverall : Number.isFinite(layerScore) ? layerScore : 0 : Math.max(
+    Number(topicMasteryScore) || 0,
+    Number(dash.topic_mastery_score) || 0
+  );
+  return {
+    score: Math.min(100, Math.max(0, score)),
+    coverage,
+    items,
+    active,
+    layers
+  };
+}
+function subtopicHint(item) {
+  const fromBackend = (item.status_hint || item.statusHint || "").trim();
+  if (fromBackend) return fromBackend;
+  const why = itemFlag(item, "why_passed");
+  const how = itemFlag(item, "how_passed");
+  const mech = itemFlag(item, "mechanic_passed");
+  if (why && how && mech) return null;
+  if (why && how && !mech) return "\u041D\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043C\u0435\u0445\u0430\u043D\u0438\u043A \u0440\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0438";
+  if (why && !how) return "\u041D\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u0430\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u044B (HOW)";
+  if (!why && (how || mech)) return "\u041A\u043E\u043D\u0446\u0435\u043F\u0446\u0438\u044F (WHY) \u043D\u0435 \u0440\u0430\u0441\u043A\u0440\u044B\u0442\u0430";
+  if (!why && !how && !mech) return "\u0415\u0449\u0451 \u043D\u0435 \u0437\u0430\u0442\u0440\u043E\u043D\u0443\u0442\u0430";
+  return null;
+}
+function LayerBadge({ passed, label }) {
+  const short = label === "MECHANIC" ? "MECH" : label;
+  return import_react5.default.createElement(
+    "span",
+    {
+      className: `subtopic-layer-chip layer-${label.toLowerCase()}${passed ? " is-passed" : " is-pending"}`,
+      title: passed ? `${label}: \u0437\u0430\u0447\u0442\u0435\u043D\u043E` : `${label}: \u043D\u0435 \u0437\u0430\u0447\u0442\u0435\u043D\u043E`
+    },
+    import_react5.default.createElement(
+      "span",
+      { className: "subtopic-layer-chip-mark", "aria-hidden": true },
+      passed ? "\u2713" : "\xB7"
+    ),
+    import_react5.default.createElement("span", { className: "subtopic-layer-chip-text" }, short)
+  );
+}
+function SubtopicsList({ items }) {
+  if (!items?.length) return null;
+  return import_react5.default.createElement(
+    "div",
+    { className: "coverage-subtopics" },
+    import_react5.default.createElement(
+      "div",
+      { className: "coverage-widget-head" },
+      import_react5.default.createElement("span", { className: "coverage-label" }, "\u041F\u043E\u0434\u0442\u0435\u043C\u044B"),
+      import_react5.default.createElement(
+        "span",
+        { className: "coverage-ratio muted" },
+        `${items.length}`
+      )
+    ),
+    import_react5.default.createElement(
+      "ul",
+      { className: "coverage-subtopic-list" },
+      items.map((item) => {
+        const why = itemFlag(item, "why_passed");
+        const how = itemFlag(item, "how_passed");
+        const mech = itemFlag(item, "mechanic_passed");
+        const hint = subtopicHint(item);
+        const st = item.state || "unchecked";
+        return import_react5.default.createElement(
+          "li",
+          {
+            key: item.id || item.label,
+            className: `coverage-subtopic coverage-subtopic-${st}`
+          },
+          import_react5.default.createElement(
+            "div",
+            { className: "coverage-subtopic-row" },
+            import_react5.default.createElement(
+              "span",
+              { className: "coverage-subtopic-label" },
+              item.label || item.id
+            ),
+            import_react5.default.createElement(
+              "span",
+              { className: "coverage-subtopic-badges" },
+              import_react5.default.createElement(LayerBadge, { passed: why, label: "WHY" }),
+              import_react5.default.createElement(LayerBadge, { passed: how, label: "HOW" }),
+              import_react5.default.createElement(LayerBadge, {
+                passed: mech,
+                label: "MECHANIC"
+              })
+            )
+          ),
+          hint && import_react5.default.createElement(
+            "p",
+            { className: "coverage-subtopic-hint" },
+            hint
+          )
+        );
+      })
+    )
+  );
+}
+function DepthLayersStrip({ layers, active }) {
+  if (!layers) return null;
+  return import_react5.default.createElement(
+    "div",
+    { className: "depth-layers" },
+    LAYER_META.map((meta) => {
+      const row = layers[meta.id];
+      let status = row.status;
+      if (active === meta.key && status === "locked") status = "in_progress";
+      const cls = LAYER_STATUS_CLS[status] || LAYER_STATUS_CLS.locked;
+      return import_react5.default.createElement(
+        "div",
+        {
+          key: meta.id,
+          className: `depth-layer ${cls}`,
+          title: `${meta.subtitle}: ${LAYER_STATUS_LABEL[status] || status}`
+        },
+        import_react5.default.createElement(
+          "div",
+          { className: "depth-layer-head" },
+          import_react5.default.createElement("span", { className: "depth-layer-title" }, meta.title),
+          import_react5.default.createElement(
+            "span",
+            { className: "depth-layer-badge" },
+            LAYER_STATUS_LABEL[status] || status
+          )
+        ),
+        import_react5.default.createElement("div", { className: "depth-layer-sub" }, meta.subtitle),
+        import_react5.default.createElement("div", {
+          className: "depth-layer-meter",
+          "aria-hidden": true,
+          children: import_react5.default.createElement("div", {
+            className: "depth-layer-meter-fill",
+            style: { width: `${Math.round(row.score * 100)}%` }
+          })
+        })
+      );
+    })
+  );
+}
+function FactsPreview({ coverage, items }) {
+  const flat = coverage?.facts_breakdown || coverage?.factsBreakdown || [];
+  const fromItems = (items || []).flatMap((it) => it.facts || []);
+  const facts = [...flat, ...fromItems];
+  if (!facts.length) return null;
+  return import_react5.default.createElement(
+    "div",
+    { className: "coverage-facts-preview" },
+    import_react5.default.createElement(
+      "div",
+      { className: "coverage-widget-head" },
+      import_react5.default.createElement("span", { className: "coverage-label" }, "\u0424\u0430\u043A\u0442\u044B"),
+      import_react5.default.createElement(
+        "span",
+        { className: "coverage-ratio muted" },
+        `${facts.length}`
+      )
+    ),
+    import_react5.default.createElement(
+      "ul",
+      { className: "coverage-facts-list" },
+      facts.slice(0, 12).map(
+        (f) => import_react5.default.createElement(
+          "li",
+          {
+            key: f.fact_id || f.factId || f.statement,
+            className: `coverage-fact status-${f.status || "pending"}`
+          },
+          import_react5.default.createElement(
+            "span",
+            { className: "coverage-fact-layer" },
+            f.layer || "WHY"
+          ),
+          " ",
+          (f.statement || "").slice(0, 120)
+        )
+      )
+    )
+  );
+}
+function CoverageWidget({ coverage }) {
+  const items = coverage?.items || [];
+  if (!items.length) return null;
+  const active = String(
+    coverage?.active_layer || coverage?.activeLayer || ""
+  ).trim().toUpperCase();
+  const backendLayers = normalizeBackendLayers(coverage);
+  const layers = layersFromItems(items, backendLayers, active);
+  const glossHint = (coverage?.gloss_hint || coverage?.glossHint || "").trim();
+  const showGloss = Boolean(glossHint) || layers && layers.why.status === "passed" && layers.how.status === "passed" && layers.mechanic.status !== "passed";
+  return import_react5.default.createElement(
+    "div",
+    { className: "coverage-widget coverage-widget-depth" },
+    import_react5.default.createElement(
+      "div",
+      { className: "coverage-widget-head" },
+      import_react5.default.createElement("span", { className: "coverage-label" }, "Depth"),
+      import_react5.default.createElement(
+        "span",
+        { className: "coverage-ratio muted" },
+        active ? `\u0444\u043E\u043A\u0443\u0441: ${active}` : "WHY \u2192 HOW \u2192 MECHANIC"
+      )
+    ),
+    import_react5.default.createElement(DepthLayersStrip, { layers, active }),
+    import_react5.default.createElement(SubtopicsList, { items }),
+    showGloss && import_react5.default.createElement(
+      "p",
+      { className: "depth-gloss-hint" },
+      glossHint || "\u041A\u043E\u043D\u0446\u0435\u043F\u0446\u0438\u044F \u0437\u0430\u0447\u0442\u0435\u043D\u0430. \u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435 \u043C\u0435\u0445\u0430\u043D\u0438\u043A\u0438 \u0440\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0438 \u0438\u043B\u0438 \u0438\u0437\u0443\u0447\u0438\u0442\u0435 Gloss"
+    ),
+    import_react5.default.createElement(FactsPreview, { coverage, items })
+  );
+}
+function NodeMasteryPanel({
+  status,
+  masteryDashboard,
+  topicMasteryScore,
+  onModeSelect,
+  disabled
+}) {
+  const dash = masteryDashboard || {};
+  const { coverage, items, active, layers, score } = resolveMasteryScore(
+    masteryDashboard,
+    topicMasteryScore
+  );
+  const barPct = score > 0 ? Math.max(score, 4) : 0;
+  const phase = dash.learning_phase || "intro_assessment";
+  const mode = dash.learning_mode || "lecture";
+  const st = dash.node_status || status || "unexplored";
+  function modeBtn(id2, label, prefix) {
+    return import_react5.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: `mastery-mode-btn${mode === id2 ? " active" : ""}`,
+        disabled,
+        title: disabled ? "\u0414\u043E\u0436\u0434\u0438\u0442\u0435\u0441\u044C \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u043D\u043E\u0434\u044B" : void 0,
+        onClick: () => {
+          if (disabled) return;
+          onModeSelect?.(prefix);
+        }
+      },
+      label
+    );
+  }
+  return import_react5.default.createElement(
+    "div",
+    { className: "mastery-panel" },
+    import_react5.default.createElement(
+      "div",
+      { className: "mastery-progress-row" },
+      import_react5.default.createElement("span", { className: "mastery-pct" }, `${score}%`),
+      import_react5.default.createElement(
+        "div",
+        {
+          className: "mastery-bar",
+          title: layers ? "WHY \u2153 \xB7 HOW \u2153 \xB7 MECHANIC \u2153" : void 0
+        },
+        import_react5.default.createElement("div", {
+          className: "mastery-bar-fill",
+          style: { width: `${barPct}%` }
+        })
+      ),
+      import_react5.default.createElement("span", { className: "chip mastery-status" }, st)
+    ),
+    import_react5.default.createElement(
+      "p",
+      { className: "mastery-phase" },
+      PHASE_LABELS[phase] || phase,
+      " \xB7 ",
+      MODE_LABELS[mode] || mode
+    ),
+    import_react5.default.createElement(CoverageWidget, { coverage }),
+    (dash.strengths || []).length > 0 && import_react5.default.createElement(
+      "div",
+      { className: "mastery-zone mastery-zone-ok" },
+      import_react5.default.createElement("h4", null, "\u0421\u0438\u043B\u044C\u043D\u044B\u0435 \u0441\u0442\u043E\u0440\u043E\u043D\u044B"),
+      import_react5.default.createElement(
+        "ul",
+        null,
+        dash.strengths.map((s, i) => import_react5.default.createElement("li", { key: i }, s))
+      )
+    ),
+    (dash.polish_zones || []).length > 0 && import_react5.default.createElement(
+      "div",
+      { className: "mastery-zone mastery-zone-warn" },
+      import_react5.default.createElement("h4", null, "\u0428\u043B\u0438\u0444\u043E\u0432\u043A\u0430"),
+      import_react5.default.createElement(
+        "ul",
+        null,
+        dash.polish_zones.map((s, i) => import_react5.default.createElement("li", { key: i }, s))
+      )
+    ),
+    (dash.critical_gaps || []).length > 0 && import_react5.default.createElement(
+      "div",
+      { className: "mastery-zone mastery-zone-gap" },
+      import_react5.default.createElement("h4", null, "\u041A\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u043F\u0440\u043E\u0431\u0435\u043B\u044B"),
+      import_react5.default.createElement(
+        "ul",
+        null,
+        dash.critical_gaps.map((s, i) => import_react5.default.createElement("li", { key: i }, s))
+      )
+    ),
+    (dash.pathway_bridge || "").trim() && import_react5.default.createElement(
+      "p",
+      { className: "mastery-bridge muted" },
+      dash.pathway_bridge
+    ),
+    import_react5.default.createElement(
+      "div",
+      { className: "mastery-modes" },
+      modeBtn("lecture", "\u041B\u0435\u043A\u0446\u0438\u044F", "[mode:lecture] \u0414\u0430\u0439 \u043F\u043B\u043E\u0442\u043D\u044B\u0439 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B \u043F\u043E \u0442\u0435\u043C\u0435."),
+      modeBtn("express_blitz", "\u0411\u043B\u0438\u0446", "[mode:blitz] \u041E\u0434\u0438\u043D \u044D\u043A\u0441\u043F\u0440\u0435\u0441\u0441-\u0432\u043E\u043F\u0440\u043E\u0441."),
+      modeBtn(
+        "socratic_point",
+        "\u0421\u043E\u043A\u0440\u0430\u0442",
+        "[mode:socratic] \u0422\u043E\u0447\u0435\u0447\u043D\u044B\u0439 \u0440\u0430\u0437\u0431\u043E\u0440 \u043C\u043E\u0435\u0433\u043E \u043F\u0440\u043E\u0431\u0435\u043B\u0430."
+      )
+    )
+  );
+}
 
 // layout.js
 var import_dagre = __toESM(require_dagre(), 1);
@@ -37179,9 +37721,13 @@ function layoutFlowNodes(curriculumNodes, flowNodes, flowEdges) {
     };
   });
 }
-function curriculumToFlow(curriculum, statuses, selectedId) {
+function curriculumToFlow(curriculum, statuses, selectedId, masteryByNode = {}) {
   const nodes = (curriculum.nodes || []).map((n) => {
     const st = statuses[n.node_id] || "unexplored";
+    const masteryPct = Math.min(
+      100,
+      Math.max(0, Number(masteryByNode[n.node_id]) || 0)
+    );
     return {
       id: n.node_id,
       type: "skillNode",
@@ -37192,6 +37738,7 @@ function curriculumToFlow(curriculum, statuses, selectedId) {
         layer: n.layer,
         status: st,
         selected: n.node_id === selectedId,
+        masteryPct,
         raw: n
       }
     };
@@ -37232,47 +37779,64 @@ function RoadmapFlowInner({
   selectedNodeId,
   onNodeClick,
   tutorBusyNodeId,
-  sessions
+  sessions,
+  layoutEpoch = 0
 }) {
   const { fitView, getNodesBounds: getNodesBounds2 } = useReactFlow();
-  const { nodes: initialNodes, edges: initialEdges } = (0, import_react5.useMemo)(
-    () => curriculumToFlow(curriculum, statuses, selectedNodeId),
-    [curriculum, statuses, selectedNodeId]
+  const masteryByNode = (0, import_react6.useMemo)(() => {
+    const out = {};
+    for (const [nodeId, sess] of Object.entries(sessions || {})) {
+      out[nodeId] = resolveMasteryScore(
+        sess?.masteryDashboard,
+        sess?.topicMasteryScore
+      ).score;
+    }
+    return out;
+  }, [sessions]);
+  const { nodes: initialNodes, edges: initialEdges } = (0, import_react6.useMemo)(
+    () => curriculumToFlow(
+      curriculum,
+      statuses,
+      selectedNodeId,
+      masteryByNode
+    ),
+    [curriculum, statuses, selectedNodeId, masteryByNode]
   );
-  const laidOut = (0, import_react5.useMemo)(
+  const laidOut = (0, import_react6.useMemo)(
     () => layoutFlowNodes(curriculum?.nodes || [], initialNodes, initialEdges),
     [curriculum, initialNodes, initialEdges]
   );
   const [nodes, setNodes, onNodesChange] = useNodesState(laidOut);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const translateExtent = (0, import_react5.useMemo)(
+  const translateExtent = (0, import_react6.useMemo)(
     () => translateExtentFromNodes(nodes, getNodesBounds2),
     [nodes, getNodesBounds2]
   );
-  const fitMapToView = (0, import_react5.useCallback)(() => {
+  const fitMapToView = (0, import_react6.useCallback)(() => {
     fitView({ padding: FIT_PADDING, duration: 280, maxZoom: 1.15 });
   }, [fitView]);
-  (0, import_react5.useEffect)(() => {
+  (0, import_react6.useEffect)(() => {
     const { nodes: n, edges: e } = curriculumToFlow(
       curriculum,
       statuses,
-      selectedNodeId
+      selectedNodeId,
+      masteryByNode
     );
     const positioned = layoutFlowNodes(curriculum?.nodes || [], n, e);
     setNodes(positioned);
     setEdges(e);
-  }, [curriculum, statuses, selectedNodeId, setNodes, setEdges]);
-  (0, import_react5.useEffect)(() => {
+  }, [curriculum, statuses, selectedNodeId, masteryByNode, setNodes, setEdges]);
+  (0, import_react6.useEffect)(() => {
     const t = window.setTimeout(() => fitMapToView(), 50);
     return () => window.clearTimeout(t);
-  }, [curriculum?.curriculum_id, nodes.length, fitMapToView]);
-  return import_react5.default.createElement(
+  }, [curriculum?.curriculum_id, nodes.length, layoutEpoch, fitMapToView]);
+  return import_react6.default.createElement(
     "div",
     { className: "skill-flow-root" },
-    import_react5.default.createElement(
+    import_react6.default.createElement(
       "div",
       { className: "skill-flow-toolbar" },
-      import_react5.default.createElement(
+      import_react6.default.createElement(
         "button",
         {
           type: "button",
@@ -37283,7 +37847,7 @@ function RoadmapFlowInner({
         "\u041D\u0430 \u044D\u043A\u0440\u0430\u043D"
       )
     ),
-    import_react5.default.createElement(
+    import_react6.default.createElement(
       index,
       {
         nodes,
@@ -37303,17 +37867,17 @@ function RoadmapFlowInner({
         onNodeClick: (_, node) => {
           const raw = node.data.raw;
           const nid = raw?.node_id;
-          const initialized = Boolean(sessions?.[nid]?.initialized);
-          if (tutorBusyNodeId !== null && !initialized) return;
+          const initialized2 = Boolean(sessions?.[nid]?.initialized);
+          if (tutorBusyNodeId !== null && !initialized2) return;
           onNodeClick(raw);
         }
       },
-      import_react5.default.createElement(Background, { gap: 16, size: 1 }),
-      import_react5.default.createElement(Controls, {
+      import_react6.default.createElement(Background, { gap: 16, size: 1 }),
+      import_react6.default.createElement(Controls, {
         showFitView: true,
         fitViewOptions: { padding: FIT_PADDING, maxZoom: 1.15 }
       }),
-      import_react5.default.createElement(MiniMap, {
+      import_react6.default.createElement(MiniMap, {
         zoomable: true,
         pannable: true,
         className: "skill-flow-minimap"
@@ -37322,30 +37886,1041 @@ function RoadmapFlowInner({
   );
 }
 function RoadmapCanvas(props) {
-  return import_react5.default.createElement(
+  return import_react6.default.createElement(
     "div",
     { className: "skill-canvas-wrap" },
-    import_react5.default.createElement(
+    import_react6.default.createElement(
       ReactFlowProvider,
       null,
-      import_react5.default.createElement(RoadmapFlowInner, props)
+      import_react6.default.createElement(RoadmapFlowInner, props)
+    )
+  );
+}
+
+// CurriculumInputBar.js
+var import_react8 = __toESM(require_react(), 1);
+function CurriculumInputBar({
+  goal,
+  onGoalChange,
+  sourcePolicy,
+  onSourcePolicyChange,
+  activeCurriculumId,
+  workspaceBusy,
+  genStatus,
+  busyAction,
+  onCreatePath,
+  onExpandBranch,
+  onCreateNew
+}) {
+  const hasGraph = Boolean(activeCurriculumId);
+  const expandBusy = workspaceBusy && busyAction === "expand";
+  const createBusy = workspaceBusy && busyAction === "create";
+  function onFormSubmit(e) {
+    e.preventDefault();
+    const text = (goal || "").trim();
+    if (text.length < 8) return;
+    if (hasGraph) {
+      onExpandBranch(text);
+    } else {
+      onCreatePath(text);
+    }
+  }
+  return import_react8.default.createElement(
+    "div",
+    { className: "skill-header-actions" },
+    import_react8.default.createElement(
+      "form",
+      { className: "skill-goal-form", onSubmit: onFormSubmit },
+      import_react8.default.createElement("input", {
+        value: goal,
+        onChange: (e) => onGoalChange(e.target.value),
+        placeholder: hasGraph ? "\u0412\u043F\u0438\u0448\u0438\u0442\u0435 \u0432\u0435\u043A\u0442\u043E\u0440 \u0434\u043B\u044F \u0434\u043E\u0441\u0442\u0440\u043E\u0439\u043A\u0438 (\u0438\u043B\u0438 \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u043D\u043E\u0432\u0443\u044E \u0442\u0435\u043C\u0443 \u0438 \u043D\u0430\u0436\u043C\u0438\u0442\u0435 \xAB\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043D\u043E\u0432\u044B\u0439\xBB)\u2026" : "\u0427\u0435\u043C\u0443 \u0432\u044B \u0445\u043E\u0442\u0438\u0442\u0435 \u043D\u0430\u0443\u0447\u0438\u0442\u044C\u0441\u044F?",
+        required: true,
+        minLength: 8,
+        disabled: workspaceBusy
+      }),
+      import_react8.default.createElement(
+        "select",
+        {
+          className: "skill-mode-select",
+          value: sourcePolicy,
+          onChange: (e) => onSourcePolicyChange(e.target.value),
+          "aria-label": "\u0420\u0435\u0436\u0438\u043C \u0441\u0431\u043E\u0440\u0430 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432",
+          disabled: workspaceBusy
+        },
+        import_react8.default.createElement(
+          "option",
+          { value: "practical_only" },
+          "\u26A1 \u041F\u0440\u0430\u043A\u0442\u0438\u043A\u0430 \u2014 \u0431\u043B\u043E\u0433\u0438 \u0438 \u043A\u0435\u0439\u0441\u044B"
+        ),
+        import_react8.default.createElement(
+          "option",
+          { value: "academic_only" },
+          "\u{1F52C} \u0410\u043A\u0430\u0434\u0435\u043C\u0438\u044F \u2014 \u0441\u0442\u0430\u0442\u044C\u0438 \u0438 Consensus"
+        ),
+        import_react8.default.createElement(
+          "option",
+          { value: "hybrid" },
+          "\u{1F9E0} \u041F\u043E\u043B\u043D\u044B\u0439 \u2014 \u043D\u0430\u0443\u043A\u0430 + \u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0430"
+        )
+      ),
+      genStatus && import_react8.default.createElement(
+        "p",
+        { className: "muted skill-gen-status", role: "status" },
+        genStatus
+      ),
+      hasGraph ? import_react8.default.createElement(
+        "div",
+        { className: "skill-btn-group" },
+        import_react8.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "skill-btn-primary",
+            disabled: workspaceBusy,
+            onClick: () => {
+              const text = (goal || "").trim();
+              if (text.length >= 8) onExpandBranch(text);
+            }
+          },
+          expandBusy ? "\u0414\u043E\u0441\u0442\u0440\u043E\u0439\u043A\u0430 \u0432\u0435\u0442\u043A\u0438\u2026" : "+ \u0414\u043E\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0432\u0435\u0442\u043A\u0443"
+        ),
+        import_react8.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "skill-btn-secondary",
+            disabled: workspaceBusy,
+            onClick: () => {
+              const text = (goal || "").trim();
+              if (text.length >= 8) onCreateNew(text);
+            }
+          },
+          createBusy ? "\u0421\u0431\u043E\u0440\u043A\u0430 \u043D\u043E\u0432\u043E\u0433\u043E \u043F\u0443\u0442\u0438\u2026" : "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043D\u043E\u0432\u044B\u0439"
+        )
+      ) : import_react8.default.createElement(
+        "button",
+        {
+          type: "submit",
+          className: "skill-btn-primary",
+          disabled: workspaceBusy
+        },
+        createBusy || workspaceBusy && !busyAction ? sourcePolicy === "hybrid" ? "\u041F\u043E\u043B\u043D\u044B\u0439 \u0441\u0431\u043E\u0440\u2026" : sourcePolicy === "academic_only" ? "\u0410\u043A\u0430\u0434\u0435\u043C\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u0441\u0431\u043E\u0440\u2026" : "\u0421\u0431\u043E\u0440 \u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0438\u2026" : "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043F\u0443\u0442\u044C"
+      )
     )
   );
 }
 
 // NodeDrawer.js
-var import_react14 = __toESM(require_react(), 1);
+var import_react17 = __toESM(require_react(), 1);
 
 // llmTextRepair.js
+var NL_NOT_LATEX = /\\n(?!eq|ot|u|abla|eg|mid|otin|rightarrow|leftarrow|warrow|earrow|i|pm|subset|cap|cup|warrow|exists|cong|sim|propto|fancy|atural|egative)/g;
+var TAB_NOT_LATEX = /\\t(?!imes|ext|heta|au|an|o|op|riangleq|ilde|hicksim|o|frac|iny|bf|it|extbf|extrm|extit|exttt|ilde|woheadrightarrow)/g;
+var MATH_SEG_FOR_ESC = /\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g;
+var TIMES_EXP = "(?:\\^[\\d{]+|\\^\\{[^{}]+\\})?";
+var UNICODE_SUPER_MAP = { "\u2070": "0", "\xB9": "1", "\xB2": "2", "\xB3": "3", "\u2074": "4", "\u2075": "5", "\u2076": "6", "\u2077": "7", "\u2078": "8", "\u2079": "9" };
+function normalizeUnicodeMathExponents(text) {
+  if (!text || !/[⁰¹²³⁴⁵⁶⁷⁸⁹]/.test(text)) return text;
+  return String(text).replace(/(\d)([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g, (_m, base, sup) => {
+    const digits = [...sup].map((ch) => UNICODE_SUPER_MAP[ch] || ch).join("");
+    return `${base}^${digits}`;
+  });
+}
+function healTabCorruptedTimes(text) {
+  if (!text) return "";
+  let s = normalizeUnicodeMathExponents(text);
+  if (!/[\t]/.test(s) && !/imes/i.test(s) && !/×/.test(s) && !/\\t/.test(s)) return s;
+  s = s.replace(/\\t\s+imes/gi, "\\times");
+  s = s.replace(/[\t]+imes/gi, "\\times");
+  s = s.replace(
+    new RegExp(`k[\\t ]+imes\\s*(\\d+)${TIMES_EXP}`, "gi"),
+    (_m, n, exp) => `$k \\times ${n}${exp || ""}$`
+  );
+  s = s.replace(
+    new RegExp(`[\\t]+imes\\s*(\\d+)${TIMES_EXP}`, "gi"),
+    (_m, n, exp) => `$\\times ${n}${exp || ""}$`
+  );
+  s = s.replace(
+    new RegExp(`k[\\t\\s]*\xD7\\s*(\\d+)${TIMES_EXP}`, "g"),
+    (_m, n, exp) => `$k \\times ${n}${exp || ""}$`
+  );
+  s = s.replace(
+    new RegExp(`[\\t]+\xD7\\s*(\\d+)${TIMES_EXP}`, "g"),
+    (_m, n, exp) => `$\\times ${n}${exp || ""}$`
+  );
+  return s;
+}
+function healBrokenTimesMarkup(text) {
+  if (!text) return "";
+  let s = healTabCorruptedTimes(text);
+  if (!/imes/i.test(s) && !/×/.test(s) && !/\\times/.test(s)) return s;
+  s = s.replace(
+    /\$\s*k\s+imes\s*(\d+)(\^[\d{]+|\^\{[^{}]+\})?\s*\$/gi,
+    (_m, n, exp) => `$k \\times ${n}${exp || ""}$`
+  );
+  s = s.replace(
+    /\$\s*imes\s*(\d+)(\^[\d{]+|\^\{[^{}]+\})?\s*\$/gi,
+    (_m, n, exp) => `$\\times ${n}${exp || ""}$`
+  );
+  s = s.replace(
+    new RegExp(`(\\d)\\s*k\\s+imes\\s*(\\d+)${TIMES_EXP}`, "gi"),
+    (_m, a, b, exp) => `${a} $\\times ${b}${exp || ""}$`
+  );
+  s = s.replace(
+    new RegExp(`(\\d)\\s*imes(\\d+)${TIMES_EXP}`, "g"),
+    (_m, a, b, exp) => `${a} $\\times ${b}${exp || ""}$`
+  );
+  s = s.replace(
+    new RegExp(`k\\s+imes\\s*(\\d+)${TIMES_EXP}`, "gi"),
+    (_m, n, exp) => `$k \\times ${n}${exp || ""}$`
+  );
+  s = s.replace(new RegExp(`kimes(\\d+)${TIMES_EXP}`, "g"), (_m, n, exp) => `$k \\times ${n}${exp || ""}$`);
+  s = s.replace(
+    new RegExp(`(?<![a-zA-Z\\\\])imes\\s*(\\d+)${TIMES_EXP}`, "gi"),
+    (_m, n, exp) => `$\\times ${n}${exp || ""}$`
+  );
+  s = s.replace(/(\$\\times \d+[^$]*\$)(?:\1)+/g, "$1");
+  return s;
+}
+var BARE_FRAC_GLUE_RE = /(?<![a-zA-Z\\])frac(\d+)[·⋅]\s*10(\d)(\d)(?![0-9\w])/gi;
+var BARE_FRAC_SPAN_RE = /(?:\\frac|(?<![a-zA-Z])frac)(?:\{[^}]+\}|\d+)?(?:\s*(?:\\cdot|·|⋅)\s*)?[^\n$]{0,120}?(?:\\approx|≈)\s*[\d.,]+(?:\s*(?:\\text\s*\{[^{}]+\}|\\text\{[^{}]+\}|[А-Яа-яёA-Za-z][А-Яа-яёA-Za-z %]{0,30})?)?/gi;
+var BARE_K_TIMES_RE = new RegExp(
+  `(?<![$w/])(k[\\t ]*\\\\times\\s*\\d+${TIMES_EXP})(?![$w])`,
+  "gi"
+);
+var BARE_TIMES_RE = new RegExp(
+  `(?<![$w/])(?<![kK]\\s)(\\\\times\\s*\\d+${TIMES_EXP})(?![$w])`,
+  "gi"
+);
+function healBrokenFracInner(inner) {
+  if (!inner || !/frac/i.test(inner)) return inner || "";
+  let s = String(inner).replace(/·/g, "\\cdot ").replace(/⋅/g, "\\cdot ");
+  s = s.replace(/(?<![a-zA-Z\\])frac/gi, "\\frac");
+  s = s.replace(
+    /(?<![a-zA-Z\\])frac(\d+)[·⋅]\s*10(\d)(\d)(?![0-9])/gi,
+    (_m, a, pow, den) => `\\frac{${a} \\cdot 10^{${pow}}}{${den}}`
+  );
+  s = s.replace(
+    /\\frac\{?(\d+)\}?\\cdot\s*10(\d)(\d)(?![0-9])/gi,
+    (_m, a, pow, den) => `\\frac{${a} \\cdot 10^{${pow}}}{${den}}`
+  );
+  s = s.replace(
+    /\\frac\{?(\d+)\}?\s*(?:\\cdot\s*)?(\d+(?:\^[\d{]+|\^\{[^{}]+\})?)\s+(\d{1,4})(\s*(?:\\approx|≈|=(?!=))\s*)?/g,
+    (_m, a, b, c, tail) => `\\frac{${a} \\cdot ${b}}{${c}}${tail || " "}`
+  );
+  s = s.replace(
+    /\\frac\{([^}]+)\}\s+(\d{1,4})\s*(\\approx|≈)?/g,
+    (_m, num, den, approx) => `\\frac{${num}}{${den}}${approx ? ` ${approx}` : " "}`
+  );
+  return s;
+}
+function wrapBareLatexOutsideMath(text) {
+  if (!text) return "";
+  const chunks = [];
+  let last = 0;
+  const re = /\$\$[\s\S]+?\$\$|(?<!\$)\$[^$\n]+?\$(?!\$)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) chunks.push(["plain", text.slice(last, m.index)]);
+    chunks.push(["math", m[0]]);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) chunks.push(["plain", text.slice(last)]);
+  if (!chunks.length) chunks.push(["plain", text]);
+  function fixPlain(chunk) {
+    let out = chunk;
+    if (/frac/i.test(out)) {
+      out = out.replace(BARE_FRAC_GLUE_RE, (seg) => {
+        const body = healBrokenFracInner(healCorruptedTimesInMathInner(seg));
+        return `$${body}$`;
+      });
+      out = out.replace(BARE_FRAC_SPAN_RE, (seg) => {
+        const body = healBrokenFracInner(healCorruptedTimesInMathInner(seg));
+        return `$${body}$`;
+      });
+    }
+    if (/\\times|imes|×/i.test(out)) {
+      out = out.replace(BARE_K_TIMES_RE, (_m, expr) => `$${healCorruptedTimesInMathInner(expr)}$`);
+      out = out.replace(BARE_TIMES_RE, (_m, expr) => `$${healCorruptedTimesInMathInner(expr)}$`);
+    }
+    return out;
+  }
+  return chunks.map(([kind, val]) => kind === "math" ? val : fixPlain(val)).join("");
+}
+function repairBrokenLatex(text) {
+  if (!text) return "";
+  let s = healTabCorruptedTimes(text);
+  s = healBrokenTimesMarkup(s);
+  s = wrapBareLatexOutsideMath(s);
+  s = String(s).replace(MATH_SEG_FOR_ESC, (seg) => {
+    const isDisplay = seg.startsWith("$$");
+    const inner = seg.replace(/^\$+/, "").replace(/\$+$/, "");
+    const body = healBrokenFracInner(healCorruptedTimesInMathInner(inner));
+    return isDisplay ? `$$${body}$$` : `$${body}$`;
+  });
+  return s;
+}
+function healCorruptedTimesInMathInner(inner) {
+  if (!inner) return inner || "";
+  if (!/imes/i.test(inner) && !/[\t]/.test(inner) && !/×/.test(inner)) return inner;
+  let s = String(inner);
+  s = s.replace(/\\t\s+imes/gi, "\\times");
+  s = s.replace(/[\t]+imes/gi, "\\times ");
+  s = s.replace(/k[\t ]+imes\s*/gi, "\\times ");
+  s = s.replace(/[\t]+×\s*/g, "\\times ");
+  s = s.replace(/k\s+imes\s*/gi, "\\times ");
+  s = s.replace(/(?<![a-zA-Z\\])imes\s*(\d+)/gi, "\\times $1");
+  return s;
+}
 function repairLlMText(text) {
   if (!text) return "";
-  let t = String(text);
+  let t = healTabCorruptedTimes(text);
+  const mathSlots = [];
+  t = String(t).replace(MATH_SEG_FOR_ESC, (seg) => {
+    mathSlots.push(seg);
+    return `\uE000M${mathSlots.length - 1}\uE001`;
+  });
   for (let i = 0; i < 6; i += 1) {
-    const next = t.replace(/\\r\\n/g, "\n").replace(/\\r/g, "\n").replace(/\\n/g, "\n").replace(/\\t/g, "	");
+    const next = t.replace(/\\r\\n/g, "\n").replace(/\\r/g, "\n").replace(NL_NOT_LATEX, "\n").replace(TAB_NOT_LATEX, "	");
     if (next === t) break;
     t = next;
   }
-  return t;
+  mathSlots.forEach((seg, idx) => {
+    let fixed = seg;
+    if (/imes/i.test(fixed) || /[\t]/.test(fixed) || /×/.test(fixed)) {
+      const isDisplay = fixed.startsWith("$$");
+      const inner = fixed.replace(/^\$+/, "").replace(/\$+$/, "");
+      const body = healCorruptedTimesInMathInner(inner);
+      fixed = isDisplay ? `$$${body}$$` : `$${body}$`;
+    }
+    t = t.replace(`\uE000M${idx}\uE001`, fixed);
+  });
+  return repairBrokenLatex(healBrokenTimesMarkup(t));
+}
+var LETTER_SUB_ITEM_SRC = "\\*\\*[\u0430-\u044F\u0451a-z]\\)\\*\\*|[\u0430-\u044F\u0451a-z]\\)";
+var reWrongNumLetter = new RegExp(
+  `^\\d{1,2}\\.\\s*(${LETTER_SUB_ITEM_SRC})\\s*(.*)$`,
+  "iu"
+);
+var reOrderedLine = new RegExp(
+  `^\\d{1,2}\\.\\s+(?!${LETTER_SUB_ITEM_SRC})`,
+  "iu"
+);
+var reSubLineStart = new RegExp(
+  "^(?:\\*\\*[\u0430-\u044F\u0451a-z]\\)\\*\\*|[\u0430-\u044F\u0451a-z]\\)\\s)",
+  "iu"
+);
+var reWrongNumLinePrefix = new RegExp(
+  `^\\d{1,2}\\.\\s*(${LETTER_SUB_ITEM_SRC})\\s*`,
+  "iu"
+);
+var reInlineWrongNumLetter = new RegExp(
+  `(?<![\\d/])(\\d{1,2})\\.\\s*(${LETTER_SUB_ITEM_SRC})\\s+`,
+  "giu"
+);
+var reSplitBeforeOrdered = new RegExp(
+  `\\s+(?=\\d{1,2}\\.\\s+(?!${LETTER_SUB_ITEM_SRC}))`,
+  "iu"
+);
+var reSplitBeforeSubitem = new RegExp(
+  `(?<=[.!?\u2026])\\s+(?=(?:\\*\\*[\u0430-\u044F\u0451a-z]\\)\\*\\*|[\u0430-\u044F\u0451a-z]\\)\\s))`,
+  "iu"
+);
+var reSplitBeforeSubitemPlain = new RegExp(
+  "\\s+(?=(?:\\*\\*[\u0430-\u044F\u0451a-z]\\)\\*\\*|[\u0430-\u044F\u0451a-z]\\)\\s))",
+  "iu"
+);
+var reOlWrongLetter = new RegExp(
+  `<ol>((?:(?!<\\/ol>).)*\\d{1,2}\\.\\s*(?:${LETTER_SUB_ITEM_SRC})(?:(?!<\\/ol>).)*?)<\\/ol>`,
+  "giu"
+);
+var reLiWrongLetter = new RegExp(
+  `<li>\\s*\\d{1,2}\\.\\s*(${LETTER_SUB_ITEM_SRC})\\s*(.*?)<\\/li>`,
+  "giu"
+);
+var reLiRealOrdered = new RegExp(
+  `<li>\\s*\\d{1,2}\\.\\s+(?!${LETTER_SUB_ITEM_SRC})`,
+  "iu"
+);
+var reSubInParagraph = new RegExp(
+  "<p>((?:(?!<\\/p>).*)(?:\\*\\*[\u0430-\u044F\u0451a-z]\\)\\*\\*|[\u0430-\u044F\u0451a-z]\\)\\s)(?:(?!<\\/p>).)+)<\\/p>",
+  "giu"
+);
+function stripParagraphInnerHtml(inner) {
+  return inner.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").trim();
+}
+function listHtmlFromParagraphTexts(texts) {
+  const segments = [];
+  let curKind = null;
+  let curItems = [];
+  function flush() {
+    if (curItems.length) segments.push([curKind || "ol", curItems]);
+    curKind = null;
+    curItems = [];
+  }
+  for (const raw of texts) {
+    const text = raw.trim();
+    if (!text) return null;
+    const wrong = reWrongNumLetter.exec(text);
+    if (wrong) {
+      const li = `<li>${wrong[1].trim()} ${(wrong[2] || "").trim()}</li>`.trim();
+      if (curKind && curKind !== "ul") flush();
+      curKind = "ul";
+      curItems.push(li);
+      continue;
+    }
+    if (reOrderedLine.test(text)) {
+      const body = text.replace(/^\d{1,2}\.\s+/, "");
+      if (curKind && curKind !== "ol") flush();
+      curKind = "ol";
+      curItems.push(`<li>${body}</li>`);
+      continue;
+    }
+    const bullet = /^-\s+(.*)$/s.exec(text);
+    if (bullet) {
+      if (curKind && curKind !== "ul") flush();
+      curKind = "ul";
+      curItems.push(`<li>${bullet[1].trim()}</li>`);
+      continue;
+    }
+    if (reSubLineStart.test(text)) {
+      if (curKind && curKind !== "ul") flush();
+      curKind = "ul";
+      curItems.push(`<li>${text}</li>`);
+      continue;
+    }
+    return null;
+  }
+  flush();
+  if (!segments.length) return null;
+  const parts = [];
+  for (const [kind, items] of segments) {
+    if (!items.length) continue;
+    const tag = kind === "ol" ? "ol" : "ul";
+    parts.push(`<${tag}>${items.join("")}</${tag}>`);
+  }
+  return parts.length ? parts.join("") : null;
+}
+function mergeAdjacentParagraphLists(html) {
+  const raw = String(html || "");
+  if (!raw.includes("<p>")) return raw;
+  let s = raw.replace(/<p>\s*-\s*<\/p>/gi, "");
+  const chunks = [];
+  let pos = 0;
+  while (pos < s.length) {
+    const ws = s.slice(pos).match(/^\s*/);
+    if (ws && ws[0]) {
+      chunks.push(["raw", ws[0]]);
+      pos += ws[0].length;
+      if (pos >= s.length) break;
+    }
+    const pM = s.slice(pos).match(/^<p>([\s\S]*?)<\/p>/i);
+    if (pM) {
+      chunks.push(["p", stripParagraphInnerHtml(pM[1])]);
+      pos += pM[0].length;
+      continue;
+    }
+    chunks.push(["raw", s.slice(pos)]);
+    break;
+  }
+  const out = [];
+  let i = 0;
+  while (i < chunks.length) {
+    const [kind, val] = chunks[i];
+    if (kind !== "p") {
+      out.push(val);
+      i += 1;
+      continue;
+    }
+    const run = [];
+    let j = i;
+    while (j < chunks.length && chunks[j][0] === "p") {
+      run.push(chunks[j][1]);
+      j += 1;
+    }
+    const merged = listHtmlFromParagraphTexts(run);
+    if (merged) out.push(merged);
+    else for (const line of run) out.push(`<p>${line}</p>`);
+    i = j;
+  }
+  return out.join("");
+}
+function collapseBlankLinesInListRuns(text) {
+  const lines = text.split("\n");
+  const out = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const stripped = lines[i].trim();
+    if (stripped) {
+      out.push(lines[i]);
+      continue;
+    }
+    if (!out.length) {
+      out.push(lines[i]);
+      continue;
+    }
+    let j = i + 1;
+    while (j < lines.length && !lines[j].trim()) j += 1;
+    const nextS = j < lines.length ? lines[j].trim() : "";
+    const prevS = out[out.length - 1].trim();
+    if (reOrderedLine.test(prevS) && (reOrderedLine.test(nextS) || reWrongNumLetter.test(nextS) || nextS === "-")) {
+      continue;
+    }
+    out.push(lines[i]);
+  }
+  return out.join("\n");
+}
+function collapseTableInternalBlankLines(text) {
+  const lines = text.split("\n");
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const stripped = lines[i].trim();
+    if (stripped.startsWith("|") && (stripped.match(/\|/g) || []).length >= 2) {
+      const block = [];
+      while (i < lines.length) {
+        const s = lines[i].trim();
+        if (!s) {
+          let j = i + 1;
+          while (j < lines.length && !lines[j].trim()) j += 1;
+          if (j < lines.length && lines[j].trim().startsWith("|")) {
+            i += 1;
+            continue;
+          }
+          break;
+        }
+        if (s.startsWith("|")) {
+          block.push(lines[i].replace(/\s+$/, ""));
+          i += 1;
+        } else break;
+      }
+      out.push(...block);
+      continue;
+    }
+    out.push(lines[i]);
+    i += 1;
+  }
+  return out.join("\n");
+}
+function repairMarkdownTablesLayout(text) {
+  const lines = [];
+  for (const line of text.split("\n")) {
+    const stripped = line.trim();
+    if (!stripped) {
+      lines.push(line);
+      continue;
+    }
+    let work = stripped;
+    if (!work.startsWith("|") && work.includes("|")) {
+      const pipeIdx = work.indexOf("|");
+      const before = work.slice(0, pipeIdx).trimEnd();
+      const rest = work.slice(pipeIdx);
+      if (before && (rest.match(/\|/g) || []).length >= 2) {
+        lines.push(before);
+        lines.push("");
+        work = rest;
+      }
+    }
+    if ((work.match(/\|/g) || []).length >= 2) {
+      work = work.replace(/\|\s+\|/g, "|\n|");
+    }
+    for (const subLine of work.split("\n")) {
+      const sm = subLine.trim();
+      if (!sm) {
+        lines.push("");
+        continue;
+      }
+      const rowMatch = /^(.*\|)\s+([А-ЯЁA-ZВЁ][^|]+)$/u.exec(sm);
+      if (rowMatch && (rowMatch[1].match(/\|/g) || []).length >= 2) {
+        lines.push(rowMatch[1].trim());
+        lines.push("");
+        lines.push(rowMatch[2].trim());
+      } else {
+        lines.push(sm);
+      }
+    }
+  }
+  return collapseTableInternalBlankLines(lines.join("\n"));
+}
+function normalizeListBlocksForMarkdown(text) {
+  const lines = text.split("\n");
+  const out = [];
+  const buf = [];
+  function flushBuf() {
+    if (!buf.length) return;
+    if (out.length && out[out.length - 1].trim()) out.push("");
+    out.push(...buf);
+    buf.length = 0;
+  }
+  function appendBullet(lineText) {
+    let bullet = lineText.trim();
+    if (!bullet) return;
+    if (!bullet.startsWith("-")) bullet = `- ${bullet}`;
+    if (out.length && out[out.length - 1].trim().startsWith("-")) {
+      out.push(bullet);
+    } else if (out.length && out[out.length - 1].trim()) {
+      out.push("");
+      out.push(bullet);
+    } else {
+      out.push(bullet);
+    }
+  }
+  for (const line of lines) {
+    const stripped = line.trim();
+    if (!stripped || stripped === "-") {
+      flushBuf();
+      if (stripped === "-") continue;
+      out.push(line);
+      continue;
+    }
+    const wrong = reWrongNumLetter.exec(stripped);
+    if (wrong) {
+      flushBuf();
+      appendBullet(`${wrong[1].trim()} ${(wrong[2] || "").trim()}`.trim());
+      continue;
+    }
+    if (reOrderedLine.test(stripped)) {
+      buf.push(stripped);
+      continue;
+    }
+    if (reSubLineStart.test(stripped)) {
+      flushBuf();
+      appendBullet(stripped);
+      continue;
+    }
+    flushBuf();
+    out.push(line);
+  }
+  flushBuf();
+  return out.join("\n");
+}
+function splitGluedOrderedParagraph(body) {
+  let parts = body.split(/(?<=[.!?…])\s+(?=\d{1,2}\.\s+)/u);
+  if (parts.length < 2) {
+    parts = body.split(reSplitBeforeOrdered);
+  }
+  if (parts.length < 2) return null;
+  const items = [];
+  const subItems = [];
+  for (const part of parts) {
+    const chunk = part.trim();
+    if (!chunk) continue;
+    const wrong = reWrongNumLetter.exec(chunk);
+    if (wrong) {
+      subItems.push(`<li>${wrong[1]} ${(wrong[2] || "").trim()}</li>`);
+      continue;
+    }
+    const main = chunk.replace(/^\d{1,2}\.\s+/, "");
+    if (main) items.push(`<li>${main}</li>`);
+  }
+  if (items.length < 2 && !subItems.length) return null;
+  const ol = items.length >= 2 ? `<ol>${items.join("")}</ol>` : "";
+  const ul = subItems.length ? `<ul>${subItems.join("")}</ul>` : "";
+  return ol || ul ? `${ol}${ul}` : null;
+}
+function postprocessTutorHtml(html) {
+  const raw = String(html || "");
+  if (!raw.includes("<p>") && !raw.includes("<ol")) return raw;
+  let out = mergeAdjacentParagraphLists(raw);
+  const orderedRe = /<p>((?:(?!<\/p>).)*\d{1,2}\.\s+(?:(?!<\/p>).)+)<\/p>/giu;
+  out = out.replace(orderedRe, (m, body) => {
+    const repl = splitGluedOrderedParagraph(body);
+    return repl || m;
+  });
+  out = out.replace(reOlWrongLetter, (m, inner) => {
+    const fixed = inner.replace(
+      reLiWrongLetter,
+      (_li, label, tail) => `<li>${label} ${(tail || "").trim()}</li>`
+    );
+    if (reLiRealOrdered.test(fixed)) {
+      return `<ol>${fixed}</ol>`;
+    }
+    return `<ul>${fixed}</ul>`;
+  });
+  return out;
+}
+function repairGluedNumberedListsOnLine(line) {
+  let s = line;
+  if (!s.trim()) return line;
+  if (s.trim().startsWith("|") && s.includes("|")) return line;
+  const stripped = s.trim();
+  if (reWrongNumLinePrefix.test(stripped)) {
+    return line;
+  }
+  s = s.replace(/([:;])\s+(\d+\.\s+)/g, "$1\n$2");
+  for (let i = 0; i < 12; i += 1) {
+    const next = s.replace(
+      /([.!?…])(\s+)(\d{1,2}\.\s+(?:\*\*)?[А-ЯЁA-ZВЁ])/gu,
+      "$1\n$3"
+    );
+    if (next === s) break;
+    s = next;
+  }
+  s = s.replace(
+    /([а-яёa-zA-Z0-9)\]»"'№%])(\s+)(\*\*[а-яёa-z]\)\*\*)/giu,
+    "$1\n$3"
+  );
+  s = s.replace(
+    /([.!?…:;])(\s+)(\*\*[а-яёa-z]\)\*\*)/giu,
+    "$1\n$3"
+  );
+  s = s.replace(/(\))\s+([а-яёa-z]\)\s)/giu, "$1\n$2");
+  s = s.replace(/([.!?…:;])(\s+)([а-яёa-z]\)\s)/giu, "$1\n$3");
+  s = s.replace(reInlineWrongNumLetter, "\n- $2 ");
+  return s;
+}
+function repairGluedNumberedLists(text) {
+  return text.split("\n").map((line) => repairGluedNumberedListsOnLine(line)).join("\n");
+}
+function splitMarkdownHeaderLine(line) {
+  const s = line.trim();
+  if (!s.startsWith("#")) return line;
+  const m = /^(#{1,6}\s+)/u.exec(s);
+  if (!m) return line;
+  const rest = s.slice(m[0].length);
+  let pm = /\s+(При\s+[а-яё])/u.exec(rest);
+  if (!pm) pm = /\s+([А-ЯЁ][а-яё]{2,}\s+[а-яё])/u.exec(rest);
+  if (pm) {
+    const title = s.slice(0, m[0].length + pm.index).trim();
+    const body = rest.slice(pm.index).trim();
+    return `${title}
+
+${body}`;
+  }
+  return line;
+}
+var CODE_FENCE_RE = /```[^\n`]*\n[\s\S]*?```/g;
+var PY_STMT_START = /^(?:class |def |elif |else:|return |if |for |while |self\.|# |import |from )/i;
+function applyOutsideCodeFences(text, fn) {
+  const parts = [];
+  let last = 0;
+  let m;
+  const re = new RegExp(CODE_FENCE_RE.source, "g");
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(fn(text.slice(last, m.index)));
+    parts.push(m[0]);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(fn(text.slice(last)));
+  return parts.join("");
+}
+function basicPythonIndent(body) {
+  const lines = body.split("\n");
+  const out = [];
+  let inClass = false;
+  let inDef = false;
+  for (const ln of lines) {
+    const st = ln.trim();
+    if (!st) {
+      out.push("");
+      continue;
+    }
+    if (st.startsWith("class ")) {
+      inClass = true;
+      inDef = false;
+      out.push(st);
+      continue;
+    }
+    if (st.startsWith("def ")) {
+      inDef = true;
+      out.push((inClass ? "    " : "") + st);
+      continue;
+    }
+    if (st.startsWith("elif ") || st.startsWith("else:")) {
+      const pad = inClass && inDef ? "        " : inDef || inClass ? "    " : "";
+      out.push(pad + st);
+      continue;
+    }
+    if (inClass && inDef) out.push("        " + st);
+    else if (inDef || inClass) out.push("    " + st);
+    else out.push(st);
+  }
+  return out.join("\n");
+}
+function reflowGluedPython(src) {
+  if (!src || !src.includes("def ") && !src.includes("class ")) return src;
+  let s = src;
+  if (s.split("\n").length < 2 && s.includes("\\n")) s = s.replace(/\\n/g, "\n");
+  s = s.replace(/(\) -> [^:\n]+:)(\s*)(?=\S)/g, "$1\n");
+  const defCount = (s.match(/\bdef /g) || []).length;
+  const classCount = (s.match(/\bclass /g) || []).length;
+  if (s.split("\n").length < 2 || defCount + classCount > s.split("\n").length / 2) {
+    for (let i = 0; i < 24; i += 1) {
+      const prev = s;
+      s = s.replace(/:(\s*)(?=def |class )/g, ":\n").replace(/\):(\s*)(?=self\.|return |if |elif |else:|def |class )/g, "):\n").replace(/(?<=[\w)])\s*(?=def )/g, "\n").replace(/(?<=[^\n])\s+(?=elif )/g, "\n").replace(/(?<=[^\n])\s+(?=else:)/g, "\n").replace(/(?<=[^\n])\s+(?=return )/g, "\n").replace(/(?<=[^\n])\s+(?=# )/g, "\n").replace(/(?<=[\w"'])(?=(?:self\.|elif |else:|return ))/g, "\n").replace(/(?<!el)(?<=[a-z0-9_])(?=if )/g, "\n").replace(/:(\s*)(?=return )/g, ":\n").replace(/(?<=[^\n])(?=#)/g, "\n");
+      if (s === prev) break;
+    }
+    s = basicPythonIndent(s);
+  } else if (s.includes("def ") || s.includes("class ")) {
+    s = basicPythonIndent(s);
+  }
+  return s;
+}
+function repairFenceInner(chunk) {
+  const m = /^(```[^\n]*\n)([\s\S]*?)(```\s*)$/s.exec(chunk.trim());
+  if (!m) return chunk;
+  return `${m[1]}${reflowGluedPython(m[2]).trimEnd()}
+${m[3]}`;
+}
+function wrapBarePythonRegions(text) {
+  const lines = text.split("\n");
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const st = lines[i].trim();
+    if (st.startsWith("class ") || st.startsWith("def ") && st.includes("def ") && st.includes(":")) {
+      const block = [];
+      let j = i;
+      while (j < lines.length) {
+        const ln = lines[j];
+        const ls = ln.trim();
+        if (!ls) {
+          let k = j + 1;
+          while (k < lines.length && !lines[k].trim()) k += 1;
+          const nxt = k < lines.length ? lines[k].trim() : "";
+          if (block.length && (nxt.startsWith("def ") || PY_STMT_START.test(nxt) || nxt.startsWith("self."))) {
+            block.push(ln);
+            j += 1;
+            continue;
+          }
+          if (block.length) {
+            j += 1;
+            break;
+          }
+          j += 1;
+          continue;
+        }
+        if (block.length && ls.startsWith("#")) {
+          block.push(ln);
+          j += 1;
+          continue;
+        }
+        if (block.length && !PY_STMT_START.test(ls) && !ln.startsWith("    ") && !ln.startsWith("	")) {
+          if (ls.startsWith("#") || ls.startsWith("###")) break;
+          if (!ls.startsWith("self.") && !ls.startsWith("return ") && !ls.startsWith("elif ") && !ls.startsWith("else:")) {
+            break;
+          }
+        }
+        if (ls.startsWith("###")) break;
+        block.push(ln);
+        j += 1;
+      }
+      const body = reflowGluedPython(block.join("\n"));
+      if (body.includes("def ") || body.includes("class ")) {
+        out.push(`\`\`\`python
+${body.trim()}
+\`\`\``);
+      } else {
+        out.push(...block);
+      }
+      i = j;
+      continue;
+    }
+    out.push(lines[i]);
+    i += 1;
+  }
+  return out.join("\n");
+}
+function repairLectureCodeBlocks(text) {
+  const raw = (text || "").trim();
+  if (!raw || !raw.includes("def ") && !raw.includes("class ")) return text || "";
+  const parts = [];
+  let last = 0;
+  let m;
+  const re = new RegExp(CODE_FENCE_RE.source, "g");
+  while ((m = re.exec(raw)) !== null) {
+    if (m.index > last) parts.push(wrapBarePythonRegions(raw.slice(last, m.index)));
+    parts.push(repairFenceInner(m[0]));
+    last = m.index + m[0].length;
+  }
+  if (last < raw.length) parts.push(wrapBarePythonRegions(raw.slice(last)));
+  return parts.length ? parts.join("") : wrapBarePythonRegions(raw);
+}
+function repairLectureMarkdownLayout(text) {
+  let t = repairLlMText(text).trim();
+  if (!t) return "";
+  t = repairLectureCodeBlocks(t);
+  const layoutChunk = (chunk) => {
+    let c = chunk.replace(/([.!?…])\s+(#{1,6}\s+)/g, "$1\n\n$2");
+    c = c.replace(
+      /(?<=[а-яА-ЯёЁa-zA-Z0-9)\]»"'№%])(\s+)(#{1,6}\s+)/gu,
+      "\n\n$2"
+    );
+    c = c.replace(/([.!?…])\s+(\|)/g, "$1\n\n$2");
+    const headerSplit = c.split("\n").map((line) => splitMarkdownHeaderLine(line));
+    c = repairMarkdownTablesLayout(headerSplit.join("\n"));
+    c = repairGluedNumberedLists(c);
+    c = collapseBlankLinesInListRuns(c);
+    c = normalizeListBlocksForMarkdown(c);
+    return c;
+  };
+  t = applyOutsideCodeFences(t, layoutChunk);
+  t = t.replace(/\n{3,}/g, "\n\n");
+  return t.trim();
+}
+var ANALYSIS_LIST_SECTIONS = [
+  ["pros", "\u041F\u043B\u044E\u0441\u044B"],
+  ["cons", "\u041C\u0438\u043D\u0443\u0441\u044B \u0438 \u0440\u0438\u0441\u043A\u0438"],
+  ["cons_and_risks", "\u041C\u0438\u043D\u0443\u0441\u044B \u0438 \u0440\u0438\u0441\u043A\u0438"],
+  ["takeaways", "\u041A\u043B\u044E\u0447\u0435\u0432\u044B\u0435 \u0432\u044B\u0432\u043E\u0434\u044B"],
+  ["failure_modes", "\u0422\u0438\u043F\u0438\u0447\u043D\u044B\u0435 \u0441\u0431\u043E\u0438"]
+];
+function looksLikeAnalysisObject(obj) {
+  if (!obj || typeof obj !== "object") return false;
+  const keys = Object.keys(obj);
+  if (!keys.includes("title") && !keys.includes("description")) return false;
+  return keys.some(
+    (k) => ["pros", "cons", "cons_and_risks", "takeaways", "failure_modes"].includes(k)
+  );
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function formatAnalysisObjectHtml(obj) {
+  const parts = [];
+  const title = String(obj.title || "").trim();
+  if (title) parts.push(`<h2>${escapeHtml(title)}</h2>`);
+  const desc = String(obj.description || "").trim();
+  if (desc) parts.push(`<p>${escapeHtml(desc)}</p>`);
+  const seen = /* @__PURE__ */ new Set();
+  for (const [key, label] of ANALYSIS_LIST_SECTIONS) {
+    if (seen.has(label)) continue;
+    const raw = obj[key];
+    if (!raw || !Array.isArray(raw)) continue;
+    const items = raw.map((x) => String(x).trim()).filter(Boolean);
+    if (!items.length) continue;
+    seen.add(label);
+    parts.push(`<h3>${escapeHtml(label)}</h3><ul>`);
+    for (const it of items) {
+      parts.push(`<li>${escapeHtml(it)}</li>`);
+    }
+    parts.push("</ul>");
+  }
+  return parts.join("");
+}
+function tryParseJsonObjectAt(text, start2) {
+  let pos = start2;
+  while (pos < text.length && text[pos] !== "{") pos += 1;
+  if (pos >= text.length) return null;
+  let depth = 0;
+  for (let i = pos; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        const candidate = text.slice(pos, i + 1);
+        try {
+          const obj = JSON.parse(candidate);
+          if (looksLikeAnalysisObject(obj)) {
+            return { obj, start: pos, end: i + 1 };
+          }
+        } catch {
+        }
+        return null;
+      }
+    }
+  }
+  return null;
+}
+function structuredAnalysisToHtml(text) {
+  const raw = repairLlMText(text).trim();
+  if (!raw || !raw.includes("{")) return "";
+  const hit = tryParseJsonObjectAt(raw, 0);
+  if (!hit) return "";
+  return formatAnalysisObjectHtml(hit.obj);
+}
+function renderMarkdownInline(text) {
+  const codeSlots = [];
+  let html = escapeHtml(text).replace(/`([^`\n]+)`/g, (_m, code) => {
+    const key = `\uE010${codeSlots.length}\uE011`;
+    codeSlots.push(`<code>${code}</code>`);
+    return key;
+  });
+  html = html.replace(
+    /\[([^\]]+)]\((https?:\/\/[^ )]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+  );
+  html = html.replace(/(\*\*|__)(.+?)\1/g, "<strong>$2</strong>").replace(/~~(.+?)~~/g, "<del>$1</del>").replace(/(^|[^\w*])\*([^*\n]+)\*/g, "$1<em>$2</em>").replace(/(^|[^\w_])_([^_\n]+)_/g, "$1<em>$2</em>");
+  return html.replace(/\uE010(\d+)\uE011/g, (_m, index2) => codeSlots[Number(index2)]);
+}
+function tutorMarkdownToHtml(text) {
+  const source = repairLectureMarkdownLayout(text || "");
+  if (!source) return "";
+  const out = [];
+  let paragraph = [];
+  let listType = "";
+  let inCodeFence = false;
+  let codeLines = [];
+  function closeParagraph() {
+    if (!paragraph.length) return;
+    out.push(`<p>${paragraph.map(renderMarkdownInline).join("<br>")}</p>`);
+    paragraph = [];
+  }
+  function closeList() {
+    if (!listType) return;
+    out.push(`</${listType}>`);
+    listType = "";
+  }
+  function openList(type) {
+    if (listType === type) return;
+    closeList();
+    listType = type;
+    out.push(`<${type}>`);
+  }
+  for (const line of source.split("\n")) {
+    const fence = /^```([^`]*)$/.exec(line.trim());
+    if (fence) {
+      closeParagraph();
+      closeList();
+      if (inCodeFence) {
+        out.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+        codeLines = [];
+      }
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+    if (inCodeFence) {
+      codeLines.push(line);
+      continue;
+    }
+    if (!line.trim()) {
+      closeParagraph();
+      closeList();
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+    if (heading) {
+      closeParagraph();
+      closeList();
+      const level = heading[1].length;
+      out.push(`<h${level}>${renderMarkdownInline(heading[2])}</h${level}>`);
+      continue;
+    }
+    const unordered = /^\s*[-*+]\s+(.+)$/.exec(line);
+    const ordered = /^\s*\d+[.)]\s+(.+)$/.exec(line);
+    if (unordered || ordered) {
+      closeParagraph();
+      openList(ordered ? "ol" : "ul");
+      out.push(`<li>${renderMarkdownInline((unordered || ordered)[1])}</li>`);
+      continue;
+    }
+    const quote = /^>\s?(.*)$/.exec(line);
+    if (quote) {
+      closeParagraph();
+      closeList();
+      out.push(`<blockquote><p>${renderMarkdownInline(quote[1])}</p></blockquote>`);
+      continue;
+    }
+    closeList();
+    paragraph.push(line);
+  }
+  if (inCodeFence) out.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+  else {
+    closeParagraph();
+    closeList();
+  }
+  return out.join("");
 }
 
 // api.js
@@ -37418,83 +38993,223 @@ function readActiveCurriculumId() {
   return localStorage.getItem(LS_ACTIVE) || "";
 }
 function historyItemHtml(item) {
-  return String(item.content_html || item.contentHtml || "").trim();
+  const raw = String(item.content_html || item.contentHtml || "").trim();
+  return raw ? postprocessTutorHtml(raw) : "";
+}
+function dialogMsgId(item) {
+  const raw = item?.msg_id ?? item?.id;
+  if (raw == null || raw === "") return null;
+  const s = String(raw).trim();
+  const pending = /^pending-(\d+)$/i.exec(s);
+  if (pending) return Number(pending[1]);
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+function sortDialogMessages(messages) {
+  return [...messages || []];
+}
+function stripModePrefix(text) {
+  return String(text || "").replace(/^\[mode:\w+\]\s*/i, "").trim();
+}
+function normalizeUserDialogContent(text) {
+  return stripModePrefix(repairLlMText(String(text || "")).trim());
+}
+function isPendingMsgId(msgId) {
+  return /^pending-\d+$/i.test(String(msgId || "").trim());
+}
+function userMessageMatches(content, userMsg) {
+  const a = normalizeUserDialogContent(content);
+  const b = normalizeUserDialogContent(userMsg);
+  if (!a || !b) return false;
+  return a === b;
 }
 function normalizeDialogHistory(history) {
   const cleaned = [];
   for (const item of history || []) {
     const role = (item.role || "").trim();
-    const content = repairLlMText((item.content || "").trim());
+    const raw = (item.content || "").trim();
+    const content = role === "user" ? normalizeUserDialogContent(raw) : repairLectureMarkdownLayout(raw);
     if (!content) continue;
     const row = {
       role: role === "user" || role === "tutor" ? role : "tutor",
       content
     };
+    const mid = String(item.msg_id ?? item.id ?? "").trim();
+    if (mid) row.msg_id = mid;
     const html = historyItemHtml(item);
     if (html) row.content_html = html;
     cleaned.push(row);
   }
-  const fixed = [];
-  let i = 0;
-  while (i < cleaned.length) {
-    if (i + 1 < cleaned.length && i > 0 && cleaned[i].role === "tutor" && cleaned[i + 1].role === "user") {
-      fixed.push(cleaned[i + 1]);
-      fixed.push(cleaned[i]);
-      i += 2;
-    } else {
-      fixed.push(cleaned[i]);
-      i += 1;
-    }
-  }
-  return fixed;
+  return cleaned;
 }
 function historyToMessages(history) {
-  return normalizeDialogHistory(history).map((h) => ({
-    role: h.role || "tutor",
-    content: h.content || "",
-    contentHtml: historyItemHtml(h)
-  }));
+  return normalizeDialogHistory(history).map((h, idx) => {
+    const mid = String(h.msg_id || h.id || "").trim() || String(idx + 1);
+    return {
+      role: h.role || "tutor",
+      content: h.content || "",
+      contentHtml: historyItemHtml(h),
+      msg_id: mid
+    };
+  });
 }
 function tutorMessageFromApi(res) {
+  const last = Array.isArray(res.history) ? res.history[res.history.length - 1] : null;
+  const mid = last?.msg_id ?? last?.id ?? "";
+  const content = repairLectureMarkdownLayout(composeTutorDisplayFromApi(res));
+  const contentHtml = postprocessTutorHtml(
+    String(res.tutor_message_html || "").trim()
+  );
   return {
     role: "tutor",
-    content: repairLlMText(res.tutor_message || ""),
-    contentHtml: String(res.tutor_message_html || "").trim()
+    content,
+    contentHtml: tutorHtmlMatchesContent(content, contentHtml) ? contentHtml : "",
+    msg_id: mid
   };
 }
+function tutorHtmlMatchesContent(content, html) {
+  const c = (content || "").trim();
+  const h = postprocessTutorHtml(String(html || "").trim());
+  if (!c || !h) return Boolean(h);
+  const tail = c.slice(-120);
+  if (tail.includes("?") && !h.includes(tail.slice(-60))) return false;
+  return h.replace(/<[^>]+>/g, "").length + 40 >= c.length;
+}
+function tutorHtmlMatchesContentForMessage(content, contentHtml) {
+  return tutorHtmlMatchesContent(content, contentHtml);
+}
+function composeTutorDisplayFromApi(res) {
+  const parts = [
+    res?.tutor_dialogue_feedback,
+    res?.tutor_dialogue_technical,
+    res?.tutor_dialogue_follow_up
+  ].map((p) => String(p || "").trim()).filter(Boolean);
+  if (parts.length) return parts.join("\n\n");
+  return String(res?.tutor_message || "").trim();
+}
+function patchLastTutorMessageHtml(messages, res) {
+  const composed = composeTutorDisplayFromApi(res);
+  const html = postprocessTutorHtml(String(res.tutor_message_html || "").trim());
+  const fu = String(res?.tutor_dialogue_follow_up || "").trim();
+  let text = repairLectureMarkdownLayout(composed || res.tutor_message || "");
+  if (fu && text && !text.includes(fu)) {
+    text = `${text}
+
+${fu}`.trim();
+  }
+  if (!html && !text) return messages;
+  const copy = [...messages];
+  for (let i = copy.length - 1; i >= 0; i -= 1) {
+    if (copy[i].role !== "tutor") continue;
+    const useText = text || copy[i].content;
+    let useHtml = html;
+    if (!tutorHtmlMatchesContent(useText, useHtml)) {
+      useHtml = "";
+    }
+    copy[i] = {
+      ...copy[i],
+      content: useText || copy[i].content,
+      contentHtml: useHtml || ""
+    };
+    break;
+  }
+  return copy;
+}
 function mergeHistoryWithPendingUser(messages, userMsg) {
-  const u = (userMsg || "").trim();
+  const u = normalizeUserDialogContent(userMsg);
   if (!u) return messages;
   const copy = [...messages];
-  if (copy.some((m) => m.role === "user" && (m.content || "").trim() === u)) {
-    return copy;
-  }
   const last = copy[copy.length - 1];
-  if (last?.role === "user" && (last.content || "").trim() === u) {
+  if (last?.role === "user" && userMessageMatches(last.content, u)) {
     return copy;
   }
-  if (last?.role === "tutor") {
-    copy.splice(copy.length - 1, 0, { role: "user", content: u });
-    return copy;
+  copy.push({
+    role: "user",
+    content: stripModePrefix((userMsg || "").trim()),
+    msg_id: `pending-${Date.now()}`
+  });
+  return sortDialogMessages(copy);
+}
+function dropRedundantPendingUsers(messages, userMsg) {
+  const u = normalizeUserDialogContent(userMsg);
+  if (!u) return messages || [];
+  const list = messages || [];
+  const matchingServer = list.filter(
+    (m) => m.role === "user" && !isPendingMsgId(m.msg_id) && userMessageMatches(m.content, u)
+  );
+  if (!matchingServer.length) return list;
+  const latestServer = matchingServer.reduce((a, b) => {
+    const ai = dialogMsgId(a) ?? 0;
+    const bi = dialogMsgId(b) ?? 0;
+    return bi >= ai ? b : a;
+  });
+  const latestId = dialogMsgId(latestServer);
+  return list.filter((m) => {
+    if (m.role !== "user" || !isPendingMsgId(m.msg_id)) return true;
+    if (!userMessageMatches(m.content, u)) return true;
+    return latestId == null;
+  });
+}
+function dedupeDialogMessages(messages) {
+  const out = [];
+  const seenIds = /* @__PURE__ */ new Set();
+  for (const m of messages || []) {
+    const numericId = dialogMsgId(m);
+    if (numericId != null) {
+      if (seenIds.has(numericId)) continue;
+      seenIds.add(numericId);
+    } else if (isPendingMsgId(m.msg_id)) {
+      const key = normalizeUserDialogContent(m.content || "");
+      const dupPending = out.some(
+        (x) => x.role === "user" && isPendingMsgId(x.msg_id) && normalizeUserDialogContent(x.content || "") === key
+      );
+      if (dupPending) continue;
+    }
+    out.push(m);
   }
-  copy.push({ role: "user", content: u });
-  return copy;
+  return out;
+}
+function buildMessagesAfterChatComplete(res, userMsg, oldMessages, streamMsgId) {
+  const hasHistory = Array.isArray(res.history) && res.history.length > 0;
+  let messages;
+  if (hasHistory) {
+    messages = mergeHistoryWithPendingUser(historyToMessages(res.history), userMsg);
+  } else {
+    const next = (oldMessages || []).filter((m) => m.msg_id !== streamMsgId);
+    messages = mergeHistoryWithPendingUser(next, userMsg);
+    if (res.tutor_message) {
+      messages.push(tutorMessageFromApi(res));
+    }
+    messages = sortDialogMessages(messages);
+  }
+  messages = dropRedundantPendingUsers(messages, userMsg);
+  return patchLastTutorMessageHtml(
+    dedupeDialogMessages(sortDialogMessages(messages)),
+    res
+  );
 }
 function hydrateSessionsFromServer(sessions) {
   const out = {};
   for (const [nodeId, blob] of Object.entries(sessions || {})) {
     const history = blob.history || [];
     const content = blob.content || {};
+    const hasMemory = Boolean(blob.memory_prepared || blob.memory);
     out[nodeId] = {
-      initialized: history.length > 0 || Boolean((content.summary || "").trim()),
+      initialized: hasMemory || history.length > 0 || Boolean((content.summary || "").trim()),
+      prepared: hasMemory && history.length === 0,
       content,
-      messages: historyToMessages(history),
+      messages: historyToMessages(dedupeDialogMessages(history)),
       ragLabels: blob.rag_fact_labels || [],
       masteryDashboard: blob.mastery_dashboard || null,
+      coverageSummary: blob.coverage_summary || blob.mastery_dashboard?.coverage_summary || null,
       topicMasteryScore: blob.topic_mastery_score ?? 0,
       learningPhase: blob.learning_phase,
       learningMode: blob.learning_mode,
-      sourceRegistry: blob.source_registry || []
+      sourceRegistry: blob.source_registry || [],
+      lectureRagInspector: blob.lecture_rag_inspector || [],
+      readyForTransition: Boolean(blob.ready_for_transition),
+      lastEvalDirective: String(blob.last_eval_directive || "").trim(),
+      quickReplies: Array.isArray(blob.quick_replies) ? blob.quick_replies : []
     };
   }
   return out;
@@ -37506,17 +39221,18 @@ function mergeNodeStatuses(curriculum, serverStatuses) {
   }
   return out;
 }
-async function generateCurriculum(targetGoal, mode) {
-  const generation_mode = mode === "consensus" ? "consensus" : "fast";
-  const depth = generation_mode === "consensus" ? "Deep Mechanics" : "Standard";
-  const r = await fetch(`${API}/curriculum/generate`, {
+async function createCurriculum(targetGoal, sourcePolicy) {
+  const policy = sourcePolicy || "practical_only";
+  const depth = policy === "hybrid" || policy === "academic_only" ? "Deep Mechanics" : "Standard";
+  const r = await fetch(`${API}/curriculum/create`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       target_goal: targetGoal,
       user_level: "Intermediate/Advanced",
       depth_level: depth,
-      generation_mode
+      source_policy: policy,
+      generation_mode: policy === "academic_only" ? "consensus" : "fast"
     })
   });
   if (!r.ok) {
@@ -37531,6 +39247,37 @@ async function generateCurriculum(targetGoal, mode) {
   }
   return data;
 }
+async function expandCurriculum(curriculumId, expansionPrompt, sourcePolicy) {
+  const policy = sourcePolicy || "practical_only";
+  const r = await fetch(`${API}/curriculum/expand`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      curriculum_id: curriculumId,
+      expansion_prompt: expansionPrompt,
+      source_policy: policy,
+      generation_mode: policy === "academic_only" ? "consensus" : "fast"
+    })
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  const data = await r.json();
+  if (data.graph) return data.graph;
+  if (data.job_id) {
+    const job = await waitWorkJob(data.job_id);
+    return job.result;
+  }
+  return data;
+}
+async function fetchNodeSourceRegistry(curriculumId, nodeId) {
+  const r = await fetch(
+    `${API}/node/source-registry/${encodeURIComponent(curriculumId)}/${encodeURIComponent(nodeId)}`
+  );
+  if (!r.ok) return { source_registry: [] };
+  return r.json();
+}
 async function nodeInit(curriculumId, nodeData) {
   const r = await fetch(`${API}/node/init`, {
     method: "POST",
@@ -37543,21 +39290,59 @@ async function nodeInit(curriculumId, nodeData) {
   }
   return resolveMaybeJobResponse(await r.json());
 }
-async function nodeChat(curriculumId, nodeData, userMessage) {
-  const r = await fetch(`${API}/node/chat`, {
+async function nodeRestart(curriculumId, nodeData) {
+  const r = await fetch(`${API}/node/restart`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      curriculum_id: curriculumId,
-      node_data: nodeData,
-      user_message: userMessage
-    })
+    body: JSON.stringify({ curriculum_id: curriculumId, node_data: nodeData })
   });
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
   return resolveMaybeJobResponse(await r.json());
+}
+async function readNodeSsePost(url, body, onEvent, { signal } = {}) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal,
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  const reader = r.body?.getReader();
+  if (!reader) throw new Error("sse: no body");
+  const dec = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() || "";
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      try {
+        const evt = JSON.parse(line.slice(6));
+        if (onEvent) onEvent(evt);
+      } catch {
+      }
+    }
+  }
+}
+async function nodeChatStream(curriculumId, nodeData, userMessage, onEvent) {
+  return readNodeSsePost(
+    `${API}/node/chat-stream`,
+    {
+      curriculum_id: curriculumId,
+      node_data: nodeData,
+      user_message: userMessage
+    },
+    onEvent
+  );
 }
 async function nodeSuggestQuestions(curriculumId, nodeData, selectedText, surroundingParagraph, { signal } = {}) {
   const r = await fetch(`${API}/node/suggest-questions`, {
@@ -37577,23 +39362,19 @@ async function nodeSuggestQuestions(curriculumId, nodeData, selectedText, surrou
   }
   return r.json();
 }
-async function nodeExplainSelection(curriculumId, nodeData, selectedText, surroundingParagraph, userQuestion) {
-  const r = await fetch(`${API}/node/explain-selection`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+async function nodeExplainSelectionStream(curriculumId, nodeData, selectedText, surroundingParagraph, userQuestion, onEvent, { signal } = {}) {
+  return readNodeSsePost(
+    `${API}/node/explain-selection-stream`,
+    {
       curriculum_id: curriculumId,
       node_data: nodeData,
       selected_text: selectedText,
       surrounding_paragraph: surroundingParagraph,
       user_question: userQuestion || ""
-    })
-  });
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({}));
-    throw new Error(err.detail || r.statusText);
-  }
-  return r.json();
+    },
+    onEvent,
+    { signal }
+  );
 }
 async function nodeVerify(curriculumId, nodeData, userMessage) {
   const r = await fetch(`${API}/node/verify`, {
@@ -37625,26 +39406,49 @@ function toNodeDataInput(node) {
     learning_goal: node.learning_goal || "",
     source_ref: node.source_ref || null,
     node_curriculum_breakdown: node.node_curriculum_breakdown || null,
-    primary_source_id: node.primary_source_id || ""
+    primary_source_id: node.primary_source_id || "",
+    resource_urls: node.resource_urls || []
   };
 }
 
 // LlmHtmlBlock.js
-var import_react7 = __toESM(require_react(), 1);
+var import_react9 = __toESM(require_react(), 1);
 
 // katexRender.js
+function normalizeChatMathDelimiters(root3) {
+  if (!root3) return;
+  const walker = document.createTreeWalker(root3, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const parent = node.parentElement;
+    if (!parent) continue;
+    if (/^(pre|code|script|style|textarea)$/i.test(parent.tagName)) continue;
+    if (parent.closest("pre, code")) continue;
+    let t = node.textContent || "";
+    if (!/[$\\]/.test(t)) continue;
+    const toInline = (inner) => `\\(${String(inner).trim()}\\)`;
+    const next = t.replace(/\\\[([\s\S]+?)\\\]/g, (_, inner) => toInline(inner)).replace(/\$\$([\s\S]+?)\$\$/g, (_, inner) => toInline(inner)).replace(/(?<!\$)\$([^$\n]+?)\$(?!\$)/g, (_, inner) => toInline(inner));
+    if (next !== t) node.textContent = next;
+  }
+}
+function useInlineKatexOnly(root3) {
+  if (!root3) return;
+  root3.querySelectorAll("span.katex-display").forEach((wrap) => {
+    const inner = wrap.querySelector(":scope > span.katex");
+    if (inner) wrap.replaceWith(inner);
+    else wrap.classList.remove("katex-display");
+  });
+}
 function renderMathInLlmHtml(root3) {
   if (!root3 || typeof window.renderMathInElement !== "function") return;
+  normalizeChatMathDelimiters(root3);
   window.renderMathInElement(root3, {
-    delimiters: [
-      { left: "$$", right: "$$", display: true },
-      { left: "$", right: "$", display: false },
-      { left: "\\(", right: "\\)", display: false },
-      { left: "\\[", right: "\\]", display: true }
-    ],
+    delimiters: [{ left: "\\(", right: "\\)", display: false }],
     throwOnError: false,
     ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"]
   });
+  useInlineKatexOnly(root3);
 }
 
 // codeHighlight.js
@@ -37655,678 +39459,92 @@ function highlightCodeInRoot(root3) {
 }
 
 // LlmHtmlBlock.js
+function wrapMarkdownTables(root3) {
+  if (!root3) return;
+  root3.querySelectorAll("table").forEach((table) => {
+    const parent = table.parentElement;
+    if (parent?.classList?.contains("md-table-scroll")) return;
+    const wrap = document.createElement("div");
+    wrap.className = "md-table-scroll";
+    table.parentNode?.insertBefore(wrap, table);
+    wrap.appendChild(table);
+  });
+}
 function LlmHtmlBlock({ html, className = "md-body" }) {
-  const ref = (0, import_react7.useRef)(null);
+  const ref = (0, import_react9.useRef)(null);
   const safe = (html || "").trim();
-  (0, import_react7.useEffect)(() => {
+  (0, import_react9.useEffect)(() => {
     if (ref.current && safe) {
+      wrapMarkdownTables(ref.current);
       renderMathInLlmHtml(ref.current);
       highlightCodeInRoot(ref.current);
     }
   }, [safe]);
+  (0, import_react9.useEffect)(() => {
+    const el = ref.current;
+    if (!el) return;
+    function onClick(e) {
+      const a = e.target.closest("a.ke-material-anchor");
+      if (!a) return;
+      e.preventDefault();
+      const id2 = a.getAttribute("data-material-id");
+      if (id2) {
+        window.dispatchEvent(
+          new CustomEvent("ke:select-material", { detail: { id: id2 } })
+        );
+      }
+    }
+    el.addEventListener("click", onClick);
+    return () => el.removeEventListener("click", onClick);
+  }, [safe]);
   if (!safe) return null;
-  return import_react7.default.createElement("div", {
+  return import_react9.default.createElement("div", {
     ref,
     className,
     dangerouslySetInnerHTML: { __html: safe }
   });
 }
 
-// MermaidDiagramView.js
-var import_react8 = __toESM(require_react(), 1);
-
-// mermaidExtract.js
-function stripOuterQuotes(s) {
-  let t = (s || "").trim();
-  if (t.length >= 2 && t[0] === t[t.length - 1] && (t[0] === '"' || t[0] === "'")) {
-    return t.slice(1, -1).trim();
-  }
-  return t;
-}
-function quoteSubgraphTitles(inner) {
-  return inner.split("\n").map((line) => {
-    const m = line.match(/^(\s*subgraph\s+)(.+)$/i);
-    if (!m) return line;
-    const rest = m[2].trim();
-    if (rest.startsWith('"') || rest.startsWith("'")) return line;
-    if (/^\w[\w-]*\s*\[/i.test(rest)) return line;
-    const safe = rest.replace(/"/g, "'");
-    return `${m[1]}"${safe}"`;
-  }).join("\n");
-}
-function quoteParticipantAliases(inner) {
-  return inner.split("\n").map((line) => {
-    const m = line.match(/^(\s*participant\s+\S+\s+as\s+)(.+)$/i);
-    if (!m) return line;
-    const alias = m[2].trim();
-    if (alias.startsWith('"') || alias.startsWith("'")) return line;
-    if (/[/()]/.test(alias) || alias.includes("  ") || alias.length > 22) {
-      const safe = wrapLongLabel(alias.replace(/"/g, "'"), 22).replace(/"/g, "'");
-      return `${m[1]}"${safe}"`;
-    }
-    return line;
-  }).join("\n");
-}
-function quoteLoopLabels(inner) {
-  return inner.split("\n").map((line) => {
-    const m = line.match(/^(\s*loop\s+)(.+)$/i);
-    if (!m) return line;
-    let rest = m[2].trim();
-    const arrow = rest.match(/\s+[A-Za-z0-9_]+[-]+>>?[A-Za-z0-9_]+:/);
-    if (arrow) {
-      rest = rest.slice(0, arrow.index).trim();
-    }
-    if (!rest || rest.startsWith('"') || rest.startsWith("'")) return line;
-    if (/[()]/.test(rest) || rest.includes(" ")) {
-      const safe = rest.replace(/"/g, "'");
-      const tail = arrow ? line.slice(arrow.index) : "";
-      return `${m[1]}"${safe}"${tail}`;
-    }
-    return line;
-  }).join("\n");
-}
-function wrapLongLabel(text, maxLen = 38) {
-  const t = (text || "").trim();
-  if (t.length <= maxLen) return t;
-  const words = t.split(/\s+/);
-  const lines = [];
-  let line = "";
-  for (const w of words) {
-    if (!line) line = w;
-    else if (line.length + 1 + w.length <= maxLen) line += ` ${w}`;
-    else {
-      lines.push(line);
-      line = w;
-    }
-  }
-  if (line) lines.push(line);
-  return lines.join("\n");
-}
-function sanitizeNoteLines(inner) {
-  return inner.split("\n").map((line) => {
-    const m = line.match(
-      /^(\s*Note\s+(?:over|left of|right of)\s+[^:]+:\s*)(.*)$/i
-    );
-    if (!m) return line;
-    const prefix = m[1];
-    let body = (m[2] || "").trim().replace(/^"|"$/g, "").replace(/"/g, "'");
-    body = wrapLongLabel(body, 36);
-    if (!body) return line;
-    return prefix + `"${body}"`;
-  }).join("\n");
-}
-function quoteArrowMessages(inner) {
-  return inner.split("\n").map((line) => {
-    const m = line.match(/^(\s*[A-Za-z0-9_]+[-]+>>?[A-Za-z0-9_]+:\s*)(.*)$/);
-    if (!m) return line;
-    const prefix = m[1];
-    let body = (m[2] || "").trim().replace(/^"|"$/g, "");
-    if (!body) return line;
-    body = wrapLongLabel(body.replace(/"/g, "'"), 40);
-    return prefix + `"${body}"`;
-  }).join("\n");
-}
-function ensureSequenceInit(inner) {
-  if (!/^sequenceDiagram/im.test(inner)) return inner;
-  if (/%%\s*\{init:/i.test(inner)) return inner;
-  return "%%{init: {'themeVariables': {'fontSize': '10px'}, 'sequence': {'wrap': true, 'width': 240, 'messageFontSize': 10, 'noteFontSize': 10, 'actorFontSize': 11, 'messageMargin': 48, 'boxMargin': 10, 'mirrorActors': false}}}%%\n" + inner;
-}
-function mermaidNodeId(raw) {
-  const t = (raw || "").trim();
-  if (!t) return "node";
-  const paren = t.match(/^(.+?)\s+\(([^)]+)\)\s*$/);
-  if (paren) {
-    const base = paren[1].trim();
-    const inner = paren[2].trim();
-    const id2 = `${base.replace(/\s+/g, "_")}_${inner.replace(/\s+/g, "_")}`;
-    return `${id2}["${base.replace(/"/g, "'")} (${inner.replace(/"/g, "'")})"]`;
-  }
-  if (/[\s/]/.test(t)) {
-    const id2 = t.replace(/[^\w]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
-    return `${id2 || "node"}["${t.replace(/"/g, "'")}"]`;
-  }
-  return t.replace(/\s+/g, "_");
-}
-function parseLinkChain(chain) {
-  let s = chain.replace(/--\(([^)]+)\)-->/g, "-->|$1|");
-  const rawParts = s.split(/\s*-->\s*/).filter((p) => p.trim());
-  if (rawParts.length < 2) return null;
-  const edges = [];
-  const nodes = [];
-  for (let i = 0; i < rawParts.length; i += 1) {
-    let p = rawParts[i].trim();
-    if (i === 0) {
-      nodes.push(p);
-      continue;
-    }
-    let label = "";
-    const lm = p.match(/^\|([^|]+)\|\s*(.+)$/s);
-    if (lm) {
-      label = lm[1].trim();
-      p = lm[2].trim();
-    }
-    const from = nodes[nodes.length - 1];
-    edges.push({ from, to: p, label });
-    nodes.push(p);
-  }
-  return edges;
-}
-function chainSegmentToMermaid(title, chain, subIdx) {
-  const edges = parseLinkChain(chain);
-  if (!edges || edges.length === 0) return [];
-  const lines = [];
-  const subId = `sg_${subIdx}`;
-  if (title) {
-    const safeTitle = title.replace(/"/g, "'").replace(/\]/g, "");
-    lines.push(`subgraph ${subId} [${safeTitle}]`);
-  }
-  for (const e of edges) {
-    const a = mermaidNodeId(e.from);
-    const b = mermaidNodeId(e.to);
-    const lbl = e.label ? `|${e.label.replace(/"/g, "'")}|` : "";
-    lines.push(`${title ? "  " : ""}${a} -->${lbl} ${b}`);
-  }
-  if (title) lines.push("end");
-  return lines;
-}
-function liftPseudoFlowchart(text) {
-  const t = stripOuterQuotes(repairLlMText(text)).trim();
-  if (!t) return "";
-  if (/^(sequenceDiagram|flowchart\b|graph\s+(?:TD|LR|BT|RL)\b)/im.test(t)) {
-    return "";
-  }
-  if (!/--\([^)]+\)-->|-->/.test(t)) return "";
-  const segments = t.includes("|") ? t.split(/\s*\|\s*/).filter((seg) => /-->|--\(/i.test(seg)) : [t];
-  if (!segments.length) return "";
-  const bodyLines = ["flowchart LR"];
-  segments.forEach((seg, idx) => {
-    let title = "";
-    let chain = seg.trim();
-    const m = chain.match(/^([^:]{2,56}):\s*(.+)$/s);
-    if (m && /-->|--\(/i.test(m[2])) {
-      title = m[1].trim();
-      chain = m[2].trim();
-    }
-    bodyLines.push(...chainSegmentToMermaid(title, chain, idx));
-  });
-  if (bodyLines.length <= 1) return "";
-  return bodyLines.join("\n");
-}
-function formatMermaidInner(inner) {
-  let s = quoteSubgraphTitles(repairLlMText(inner).trim());
-  if (!s) return s;
-  s = ensureSequenceInit(s);
-  s = s.replace(/^(sequenceDiagram(?:\s+autonumber)?)\s+/i, "$1\n");
-  s = s.replace(/^(graph\s+(?:TD|LR|BT|RL))\s+/i, "$1\n");
-  s = s.replace(/^(flowchart\s+(?:TD|LR|BT|RL)?)\s+/i, "$1\n");
-  const blockKw = /\s+(participant\s|actor\s|rect\s|loop\s|alt\s|opt\s|par\s|and\s|else\s|critical\s|break\s)/gi;
-  s = s.replace(blockKw, "\n$1");
-  s = s.replace(/\s+(Note\s+(?:over|left of|right of)\s)/gi, "\n$1");
-  s = s.replace(/\s+(activate\s|deactivate\s)/gi, "\n$1");
-  s = s.replace(/\s+(subgraph\s)/gi, "\n$1");
-  s = s.replace(/\s+(end)\b/gi, "\n$1");
-  s = s.replace(
-    /\s+([A-Za-z0-9_]+[-]+>>?[A-Za-z0-9_]+:)/g,
-    "\n$1"
-  );
-  s = quoteParticipantAliases(s);
-  s = quoteLoopLabels(s);
-  s = sanitizeNoteLines(s);
-  s = quoteArrowMessages(s);
-  s = s.replace(/\n{3,}/g, "\n\n");
-  return s.trim();
-}
-function stripFence(d) {
-  let inner = d.replace(/^```(?:mermaid)?\s*/i, "").trim();
-  inner = inner.replace(/```\s*$/i, "").trim();
-  return inner;
-}
-function repairDiagramMarkdown(diagram) {
-  let d = stripOuterQuotes(repairLlMText((diagram || "").trim()));
-  if (!d) return d;
-  for (let i = 0; i < 4; i += 1) {
-    let inner;
-    if (d.startsWith("```")) {
-      inner = formatMermaidInner(stripFence(d));
-      const next = inner ? "```mermaid\n" + inner + "\n```" : d;
-      if (next === d) break;
-      d = next;
-    } else if (/^(sequenceDiagram|flowchart\b|graph\s+(?:TD|LR|BT|RL)\b)/i.test(d)) {
-      inner = formatMermaidInner(d);
-      const next = inner ? "```mermaid\n" + inner + "\n```" : d;
-      if (next === d) break;
-      d = next;
-    } else {
-      const lifted = liftPseudoFlowchart(d);
-      if (lifted) {
-        inner = formatMermaidInner(lifted);
-        d = inner ? "```mermaid\n" + inner + "\n```" : d;
-        continue;
-      }
-      break;
-    }
-  }
-  return d;
-}
-function extractOnce(text) {
-  const trimmed = stripOuterQuotes(repairLlMText((text || "").trim()));
-  if (!trimmed) return "";
-  if (trimmed.startsWith("```")) {
-    return formatMermaidInner(stripFence(trimmed));
-  }
-  const fenced = trimmed.match(/```(?:mermaid)?\s*([\s\S]*?)```/i);
-  if (fenced) return formatMermaidInner(fenced[1]);
-  const firstLine = trimmed.split(/\r?\n/, 1)[0].trim();
-  const rawStart = /^(sequenceDiagram|flowchart\b|graph\s+(?:TD|LR|BT|RL)\b|classDiagram\b|stateDiagram(?:-v2)?\b|erDiagram\b)/i;
-  if (rawStart.test(firstLine)) return formatMermaidInner(trimmed);
-  const lifted = liftPseudoFlowchart(trimmed);
-  if (lifted) return formatMermaidInner(lifted);
-  return "";
-}
-function extractMermaidSource(text) {
-  const repaired = repairDiagramMarkdown(text);
-  let src = extractOnce(repaired);
-  if (!src) src = extractOnce(text);
-  if (!src) {
-    const stripped = stripOuterQuotes(text);
-    if (stripped !== (text || "").trim()) {
-      src = extractOnce(repairDiagramMarkdown(stripped));
-    }
-  }
-  if (src) {
-    const again = formatMermaidInner(src);
-    if (again) src = again;
-  }
-  return src;
-}
-function softenMermaidSource(source) {
-  return (source || "").replace(/^sequenceDiagram\s+autonumber/im, "sequenceDiagram").trim();
-}
-
-// MermaidDiagramView.js
-var MIN_SCALE = 0.35;
-var MAX_SCALE = 5;
-var LS_ZOOM = "skillTreeDiagramZoom";
-function clamp2(n, lo, hi) {
-  return Math.min(hi, Math.max(lo, n));
-}
-function MermaidDiagramView({ diagram, nodeId }) {
-  const rawDiagram = (diagram || "").trim();
-  const text = repairDiagramMarkdown(rawDiagram);
-  const hostRef = (0, import_react8.useRef)(null);
-  const viewportRef = (0, import_react8.useRef)(null);
-  const [scale, setScale] = (0, import_react8.useState)(() => {
-    const saved = Number(localStorage.getItem(LS_ZOOM));
-    return saved > 0 ? clamp2(saved, MIN_SCALE, MAX_SCALE) : 1;
-  });
-  const [pan, setPan] = (0, import_react8.useState)({ x: 0, y: 0 });
-  const panStart = (0, import_react8.useRef)(null);
-  const fitToViewport = (0, import_react8.useCallback)(() => {
-    const viewport = viewportRef.current;
-    const host = hostRef.current;
-    const svg = host?.querySelector("svg");
-    if (!viewport || !svg) return;
-    const pad = 16;
-    const vw = viewport.clientWidth - pad;
-    const vh = viewport.clientHeight - pad;
-    setScale((cur) => {
-      const bb = svg.getBoundingClientRect();
-      const unscaledW = bb.width / cur;
-      const unscaledH = bb.height / cur;
-      if (unscaledW < 8 || unscaledH < 8) return cur;
-      const fit = clamp2(
-        Math.min(vw / unscaledW, vh / unscaledH),
-        MIN_SCALE,
-        MAX_SCALE
-      );
-      return fit;
-    });
-    setPan({ x: 0, y: 0 });
-  }, []);
-  (0, import_react8.useEffect)(() => {
-    const host = hostRef.current;
-    if (!host || !text) return;
-    function runMermaid(source2, attempt) {
-      const src = (source2 || "").trim();
-      if (!src || !window.mermaid) {
-        host.textContent = text || rawDiagram;
-        return;
-      }
-      const id2 = `mmd-${nodeId}-${Date.now()}-${attempt}`;
-      host.innerHTML = "";
-      const el = document.createElement("div");
-      el.className = "mermaid";
-      el.id = id2;
-      el.textContent = src;
-      host.appendChild(el);
-      window.mermaid.run({ nodes: [el] }).then(() => {
-        const svg = el.querySelector("svg");
-        if (svg) {
-          svg.style.maxWidth = "none";
-          svg.style.height = "auto";
-        }
-        requestAnimationFrame(() => fitToViewport());
-      }).catch((err) => {
-        if (attempt === 0) {
-          const soft = softenMermaidSource(src);
-          if (soft && soft !== src) {
-            runMermaid(soft, 1);
-            return;
-          }
-        }
-        if (attempt < 2) {
-          const retry = formatMermaidInner(src);
-          if (retry && retry !== src) {
-            runMermaid(retry, attempt + 1);
-            return;
-          }
-        }
-        console.warn("mermaid.run failed", err, src);
-        const pre = document.createElement("pre");
-        pre.className = "mermaid-fallback";
-        pre.textContent = src;
-        host.innerHTML = "";
-        host.appendChild(pre);
-      });
-    }
-    const source = extractMermaidSource(text || rawDiagram);
-    runMermaid(source, 0);
-  }, [text, rawDiagram, nodeId, fitToViewport]);
-  (0, import_react8.useEffect)(() => {
-    localStorage.setItem(LS_ZOOM, String(scale));
-  }, [scale]);
-  function zoomBy(factor) {
-    setScale((s) => clamp2(s * factor, MIN_SCALE, MAX_SCALE));
-  }
-  function onWheel(e) {
-    if (!viewportRef.current?.contains(e.target)) return;
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
-    setScale((s) => clamp2(s * factor, MIN_SCALE, MAX_SCALE));
-  }
-  function onPanStart(e) {
-    if (e.button !== 0) return;
-    panStart.current = {
-      x: e.clientX,
-      y: e.clientY,
-      panX: pan.x,
-      panY: pan.y
-    };
-  }
-  function onPanMove(e) {
-    if (!panStart.current) return;
-    const dx = e.clientX - panStart.current.x;
-    const dy = e.clientY - panStart.current.y;
-    setPan({
-      x: panStart.current.panX + dx,
-      y: panStart.current.panY + dy
-    });
-  }
-  function onPanEnd() {
-    panStart.current = null;
-  }
-  (0, import_react8.useEffect)(() => {
-    window.addEventListener("mousemove", onPanMove);
-    window.addEventListener("mouseup", onPanEnd);
-    return () => {
-      window.removeEventListener("mousemove", onPanMove);
-      window.removeEventListener("mouseup", onPanEnd);
-    };
-  }, []);
-  if (!text) return null;
-  return import_react8.default.createElement(
-    "div",
-    { className: "drawer-section diagram-section" },
-    import_react8.default.createElement(
-      "div",
-      { className: "diagram-section-head" },
-      import_react8.default.createElement("h3", null, "\u0421\u0445\u0435\u043C\u0430"),
-      import_react8.default.createElement(
-        "div",
-        { className: "diagram-zoom-toolbar" },
-        import_react8.default.createElement(
-          "button",
-          {
-            type: "button",
-            className: "diagram-zoom-btn",
-            onClick: () => zoomBy(1 / 1.2),
-            title: "\u0423\u043C\u0435\u043D\u044C\u0448\u0438\u0442\u044C"
-          },
-          "\u2212"
-        ),
-        import_react8.default.createElement(
-          "span",
-          { className: "diagram-zoom-label" },
-          `${Math.round(scale * 100)}%`
-        ),
-        import_react8.default.createElement(
-          "button",
-          {
-            type: "button",
-            className: "diagram-zoom-btn",
-            onClick: () => zoomBy(1.2),
-            title: "\u0423\u0432\u0435\u043B\u0438\u0447\u0438\u0442\u044C"
-          },
-          "+"
-        ),
-        import_react8.default.createElement(
-          "button",
-          {
-            type: "button",
-            className: "diagram-zoom-btn",
-            onClick: () => {
-              setPan({ x: 0, y: 0 });
-              setScale(1);
-            },
-            title: "\u0421\u0431\u0440\u043E\u0441"
-          },
-          "1:1"
-        ),
-        import_react8.default.createElement(
-          "button",
-          {
-            type: "button",
-            className: "diagram-zoom-btn",
-            onClick: () => fitToViewport(),
-            title: "\u041F\u043E\u0434\u043E\u0433\u043D\u0430\u0442\u044C \u043F\u043E \u043E\u0431\u043B\u0430\u0441\u0442\u0438"
-          },
-          "\u041F\u043E \u043E\u0431\u043B\u0430\u0441\u0442\u0438"
-        )
-      )
-    ),
-    import_react8.default.createElement(
-      "div",
-      {
-        className: "diagram-viewport",
-        ref: viewportRef,
-        onWheel,
-        onMouseDown: onPanStart,
-        title: "\u041A\u043E\u043B\u0451\u0441\u0438\u043A\u043E \u2014 \u0437\u0443\u043C, \u043F\u0435\u0440\u0435\u0442\u0430\u0441\u043A\u0438\u0432\u0430\u043D\u0438\u0435 \u2014 \u043F\u0430\u043D"
-      },
-      import_react8.default.createElement("div", {
-        className: "diagram-zoom-inner",
-        style: {
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`
-        },
-        ref: hostRef
-      })
-    )
-  );
-}
-
-// ResourceCard.js
-var import_react9 = __toESM(require_react(), 1);
-function ResourceCard({ item }) {
-  if (!item) return null;
-  const title = (item.title || item.source_name || item.url || "").trim();
-  const mins = item.read_time_minutes || item.read_time_minutes === 0 ? item.read_time_minutes : null;
-  return import_react9.default.createElement(
-    "article",
-    { className: "resource-card" },
-    import_react9.default.createElement(
-      "header",
-      { className: "resource-card-head" },
-      import_react9.default.createElement(
-        "a",
-        {
-          className: "resource-card-title",
-          href: item.url,
-          target: "_blank",
-          rel: "noopener noreferrer"
-        },
-        title
-      ),
-      mins != null && mins > 0 && import_react9.default.createElement("span", { className: "resource-card-time" }, `~${mins} \u043C\u0438\u043D`)
-    ),
-    import_react9.default.createElement("div", { className: "resource-card-source" }, item.source_name),
-    (item.why_read || "").trim() && import_react9.default.createElement(
-      "p",
-      { className: "resource-card-why" },
-      import_react9.default.createElement("strong", null, "\u0417\u0430\u0447\u0435\u043C: "),
-      item.why_read
-    ),
-    (item.key_focus || "").trim() && import_react9.default.createElement(
-      "p",
-      { className: "resource-card-focus" },
-      import_react9.default.createElement("strong", null, "\u0424\u043E\u043A\u0443\u0441: "),
-      item.key_focus
-    )
-  );
-}
-
-// NodeMasteryPanel.js
-var import_react10 = __toESM(require_react(), 1);
-var PHASE_LABELS = {
-  intro_assessment: "\u042D\u043A\u0441\u043F\u0440\u0435\u0441\u0441-\u0441\u0440\u0435\u0437",
-  dense_material: "\u041F\u043B\u043E\u0442\u043D\u044B\u0439 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B",
-  checkpoint: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430",
-  pathway_decision: "\u0412\u044B\u0431\u043E\u0440 \u043F\u0443\u0442\u0438",
-  socratic_focus: "\u0422\u043E\u0447\u0435\u0447\u043D\u044B\u0439 \u0421\u043E\u043A\u0440\u0430\u0442"
-};
-var MODE_LABELS = {
-  lecture: "\u041B\u0435\u043A\u0446\u0438\u044F",
-  express_blitz: "\u042D\u043A\u0441\u043F\u0440\u0435\u0441\u0441-\u0431\u043B\u0438\u0446",
-  socratic_point: "\u0421\u043E\u043A\u0440\u0430\u0442 (\u0442\u043E\u0447\u0435\u0447\u043D\u043E)"
-};
-function NodeMasteryPanel({
-  status,
-  masteryDashboard,
-  topicMasteryScore,
-  onModeSelect,
-  disabled
-}) {
-  const dash = masteryDashboard || {};
-  const score = dash.topic_mastery_score ?? topicMasteryScore ?? 0;
-  const phase = dash.learning_phase || "intro_assessment";
-  const mode = dash.learning_mode || "lecture";
-  const st = dash.node_status || status || "unexplored";
-  function modeBtn(id2, label, prefix) {
-    return import_react10.default.createElement(
-      "button",
-      {
-        type: "button",
-        className: `mastery-mode-btn${mode === id2 ? " active" : ""}`,
-        disabled,
-        onClick: () => onModeSelect?.(prefix)
-      },
-      label
-    );
-  }
-  return import_react10.default.createElement(
-    "div",
-    { className: "mastery-panel" },
-    import_react10.default.createElement(
-      "div",
-      { className: "mastery-progress-row" },
-      import_react10.default.createElement("span", { className: "mastery-pct" }, `${score}%`),
-      import_react10.default.createElement(
-        "div",
-        { className: "mastery-bar" },
-        import_react10.default.createElement("div", {
-          className: "mastery-bar-fill",
-          style: { width: `${Math.min(100, score)}%` }
-        })
-      ),
-      import_react10.default.createElement("span", { className: "chip mastery-status" }, st)
-    ),
-    import_react10.default.createElement(
-      "p",
-      { className: "mastery-phase" },
-      PHASE_LABELS[phase] || phase,
-      " \xB7 ",
-      MODE_LABELS[mode] || mode
-    ),
-    (dash.strengths || []).length > 0 && import_react10.default.createElement(
-      "div",
-      { className: "mastery-zone mastery-zone-ok" },
-      import_react10.default.createElement("h4", null, "\u0421\u0438\u043B\u044C\u043D\u044B\u0435 \u0441\u0442\u043E\u0440\u043E\u043D\u044B"),
-      import_react10.default.createElement(
-        "ul",
-        null,
-        dash.strengths.map((s, i) => import_react10.default.createElement("li", { key: i }, s))
-      )
-    ),
-    (dash.polish_zones || []).length > 0 && import_react10.default.createElement(
-      "div",
-      { className: "mastery-zone mastery-zone-warn" },
-      import_react10.default.createElement("h4", null, "\u0428\u043B\u0438\u0444\u043E\u0432\u043A\u0430"),
-      import_react10.default.createElement(
-        "ul",
-        null,
-        dash.polish_zones.map((s, i) => import_react10.default.createElement("li", { key: i }, s))
-      )
-    ),
-    (dash.critical_gaps || []).length > 0 && import_react10.default.createElement(
-      "div",
-      { className: "mastery-zone mastery-zone-gap" },
-      import_react10.default.createElement("h4", null, "\u041A\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u043F\u0440\u043E\u0431\u0435\u043B\u044B"),
-      import_react10.default.createElement(
-        "ul",
-        null,
-        dash.critical_gaps.map((s, i) => import_react10.default.createElement("li", { key: i }, s))
-      )
-    ),
-    (dash.pathway_bridge || "").trim() && import_react10.default.createElement(
-      "p",
-      { className: "mastery-bridge muted" },
-      dash.pathway_bridge
-    ),
-    import_react10.default.createElement(
-      "div",
-      { className: "mastery-modes" },
-      modeBtn("lecture", "\u041B\u0435\u043A\u0446\u0438\u044F", "[mode:lecture] \u0414\u0430\u0439 \u043F\u043B\u043E\u0442\u043D\u044B\u0439 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B \u043F\u043E \u0442\u0435\u043C\u0435."),
-      modeBtn("express_blitz", "\u0411\u043B\u0438\u0446", "[mode:blitz] \u041E\u0434\u0438\u043D \u044D\u043A\u0441\u043F\u0440\u0435\u0441\u0441-\u0432\u043E\u043F\u0440\u043E\u0441."),
-      modeBtn(
-        "socratic_point",
-        "\u0421\u043E\u043A\u0440\u0430\u0442",
-        "[mode:socratic] \u0422\u043E\u0447\u0435\u0447\u043D\u044B\u0439 \u0440\u0430\u0437\u0431\u043E\u0440 \u043C\u043E\u0435\u0433\u043E \u043F\u0440\u043E\u0431\u0435\u043B\u0430."
-      )
-    )
-  );
-}
-
 // SourceRegistryList.js
-var import_react11 = __toESM(require_react(), 1);
+var import_react10 = __toESM(require_react(), 1);
+function sessionAnchorLabel(entry, index2) {
+  const sid = entry.id || (String(entry.source_id || "").match(/^S\d+$/i) ? entry.source_id : null) || `S${index2 + 1}`;
+  const courseId = (entry.course_source_id || "").trim();
+  if (courseId && courseId !== sid) {
+    return `[${sid}] \xB7 ${courseId}`;
+  }
+  return `[${sid}]`;
+}
 function SourceRegistryList({ registry }) {
   const items = registry || [];
   if (!items.length) return null;
-  return import_react11.default.createElement(
+  return import_react10.default.createElement(
     "div",
     { className: "drawer-section source-registry-section" },
-    import_react11.default.createElement("h3", null, "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0432 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0435"),
-    import_react11.default.createElement(
+    import_react10.default.createElement("h3", null, "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0432 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0435"),
+    import_react10.default.createElement(
+      "p",
+      { className: "muted small drawer-hint" },
+      "\u0420\u0435\u0435\u0441\u0442\u0440 \u0441\u0435\u0441\u0441\u0438\u0438 \u043D\u043E\u0434\u044B: [S1] \u2014 \u0441\u043D\u043E\u0441\u043A\u0430 \u0432 \u0442\u0435\u043A\u0441\u0442\u0435; src_N \u2014 id \u0432 \u0431\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0435 \u043A\u0443\u0440\u0441\u0430."
+    ),
+    import_react10.default.createElement(
       "ul",
       { className: "source-registry-list" },
       items.map((entry, i) => {
-        const sid = entry.id || entry.source_id || `S${i + 1}`;
+        const sid = entry.id || (String(entry.source_id || "").match(/^S\d+$/i) ? entry.source_id : null) || `S${i + 1}`;
+        const anchorLabel = sessionAnchorLabel(entry, i);
         const title = (entry.title || "source").trim();
         const url = (entry.url || "").trim();
         const snippet = (entry.snippet || "").trim().slice(0, 280);
-        return import_react11.default.createElement(
+        return import_react10.default.createElement(
           "li",
-          { key: sid },
-          import_react11.default.createElement("span", { className: "source-anchor-tag" }, `[${sid}]`),
-          url ? import_react11.default.createElement(
+          { key: `${sid}-${entry.course_source_id || url || i}` },
+          import_react10.default.createElement(
+            "span",
+            { className: "source-anchor-tag" },
+            anchorLabel
+          ),
+          url ? import_react10.default.createElement(
             "a",
             {
               className: "source-link",
@@ -38335,33 +39553,16 @@ function SourceRegistryList({ registry }) {
               rel: "noopener noreferrer"
             },
             title
-          ) : import_react11.default.createElement("span", null, title),
-          snippet && import_react11.default.createElement("p", { className: "muted snippet" }, snippet)
+          ) : import_react10.default.createElement("span", null, title),
+          snippet && import_react10.default.createElement("p", { className: "muted snippet" }, snippet)
         );
       })
     )
   );
 }
 
-// CodeSnippet.js
-var import_react12 = __toESM(require_react(), 1);
-function CodeSnippet({ code, language }) {
-  const ref = (0, import_react12.useRef)(null);
-  const text = (code || "").trim();
-  if (!text) return null;
-  (0, import_react12.useEffect)(() => {
-    if (ref.current) highlightCodeInRoot(ref.current);
-  }, [text, language]);
-  const langClass = language && language !== "auto" ? `language-${language}` : "";
-  return import_react12.default.createElement(
-    "pre",
-    { className: "code-snippet hljs-snippet", ref },
-    import_react12.default.createElement("code", { className: langClass }, text)
-  );
-}
-
 // NodeSelectionExplain.js
-var import_react13 = __toESM(require_react(), 1);
+var import_react11 = __toESM(require_react(), 1);
 
 // selectionUtils.js
 function getSurroundingParagraph(node, selectedText) {
@@ -38396,21 +39597,23 @@ function NodeSelectionExplain({
   containerRef,
   enabled
 }) {
-  const [toolbarPos, setToolbarPos] = (0, import_react13.useState)(null);
-  const [open, setOpen] = (0, import_react13.useState)(false);
-  const [selectedText, setSelectedText] = (0, import_react13.useState)("");
-  const [paragraph, setParagraph] = (0, import_react13.useState)("");
-  const [suggest, setSuggest] = (0, import_react13.useState)(DEFAULT_QUESTIONS);
-  const [suggestSource, setSuggestSource] = (0, import_react13.useState)("");
-  const [loadingSuggest, setLoadingSuggest] = (0, import_react13.useState)(false);
-  const [loadingExplain, setLoadingExplain] = (0, import_react13.useState)(false);
-  const [explanationHtml, setExplanationHtml] = (0, import_react13.useState)("");
-  const [customQ, setCustomQ] = (0, import_react13.useState)("");
-  const abortRef = (0, import_react13.useRef)(null);
-  const hideToolbar = (0, import_react13.useCallback)(() => {
+  const [toolbarPos, setToolbarPos] = (0, import_react11.useState)(null);
+  const [open, setOpen] = (0, import_react11.useState)(false);
+  const [selectedText, setSelectedText] = (0, import_react11.useState)("");
+  const [paragraph, setParagraph] = (0, import_react11.useState)("");
+  const [suggest, setSuggest] = (0, import_react11.useState)(DEFAULT_QUESTIONS);
+  const [suggestSource, setSuggestSource] = (0, import_react11.useState)("");
+  const [loadingSuggest, setLoadingSuggest] = (0, import_react11.useState)(false);
+  const [loadingExplain, setLoadingExplain] = (0, import_react11.useState)(false);
+  const [explanationHtml, setExplanationHtml] = (0, import_react11.useState)("");
+  const [explanationMd, setExplanationMd] = (0, import_react11.useState)("");
+  const [customQ, setCustomQ] = (0, import_react11.useState)("");
+  const abortRef = (0, import_react11.useRef)(null);
+  const explainAbortRef = (0, import_react11.useRef)(null);
+  const hideToolbar = (0, import_react11.useCallback)(() => {
     setToolbarPos(null);
   }, []);
-  (0, import_react13.useEffect)(() => {
+  (0, import_react11.useEffect)(() => {
     if (!enabled) return;
     let debounceTimer = null;
     function syncSelection() {
@@ -38496,32 +39699,56 @@ function NodeSelectionExplain({
   function openDialog() {
     setOpen(true);
     setExplanationHtml("");
+    setExplanationMd("");
     setCustomQ("");
     loadSuggest();
   }
   async function runExplain(question) {
     const q = (question || "").trim();
     if (!q || loadingExplain) return;
+    if (explainAbortRef.current) explainAbortRef.current.abort();
+    explainAbortRef.current = new AbortController();
     setLoadingExplain(true);
+    setExplanationHtml("");
+    setExplanationMd("");
     try {
-      const res = await nodeExplainSelection(
+      let streamed = "";
+      await nodeExplainSelectionStream(
         curriculumId,
         nodeData,
         selectedText,
         paragraph,
-        q
+        q,
+        (evt) => {
+          if (evt.type === "token" && evt.text) {
+            streamed += evt.text;
+            setExplanationMd(streamed);
+          }
+          if (evt.type === "complete" && evt.result) {
+            const html = String(evt.result.explanation_html || "").trim();
+            if (html) setExplanationHtml(html);
+            else setExplanationMd(String(evt.result.explanation || streamed));
+          }
+          if (evt.type === "error") {
+            throw new Error(evt.detail || "explain-stream error");
+          }
+        },
+        { signal: explainAbortRef.current.signal }
       );
-      setExplanationHtml(String(res.explanation_html || res.explanation || ""));
     } catch (e) {
-      setExplanationHtml(`<p class="skill-error">${String(e.message || e)}</p>`);
+      if (e.name !== "AbortError") {
+        setExplanationHtml(`<p class="skill-error">${String(e.message || e)}</p>`);
+        setExplanationMd("");
+      }
     } finally {
       setLoadingExplain(false);
     }
   }
-  return import_react13.default.createElement(
-    import_react13.default.Fragment,
+  const explainDisplayHtml = explanationHtml || (explanationMd ? structuredAnalysisToHtml(explanationMd) : "");
+  return import_react11.default.createElement(
+    import_react11.default.Fragment,
     null,
-    toolbarPos && import_react13.default.createElement(
+    toolbarPos && import_react11.default.createElement(
       "div",
       {
         className: "node-explain-toolbar",
@@ -38530,24 +39757,24 @@ function NodeSelectionExplain({
           top: `${toolbarPos.y}px`
         }
       },
-      import_react13.default.createElement(
+      import_react11.default.createElement(
         "button",
         { type: "button", onClick: openDialog },
         "\u041E\u0431\u044A\u044F\u0441\u043D\u0438\u0442\u044C"
       )
     ),
-    open && import_react13.default.createElement(
+    open && import_react11.default.createElement(
       "div",
       { className: "node-explain-backdrop", onClick: () => setOpen(false) }
     ),
-    open && import_react13.default.createElement(
+    open && import_react11.default.createElement(
       "aside",
       { className: "node-explain-dialog", role: "dialog" },
-      import_react13.default.createElement(
+      import_react11.default.createElement(
         "header",
         { className: "node-explain-head" },
-        import_react13.default.createElement("h3", null, "\u041F\u043E\u044F\u0441\u043D\u0435\u043D\u0438\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u0430"),
-        import_react13.default.createElement(
+        import_react11.default.createElement("h3", null, "\u041F\u043E\u044F\u0441\u043D\u0435\u043D\u0438\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u0430"),
+        import_react11.default.createElement(
           "button",
           {
             type: "button",
@@ -38557,8 +39784,8 @@ function NodeSelectionExplain({
           "\xD7"
         )
       ),
-      import_react13.default.createElement("blockquote", { className: "node-explain-quote" }, selectedText),
-      import_react13.default.createElement(
+      import_react11.default.createElement("blockquote", { className: "node-explain-quote" }, selectedText),
+      import_react11.default.createElement(
         "button",
         {
           type: "button",
@@ -38568,13 +39795,13 @@ function NodeSelectionExplain({
         },
         "\u041E\u0431\u044A\u044F\u0441\u043D\u0438, \u0447\u0442\u043E \u044D\u0442\u043E \u0437\u043D\u0430\u0447\u0438\u0442?"
       ),
-      import_react13.default.createElement("div", { className: "node-explain-label" }, "\u0421\u043B\u043E\u0436\u043D\u044B\u0435 \u0432\u043E\u043F\u0440\u043E\u0441\u044B"),
-      loadingSuggest && import_react13.default.createElement("p", { className: "muted" }, "\u041F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 (Ollama)\u2026"),
-      import_react13.default.createElement(
+      import_react11.default.createElement("div", { className: "node-explain-label" }, "\u0421\u043B\u043E\u0436\u043D\u044B\u0435 \u0432\u043E\u043F\u0440\u043E\u0441\u044B"),
+      loadingSuggest && import_react11.default.createElement("p", { className: "muted" }, "\u041F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 (Ollama)\u2026"),
+      import_react11.default.createElement(
         "div",
         { className: "node-explain-chips" },
         suggest.map(
-          (q, i) => import_react13.default.createElement(
+          (q, i) => import_react11.default.createElement(
             "button",
             {
               key: i,
@@ -38586,18 +39813,18 @@ function NodeSelectionExplain({
           )
         )
       ),
-      suggestSource === "default" && import_react13.default.createElement(
+      suggestSource === "default" && import_react11.default.createElement(
         "p",
         { className: "muted small" },
         "\u0411\u0430\u0437\u043E\u0432\u044B\u0435 \u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 (Ollama \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430)"
       ),
-      import_react13.default.createElement("textarea", {
+      import_react11.default.createElement("textarea", {
         className: "node-explain-input",
         placeholder: "\u0421\u0432\u043E\u0439 \u0432\u043E\u043F\u0440\u043E\u0441\u2026",
         value: customQ,
         onChange: (e) => setCustomQ(e.target.value)
       }),
-      import_react13.default.createElement(
+      import_react11.default.createElement(
         "button",
         {
           type: "button",
@@ -38607,139 +39834,1789 @@ function NodeSelectionExplain({
         },
         loadingExplain ? "\u2026" : "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C"
       ),
-      explanationHtml && import_react13.default.createElement(LlmHtmlBlock, {
-        html: explanationHtml,
+      explainDisplayHtml && import_react11.default.createElement(LlmHtmlBlock, {
+        html: explainDisplayHtml,
         className: "md-body node-explain-result"
       })
     )
   );
 }
 
-// NodeDrawer.js
-function DiagramBlock({ diagram, nodeId }) {
-  return import_react14.default.createElement(MermaidDiagramView, { diagram, nodeId });
+// NodeMaterialsPanel.js
+var import_react16 = __toESM(require_react(), 1);
+
+// NodeDrawerDiagram.js
+var import_react13 = __toESM(require_react(), 1);
+
+// MermaidDiagramView.js
+var import_react12 = __toESM(require_react(), 1);
+
+// mermaidExtract.js
+function stripOuterQuotes(s) {
+  let t = (s || "").trim();
+  if (t.length >= 2 && t[0] === t[t.length - 1] && (t[0] === '"' || t[0] === "'")) {
+    return t.slice(1, -1).trim();
+  }
+  return t;
 }
-function renderRouteCurriculumMaterials(selectedNode, curriculum) {
+function quoteSubgraphTitles(inner) {
+  return inner.split("\n").map((line) => {
+    const m = line.match(/^(\s*subgraph\s+)(.+)$/i);
+    if (!m) return line;
+    const rest = m[2].trim();
+    if (rest.startsWith('"') || rest.startsWith("'")) return line;
+    if (/^\w[\w-]*\s*\[/i.test(rest)) return line;
+    const safe = rest.replace(/"/g, "'");
+    return `${m[1]}"${safe}"`;
+  }).join("\n");
+}
+function quoteParticipantAliases(inner) {
+  return inner.split("\n").map((line) => {
+    const m = line.match(/^(\s*participant\s+\S+\s+as\s+)(.+)$/i);
+    if (!m) return line;
+    const alias = m[2].trim();
+    if (alias.startsWith('"') || alias.startsWith("'")) return line;
+    if (/[/()]/.test(alias) || alias.includes("  ") || alias.length > 22) {
+      const safe = wrapLongLabel(alias.replace(/"/g, "'"), 22).replace(/"/g, "'");
+      return `${m[1]}"${safe}"`;
+    }
+    return line;
+  }).join("\n");
+}
+function quoteLoopLabels(inner) {
+  return inner.split("\n").map((line) => {
+    const m = line.match(/^(\s*loop\s+)(.+)$/i);
+    if (!m) return line;
+    let rest = m[2].trim();
+    const arrow = rest.match(/\s+[A-Za-z0-9_]+[-]+>>?[A-Za-z0-9_]+:/);
+    if (arrow) {
+      rest = rest.slice(0, arrow.index).trim();
+    }
+    if (!rest || rest.startsWith('"') || rest.startsWith("'")) return line;
+    if (/[()]/.test(rest) || rest.includes(" ")) {
+      const safe = rest.replace(/"/g, "'");
+      const tail = arrow ? line.slice(arrow.index) : "";
+      return `${m[1]}"${safe}"${tail}`;
+    }
+    return line;
+  }).join("\n");
+}
+function wrapLongLabel(text, maxLen = 38, joiner = "\n") {
+  const t = (text || "").trim();
+  if (t.length <= maxLen) return t;
+  const words = t.split(/\s+/);
+  const lines = [];
+  let line = "";
+  for (const w of words) {
+    if (!line) line = w;
+    else if (line.length + 1 + w.length <= maxLen) line += ` ${w}`;
+    else {
+      lines.push(line);
+      line = w;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.join(joiner);
+}
+var MERMAID_RAW_START = /^(sequenceDiagram|flowchart\b|graph\s+(?:TD|LR|BT|RL)\b|classDiagram\b|stateDiagram(?:-v2)?\b|erDiagram\b|xychart(?:-beta)?\b)/i;
+var MERMAID_INIT_RE = /^\s*%%\s*\{init:[\s\S]*?\}%%\s*/i;
+function peelInitDirective(inner) {
+  const raw = (inner || "").trim();
+  const m = raw.match(/^(\s*%%\s*\{init:[\s\S]*?\}%%)\s*([\s\S]*)$/i);
+  if (m) return { init: m[1].trim(), body: (m[2] || "").trim() };
+  const broken = raw.match(/^(\s*%%\s*\{init:[\s\S]*?)(?=flowchart|graph\s|sequenceDiagram|xychart)/i);
+  if (broken) {
+    return { init: "", body: raw.slice(broken[0].length).trim() };
+  }
+  return { init: "", body: raw };
+}
+function hasMermaidGraphBody(s) {
+  const t = (s || "").trim();
+  return MERMAID_RAW_START.test(t) || /-->|---|==>/.test(t);
+}
+function splitMultipleEdgesPerLine(line) {
+  const t = (line || "").trim();
+  if (!t || /^(graph|flowchart|subgraph|end|%%|classDef|class |linkStyle|style )/i.test(t)) {
+    return line;
+  }
+  const arrows = t.match(/-->/g);
+  if (!arrows || arrows.length < 2) return line;
+  return t.replace(/\s+(?=[A-Za-z_][\w-]*\s+-->)/g, (match, offset) => {
+    if (offset === 0) return match;
+    const before = t.slice(0, offset);
+    const pipeCount = (before.match(/\|/g) || []).length;
+    if (pipeCount % 2 === 1) return match;
+    const arrowCount = (before.match(/-->/g) || []).length;
+    if (arrowCount < 1) return match;
+    return "\n";
+  });
+}
+function splitFlowchartOneLine(inner) {
+  let s = (inner || "").trim();
+  if (!s) return s;
+  s = s.replace(/^(graph\s+(?:TD|LR|BT|RL));?\s*/im, "$1\n");
+  s = s.replace(/^(flowchart\s+(?:TD|LR|BT|RL)?);?\s*/im, "$1\n");
+  s = s.replace(/\]\s*;\s*(?=[A-Za-z0-9_])/g, "]\n");
+  s = s.replace(/\}\s*;\s*(?=[A-Za-z0-9_])/g, "}\n");
+  s = s.replace(/\)\s*;\s*(?=[A-Za-z0-9_])/g, ")\n");
+  s = s.replace(
+    /([)\]])\s+(?=[A-Za-z_][\w-]*\s*(\[|-->|-->))/g,
+    "$1\n"
+  );
+  s = s.split("\n").map((ln) => splitMultipleEdgesPerLine(ln)).join("\n");
+  return s;
+}
+function expandGluedFlowchartLines(inner) {
+  const lines = (inner || "").split("\n");
+  const out = [];
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t || t.startsWith("%%")) {
+      out.push(line);
+      continue;
+    }
+    const glued = t.includes(";") && /-->|---/.test(t) || t.startsWith("-->") && /-->|---/.test(t) || (t.match(/-->/g) || []).length >= 2;
+    if (glued && !/^(graph|flowchart)\s/i.test(t)) {
+      out.push(...splitFlowchartOneLine(t).split("\n"));
+      continue;
+    }
+    if (/^(graph|flowchart)\s/i.test(t) && t.includes(";")) {
+      out.push(...splitFlowchartOneLine(t).split("\n"));
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+function isXychartMermaid(inner) {
+  return /^xychart(?:-beta)?\b/im.test((inner || "").trimStart());
+}
+function sanitizeNoteLines(inner) {
+  return inner.split("\n").map((line) => {
+    const m = line.match(
+      /^(\s*Note\s+(?:over|left of|right of)\s+[^:]+:\s*)(.*)$/i
+    );
+    if (!m) return line;
+    const prefix = m[1];
+    let body = (m[2] || "").trim().replace(/^"|"$/g, "").replace(/"/g, "'");
+    body = wrapLongLabel(body, 36);
+    if (!body) return line;
+    return prefix + `"${body}"`;
+  }).join("\n");
+}
+function quoteArrowMessages(inner) {
+  const isSeq = /^sequenceDiagram\b/im.test((inner || "").trimStart());
+  return inner.split("\n").map((line) => {
+    const m = line.match(/^(\s*[A-Za-z0-9_]+[-]+>>?[A-Za-z0-9_]+:\s*)(.*)$/);
+    if (!m) return line;
+    const prefix = m[1];
+    let body = (m[2] || "").trim().replace(/^"|"$/g, "");
+    if (!body) return line;
+    body = body.replace(/"/g, "'");
+    if (!isSeq) body = wrapLongLabel(body, 40);
+    return prefix + `"${body}"`;
+  }).join("\n");
+}
+function ensureSequenceInit(inner) {
+  if (!/^sequenceDiagram/im.test(inner)) return inner;
+  if (/%%\s*\{init:/i.test(inner)) return inner;
+  return "%%{init: {'themeVariables': {'fontSize': '10px'}, 'sequence': {'wrap': true, 'width': 240, 'messageFontSize': 10, 'noteFontSize': 10, 'actorFontSize': 11, 'messageMargin': 48, 'boxMargin': 10, 'mirrorActors': false}}}%%\n" + inner;
+}
+function ensureFlowchartInit(inner) {
+  const peeled = peelInitDirective(inner);
+  let body = peeled.body;
+  const head = body.trimStart();
+  if (!/^(flowchart\b|graph\s+(?:TD|LR|BT|RL)\b)/im.test(head)) {
+    return inner;
+  }
+  if (peeled.init || /%%\s*\{init:/i.test(inner)) return inner;
+  const init2 = '%%{init: {"flowchart": {"htmlLabels": true, "useMaxWidth": false, "padding": 28, "nodeSpacing": 56, "rankSpacing": 64, "curve": "basis"}, "themeVariables": {"fontSize": "14px", "fontFamily": "system-ui, sans-serif"}}}%%';
+  return `${init2}
+${body}`;
+}
+function quoteInlineFlowchartNodes(inner) {
+  return inner.replace(
+    /([A-Za-z0-9_]+)\[([^\]]+)\]/g,
+    (match, id2, rawLabel) => {
+      let label = rawLabel.trim().replace(/^"|"$/g, "");
+      if (label.startsWith('"')) return match;
+      const needs = label.length > 14 || /[()]/.test(label) || label.includes("  ");
+      if (!needs) return match;
+      label = wrapLongLabel(label.replace(/"/g, "'"), 20, "<br/>");
+      return `${id2}["${label}"]`;
+    }
+  );
+}
+function quoteFlowchartNodeLabels(inner) {
+  return inner.split("\n").map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("%%")) return line;
+    if (/^(subgraph|end|classDef|class |linkStyle|style )/i.test(trimmed)) {
+      return line;
+    }
+    const bracket = trimmed.match(
+      /^([A-Za-z0-9_]+)\[([^\]]+)\](.*)$/
+    );
+    if (bracket) {
+      let label = bracket[2].trim().replace(/^"|"$/g, "");
+      if (label.startsWith('"')) return line;
+      const needsQuote = label.length > 14 || /[()]/.test(label) || label.includes("  ");
+      if (!needsQuote) return line;
+      label = wrapLongLabel(label.replace(/"/g, "'"), 20, "<br/>");
+      const safe = `"${label}"`;
+      return line.replace(
+        bracket[0],
+        `${bracket[1]}[${safe}]${bracket[3] || ""}`
+      );
+    }
+    const round = trimmed.match(/^([A-Za-z0-9_]+)\(([^)]+)\)(.*)$/);
+    if (round) {
+      let label = round[2].trim().replace(/^"|"$/g, "");
+      if (label.startsWith('"')) return line;
+      if (label.length <= 14) return line;
+      label = wrapLongLabel(label.replace(/"/g, "'"), 20, "<br/>");
+      return line.replace(
+        round[0],
+        `${round[1]}("${label}")${round[3] || ""}`
+      );
+    }
+    const diamond = trimmed.match(/^([A-Za-z0-9_]+)\{([^}]+)\}(.*)$/);
+    if (diamond) {
+      let label = diamond[2].trim().replace(/^"|"$/g, "");
+      if (label.startsWith('"')) return line;
+      if (label.length <= 12) return line;
+      label = wrapLongLabel(label.replace(/"/g, "'"), 18, "<br/>");
+      return line.replace(
+        diamond[0],
+        `${diamond[1]}{"${label}"}${diamond[3] || ""}`
+      );
+    }
+    return line;
+  }).join("\n");
+}
+function mermaidNodeId(raw) {
+  const t = (raw || "").trim();
+  if (!t) return "node";
+  const paren = t.match(/^(.+?)\s+\(([^)]+)\)\s*$/);
+  if (paren) {
+    const base = paren[1].trim();
+    const inner = paren[2].trim();
+    const id2 = `${base.replace(/\s+/g, "_")}_${inner.replace(/\s+/g, "_")}`;
+    return `${id2}["${base.replace(/"/g, "'")} (${inner.replace(/"/g, "'")})"]`;
+  }
+  if (/[\s/]/.test(t)) {
+    const id2 = t.replace(/[^\w]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+    return `${id2 || "node"}["${t.replace(/"/g, "'")}"]`;
+  }
+  return t.replace(/\s+/g, "_");
+}
+function parseLinkChain(chain) {
+  let s = chain.replace(/--\(([^)]+)\)-->/g, "-->|$1|");
+  const rawParts = s.split(/\s*-->\s*/).filter((p) => p.trim());
+  if (rawParts.length < 2) return null;
+  const edges = [];
+  const nodes = [];
+  for (let i = 0; i < rawParts.length; i += 1) {
+    let p = rawParts[i].trim();
+    if (i === 0) {
+      nodes.push(p);
+      continue;
+    }
+    let label = "";
+    const lm = p.match(/^\|([^|]+)\|\s*(.+)$/s);
+    if (lm) {
+      label = lm[1].trim();
+      p = lm[2].trim();
+    }
+    const from = nodes[nodes.length - 1];
+    edges.push({ from, to: p, label });
+    nodes.push(p);
+  }
+  return edges;
+}
+function chainSegmentToMermaid(title, chain, subIdx) {
+  const edges = parseLinkChain(chain);
+  if (!edges || edges.length === 0) return [];
+  const lines = [];
+  const subId = `sg_${subIdx}`;
+  if (title) {
+    const safeTitle = title.replace(/"/g, "'").replace(/\]/g, "");
+    lines.push(`subgraph ${subId} [${safeTitle}]`);
+  }
+  for (const e of edges) {
+    const a = mermaidNodeId(e.from);
+    const b = mermaidNodeId(e.to);
+    const lbl = e.label ? `|${e.label.replace(/"/g, "'")}|` : "";
+    lines.push(`${title ? "  " : ""}${a} -->${lbl} ${b}`);
+  }
+  if (title) lines.push("end");
+  return lines;
+}
+function liftPseudoFlowchart(text) {
+  const t = stripOuterQuotes(repairLlMText(text)).trim();
+  if (!t) return "";
+  if (/^(sequenceDiagram|flowchart\b|graph\s+(?:TD|LR|BT|RL)\b|xychart(?:-beta)?\b)/im.test(t)) {
+    return "";
+  }
+  if (!/--\([^)]+\)-->|-->/.test(t)) return "";
+  const segments = t.includes("|") ? t.split(/\s*\|\s*/).filter((seg) => /-->|--\(/i.test(seg)) : [t];
+  if (!segments.length) return "";
+  const bodyLines = ["flowchart LR"];
+  segments.forEach((seg, idx) => {
+    let title = "";
+    let chain = seg.trim();
+    const m = chain.match(/^([^:]{2,56}):\s*(.+)$/s);
+    if (m && /-->|--\(/i.test(m[2])) {
+      title = m[1].trim();
+      chain = m[2].trim();
+    }
+    bodyLines.push(...chainSegmentToMermaid(title, chain, idx));
+  });
+  if (bodyLines.length <= 1) return "";
+  return bodyLines.join("\n");
+}
+function formatXychartBody(s) {
+  let t = (s || "").trim();
+  if (!isXychartMermaid(t)) return t;
+  t = t.replace(/^(xychart(?:-beta)?)\s+/im, "$1\n");
+  t = t.replace(/\s+(title\s)/gi, "\n$1");
+  t = t.replace(/\s+(x-axis\s)/gi, "\n$1");
+  t = t.replace(/\s+(y-axis\s)/gi, "\n$1");
+  t = t.replace(/\s+(line\s)/gi, "\n$1");
+  t = t.replace(/\s+(bar\s)/gi, "\n$1");
+  return t.replace(/\n{3,}/g, "\n\n").trim();
+}
+function formatMermaidInner(inner) {
+  const peeled = peelInitDirective(inner);
+  let s = quoteSubgraphTitles(repairLlMText(peeled.body).trim());
+  const initPrefix = peeled.init;
+  if (!s) return initPrefix || s;
+  s = splitFlowchartOneLine(s);
+  if (isXychartMermaid(s)) {
+    const out = formatXychartBody(s);
+    return initPrefix ? `${initPrefix}
+${out}` : out;
+  }
+  const hasInit = Boolean(initPrefix) || /%%\s*\{init:/i.test(s);
+  if (!hasInit) {
+    s = ensureSequenceInit(s);
+    s = ensureFlowchartInit(s);
+  }
+  s = quoteFlowchartNodeLabels(s);
+  s = s.replace(/^(sequenceDiagram(?:\s+autonumber)?)\s+/i, "$1\n");
+  s = s.replace(/^(graph\s+(?:TD|LR|BT|RL));?\s*/im, "$1\n");
+  s = s.replace(/^(flowchart\s+(?:TD|LR|BT|RL)?);?\s*/im, "$1\n");
+  const isSeq = /^sequenceDiagram\b/im.test(s);
+  if (isSeq) {
+    const blockKw = /\s+(participant\s|actor\s|rect\s|loop\s|alt\s|opt\s|par\s|else\s|critical\s|break\s)/gi;
+    s = s.replace(blockKw, "\n$1");
+    s = s.replace(/\s+(Note\s+(?:over|left of|right of)\s)/gi, "\n$1");
+    s = s.replace(/\s+(activate\s|deactivate\s)/gi, "\n$1");
+    s = s.replace(
+      /\s+([A-Za-z0-9_]+[-]+>>?[A-Za-z0-9_]+:)/g,
+      "\n$1"
+    );
+  }
+  s = s.replace(/\s+(subgraph\s)/gi, "\n$1");
+  s = s.replace(/\s+(end)\b/gi, "\n$1");
+  s = quoteParticipantAliases(s);
+  s = quoteLoopLabels(s);
+  s = sanitizeNoteLines(s);
+  s = quoteArrowMessages(s);
+  s = expandGluedFlowchartLines(s);
+  s = quoteInlineFlowchartNodes(s);
+  s = s.replace(/\n{3,}/g, "\n\n");
+  s = s.trim();
+  if (initPrefix) {
+    const bodyOnly = peelInitDirective(s).body.trim();
+    return `${initPrefix}
+${bodyOnly}`;
+  }
+  return s;
+}
+function stripFence(d) {
+  let inner = d.replace(/^```(?:mermaid)?\s*/i, "").trim();
+  inner = inner.replace(/```\s*$/i, "").trim();
+  return inner;
+}
+function repairDiagramMarkdown(diagram) {
+  let d = stripOuterQuotes(repairLlMText((diagram || "").trim()));
+  if (!d) return d;
+  for (let i = 0; i < 4; i += 1) {
+    let inner;
+    if (d.startsWith("```")) {
+      inner = formatMermaidInner(stripFence(d));
+      const next = inner ? "```mermaid\n" + inner + "\n```" : d;
+      if (next === d) break;
+      d = next;
+    } else if (MERMAID_RAW_START.test(d) || MERMAID_INIT_RE.test(d)) {
+      const peeled = peelInitDirective(d);
+      const body = peeled.body || d;
+      inner = formatMermaidInner(
+        peeled.init ? `${peeled.init}
+${body}` : body
+      );
+      const next = inner ? "```mermaid\n" + inner + "\n```" : d;
+      if (next === d) break;
+      d = next;
+    } else {
+      const lifted = liftPseudoFlowchart(d);
+      if (lifted) {
+        inner = formatMermaidInner(lifted);
+        d = inner ? "```mermaid\n" + inner + "\n```" : d;
+        continue;
+      }
+      break;
+    }
+  }
+  return d;
+}
+function extractOnce(text) {
+  const trimmed = stripOuterQuotes(repairLlMText((text || "").trim()));
+  if (!trimmed) return "";
+  const peeled = peelInitDirective(trimmed);
+  const core = peeled.body || trimmed;
+  if (trimmed.startsWith("```")) {
+    return formatMermaidInner(stripFence(trimmed));
+  }
+  const fenced = trimmed.match(/```(?:mermaid)?\s*([\s\S]*?)```/i);
+  if (fenced) return formatMermaidInner(fenced[1]);
+  if (hasMermaidGraphBody(core)) {
+    if (isXychartMermaid(core)) return trimmed.trim();
+    return formatMermaidInner(trimmed);
+  }
+  const firstLine = core.split(/\r?\n/, 1)[0].trim();
+  if (MERMAID_RAW_START.test(firstLine)) {
+    if (isXychartMermaid(core)) return trimmed.trim();
+    return formatMermaidInner(trimmed);
+  }
+  const lifted = liftPseudoFlowchart(core);
+  if (lifted) return formatMermaidInner(peeled.init ? `${peeled.init}
+${lifted}` : lifted);
+  return "";
+}
+function extractStandaloneXychartBlocks(text) {
+  const s = stripFence(repairLlMText((text || "").trim()));
+  if (!s) return [];
+  const blocks = [];
+  const re = /(?:^|\n)\s*(xychart(?:-beta)?[\s\S]*?)(?=\n\s*(?:flowchart\b|graph\s+(?:TD|LR|BT|RL)\b|sequenceDiagram|classDiagram|xychart)|$)/gi;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const b = formatXychartBody((m[1] || "").trim());
+    if (b.length > 24 && /x-axis/i.test(b) && /y-axis/i.test(b) && (/\bline\b/i.test(b) || /\bbar\b/i.test(b))) {
+      blocks.push(b);
+    }
+  }
+  return blocks;
+}
+function isCleanXychartBlock(block) {
+  const b = (block || "").trim();
+  if (!b) return false;
+  const first = b.split(/\r?\n/, 1)[0].trim();
+  if (!/^xychart(?:-beta)?\b/i.test(first)) return false;
+  if (/\bflowchart\b/i.test(b)) return false;
+  if (/-->/i.test(b)) return false;
+  return true;
+}
+function parseCommaSeparatedLabels(raw) {
+  const t = (raw || "").trim();
+  if (!t) return [];
+  const out = [];
+  let cur = "";
+  let inQ = false;
+  let q = "";
+  for (let i = 0; i < t.length; i += 1) {
+    const c = t[i];
+    if ((c === "'" || c === '"') && !inQ) {
+      inQ = true;
+      q = c;
+      continue;
+    }
+    if (inQ && c === q) {
+      inQ = false;
+      if (cur.trim()) out.push(cur.trim());
+      cur = "";
+      continue;
+    }
+    if (!inQ && c === ",") {
+      if (cur.trim()) out.push(cur.trim().replace(/^['"]|['"]$/g, ""));
+      cur = "";
+      continue;
+    }
+    cur += c;
+  }
+  if (cur.trim()) out.push(cur.trim().replace(/^['"]|['"]$/g, ""));
+  return out.filter(Boolean);
+}
+function readBracketContent(s, openBracketIdx) {
+  let depth = 0;
+  const start2 = openBracketIdx + 1;
+  for (let i = openBracketIdx; i < s.length; i += 1) {
+    if (s[i] === "[") depth += 1;
+    else if (s[i] === "]") {
+      depth -= 1;
+      if (depth === 0) return { inner: s.slice(start2, i).trim(), end: i };
+    }
+  }
+  return null;
+}
+function seriesNumbersFromInner(inner) {
+  const cleaned = (inner || "").replace(/["']\s*$/g, "").replace(/^["']/g, "").replace(/\s+/g, " ").trim();
+  const nums = cleaned.match(/[\d.]+/g);
+  if (!nums || nums.length < 2) return null;
+  return nums.map((n) => parseFloat(n)).filter((n) => Number.isFinite(n));
+}
+function extractSeriesLines(s) {
+  const series = [];
+  const re = /\b(bar|line)\s*\[/gi;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const bracketPos = m.index + m[0].length - 1;
+    const chunk = readBracketContent(s, bracketPos);
+    if (!chunk) continue;
+    const nums = seriesNumbersFromInner(chunk.inner);
+    if (!nums) continue;
+    series.push(`${m[1].toLowerCase()} [${nums.join(", ")}]`);
+    re.lastIndex = chunk.end + 1;
+  }
+  return series;
+}
+function inferYRangeFromSeries(seriesLines) {
+  let max = 0;
+  for (const line of seriesLines) {
+    for (const n of line.match(/[\d.]+/g) || []) {
+      max = Math.max(max, parseFloat(n));
+    }
+  }
+  if (!Number.isFinite(max) || max <= 0) return "0 --> 1";
+  if (max <= 1) return "0 --> 1";
+  return `0 --> ${Math.ceil(max * 10) / 10}`;
+}
+function reconstructXychartFromGarbage(text) {
+  let s = stripFence(repairLlMText((text || "").trim()));
+  s = s.replace(/%%\s*\{init:[\s\S]*?\}%%/gi, "").trim();
+  if (!/x-axis/i.test(s)) return "";
+  const hasSeries = /\bbar\s*\[/i.test(s) || /\bline\s*\[/i.test(s);
+  if (!hasSeries) return "";
+  const mixedGarbage = /\bflowchart\b/i.test(s) && (/xychart/i.test(s) || /xychart_beta/i.test(s) || /-->/i.test(s));
+  if (!mixedGarbage && !/^xychart/i.test(s)) {
+    return "";
+  }
+  const titleM = s.match(/xychart-beta\s+title\s+['"]([^'"]+)['"]/i) || s.match(/title\s+['"]([^'"]+)['"]/i);
+  const title = titleM ? titleM[1].replace(/\s+/g, " ").trim() : "";
+  const xAxisM = s.match(/x-axis\s*\[([\s\S]*?)\]/i);
+  const xLabels = xAxisM ? parseCommaSeparatedLabels(xAxisM[1]) : [];
+  const yAxisM = s.match(
+    /y-axis\s+['"]([^'"]+)['"]\s*([\d.]+\s*(?:to|-->|--)\s*[\d.]+|[\d.]+)?/i
+  );
+  const series = extractSeriesLines(s);
+  if (!series.length) return "";
+  let yLine = `y-axis "\u041C\u0435\u0442\u0440\u0438\u043A\u0430" ${inferYRangeFromSeries(series)}`;
+  if (yAxisM) {
+    const label = yAxisM[1].replace(/"/g, "'");
+    let range = (yAxisM[2] || "").trim().replace(/\bto\b/i, "-->");
+    if (range && !/-->/.test(range) && /^[\d.]+$/.test(range)) {
+      range = `0 --> ${range}`;
+    }
+    if (!range) range = inferYRangeFromSeries(series);
+    yLine = `y-axis "${label}" ${range}`;
+    const maxInData = inferYRangeFromSeries(series).match(/([\d.]+)\s*$/);
+    const maxY = maxInData ? parseFloat(maxInData[1]) : 1;
+    const declared = range.match(/-->\s*([\d.]+)/);
+    if (declared && parseFloat(declared[1]) < maxY) {
+      yLine = `y-axis "${label}" ${inferYRangeFromSeries(series)}`;
+    }
+  }
+  let out = "xychart-beta\n";
+  if (title) out += `title "${title.replace(/"/g, "'")}"
+`;
+  if (xLabels.length) {
+    const allNum = xLabels.every((l) => /^\d+$/.test(l.trim()));
+    if (allNum) {
+      out += `x-axis [${xLabels.join(", ")}]
+`;
+    } else {
+      out += `x-axis [${xLabels.map((l) => `"${l.replace(/\s+/g, " ").replace(/"/g, "'")}"`).join(", ")}]
+`;
+    }
+  } else if (xAxisM && /^\d/.test(xAxisM[1].trim())) {
+    const nums = xAxisM[1].trim().replace(/["']\s*$/g, "").replace(/[^\d,\s.]/g, "");
+    out += `x-axis [${nums}]
+`;
+  }
+  out += `${yLine}
+`;
+  out += series.join("\n");
+  return formatXychartBody(out);
+}
+function extractRenderableMermaid(text) {
+  const xycharts = extractStandaloneXychartBlocks(text).filter(isCleanXychartBlock);
+  if (xycharts.length) {
+    return xycharts[xycharts.length - 1];
+  }
+  const reconstructed = reconstructXychartFromGarbage(text);
+  if (reconstructed) return reconstructed;
+  const src = extractMermaidSource(text);
+  if (src && /\bflowchart\b/i.test(src) && /x-axis/i.test(text || "")) {
+    const again = reconstructXychartFromGarbage(text);
+    if (again) return again;
+  }
+  return src;
+}
+function extractMermaidSource(text) {
+  const repaired = repairDiagramMarkdown(text);
+  let src = extractOnce(repaired);
+  if (!src) src = extractOnce(text);
+  if (!src) {
+    const stripped = stripOuterQuotes(text);
+    if (stripped !== (text || "").trim()) {
+      src = extractOnce(repairDiagramMarkdown(stripped));
+    }
+  }
+  if (src) {
+    const again = formatMermaidInner(src);
+    if (again) src = again;
+  }
+  return src;
+}
+function softenMermaidSource(source) {
+  let s = (source || "").trim();
+  s = s.replace(/^sequenceDiagram\s+autonumber/im, "sequenceDiagram");
+  const peeled = peelInitDirective(s);
+  if (peeled.init) return peeled.body.trim();
+  return s;
+}
+
+// mermaidSvgPolish.js
+var FLOWCHART_BOX_PAD_W = 22;
+var FLOWCHART_BOX_PAD_H = 6;
+var VIEWBOX_PAD_FLOWCHART = { top: 10, right: 14, bottom: 18, left: 14 };
+var VIEWBOX_PAD_XYCHART = { top: 12, right: 18, bottom: 56, left: 18 };
+function expandSvgViewBoxToContent(svg, pad) {
+  if (!svg || !pad) return;
+  let bbox;
+  try {
+    bbox = svg.getBBox();
+  } catch {
+    return;
+  }
+  if (!bbox.width || !bbox.height) return;
+  const x = bbox.x - pad.left;
+  const y = bbox.y - pad.top;
+  const w = bbox.width + pad.left + pad.right;
+  const h = bbox.height + pad.top + pad.bottom;
+  svg.setAttribute("viewBox", `${x} ${y} ${w} ${h}`);
+  svg.style.overflow = "visible";
+}
+function expandFlowchartNodeBoxes(svg) {
+  svg.querySelectorAll("g.node").forEach((node) => {
+    const fo = node.querySelector("foreignObject");
+    if (!fo) return;
+    const extraW = FLOWCHART_BOX_PAD_W;
+    const extraH = FLOWCHART_BOX_PAD_H;
+    const w = Number(fo.getAttribute("width") || 0);
+    const h = Number(fo.getAttribute("height") || 0);
+    const x = Number(fo.getAttribute("x") || 0);
+    const y = Number(fo.getAttribute("y") || 0);
+    if (w > 0) {
+      fo.setAttribute("width", String(w + extraW));
+      fo.setAttribute("x", String(x - extraW / 2));
+    }
+    if (h > 0) {
+      fo.setAttribute("height", String(h + extraH));
+      fo.setAttribute("y", String(y - extraH / 2));
+    }
+    const rect = node.querySelector("rect");
+    if (rect) {
+      const rw = Number(rect.getAttribute("width") || 0);
+      const rh = Number(rect.getAttribute("height") || 0);
+      const rx = Number(rect.getAttribute("x") || 0);
+      const ry = Number(rect.getAttribute("y") || 0);
+      if (rw > 0) {
+        rect.setAttribute("width", String(rw + extraW));
+        rect.setAttribute("x", String(rx - extraW / 2));
+      }
+      if (rh > 0) {
+        rect.setAttribute("height", String(rh + extraH));
+        rect.setAttribute("y", String(ry - extraH / 2));
+      }
+    }
+    const poly = node.querySelector("polygon");
+    if (poly) {
+      const pts = (poly.getAttribute("points") || "").trim().split(/\s+/).map((p) => p.split(",").map(Number));
+      if (pts.length >= 4) {
+        const xs = pts.map((p) => p[0]);
+        const ys = pts.map((p) => p[1]);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        const scaleX = (maxX - minX + extraW) / (maxX - minX);
+        const scaleY = (maxY - minY + extraH) / (maxY - minY);
+        const scaled = pts.map(([px, py]) => {
+          const nx = cx + (px - cx) * scaleX;
+          const ny = cy + (py - cy) * scaleY;
+          return `${nx},${ny}`;
+        });
+        poly.setAttribute("points", scaled.join(" "));
+      }
+    }
+  });
+}
+function polishMermaidSvg(svg, opts = {}) {
+  if (!svg) return;
+  const xychart = Boolean(opts.xychart);
+  expandSvgViewBoxToContent(
+    svg,
+    xychart ? VIEWBOX_PAD_XYCHART : VIEWBOX_PAD_FLOWCHART
+  );
+  if (!xychart) expandFlowchartNodeBoxes(svg);
+  svg.querySelectorAll(".edgeLabel").forEach((el) => {
+    el.setAttribute("font-size", "13");
+  });
+  svg.querySelectorAll(".node rect, .node polygon, .node path").forEach((el) => {
+    el.style.strokeWidth = "1.5px";
+  });
+}
+function applyDiagramSvgScale(svg, scale) {
+  if (!svg) return;
+  svg.style.transformOrigin = "0 0";
+  if (!scale || scale === 1) {
+    svg.style.transform = "";
+  } else {
+    svg.style.transform = `scale(${scale})`;
+  }
+}
+
+// MermaidDiagramView.js
+var MIN_SCALE = 0.5;
+var MAX_SCALE = 5;
+var FIT_MARGIN_DEFAULT = 0.85;
+var FIT_MARGIN_COMPACT = 0.82;
+var FIT_MARGIN_XYCHART = 0.78;
+var FIT_MARGIN_XYCHART_COMPACT = 0.72;
+var MAX_AUTO_SCALE_DEFAULT = 1.08;
+var MAX_AUTO_SCALE_COMPACT = 1;
+var LS_ZOOM = "skillTreeDiagramZoom";
+function clamp2(n, lo, hi) {
+  return Math.min(hi, Math.max(lo, n));
+}
+function computeFitScale(bb, vw, vh, fitMargin, maxAuto) {
+  if (!bb || bb.width < 8 || bb.height < 8) return 1;
+  const fit = Math.min(vw / bb.width, vh / bb.height) * fitMargin;
+  return clamp2(fit, MIN_SCALE, maxAuto);
+}
+function computeCenterPan(viewport, bb, scale, opts = {}) {
+  const scaledW = bb.width * scale;
+  const scaledH = bb.height * scale;
+  const minInset = 10;
+  const bottomInset = opts.xychart ? 6 : 0;
+  return {
+    x: Math.max(minInset, (viewport.clientWidth - scaledW) / 2),
+    y: Math.max(
+      minInset,
+      (viewport.clientHeight - scaledH) / 2 - bottomInset
+    )
+  };
+}
+function isXychartMermaidSource(src) {
+  return /^\s*xychart(?:-beta)?\b/im.test((src || "").trim());
+}
+function hostShowsXychart(host) {
+  if (!host) return false;
+  if (host.querySelector(".mermaid.mermaid-xychart")) return true;
+  const pre = host.querySelector(".mermaid");
+  return isXychartMermaidSource(pre?.textContent || "");
+}
+function MermaidDiagramView({
+  diagram,
+  nodeId,
+  compact = false,
+  hideTitle = false
+}) {
+  const rawDiagram = (diagram || "").trim();
+  const text = repairDiagramMarkdown(rawDiagram);
+  const sourceForDisplay = extractMermaidSource(text || rawDiagram) || text || rawDiagram;
+  const hostRef = (0, import_react12.useRef)(null);
+  const viewportRef = (0, import_react12.useRef)(null);
+  const fitMargin = compact ? FIT_MARGIN_COMPACT : FIT_MARGIN_DEFAULT;
+  const maxAutoScale = compact ? MAX_AUTO_SCALE_COMPACT : MAX_AUTO_SCALE_DEFAULT;
+  const [viewMode, setViewMode] = (0, import_react12.useState)("render");
+  const [renderFailed, setRenderFailed] = (0, import_react12.useState)(false);
+  const [scale, setScale] = (0, import_react12.useState)(() => {
+    if (compact) return 1;
+    const saved = Number(localStorage.getItem(LS_ZOOM));
+    return saved > 0 ? clamp2(saved, MIN_SCALE, MAX_SCALE) : 1;
+  });
+  const [pan, setPan] = (0, import_react12.useState)({ x: 0, y: 0 });
+  const panStart = (0, import_react12.useRef)(null);
+  const fitToViewport = (0, import_react12.useCallback)(() => {
+    const viewport = viewportRef.current;
+    const host = hostRef.current;
+    const svg = host?.querySelector("svg");
+    if (!viewport || !svg) return;
+    const xychart = hostShowsXychart(host);
+    const pad = xychart ? { x: 24, y: 32, bottom: 40 } : { x: 24, y: 24, bottom: 24 };
+    const vw = viewport.clientWidth - pad.x * 2;
+    const vh = viewport.clientHeight - pad.y - pad.bottom;
+    const margin = xychart ? compact ? FIT_MARGIN_XYCHART_COMPACT : FIT_MARGIN_XYCHART : fitMargin;
+    applyDiagramSvgScale(svg, 1);
+    const bb = svg.getBoundingClientRect();
+    const newScale = computeFitScale(bb, vw, vh, margin, MAX_SCALE);
+    setScale(newScale);
+    setPan(computeCenterPan(viewport, bb, newScale, { xychart }));
+  }, [fitMargin, compact]);
+  const applyComfortableScale = (0, import_react12.useCallback)(() => {
+    const viewport = viewportRef.current;
+    const host = hostRef.current;
+    const svg = host?.querySelector("svg");
+    if (!viewport || !svg) {
+      setScale(1);
+      setPan({ x: 0, y: 0 });
+      return;
+    }
+    const xychart = hostShowsXychart(host);
+    applyDiagramSvgScale(svg, 1);
+    const pad = xychart ? { x: 24, y: 32, bottom: 40 } : { x: 24, y: 24, bottom: 24 };
+    const vw = viewport.clientWidth - pad.x * 2;
+    const vh = viewport.clientHeight - pad.y - pad.bottom;
+    const margin = xychart ? compact ? FIT_MARGIN_XYCHART_COMPACT : FIT_MARGIN_XYCHART : fitMargin;
+    const bb = svg.getBoundingClientRect();
+    const newScale = computeFitScale(bb, vw, vh, margin, maxAutoScale);
+    setScale(newScale);
+    setPan(computeCenterPan(viewport, bb, newScale, { xychart }));
+  }, [fitMargin, maxAutoScale, compact]);
+  (0, import_react12.useEffect)(() => {
+    const svg = hostRef.current?.querySelector("svg");
+    applyDiagramSvgScale(svg, scale);
+  }, [scale]);
+  (0, import_react12.useEffect)(() => {
+    if (viewMode === "source") return void 0;
+    let cancelled = false;
+    let observer = null;
+    let started = false;
+    function beginRender() {
+      if (started || cancelled) return;
+      started = true;
+      if (observer) observer.disconnect();
+      const viewport2 = viewportRef.current;
+      const host = hostRef.current;
+      if (!host || !text) return;
+      function runMermaid(source, attempt) {
+        if (cancelled) return Promise.resolve();
+        const src = (source || "").trim();
+        if (!src) {
+          setRenderFailed(true);
+          return Promise.resolve();
+        }
+        setRenderFailed(false);
+        const id2 = `mmd-${nodeId}-${Date.now()}-${attempt}`;
+        host.innerHTML = "";
+        const el = document.createElement("div");
+        el.className = "mermaid";
+        el.id = id2;
+        el.textContent = src;
+        host.appendChild(el);
+        return queueMermaidRun(() => {
+          if (cancelled) return Promise.resolve();
+          return window.mermaid.run({ nodes: [el] }).then(() => {
+            if (cancelled) return;
+            const svg = el.querySelector("svg");
+            if (svg) {
+              svg.style.maxWidth = "none";
+              svg.style.height = "auto";
+              const xychart = isXychartMermaidSource(src);
+              polishMermaidSvg(svg, { xychart });
+              if (xychart) el.classList.add("mermaid-xychart");
+            }
+            requestAnimationFrame(() => {
+              if (!cancelled) applyComfortableScale();
+            });
+          });
+        }).catch((err) => {
+          if (cancelled) return;
+          if (attempt === 0) {
+            const rebuilt = reconstructXychartFromGarbage(text || rawDiagram);
+            if (rebuilt && rebuilt !== src) {
+              return runMermaid(rebuilt, 3);
+            }
+          }
+          if (attempt === 0) {
+            const soft = softenMermaidSource(src);
+            if (soft && soft !== src) {
+              return runMermaid(soft, 1);
+            }
+          }
+          if (attempt < 2) {
+            const retry = formatMermaidInner(src);
+            if (retry && retry !== src) {
+              return runMermaid(retry, attempt + 1);
+            }
+          }
+          console.warn("mermaid.run failed", err, src);
+          setRenderFailed(true);
+          const pre = document.createElement("pre");
+          pre.className = "mermaid-fallback";
+          pre.textContent = src;
+          host.innerHTML = "";
+          host.appendChild(pre);
+        });
+      }
+      (async () => {
+        const ready = await waitForMermaidLibrary();
+        if (cancelled) return;
+        if (!ready) {
+          host.textContent = text || rawDiagram;
+          setRenderFailed(true);
+          return;
+        }
+        await waitForElementSize(viewport2);
+        if (cancelled) return;
+        const source = extractRenderableMermaid(text || rawDiagram);
+        await runMermaid(source, 0);
+      })();
+    }
+    const viewport = viewportRef.current;
+    if (!viewport) {
+      requestAnimationFrame(() => beginRender());
+    } else {
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) beginRender();
+        },
+        { root: null, threshold: 0.02, rootMargin: "80px" }
+      );
+      observer.observe(viewport);
+      requestAnimationFrame(() => {
+        const r = viewport.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) beginRender();
+      });
+    }
+    return () => {
+      cancelled = true;
+      if (observer) observer.disconnect();
+    };
+  }, [text, rawDiagram, nodeId, applyComfortableScale, viewMode]);
+  (0, import_react12.useEffect)(() => {
+    if (!compact) localStorage.setItem(LS_ZOOM, String(scale));
+  }, [scale, compact]);
+  function zoomBy(factor) {
+    setScale((s) => clamp2(s * factor, MIN_SCALE, MAX_SCALE));
+  }
+  (0, import_react12.useEffect)(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onWheelNative = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
+      setScale((s) => clamp2(s * factor, MIN_SCALE, MAX_SCALE));
+    };
+    el.addEventListener("wheel", onWheelNative, { passive: false });
+    return () => el.removeEventListener("wheel", onWheelNative);
+  }, []);
+  function onPanStart(e) {
+    if (e.button !== 0) return;
+    panStart.current = {
+      x: e.clientX,
+      y: e.clientY,
+      panX: pan.x,
+      panY: pan.y
+    };
+  }
+  function onPanMove(e) {
+    if (!panStart.current) return;
+    const dx = e.clientX - panStart.current.x;
+    const dy = e.clientY - panStart.current.y;
+    setPan({
+      x: panStart.current.panX + dx,
+      y: panStart.current.panY + dy
+    });
+  }
+  function onPanEnd() {
+    panStart.current = null;
+  }
+  (0, import_react12.useEffect)(() => {
+    window.addEventListener("mousemove", onPanMove);
+    window.addEventListener("mouseup", onPanEnd);
+    return () => {
+      window.removeEventListener("mousemove", onPanMove);
+      window.removeEventListener("mouseup", onPanEnd);
+    };
+  }, []);
+  if (!text) return null;
+  const toolbar = import_react12.default.createElement(
+    "div",
+    { className: "diagram-zoom-toolbar" },
+    import_react12.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: viewMode === "render" ? "diagram-zoom-btn active" : "diagram-zoom-btn",
+        onClick: () => setViewMode("render"),
+        title: "\u0412\u0438\u0437\u0443\u0430\u043B\u044C\u043D\u0430\u044F \u0441\u0445\u0435\u043C\u0430"
+      },
+      "\u0421\u0445\u0435\u043C\u0430"
+    ),
+    import_react12.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: viewMode === "source" ? "diagram-zoom-btn active" : "diagram-zoom-btn",
+        onClick: () => setViewMode("source"),
+        title: "\u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0439 Mermaid"
+      },
+      "\u041A\u043E\u0434"
+    ),
+    viewMode === "render" && import_react12.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: "diagram-zoom-btn",
+        onClick: () => zoomBy(1 / 1.2),
+        title: "\u0423\u043C\u0435\u043D\u044C\u0448\u0438\u0442\u044C"
+      },
+      "\u2212"
+    ),
+    viewMode === "render" && import_react12.default.createElement(
+      "span",
+      { className: "diagram-zoom-label" },
+      `${Math.round(scale * 100)}%`
+    ),
+    viewMode === "render" && import_react12.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: "diagram-zoom-btn",
+        onClick: () => zoomBy(1.2),
+        title: "\u0423\u0432\u0435\u043B\u0438\u0447\u0438\u0442\u044C"
+      },
+      "+"
+    ),
+    viewMode === "render" && import_react12.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: "diagram-zoom-btn",
+        onClick: () => {
+          setPan({ x: 0, y: 0 });
+          setScale(1);
+        },
+        title: "\u0421\u0431\u0440\u043E\u0441"
+      },
+      "1:1"
+    ),
+    viewMode === "render" && import_react12.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: "diagram-zoom-btn",
+        onClick: () => fitToViewport(),
+        title: "\u041F\u043E\u0434\u043E\u0433\u043D\u0430\u0442\u044C \u043F\u043E \u043E\u0431\u043B\u0430\u0441\u0442\u0438"
+      },
+      "\u041F\u043E \u043E\u0431\u043B\u0430\u0441\u0442\u0438"
+    )
+  );
+  const renderFooter = renderFailed && viewMode === "render" ? import_react12.default.createElement(
+    "p",
+    { className: "diagram-render-footer muted" },
+    "\u041E\u0448\u0438\u0431\u043A\u0430 \u0440\u0435\u043D\u0434\u0435\u0440\u0430 Mermaid \u2014 \u043E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0432\u043A\u043B\u0430\u0434\u043A\u0443 \xAB\u041A\u043E\u0434\xBB \u0438\u043B\u0438 \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 xychart-beta / flowchart \u0432 \u0441\u044B\u0440\u043E\u043C \u0442\u0435\u043A\u0441\u0442\u0435."
+  ) : null;
+  return import_react12.default.createElement(
+    "div",
+    { className: "drawer-section diagram-section" },
+    !hideTitle && import_react12.default.createElement(
+      "div",
+      { className: "diagram-section-head" },
+      import_react12.default.createElement("h3", null, "\u0421\u0445\u0435\u043C\u0430"),
+      toolbar
+    ),
+    hideTitle && import_react12.default.createElement(
+      "div",
+      { className: "diagram-section-head diagram-section-head-compact" },
+      toolbar
+    ),
+    viewMode === "source" ? import_react12.default.createElement(
+      "pre",
+      { className: "diagram-source-code" },
+      sourceForDisplay
+    ) : import_react12.default.createElement(
+      "div",
+      {
+        className: "diagram-viewport",
+        ref: viewportRef,
+        onMouseDown: onPanStart,
+        title: "\u041A\u043E\u043B\u0451\u0441\u0438\u043A\u043E \u2014 \u0437\u0443\u043C, \u043F\u0435\u0440\u0435\u0442\u0430\u0441\u043A\u0438\u0432\u0430\u043D\u0438\u0435 \u2014 \u043F\u0430\u043D"
+      },
+      import_react12.default.createElement(
+        "div",
+        {
+          className: "diagram-pan-layer",
+          style: { transform: `translate(${pan.x}px, ${pan.y}px)` }
+        },
+        import_react12.default.createElement("div", {
+          className: "diagram-zoom-inner",
+          ref: hostRef
+        })
+      )
+    ),
+    renderFooter
+  );
+}
+
+// NodeDrawerDiagram.js
+function DiagramBlock({ diagram, nodeId, compact }) {
+  const text = String(diagram || "").trim();
+  if (!text) return null;
+  return import_react13.default.createElement(
+    "div",
+    { className: compact ? "diagram-embed compact" : "diagram-embed" },
+    import_react13.default.createElement(MermaidDiagramView, {
+      diagram: text,
+      nodeId,
+      compact,
+      hideTitle: compact
+    })
+  );
+}
+
+// ResourceCard.js
+var import_react14 = __toESM(require_react(), 1);
+function ResourceCard2({ item }) {
+  if (!item) return null;
+  const title = (item.title || item.source_name || item.url || "").trim();
+  const sourceName = (item.source_name || "").trim();
+  const showSource = sourceName && sourceName.toLowerCase() !== title.toLowerCase() && !title.toLowerCase().includes(sourceName.toLowerCase());
+  const mins = item.read_time_minutes || item.read_time_minutes === 0 ? item.read_time_minutes : null;
+  return import_react14.default.createElement(
+    "article",
+    { className: "resource-card" },
+    import_react14.default.createElement(
+      "header",
+      { className: "resource-card-head" },
+      import_react14.default.createElement(
+        "a",
+        {
+          className: "resource-card-title",
+          href: item.url,
+          target: "_blank",
+          rel: "noopener noreferrer"
+        },
+        title
+      ),
+      mins != null && mins > 0 && import_react14.default.createElement("span", { className: "resource-card-time" }, `~${mins} \u043C\u0438\u043D`)
+    ),
+    showSource && import_react14.default.createElement("div", { className: "resource-card-source" }, sourceName),
+    (item.why_read || "").trim() && import_react14.default.createElement(
+      "p",
+      { className: "resource-card-why" },
+      import_react14.default.createElement("strong", null, "\u0417\u0430\u0447\u0435\u043C: "),
+      item.why_read
+    ),
+    (item.key_focus || "").trim() && import_react14.default.createElement(
+      "p",
+      { className: "resource-card-focus" },
+      import_react14.default.createElement("strong", null, "\u0424\u043E\u043A\u0443\u0441: "),
+      item.key_focus
+    )
+  );
+}
+
+// CodeSnippet.js
+var import_react15 = __toESM(require_react(), 1);
+function CodeSnippet({ code, language }) {
+  const ref = (0, import_react15.useRef)(null);
+  const text = (code || "").trim();
+  if (!text) return null;
+  (0, import_react15.useEffect)(() => {
+    if (ref.current) highlightCodeInRoot(ref.current);
+  }, [text, language]);
+  const langClass = language && language !== "auto" ? `language-${language}` : "";
+  return import_react15.default.createElement(
+    "pre",
+    { className: "code-snippet hljs-snippet", ref },
+    import_react15.default.createElement("code", { className: langClass }, text)
+  );
+}
+
+// NodeMaterialsPanel.js
+function kindLabel(kind) {
+  if (kind === "diagram") return "\u0421\u0445\u0435\u043C\u0430";
+  if (kind === "code") return "\u041A\u043E\u0434";
+  return "\u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0430";
+}
+function materialHeaderLabel(item) {
+  const title = String(item.payload?.title || "").trim();
+  const id2 = item.id || "";
+  const kind = kindLabel(item.kind);
+  if (item.kind === "card") {
+    return `${kind} ${id2}`;
+  }
+  if (title) return `${kind} ${id2}: ${title}`;
+  return `${kind} ${id2}`;
+}
+function MaterialItemBody({ item, nodeId }) {
+  const { kind, payload } = item;
+  if (kind === "diagram") {
+    return import_react16.default.createElement(DiagramBlock, {
+      diagram: payload.mermaid,
+      nodeId,
+      compact: true
+    });
+  }
+  if (kind === "code") {
+    return import_react16.default.createElement(CodeSnippet, {
+      code: payload.code,
+      language: payload.language || void 0
+    });
+  }
+  return import_react16.default.createElement(ResourceCard2, { item: payload });
+}
+function NodeMaterialsPanel({
+  items,
+  viewMode,
+  onViewModeChange,
+  selectedId,
+  nodeId
+}) {
+  const listRef = (0, import_react16.useRef)(null);
+  const activeIndex = (0, import_react16.useMemo)(() => {
+    if (!selectedId) return 0;
+    const idx = items.findIndex((it) => it.id === selectedId);
+    return idx >= 0 ? idx : 0;
+  }, [items, selectedId]);
+  (0, import_react16.useEffect)(() => {
+    if (!selectedId || viewMode !== "list" || !listRef.current) return;
+    const el = listRef.current.querySelector(
+      `[data-material-id="${selectedId}"]`
+    );
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [selectedId, viewMode, items.length]);
+  if (!items.length) return null;
+  return import_react16.default.createElement(
+    "div",
+    { className: "drawer-section material-panel" },
+    import_react16.default.createElement(
+      "div",
+      { className: "material-panel-head" },
+      import_react16.default.createElement("h3", null, "\u041C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u044B"),
+      import_react16.default.createElement(
+        "div",
+        { className: "material-view-toggle" },
+        import_react16.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: viewMode === "list" ? "active" : "",
+            onClick: () => onViewModeChange("list")
+          },
+          "\u0421\u043F\u0438\u0441\u043E\u043A"
+        ),
+        import_react16.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: viewMode === "carousel" ? "active" : "",
+            onClick: () => onViewModeChange("carousel")
+          },
+          "\u041A\u0430\u0440\u0443\u0441\u0435\u043B\u044C"
+        )
+      )
+    ),
+    viewMode === "carousel" ? import_react16.default.createElement(CarouselView, {
+      items,
+      activeIndex,
+      nodeId
+    }) : import_react16.default.createElement(
+      "div",
+      { className: "material-list", ref: listRef },
+      items.map(
+        (item) => import_react16.default.createElement(
+          "article",
+          {
+            key: `${item.kind}-${item.id}`,
+            id: `ke-material-${item.id}`,
+            "data-material-id": item.id,
+            className: selectedId === item.id ? "material-asset material-asset-active" : "material-asset"
+          },
+          import_react16.default.createElement(
+            "header",
+            { className: "material-asset-label" },
+            import_react16.default.createElement(
+              "span",
+              { className: "material-asset-heading" },
+              materialHeaderLabel(item)
+            )
+          ),
+          import_react16.default.createElement(MaterialItemBody, { item, nodeId })
+        )
+      )
+    )
+  );
+}
+function CarouselView({ items, activeIndex, nodeId }) {
+  const [index2, setIndex] = import_react16.default.useState(activeIndex);
+  (0, import_react16.useEffect)(() => {
+    setIndex(activeIndex);
+  }, [activeIndex]);
+  const item = items[index2] || items[0];
+  if (!item) return null;
+  function go(delta) {
+    setIndex((i) => {
+      const next = i + delta;
+      if (next < 0) return items.length - 1;
+      if (next >= items.length) return 0;
+      return next;
+    });
+  }
+  return import_react16.default.createElement(
+    "div",
+    {
+      className: "material-carousel",
+      id: `ke-material-${item.id}`,
+      "data-material-id": item.id
+    },
+    import_react16.default.createElement(
+      "div",
+      { className: "material-carousel-toolbar" },
+      import_react16.default.createElement(
+        "button",
+        {
+          type: "button",
+          className: "diagram-zoom-btn",
+          onClick: () => go(-1)
+        },
+        "\u2039"
+      ),
+      import_react16.default.createElement(
+        "span",
+        { className: "material-carousel-meta" },
+        `${index2 + 1} / ${items.length} \xB7 ${materialHeaderLabel(item)}`
+      ),
+      import_react16.default.createElement(
+        "button",
+        {
+          type: "button",
+          className: "diagram-zoom-btn",
+          onClick: () => go(1)
+        },
+        "\u203A"
+      )
+    ),
+    import_react16.default.createElement(
+      "div",
+      { className: "material-carousel-body material-asset-active" },
+      import_react16.default.createElement(MaterialItemBody, { item, nodeId })
+    ),
+    import_react16.default.createElement(
+      "div",
+      { className: "material-carousel-dots" },
+      items.map(
+        (it, i) => import_react16.default.createElement("button", {
+          key: `${it.kind}-${it.id}`,
+          type: "button",
+          className: i === index2 ? "active" : "",
+          title: it.id,
+          onClick: () => setIndex(i)
+        })
+      )
+    )
+  );
+}
+
+// materialAssets.js
+function isLikelyCodeSnippet(text) {
+  const raw = String(text || "").trim();
+  if (raw.length < 4) return false;
+  if (/^deep\s*dive\s*:/i.test(raw)) return false;
+  if (/^```/m.test(raw)) return true;
+  let inner = raw.replace(/^```[\w-]*\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+  if (/\b(def|class|import|from|return|elif|else|async|await|function|const|let|var|SELECT|CREATE)\b/i.test(
+    inner
+  )) {
+    return true;
+  }
+  if (/^\s*(if|for|while|switch)\s*[\(:]/im.test(inner)) return true;
+  const lines = inner.split("\n").filter((ln) => ln.trim());
+  if (lines.length >= 2) {
+    const indented = lines.filter(
+      (ln) => ln.startsWith("    ") || ln.startsWith("	") || /^\s*(def |class |#|\/\/)/.test(ln)
+    ).length;
+    if (indented >= 1) return true;
+    if (lines.some((ln) => /[;{}]/.test(ln))) return true;
+  }
+  if (inner.includes(";") && (inner.includes("=") || inner.includes("("))) return true;
+  if ((inner.match(/\(/g) || []).length >= 2 && inner.includes("=")) return true;
+  return false;
+}
+function inferCodeTitle(code) {
+  const raw = String(code || "").trim();
+  if (!raw) return "\u0424\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u043A\u043E\u0434\u0430";
+  let inner = raw.replace(/^```[\w-]*\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+  for (const ln of inner.split("\n")) {
+    const s = ln.trim();
+    if (s.startsWith("#") && !s.startsWith("#!")) return s.replace(/^#+\s*/, "").slice(0, 200);
+  }
+  const cls = /\bclass\s+(\w+)/.exec(inner);
+  if (cls) return `\u041A\u043B\u0430\u0441\u0441 ${cls[1]}`.slice(0, 200);
+  const fn = /\bdef\s+(\w+)/.exec(inner);
+  if (fn) return `\u0424\u0443\u043D\u043A\u0446\u0438\u044F ${fn[1]}`.slice(0, 200);
+  return "\u0424\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u043A\u043E\u0434\u0430";
+}
+function inferDiagramTitle(mermaid) {
+  const raw = String(mermaid || "").trim();
+  if (!raw) return "\u0421\u0445\u0435\u043C\u0430";
+  for (const ln of raw.split("\n")) {
+    const s = ln.trim();
+    if (s.startsWith("%%")) {
+      const t = s.replace(/^%+/, "").trim();
+      if (t) return t.slice(0, 200);
+    }
+  }
+  return "\u0421\u0445\u0435\u043C\u0430";
+}
+function assignUniqueCardIds(cards) {
+  const used = /* @__PURE__ */ new Set();
+  const out = [];
+  for (let i = 0; i < cards.length; i += 1) {
+    const r = cards[i];
+    let id2 = String(r.asset_id || "").trim();
+    if (!id2 || used.has(id2)) {
+      let n = 1;
+      while (used.has(`card-${n}`)) n += 1;
+      id2 = `card-${n}`;
+    }
+    used.add(id2);
+    out.push({ ...r, asset_id: id2 });
+  }
+  return out;
+}
+function normalizeNodeMaterials(content) {
+  const c = content || {};
+  let diagrams = Array.isArray(c.diagrams) ? [...c.diagrams] : [];
+  if (!diagrams.length && String(c.diagram || "").trim()) {
+    diagrams = [{ id: "diagram-1", title: "", mermaid: c.diagram }];
+  }
+  diagrams = diagrams.map((d, i) => ({
+    ...d,
+    title: String(d.title || "").trim() || inferDiagramTitle(d.mermaid) || `\u0421\u0445\u0435\u043C\u0430 ${i + 1}`
+  }));
+  let codes = Array.isArray(c.code_assets) ? [...c.code_assets] : [];
+  codes = codes.filter((item) => isLikelyCodeSnippet(item?.code)).map((item, i) => ({
+    ...item,
+    id: (item.id || `code-${i + 1}`).trim(),
+    title: String(item.title || "").trim() || inferCodeTitle(item.code)
+  }));
+  if (!codes.length && Array.isArray(c.code_snippets)) {
+    codes = c.code_snippets.map((code) => String(code || "").trim()).filter((code) => code && isLikelyCodeSnippet(code)).map((code, i) => ({
+      id: `code-${i + 1}`,
+      title: inferCodeTitle(code),
+      code
+    }));
+  }
+  const cards = assignUniqueCardIds(
+    (Array.isArray(c.references) ? c.references : []).map((r) => ({ ...r }))
+  );
+  return { diagrams, codes, cards };
+}
+function flattenMaterials({ diagrams, codes, cards }) {
+  const items = [];
+  diagrams.forEach((d) => {
+    const mermaid = String(d.mermaid || "").trim();
+    if (!mermaid) return;
+    items.push({
+      kind: "diagram",
+      id: String(d.id || "").trim(),
+      payload: d
+    });
+  });
+  cards.forEach((r) => {
+    const id2 = String(r.asset_id || "").trim();
+    if (!id2) return;
+    items.push({ kind: "card", id: id2, payload: r });
+  });
+  codes.forEach((c) => {
+    const code = String(c.code || "").trim();
+    if (!code || !isLikelyCodeSnippet(code)) return;
+    items.push({
+      kind: "code",
+      id: String(c.id || "").trim(),
+      payload: c
+    });
+  });
+  return items;
+}
+var MATERIAL_VIEW_LS = "skillTreeMaterialView";
+
+// NodeDrawer.js
+function sourceTierBadge(tier) {
+  const t = (tier || "").trim().toLowerCase();
+  if (t === "consensus") {
+    return { className: "source-tier-badge consensus", label: "Consensus" };
+  }
+  if (t === "exa") {
+    return { className: "source-tier-badge exa", label: "Exa" };
+  }
+  if (t === "searxng") {
+    return { className: "source-tier-badge searxng", label: "SearXNG" };
+  }
+  if (t === "arxiv" || t === "semantic_scholar" || t === "searxng_science") {
+    return { className: "source-tier-badge academic", label: "Academic" };
+  }
+  if (t === "gemini_grounding" || t === "whitelist_blog" || t === "gemini_web") {
+    return { className: "source-tier-badge grounding", label: "Grounding" };
+  }
+  return null;
+}
+function courseLibraryIndex(curriculum) {
   const registry = curriculum?.curriculum_sources_registry || [];
   const routeSources = curriculum?.route_sources || [];
   const library = registry.length > 0 ? registry : routeSources.map((r) => ({
     source_id: r.source_id,
     title: r.source_name,
+    source_name: r.source_name,
     whitelist_domain: r.whitelist_category,
     source_type: "",
     url: r.url,
-    why_read: r.why_read
+    why_read: r.why_read,
+    source_tier: r.source_tier
   }));
+  const byId = Object.fromEntries(
+    library.map((e) => [String(e.source_id || "").trim(), e])
+  );
+  return { library, byId };
+}
+function resolveMappedSourceRows(selectedNode, curriculum, session) {
+  const mappedIds = (selectedNode?.mapped_source_ids || []).map((id2) => String(id2 || "").trim()).filter(Boolean);
+  if (!mappedIds.length) return [];
+  const { byId } = courseLibraryIndex(curriculum);
+  const resourceUrls = (selectedNode?.resource_urls || []).map((u) => String(u || "").trim()).filter((u) => u.startsWith("http"));
+  const sessionById = Object.fromEntries(
+    (session?.sourceRegistry || []).map((e) => {
+      const sid = String(e.id || e.source_id || "").trim();
+      return [sid, e];
+    })
+  );
+  const sessionByCourseId = Object.fromEntries(
+    (session?.sourceRegistry || []).map((e) => {
+      const cid = String(e.course_source_id || "").trim();
+      return cid ? [cid, e] : null;
+    }).filter(Boolean)
+  );
+  const ref = selectedNode?.source_ref;
+  const primaryId = String(selectedNode?.primary_source_id || "").trim();
+  return mappedIds.map((id2, index2) => {
+    let title = id2;
+    let url = "";
+    const lib = byId[id2];
+    let source_tier = "";
+    if (lib) {
+      title = (lib.title || lib.source_name || id2).trim();
+      url = String(lib.url || "").trim();
+      source_tier = String(lib.source_tier || "").trim();
+    }
+    if (!url && sessionByCourseId[id2]) {
+      const s = sessionByCourseId[id2];
+      title = (s.title || title).trim();
+      url = String(s.url || "").trim();
+      if (!source_tier) source_tier = String(s.source_tier || "").trim();
+    }
+    if (!url && sessionById[id2]) {
+      const s = sessionById[id2];
+      title = (s.title || title).trim();
+      url = String(s.url || "").trim();
+    }
+    if (!url && resourceUrls[index2]) {
+      url = resourceUrls[index2];
+    }
+    if (!url && ref && (id2 === primaryId || id2 === String(ref.source_id || "").trim())) {
+      url = String(ref.url || "").trim();
+      if (!title || title === id2) {
+        title = url.slice(0, 80) || title;
+      }
+    }
+    if (title === id2 && url) {
+      try {
+        const parsed = new URL(url);
+        title = (parsed.hostname + parsed.pathname).slice(0, 120);
+      } catch {
+        title = url.slice(0, 120);
+      }
+    }
+    return { source_id: id2, title, url, source_tier };
+  });
+}
+function renderMappedSourceRow(row) {
+  const badge = sourceTierBadge(row.source_tier);
+  const label = (row.title || row.source_id).trim();
+  return import_react17.default.createElement(
+    "li",
+    { key: row.source_id },
+    badge && import_react17.default.createElement(
+      "span",
+      { className: badge.className },
+      badge.label === "Consensus" ? "\u{1F7E3} " : "\u{1F7E2} ",
+      `[${badge.label}]`
+    ),
+    import_react17.default.createElement(
+      "span",
+      { className: "source-anchor-tag" },
+      `[${row.source_id}]`
+    ),
+    row.url ? import_react17.default.createElement(
+      "a",
+      {
+        className: "source-link",
+        href: row.url,
+        target: "_blank",
+        rel: "noopener noreferrer"
+      },
+      label
+    ) : import_react17.default.createElement("span", null, label),
+    !row.url && import_react17.default.createElement(
+      "span",
+      { className: "muted small" },
+      " \xB7 URL \u043D\u0435 \u0432 \u0440\u0435\u0435\u0441\u0442\u0440\u0435 \u2014 \u0441\u043C. \xAB\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u043A\u0443\u0440\u0441\u0430\xBB"
+    )
+  );
+}
+function renderCourseKnowledgePool(selectedNode, curriculum) {
+  const { library } = courseLibraryIndex(curriculum);
+  return import_react17.default.createElement(
+    "details",
+    { className: "drawer-section knowledge-pool-panel" },
+    import_react17.default.createElement(
+      "summary",
+      { className: "knowledge-pool-summary" },
+      "\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u043A\u0443\u0440\u0441\u0430 (Knowledge Pool)",
+      import_react17.default.createElement(
+        "span",
+        { className: "muted small" },
+        ` \xB7 ${library.length} \u0432 \u0440\u0435\u0435\u0441\u0442\u0440\u0435, \u043D\u0435 \u0441\u0435\u0441\u0441\u0438\u044F \u043D\u043E\u0434\u044B`
+      )
+    ),
+    import_react17.default.createElement(
+      "p",
+      { className: "muted small drawer-hint" },
+      "\u041E\u0431\u0449\u0438\u0439 \u043F\u0443\u043B \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u0430. \u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0442\u0435\u043A\u0443\u0449\u0435\u0439 \u043D\u043E\u0434\u044B \u2014 \u0442\u043E\u043B\u044C\u043A\u043E \u0432 \u0431\u043B\u043E\u043A\u0435 \xAB\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0432 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0435\xBB \u043D\u0438\u0436\u0435."
+    ),
+    import_react17.default.createElement(
+      "ul",
+      { className: "source-registry-list course-library-list" },
+      library.map((entry) => {
+        const badge = sourceTierBadge(entry.source_tier);
+        return import_react17.default.createElement(
+          "li",
+          { key: entry.source_id || entry.url },
+          badge && import_react17.default.createElement(
+            "span",
+            { className: badge.className },
+            badge.label === "Consensus" ? "\u{1F7E3} " : "\u{1F7E2} ",
+            `[${badge.label}]`
+          ),
+          import_react17.default.createElement(
+            "span",
+            { className: "source-anchor-tag" },
+            `[${entry.source_id}]`
+          ),
+          entry.url ? import_react17.default.createElement(
+            "a",
+            {
+              className: "source-link",
+              href: entry.url,
+              target: "_blank",
+              rel: "noopener noreferrer"
+            },
+            entry.title || entry.url
+          ) : import_react17.default.createElement("span", null, entry.title || "source"),
+          entry.whitelist_domain && import_react17.default.createElement(
+            "span",
+            { className: "muted small" },
+            ` \xB7 ${entry.whitelist_domain}`
+          )
+        );
+      })
+    )
+  );
+}
+function renderRouteCurriculumMaterials(selectedNode, curriculum, session) {
   const lm = selectedNode?.learning_materials?.primary_whitelist_source;
   const lres = selectedNode?.learning_resources || [];
   const pid = (selectedNode?.primary_source_id || "").trim();
-  const mappedIds = (selectedNode?.mapped_source_ids || []).filter(Boolean);
-  const byId = Object.fromEntries(
-    library.map((e) => [e.source_id, e])
-  );
+  const { library, byId } = courseLibraryIndex(curriculum);
   const linked = library.find((r) => r.source_id === pid);
-  const mappedEntries = mappedIds.map((id2) => byId[id2]).filter(Boolean);
+  const mappedRows = resolveMappedSourceRows(selectedNode, curriculum, session);
   const learningGoal = (selectedNode?.learning_goal || "").trim();
-  if (!library.length && !lm && !lres.length && !mappedIds.length) return null;
-  return import_react14.default.createElement(
+  if (!lm && !lres.length && !mappedRows.length && !learningGoal) return null;
+  return import_react17.default.createElement(
     "div",
     { className: "drawer-section route-curriculum-sources" },
-    import_react14.default.createElement("h3", null, "\u041C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u044B \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u0430 (Whitelist)"),
-    learningGoal && import_react14.default.createElement(
+    learningGoal && import_react17.default.createElement(
       "p",
       { className: "muted small node-learning-goal" },
       `\u0426\u0435\u043B\u044C \u043D\u043E\u0434\u044B: ${learningGoal}`
     ),
-    library.length > 0 && import_react14.default.createElement(
+    mappedRows.length > 0 && import_react17.default.createElement(
       "div",
       { className: "drawer-subsection" },
-      import_react14.default.createElement(
-        "h4",
-        { className: "drawer-subtitle" },
-        "\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u043A\u0443\u0440\u0441\u0430 (curriculum_sources_registry)"
-      ),
-      import_react14.default.createElement(
-        "ul",
-        { className: "source-registry-list" },
-        library.map(
-          (entry) => import_react14.default.createElement(
-            "li",
-            { key: entry.source_id || entry.url },
-            import_react14.default.createElement(
-              "span",
-              { className: "source-anchor-tag" },
-              `[${entry.source_id}]`
-            ),
-            entry.url ? import_react14.default.createElement(
-              "a",
-              {
-                className: "source-link",
-                href: entry.url,
-                target: "_blank",
-                rel: "noopener noreferrer"
-              },
-              entry.title || entry.url
-            ) : import_react14.default.createElement("span", null, entry.title || "source"),
-            entry.whitelist_domain && import_react14.default.createElement(
-              "span",
-              { className: "muted small" },
-              ` \xB7 ${entry.whitelist_domain}`
-            ),
-            entry.why_read && import_react14.default.createElement("p", { className: "muted snippet" }, entry.why_read)
-          )
-        )
-      )
-    ),
-    mappedEntries.length > 0 && import_react14.default.createElement(
-      "div",
-      { className: "drawer-subsection" },
-      import_react14.default.createElement(
+      import_react17.default.createElement(
         "h4",
         { className: "drawer-subtitle" },
         "\u0410\u0434\u0440\u0435\u0441\u0430\u0446\u0438\u044F \u043D\u043E\u0434\u044B (mapped_source_ids)"
       ),
-      import_react14.default.createElement(
+      import_react17.default.createElement(
         "ul",
         { className: "source-registry-list mapped-sources" },
-        mappedEntries.map(
-          (entry) => import_react14.default.createElement(
-            "li",
-            { key: entry.source_id },
-            import_react14.default.createElement(
-              "span",
-              { className: "source-anchor-tag" },
-              `[${entry.source_id}]`
-            ),
-            entry.title || entry.source_id
-          )
-        )
+        mappedRows.map((row) => {
+          const tier = byId[row.source_id]?.source_tier;
+          return renderMappedSourceRow({ ...row, source_tier: tier });
+        })
       )
     ),
-    lm && import_react14.default.createElement(
+    lm && import_react17.default.createElement(
       "div",
       { className: "drawer-subsection" },
-      import_react14.default.createElement("h4", { className: "drawer-subtitle" }, "\u0424\u0443\u043D\u0434\u0430\u043C\u0435\u043D\u0442 \u043D\u043E\u0434\u044B"),
-      linked && import_react14.default.createElement(
+      import_react17.default.createElement("h4", { className: "drawer-subtitle" }, "\u0424\u0443\u043D\u0434\u0430\u043C\u0435\u043D\u0442 \u043D\u043E\u0434\u044B"),
+      linked && import_react17.default.createElement(
         "p",
         { className: "muted small" },
-        `\u0421\u0441\u044B\u043B\u043A\u0430 \u043D\u0430 \u0440\u0435\u0435\u0441\u0442\u0440: [${linked.source_id}] ${linked.source_name}`
+        "\u0421\u0441\u044B\u043B\u043A\u0430 \u043D\u0430 \u0440\u0435\u0435\u0441\u0442\u0440: ",
+        import_react17.default.createElement(
+          "span",
+          { className: "source-anchor-tag" },
+          `[${linked.source_id}]`
+        ),
+        linked.url ? import_react17.default.createElement(
+          "a",
+          {
+            className: "source-link",
+            href: linked.url,
+            target: "_blank",
+            rel: "noopener noreferrer"
+          },
+          linked.title || linked.source_name || linked.url
+        ) : import_react17.default.createElement("span", null, linked.title || linked.source_id)
       ),
-      import_react14.default.createElement("p", null, lm.source_name),
-      import_react14.default.createElement("p", { className: "muted" }, lm.chapter_or_article),
-      (lm.core_concepts || []).length > 0 && import_react14.default.createElement(
+      import_react17.default.createElement("p", null, lm.source_name),
+      import_react17.default.createElement("p", { className: "muted" }, lm.chapter_or_article),
+      (lm.core_concepts || []).length > 0 && import_react17.default.createElement(
         "ul",
         { className: "drawer-concepts" },
-        lm.core_concepts.map((c) => import_react14.default.createElement("li", { key: c }, c))
+        lm.core_concepts.map((c) => import_react17.default.createElement("li", { key: c }, c))
       )
     ),
-    lres.length > 0 && import_react14.default.createElement(
+    lres.length > 0 && import_react17.default.createElement(
       "div",
       { className: "drawer-subsection" },
-      import_react14.default.createElement("h4", { className: "drawer-subtitle" }, "\u0421\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0447\u0442\u0435\u043D\u0438\u0435"),
-      import_react14.default.createElement(
+      import_react17.default.createElement("h4", { className: "drawer-subtitle" }, "\u0421\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0447\u0442\u0435\u043D\u0438\u0435"),
+      import_react17.default.createElement(
         "div",
         { className: "resource-card-list" },
-        lres.map((r, i) => import_react14.default.createElement(ResourceCard, { key: i, item: r }))
+        lres.map((r, i) => import_react17.default.createElement(ResourceCard, { key: i, item: r }))
       )
     )
   );
@@ -38752,13 +41629,17 @@ function NodeDrawer({
   onSelectPrereq,
   onModeSelect,
   onVerify,
+  onRestart,
   composeLocked,
   nodeGenerating,
-  sessions
+  sessions,
+  selectedMaterialId,
+  materialViewMode,
+  onMaterialViewModeChange
 }) {
-  const materialRef = (0, import_react14.useRef)(null);
+  const materialRef = (0, import_react17.useRef)(null);
   if (!selectedNode) {
-    return import_react14.default.createElement(
+    return import_react17.default.createElement(
       "aside",
       { className: "node-drawer empty" },
       "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u0438\u043B\u0438 \u0441\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u0443\u0439\u0442\u0435 \u0443\u0447\u0435\u0431\u043D\u044B\u0439 \u043F\u0443\u0442\u044C."
@@ -38766,54 +41647,53 @@ function NodeDrawer({
   }
   const st = statuses[selectedNode.node_id] || "unexplored";
   const content = session?.content || {};
-  const refs = content.references || [];
-  const snippets = content.code_snippets || [];
   const registry = session?.sourceRegistry || [];
+  const materialItems = flattenMaterials(normalizeNodeMaterials(content));
   const nodeData = toNodeDataInput(selectedNode);
-  return import_react14.default.createElement(
+  return import_react17.default.createElement(
     "aside",
     { className: "node-drawer" },
-    import_react14.default.createElement(NodeSelectionExplain, {
+    import_react17.default.createElement(NodeSelectionExplain, {
       curriculumId: curriculum.curriculum_id,
       nodeData,
       containerRef: materialRef,
       enabled: Boolean(
-        content.summary || content.summary_html || refs.length || snippets.length
+        content.summary || content.summary_html || materialItems.length
       )
     }),
-    import_react14.default.createElement(
+    import_react17.default.createElement(
       "div",
       { className: "drawer-scroll node-selectable-material", ref: materialRef },
-      import_react14.default.createElement(
+      import_react17.default.createElement(
         "div",
         { className: "drawer-header" },
-        import_react14.default.createElement("h2", null, selectedNode.title),
-        import_react14.default.createElement(NodeMasteryPanel, {
+        import_react17.default.createElement("h2", null, selectedNode.title),
+        import_react17.default.createElement(NodeMasteryPanel, {
           status: st,
           masteryDashboard: session?.masteryDashboard,
           topicMasteryScore: session?.topicMasteryScore,
           onModeSelect,
           disabled: composeLocked
         }),
-        import_react14.default.createElement(
+        import_react17.default.createElement(
           "div",
           { className: "drawer-meta" },
-          import_react14.default.createElement("span", { className: "chip" }, selectedNode.layer),
-          import_react14.default.createElement("span", { className: "chip" }, st),
-          selectedNode.category && import_react14.default.createElement("span", { className: "chip" }, selectedNode.category)
+          import_react17.default.createElement("span", { className: "chip" }, selectedNode.layer),
+          import_react17.default.createElement("span", { className: "chip" }, st),
+          selectedNode.category && import_react17.default.createElement("span", { className: "chip" }, selectedNode.category)
         ),
-        renderRouteCurriculumMaterials(selectedNode, curriculum),
-        (selectedNode.prerequisites || []).length > 0 && import_react14.default.createElement(
+        renderRouteCurriculumMaterials(selectedNode, curriculum, session),
+        (selectedNode.prerequisites || []).length > 0 && import_react17.default.createElement(
           "div",
           { className: "drawer-section" },
-          import_react14.default.createElement("h3", null, "\u041F\u0440\u0435\u0434\u0448\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0435 \u0442\u0435\u043C\u044B"),
-          import_react14.default.createElement(
+          import_react17.default.createElement("h3", null, "\u041F\u0440\u0435\u0434\u0448\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0435 \u0442\u0435\u043C\u044B"),
+          import_react17.default.createElement(
             "div",
             { className: "drawer-meta" },
             selectedNode.prerequisites.map((pid) => {
               const pre = curriculum.nodes.find((n) => n.node_id === pid);
               const preInit = Boolean(sessions?.[pid]?.initialized);
-              return import_react14.default.createElement(
+              return import_react17.default.createElement(
                 "span",
                 {
                   key: pid,
@@ -38831,73 +41711,388 @@ function NodeDrawer({
           )
         )
       ),
-      nodeGenerating && import_react14.default.createElement(
+      nodeGenerating && import_react17.default.createElement(
         "p",
         { className: "muted drawer-gen-hint" },
         "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043D\u043E\u0434\u044B\u2026 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B \u043D\u0438\u0436\u0435 \u043C\u043E\u0436\u043D\u043E \u0447\u0438\u0442\u0430\u0442\u044C \u0438 \u043F\u0440\u043E\u043A\u0440\u0443\u0447\u0438\u0432\u0430\u0442\u044C."
       ),
-      content.summary && import_react14.default.createElement(
+      content.summary && import_react17.default.createElement(
         "div",
         { className: "drawer-section node-selectable-material" },
-        import_react14.default.createElement("h3", null, "\u0421\u0443\u0442\u044C \u043C\u0435\u0445\u0430\u043D\u0438\u043A\u0438"),
-        import_react14.default.createElement(
+        import_react17.default.createElement("h3", null, "\u0421\u0443\u0442\u044C \u043C\u0435\u0445\u0430\u043D\u0438\u043A\u0438"),
+        import_react17.default.createElement(
           "p",
           { className: "muted small drawer-hint" },
           "\u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u2014 \xAB\u041E\u0431\u044A\u044F\u0441\u043D\u0438\u0442\u044C\xBB \u0438 \u0441\u043B\u043E\u0436\u043D\u044B\u0435 \u0432\u043E\u043F\u0440\u043E\u0441\u044B, \u043A\u0430\u043A \u0432 \u043E\u0431\u0437\u043E\u0440\u0435 \u0430\u043D\u0430\u043B\u0438\u0437\u0430."
         ),
-        (content.summary_html || "").trim() ? import_react14.default.createElement(LlmHtmlBlock, {
+        (content.summary_html || "").trim() ? import_react17.default.createElement(LlmHtmlBlock, {
           html: content.summary_html,
           className: "drawer-summary md-body"
-        }) : import_react14.default.createElement(
+        }) : structuredAnalysisToHtml(content.summary || "") ? import_react17.default.createElement(LlmHtmlBlock, {
+          html: structuredAnalysisToHtml(content.summary || ""),
+          className: "drawer-summary md-body"
+        }) : import_react17.default.createElement(
           "div",
           { className: "drawer-summary" },
           content.summary
         )
       ),
-      import_react14.default.createElement(SourceRegistryList, { registry }),
-      import_react14.default.createElement(DiagramBlock, {
-        diagram: content.diagram,
+      import_react17.default.createElement(SourceRegistryList, { registry }),
+      import_react17.default.createElement(NodeMaterialsPanel, {
+        items: materialItems,
+        viewMode: materialViewMode || "list",
+        onViewModeChange: onMaterialViewModeChange,
+        selectedId: selectedMaterialId,
         nodeId: selectedNode.node_id
       }),
-      refs.length > 0 && import_react14.default.createElement(
+      renderCourseKnowledgePool(selectedNode, curriculum),
+      import_react17.default.createElement(
         "div",
-        { className: "drawer-section" },
-        import_react14.default.createElement("h3", null, "\u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u043E\u0432"),
-        import_react14.default.createElement(
-          "div",
-          { className: "resource-card-list" },
-          refs.map(
-            (r, i) => import_react14.default.createElement(ResourceCard, { key: i, item: r })
-          )
-        )
-      ),
-      snippets.length > 0 && import_react14.default.createElement(
-        "div",
-        { className: "drawer-section" },
-        import_react14.default.createElement("h3", null, "\u041A\u043E\u0434 \u0438 edge cases"),
-        snippets.map(
-          (block, i) => import_react14.default.createElement(CodeSnippet, { key: i, code: block })
-        )
-      ),
-      import_react14.default.createElement(
-        "button",
-        {
-          type: "button",
-          className: "verify-btn",
-          onClick: () => {
-            if (!composeLocked) onVerify?.();
+        { className: "drawer-actions" },
+        import_react17.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "node-restart-btn",
+            onClick: () => {
+              if (!composeLocked) onRestart?.();
+            },
+            disabled: composeLocked,
+            title: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u044B \u0438 \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441, \u0437\u0430\u043D\u043E\u0432\u043E \u0441\u043E\u0431\u0440\u0430\u0442\u044C RAG \u0438 \u043F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u0438\u0442\u044C \u043D\u043E\u0434\u0443"
           },
-          disabled: composeLocked
-        },
-        "\u0424\u0438\u043D\u0430\u043B\u044C\u043D\u0430\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430"
+          "\u041F\u0440\u043E\u0439\u0442\u0438 \u0437\u0430\u043D\u043E\u0432\u043E"
+        ),
+        import_react17.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "verify-btn",
+            onClick: () => {
+              if (!composeLocked) onVerify?.();
+            },
+            disabled: composeLocked
+          },
+          "\u0424\u0438\u043D\u0430\u043B\u044C\u043D\u0430\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430"
+        )
       )
     )
   );
 }
 
 // NodeTutorChat.js
-var import_react15 = __toESM(require_react(), 1);
+var import_react20 = __toESM(require_react(), 1);
+
+// RagInspectorPanel.js
+var import_react18 = __toESM(require_react(), 1);
+function RagChunkCard({ item }) {
+  const [open, setOpen] = (0, import_react18.useState)(false);
+  const ragId = item.rag_id || "[R?]";
+  const title = (item.title || "source").trim();
+  const url = (item.url || "").trim();
+  const chunkIdx = Number(item.chunk_index) || 0;
+  const chunkTotal = Number(item.chunks_in_doc) || 0;
+  const score = typeof item.cosine_score === "number" ? item.cosine_score.toFixed(3) : String(item.cosine_score || "\u2014");
+  const chunkText = (item.chunk_text || "").trim();
+  return import_react18.default.createElement(
+    "article",
+    { className: "rag-inspector-card" },
+    import_react18.default.createElement(
+      "header",
+      { className: "rag-inspector-card-head" },
+      import_react18.default.createElement("span", { className: "rag-inspector-badge" }, ragId),
+      url ? import_react18.default.createElement(
+        "a",
+        {
+          className: "source-link",
+          href: url,
+          target: "_blank",
+          rel: "noopener noreferrer"
+        },
+        title
+      ) : import_react18.default.createElement("span", { className: "rag-inspector-title" }, title),
+      import_react18.default.createElement(
+        "span",
+        { className: "muted small rag-inspector-meta" },
+        chunkIdx > 0 && chunkTotal > 0 ? `Chunk ${chunkIdx}/${chunkTotal} \xB7 cos=${score}` : `cos=${score}`
+      )
+    ),
+    chunkText && import_react18.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: "rag-inspector-toggle",
+        onClick: () => setOpen((v) => !v)
+      },
+      open ? "\u0421\u043A\u0440\u044B\u0442\u044C \u0442\u0435\u043A\u0441\u0442 \u0447\u0430\u043D\u043A\u0430" : "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0442\u0435\u043A\u0441\u0442 \u0447\u0430\u043D\u043A\u0430"
+    ),
+    open && chunkText && import_react18.default.createElement(
+      "pre",
+      { className: "rag-inspector-chunk-text" },
+      chunkText
+    )
+  );
+}
+function RagInspectorPanel({ items }) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return null;
+  return import_react18.default.createElement(
+    "details",
+    { className: "drawer-section rag-inspector-panel", open: false },
+    import_react18.default.createElement(
+      "summary",
+      { className: "rag-inspector-summary" },
+      "\u{1F50D} \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u043D\u044B\u0435 RAG-\u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u044B (Inspector)",
+      import_react18.default.createElement(
+        "span",
+        { className: "muted small" },
+        ` \xB7 ${list.length} \u0447\u0430\u043D\u043A\u043E\u0432`
+      )
+    ),
+    import_react18.default.createElement(
+      "p",
+      { className: "muted small drawer-hint" },
+      "\u0422\u043E\u0447\u043D\u044B\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u044B \u0438\u0437 \u0431\u043B\u043E\u043A\u0430 \u041D\u0410\u0427\u0410\u041B\u041E \u041C\u0410\u0422\u0415\u0420\u0418\u0410\u041B\u0410 \u043F\u0435\u0440\u0435\u0434 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0435\u0439 \u043B\u0435\u043A\u0446\u0438\u0438. \u0421\u0432\u0435\u0440\u044F\u0439\u0442\u0435 \u0441\u043D\u043E\u0441\u043A\u0438 [R1]\u2026 \u0432 \u0442\u0435\u043A\u0441\u0442\u0435."
+    ),
+    import_react18.default.createElement(
+      "div",
+      { className: "rag-inspector-list" },
+      list.map(
+        (item, i) => import_react18.default.createElement(RagChunkCard, {
+          key: `${item.rag_id || "R"}-${item.doc_id || i}-${item.chunk_index || 0}`,
+          item
+        })
+      )
+    )
+  );
+}
+
+// QuickReplyChips.js
+var import_react19 = __toESM(require_react(), 1);
+var QUICK_REPLY_INTENTS = {
+  gloss: "[mode:gloss] \u0421\u0444\u043E\u0440\u043C\u0438\u0440\u0443\u0439 \u0441\u0436\u0430\u0442\u0443\u044E \u0432\u044B\u0436\u0438\u043C\u043A\u0443 (Glossary) \u043F\u043E \u043E\u0441\u0442\u0430\u0432\u0448\u0438\u043C\u0441\u044F \u0441\u043B\u043E\u044F\u043C.",
+  how: "[mode:deep_dive_how] \u0420\u0430\u0437\u0431\u0435\u0440\u0438 \u0430\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u0443 \u0442\u0435\u043C\u044B.",
+  mech: "[mode:deep_dive_mech] \u0420\u0430\u0437\u0431\u0435\u0440\u0438 \u043C\u0435\u0445\u0430\u043D\u0438\u043A\u0438 \u0438 \u043A\u043E\u0434 \u0442\u0435\u043C\u044B.",
+  nextNode: "next_node_ui",
+  clarify: "clarify_focus"
+};
+function listSuccessorNodes(curriculum, nodeId) {
+  const nid = String(nodeId || "").trim();
+  if (!nid || !curriculum?.nodes?.length) return [];
+  return (curriculum.nodes || []).filter((n) => {
+    const id2 = String(n.node_id || "").trim();
+    if (!id2 || id2 === nid) return false;
+    const prereqs = n.prerequisites || [];
+    return prereqs.some((p) => String(p || "").trim() === nid);
+  });
+}
+function normalizeNodeLayer(layer) {
+  const raw = String(layer || "foundation").trim().toLowerCase();
+  if (["fundamental", "base", "intro", "foundation"].includes(raw)) {
+    return "foundation";
+  }
+  if (["adv", "advanced"].includes(raw)) return "advanced";
+  if (["sota", "state_of_the_art", "state-of-the-art", "deep_mastery"].includes(raw)) {
+    return "sota";
+  }
+  return "foundation";
+}
+function optionalDepthLayers(nodeLayer) {
+  const ly = normalizeNodeLayer(nodeLayer);
+  if (ly === "foundation") return ["HOW", "MECHANIC"];
+  if (ly === "advanced") return ["MECHANIC"];
+  return [];
+}
+function aggregateFlags(session) {
+  const items = session?.coverageSummary?.items || [];
+  if (!items.length) {
+    const layers = session?.coverageSummary?.layers;
+    if (!layers) return { why: false, how: false, mech: false };
+    return {
+      why: Number(layers.why?.score ?? 0) >= 1,
+      how: Number(layers.how?.score ?? 0) >= 1,
+      mech: Number(layers.mechanic?.score ?? 0) >= 1
+    };
+  }
+  return {
+    why: items.every((it) => Boolean(it.why_passed)),
+    how: items.every((it) => Boolean(it.how_passed)),
+    mech: items.every((it) => Boolean(it.mechanic_passed))
+  };
+}
+function openOptionalLayers(session, nodeLayer) {
+  const ly = normalizeNodeLayer(nodeLayer);
+  const opts = optionalDepthLayers(ly);
+  if (!opts.length) return [];
+  const { how, mech } = aggregateFlags(session);
+  const open = [];
+  if (opts.includes("HOW") && !how) open.push("HOW");
+  if (opts.includes("MECHANIC") && !mech) open.push("MECHANIC");
+  if (!open.length) {
+    const items = session?.coverageSummary?.items || [];
+    for (const it of items) {
+      if (opts.includes("HOW") && it.why_passed && !it.how_passed) open.push("HOW");
+      if (opts.includes("MECHANIC") && it.why_passed && (it.how_passed || ly === "foundation") && !it.mechanic_passed) {
+        open.push("MECHANIC");
+      }
+    }
+    return [...new Set(open)];
+  }
+  return open;
+}
+function isFullDepthClosure(session, nodeLayer) {
+  const { why, how, mech } = aggregateFlags(session);
+  return Boolean(why && how && mech);
+}
+function buildTransitionChips(session, nodeLayer) {
+  if (!session?.readyForTransition) return [];
+  const ly = normalizeNodeLayer(nodeLayer || session?.nodeLayer);
+  const open = openOptionalLayers(session, ly);
+  const full = isFullDepthClosure(session, ly) || ly === "sota";
+  if (full || open.length === 0) {
+    return [
+      {
+        id: "next",
+        label: "\u2794 \u0412\u044B\u0431\u0440\u0430\u0442\u044C \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0443\u044E \u043D\u043E\u0434\u0443",
+        intent: QUICK_REPLY_INTENTS.nextNode
+      },
+      {
+        id: "clarify",
+        label: "\u{1F50D} \u0417\u0430\u0434\u0430\u0442\u044C \u0443\u0442\u043E\u0447\u043D\u044F\u044E\u0449\u0438\u0439 \u0432\u043E\u043F\u0440\u043E\u0441",
+        intent: QUICK_REPLY_INTENTS.clarify
+      }
+    ];
+  }
+  const pushLayer = open[0];
+  const pushIntent = pushLayer === "HOW" ? QUICK_REPLY_INTENTS.how : QUICK_REPLY_INTENTS.mech;
+  return [
+    {
+      id: "gloss",
+      label: "\u2794 \u041F\u0435\u0440\u0435\u0434\u0430\u0442\u044C Gloss \u0438 \u0434\u0430\u043B\u0435\u0435",
+      intent: QUICK_REPLY_INTENTS.gloss
+    },
+    {
+      id: "push",
+      label: `\u26A1 \u0414\u043E\u0436\u0430\u0442\u044C ${pushLayer}`,
+      intent: pushIntent
+    },
+    {
+      id: "next",
+      label: "\u2794 \u0412\u044B\u0431\u0440\u0430\u0442\u044C \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0443\u044E \u043D\u043E\u0434\u0443",
+      intent: QUICK_REPLY_INTENTS.nextNode
+    }
+  ];
+}
+function QuickReplyChips({
+  visible,
+  session,
+  nodeLayer,
+  disabled,
+  onChip
+}) {
+  const chips = (0, import_react19.useMemo)(
+    () => visible ? buildTransitionChips(session, nodeLayer) : [],
+    [visible, session, nodeLayer]
+  );
+  if (!visible || !chips.length) return null;
+  return import_react19.default.createElement(
+    "div",
+    {
+      className: "tutor-quick-replies",
+      role: "group",
+      "aria-label": "\u0414\u0430\u043B\u044C\u043D\u0435\u0439\u0448\u0438\u0435 \u0448\u0430\u0433\u0438"
+    },
+    chips.map(
+      (chip) => import_react19.default.createElement(
+        "button",
+        {
+          key: chip.id,
+          type: "button",
+          className: `tutor-quick-reply-chip tutor-quick-reply-${chip.id}`,
+          disabled: Boolean(disabled),
+          onClick: () => onChip?.(chip)
+        },
+        chip.label
+      )
+    )
+  );
+}
+function NextNodeSelector({ open, nodes, onSelect, onClose }) {
+  if (!open) return null;
+  const list = nodes || [];
+  return import_react19.default.createElement(
+    "div",
+    {
+      className: "next-node-selector-backdrop",
+      role: "presentation",
+      onClick: (e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }
+    },
+    import_react19.default.createElement(
+      "div",
+      {
+        className: "next-node-selector",
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-label": "\u0412\u044B\u0431\u043E\u0440 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0435\u0439 \u043D\u043E\u0434\u044B"
+      },
+      import_react19.default.createElement(
+        "div",
+        { className: "next-node-selector-head" },
+        import_react19.default.createElement("strong", null, "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0430\u044F \u043D\u043E\u0434\u0430"),
+        import_react19.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "next-node-selector-close",
+            onClick: () => onClose?.(),
+            "aria-label": "\u0417\u0430\u043A\u0440\u044B\u0442\u044C"
+          },
+          "\xD7"
+        )
+      ),
+      list.length === 0 ? import_react19.default.createElement(
+        "p",
+        { className: "muted next-node-selector-empty" },
+        "\u041D\u0435\u0442 \u0441\u043C\u0435\u0436\u043D\u044B\u0445 \u043D\u043E\u0434 \u0432 \u0433\u0440\u0430\u0444\u0435. \u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0443\u044E \u0442\u0435\u043C\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u043D\u0430\u0432\u044B\u043A\u043E\u0432."
+      ) : import_react19.default.createElement(
+        "ul",
+        { className: "next-node-selector-list" },
+        list.map(
+          (n) => import_react19.default.createElement(
+            "li",
+            { key: n.node_id },
+            import_react19.default.createElement(
+              "button",
+              {
+                type: "button",
+                className: "next-node-selector-item",
+                onClick: () => onSelect?.(n)
+              },
+              import_react19.default.createElement(
+                "span",
+                { className: "next-node-selector-title" },
+                n.title || n.node_id
+              ),
+              n.layer ? import_react19.default.createElement(
+                "span",
+                { className: "muted next-node-selector-layer" },
+                n.layer
+              ) : null
+            )
+          )
+        )
+      )
+    )
+  );
+}
+
+// NodeTutorChat.js
 var QUICK = [
+  {
+    label: "\u041D\u0430\u0447\u0430\u0442\u044C",
+    text: "[begin] \u041D\u0430\u0447\u0430\u0442\u044C"
+  },
   {
     label: "\u041F\u043B\u043E\u0442\u043D\u0430\u044F \u043B\u0435\u043A\u0446\u0438\u044F",
     text: "[mode:lecture] \u0414\u0430\u0439 \u043F\u043B\u043E\u0442\u043D\u044B\u0439 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B \u043F\u043E \u0442\u0435\u043C\u0435."
@@ -38911,84 +42106,160 @@ var QUICK = [
     text: "INTENT_FINALIZE: \u0447\u0442\u043E \u044F \u0443\u0441\u043E\u0432\u043E\u0438\u043B \u0438 \u043A\u0443\u0434\u0430 \u043B\u043E\u0433\u0438\u0447\u043D\u043E \u043F\u0435\u0440\u0435\u0439\u0442\u0438 \u0434\u0430\u043B\u044C\u0448\u0435?"
   }
 ];
+function lastTutorMsgId(messages) {
+  const list = sortDialogMessages(messages || []);
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i]?.role === "tutor") {
+      return list[i].msg_id || `tutor-${dialogMsgId(list[i]) ?? (list[i].content || "").slice(0, 40)}`;
+    }
+  }
+  return "";
+}
 function NodeTutorChat({
   session,
-  ragLabels,
   onSend,
   disabled,
   generating,
   curriculumId,
-  nodeData
+  nodeData,
+  curriculum,
+  onOpenNode
 }) {
-  const [input, setInput] = (0, import_react15.useState)("");
-  const materialRef = (0, import_react15.useRef)(null);
-  const messages = session?.messages || [];
+  const [input, setInput] = (0, import_react20.useState)("");
+  const [chipsDismissed, setChipsDismissed] = (0, import_react20.useState)(false);
+  const [nodePickerOpen, setNodePickerOpen] = (0, import_react20.useState)(false);
+  const materialRef = (0, import_react20.useRef)(null);
+  const inputRef = (0, import_react20.useRef)(null);
+  const messages = sortDialogMessages(session?.messages || []);
   const composeLocked = Boolean(disabled);
   const explainEnabled = Boolean(curriculumId && nodeData);
+  const tutorTurnKey = lastTutorMsgId(messages);
+  const showTransitionChips = Boolean(session?.readyForTransition) && !chipsDismissed && !generating && Boolean(tutorTurnKey);
+  (0, import_react20.useEffect)(() => {
+    setChipsDismissed(false);
+    setNodePickerOpen(false);
+  }, [tutorTurnKey, session?.readyForTransition, session?.lastEvalDirective]);
+  const successorNodes = (0, import_react20.useMemo)(
+    () => listSuccessorNodes(curriculum, nodeData?.node_id),
+    [curriculum, nodeData?.node_id]
+  );
   async function send(text) {
     const msg = (text || "").trim();
     if (!msg || composeLocked || !onSend) return;
+    setChipsDismissed(true);
+    setNodePickerOpen(false);
     try {
       await onSend(msg);
       setInput("");
     } catch {
     }
   }
-  const ragText = ragLabels && ragLabels.length ? `\u0417\u0430\u0433\u0440\u0443\u0436\u0435\u043D\u043E ${ragLabels.length} \u043F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u044C\u043D\u044B\u0445 \u0444\u0430\u043A\u0442\u043E\u0432 \u0438\u0437 RAG (${ragLabels.join(
-    ", "
-  )})` : "\u041F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u044C\u043D\u044B\u0439 RAG: \u0444\u0430\u043A\u0442\u044B \u0432\u044B\u0448\u0435 \u043F\u043E\u0440\u043E\u0433\u0430 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u044B \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043D\u043E\u0434\u044B";
-  return import_react15.default.createElement(
+  function dismissChips() {
+    setChipsDismissed(true);
+    setNodePickerOpen(false);
+  }
+  function handleQuickReply(chip) {
+    if (!chip || composeLocked) return;
+    if (chip.intent === QUICK_REPLY_INTENTS.nextNode) {
+      dismissChips();
+      setNodePickerOpen(true);
+      return;
+    }
+    if (chip.intent === QUICK_REPLY_INTENTS.clarify) {
+      dismissChips();
+      inputRef.current?.focus?.();
+      return;
+    }
+    dismissChips();
+    send(chip.intent);
+  }
+  function handleSelectNextNode(node) {
+    setNodePickerOpen(false);
+    if (node && onOpenNode) onOpenNode(node);
+  }
+  return import_react20.default.createElement(
     "div",
     { className: "tutor-panel" },
-    import_react15.default.createElement(NodeSelectionExplain, {
+    import_react20.default.createElement(NodeSelectionExplain, {
       curriculumId,
       nodeData,
       containerRef: materialRef,
       enabled: explainEnabled
     }),
-    generating && import_react15.default.createElement(
+    generating && import_react20.default.createElement(
       "div",
       { className: "tutor-busy-hint", "aria-live": "polite" },
       "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043E\u0442\u0432\u0435\u0442\u0430\u2026 \u043C\u043E\u0436\u043D\u043E \u0447\u0438\u0442\u0430\u0442\u044C \u0438\u0441\u0442\u043E\u0440\u0438\u044E \u0432\u044B\u0448\u0435; \u043D\u043E\u0432\u044B\u0435 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B."
     ),
-    import_react15.default.createElement(
+    import_react20.default.createElement(
       "div",
       { className: "tutor-panel-scroll tutor-selectable", ref: materialRef },
-      import_react15.default.createElement("div", { className: "rag-hint" }, ragText),
-      messages.length > 0 && import_react15.default.createElement(
+      messages.length > 0 && import_react20.default.createElement(
         "p",
         { className: "tutor-selectable-hint muted" },
         "\u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u0432 \u043E\u0442\u0432\u0435\u0442\u0435 \u0442\u044C\u044E\u0442\u043E\u0440\u0430 \u2014 \xAB\u041E\u0431\u044A\u044F\u0441\u043D\u0438\u0442\u044C\xBB."
       ),
-      import_react15.default.createElement(
+      import_react20.default.createElement(
         "div",
         { className: "chat-log node-selectable-material" },
-        messages.map(
-          (m, i) => import_react15.default.createElement(
+        messages.map((m) => {
+          const msgKey = m.msg_id || `${m.role}-${dialogMsgId(m) ?? (m.content || "").slice(0, 40)}`;
+          const tutorHtml = postprocessTutorHtml(m.contentHtml || "");
+          const useTutorHtml = m.role === "tutor" && tutorHtml && tutorHtmlMatchesContentForMessage(m.content || "", tutorHtml);
+          const tutorMarkdownHtml = m.role === "tutor" ? tutorMarkdownToHtml(m.content || "") : "";
+          const isLastTutor = m.role === "tutor" && msgKey === tutorTurnKey;
+          return import_react20.default.createElement(
             "div",
-            { key: i, className: `chat-msg ${m.role}` },
-            m.role === "tutor" && (m.contentHtml || "").length > 0 ? import_react15.default.createElement(LlmHtmlBlock, {
-              html: m.contentHtml,
+            {
+              key: msgKey,
+              className: `chat-msg ${m.role}`,
+              "data-msg-id": m.msg_id || "",
+              "data-role": m.role
+            },
+            useTutorHtml ? import_react20.default.createElement(LlmHtmlBlock, {
+              html: tutorHtml,
               className: "md-body chat-md"
-            }) : import_react15.default.createElement(
+            }) : m.role === "tutor" && structuredAnalysisToHtml(m.content || "") ? import_react20.default.createElement(LlmHtmlBlock, {
+              html: structuredAnalysisToHtml(m.content || ""),
+              className: "md-body chat-md"
+            }) : tutorMarkdownHtml ? import_react20.default.createElement(LlmHtmlBlock, {
+              html: tutorMarkdownHtml,
+              className: "md-body chat-md"
+            }) : import_react20.default.createElement(
               "div",
-              { className: "chat-plain" },
-              repairLlMText(m.content)
-            )
-          )
-        )
-      )
+              { className: "chat-plain lecture-plain" },
+              m.content || ""
+            ),
+            isLastTutor ? import_react20.default.createElement(QuickReplyChips, {
+              visible: showTransitionChips,
+              session,
+              nodeLayer: nodeData?.layer || session?.nodeLayer || "foundation",
+              disabled: composeLocked,
+              onChip: handleQuickReply
+            }) : null
+          );
+        })
+      ),
+      import_react20.default.createElement(RagInspectorPanel, {
+        items: session?.lectureRagInspector || []
+      })
     ),
-    import_react15.default.createElement(
+    import_react20.default.createElement(NextNodeSelector, {
+      open: nodePickerOpen,
+      nodes: successorNodes,
+      onSelect: handleSelectNextNode,
+      onClose: () => setNodePickerOpen(false)
+    }),
+    import_react20.default.createElement(
       "div",
       {
         className: composeLocked ? "tutor-panel-compose tutor-panel-compose-locked" : "tutor-panel-compose"
       },
-      import_react15.default.createElement(
+      import_react20.default.createElement(
         "div",
         { className: "quick-chips" },
         QUICK.map(
-          (q) => import_react15.default.createElement(
+          (q) => import_react20.default.createElement(
             "button",
             {
               key: q.label,
@@ -39000,7 +42271,7 @@ function NodeTutorChat({
           )
         )
       ),
-      import_react15.default.createElement(
+      import_react20.default.createElement(
         "form",
         {
           className: "chat-form",
@@ -39009,13 +42280,17 @@ function NodeTutorChat({
             if (!composeLocked) send(input);
           }
         },
-        import_react15.default.createElement("input", {
+        import_react20.default.createElement("input", {
+          ref: inputRef,
           value: input,
-          onChange: (e) => setInput(e.target.value),
+          onChange: (e) => {
+            setInput(e.target.value);
+            if ((e.target.value || "").trim()) setChipsDismissed(true);
+          },
           placeholder: composeLocked ? "\u0416\u0434\u0451\u043C \u043E\u0442\u0432\u0435\u0442 \u0442\u044C\u044E\u0442\u043E\u0440\u0430\u2026" : "\u0412\u043E\u043F\u0440\u043E\u0441 \u0442\u044C\u044E\u0442\u043E\u0440\u0443\u2026",
           disabled: composeLocked
         }),
-        import_react15.default.createElement(
+        import_react20.default.createElement(
           "button",
           { type: "submit", disabled: composeLocked },
           composeLocked ? "\u2026" : "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C"
@@ -39026,7 +42301,7 @@ function NodeTutorChat({
 }
 
 // ColumnResizer.js
-var import_react16 = __toESM(require_react(), 1);
+var import_react21 = __toESM(require_react(), 1);
 function ColumnResizer({ onDragDelta, onDragEnd }) {
   function onMouseDown(e) {
     e.preventDefault();
@@ -39047,7 +42322,7 @@ function ColumnResizer({ onDragDelta, onDragEnd }) {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
-  return import_react16.default.createElement("div", {
+  return import_react21.default.createElement("div", {
     className: "skill-col-resizer",
     role: "separator",
     "aria-orientation": "vertical",
@@ -39056,36 +42331,60 @@ function ColumnResizer({ onDragDelta, onDragEnd }) {
 }
 
 // RoadmapDashboard.js
+function replaceSkillTreeSearchParams(patch) {
+  const url = new URL(window.location.href);
+  for (const [key, value] of Object.entries(patch)) {
+    const v = String(value || "").trim();
+    if (v) url.searchParams.set(key, v);
+    else url.searchParams.delete(key);
+  }
+  window.history.replaceState(null, "", url.pathname + url.search);
+}
 function RoadmapDashboard() {
-  const [goal, setGoal] = (0, import_react17.useState)("");
-  const [mode, setMode] = (0, import_react17.useState)("fast");
-  const [ragStatus, setRagStatus] = (0, import_react17.useState)(null);
-  const [curriculum, setCurriculum] = (0, import_react17.useState)(null);
-  const [curriculaList, setCurriculaList] = (0, import_react17.useState)([]);
-  const [statuses, setStatuses] = (0, import_react17.useState)({});
-  const [selectedNode, setSelectedNode] = (0, import_react17.useState)(null);
-  const [sessions, setSessions] = (0, import_react17.useState)({});
-  const [workspaceBusy, setWorkspaceBusy] = (0, import_react17.useState)(false);
-  const [genStatus, setGenStatus] = (0, import_react17.useState)("");
-  const [tutorBusyNodeId, setTutorBusyNodeId] = (0, import_react17.useState)(null);
-  const [error, setError] = (0, import_react17.useState)("");
-  const [leftColWidth, setLeftColWidth] = (0, import_react17.useState)(() => {
+  const [goal, setGoal] = (0, import_react22.useState)("");
+  const [sourcePolicy, setSourcePolicy] = (0, import_react22.useState)("practical_only");
+  const [ragStatus, setRagStatus] = (0, import_react22.useState)(null);
+  const [curriculum, setCurriculum] = (0, import_react22.useState)(null);
+  const [curriculaList, setCurriculaList] = (0, import_react22.useState)([]);
+  const [statuses, setStatuses] = (0, import_react22.useState)({});
+  const [selectedNode, setSelectedNode] = (0, import_react22.useState)(null);
+  const [sessions, setSessions] = (0, import_react22.useState)({});
+  const [workspaceBusy, setWorkspaceBusy] = (0, import_react22.useState)(false);
+  const [genStatus, setGenStatus] = (0, import_react22.useState)("");
+  const [genBusyAction, setGenBusyAction] = (0, import_react22.useState)(null);
+  const [tutorBusyNodeId, setTutorBusyNodeId] = (0, import_react22.useState)(null);
+  const [selectedMaterialId, setSelectedMaterialId] = (0, import_react22.useState)(null);
+  const [materialViewMode, setMaterialViewMode] = (0, import_react22.useState)(() => {
+    const v = localStorage.getItem(MATERIAL_VIEW_LS);
+    return v === "carousel" ? "carousel" : "list";
+  });
+  const [error, setError] = (0, import_react22.useState)("");
+  const [layoutEpoch, setLayoutEpoch] = (0, import_react22.useState)(0);
+  const [leftColWidth, setLeftColWidth] = (0, import_react22.useState)(() => {
     const n = Number(localStorage.getItem("skillTreeColLeft"));
     return n >= 240 && n <= 720 ? n : 360;
   });
-  const [rightColWidth, setRightColWidth] = (0, import_react17.useState)(() => {
+  const [rightColWidth, setRightColWidth] = (0, import_react22.useState)(() => {
     const n = Number(localStorage.getItem("skillTreeColRight"));
     return n >= 280 && n <= 960 ? n : 420;
   });
-  const leftColRef = import_react17.default.useRef(leftColWidth);
-  const rightColRef = import_react17.default.useRef(rightColWidth);
+  const leftColRef = import_react22.default.useRef(leftColWidth);
+  const rightColRef = import_react22.default.useRef(rightColWidth);
   leftColRef.current = leftColWidth;
   rightColRef.current = rightColWidth;
+  function maxResizableColumnWidth(oppositeWidth) {
+    const minCanvasWidth = 180;
+    const dividerWidth = 12;
+    return Math.max(
+      0,
+      window.innerWidth - oppositeWidth - minCanvasWidth - dividerWidth
+    );
+  }
   function persistColWidths() {
     localStorage.setItem("skillTreeColLeft", String(leftColRef.current));
     localStorage.setItem("skillTreeColRight", String(rightColRef.current));
   }
-  const loadWorkspace = (0, import_react17.useCallback)(async (curriculumId) => {
+  const loadWorkspace = (0, import_react22.useCallback)(async (curriculumId) => {
     if (!curriculumId) return;
     setError("");
     setWorkspaceBusy(true);
@@ -39098,11 +42397,11 @@ function RoadmapDashboard() {
       );
       setSessions(hydrateSessionsFromServer(ws.sessions));
       setSelectedNode(null);
+      setSelectedMaterialId(null);
       await setActiveCurriculum(curriculumId);
       rememberActiveCurriculumId(curriculumId);
-      const url = new URL(window.location.href);
-      url.searchParams.set("curriculum", curriculumId);
-      window.history.replaceState(null, "", url.pathname + url.search);
+      setSourcePolicy("practical_only");
+      replaceSkillTreeSearchParams({ curriculum: curriculumId });
       const list = await fetchCurriculaList();
       setCurriculaList(list.curricula || []);
     } catch (err) {
@@ -39111,7 +42410,21 @@ function RoadmapDashboard() {
       setWorkspaceBusy(false);
     }
   }, []);
-  (0, import_react17.useEffect)(() => {
+  const refreshCurriculumGraph = (0, import_react22.useCallback)(async (curriculumId) => {
+    if (!curriculumId) return null;
+    try {
+      const ws = await fetchWorkspace(curriculumId);
+      setCurriculum(ws.curriculum);
+      setStatuses(
+        mergeNodeStatuses(ws.curriculum, ws.statuses || {})
+      );
+      return ws.curriculum;
+    } catch (err) {
+      setError(String(err.message || err));
+      return null;
+    }
+  }, []);
+  (0, import_react22.useEffect)(() => {
     fetchRagStatus().then(setRagStatus).catch(
       () => setRagStatus({
         connected: false,
@@ -39119,26 +42432,7 @@ function RoadmapDashboard() {
       })
     );
     if (window.mermaid) {
-      window.mermaid.initialize({
-        startOnLoad: false,
-        theme: "dark",
-        securityLevel: "loose",
-        themeVariables: {
-          fontSize: "11px"
-        },
-        flowchart: { useMaxWidth: false, htmlLabels: true },
-        sequence: {
-          useMaxWidth: false,
-          wrap: true,
-          width: 240,
-          messageFontSize: 10,
-          noteFontSize: 10,
-          actorFontSize: 11,
-          messageMargin: 48,
-          boxMargin: 10,
-          mirrorActors: false
-        }
-      });
+      ensureMermaidInitialized();
     }
     (async () => {
       try {
@@ -39153,40 +42447,116 @@ function RoadmapDashboard() {
       }
     })();
   }, [loadWorkspace]);
-  async function onGenerate(e) {
-    e.preventDefault();
-    const text = goal.trim();
-    if (text.length < 8) return;
+  function clearCanvasForNewRoute() {
+    setCurriculum(null);
+    setSelectedNode(null);
+    setSessions({});
+    setStatuses({});
+    replaceSkillTreeSearchParams({
+      curriculum: "",
+      node: "",
+      material: ""
+    });
+    setSourcePolicy("practical_only");
+  }
+  async function runCreatePath(text) {
     setError("");
     setWorkspaceBusy(true);
+    setGenBusyAction("create");
     let phaseTimer = null;
-    const consensusPhases = [
-      "\u0421\u0431\u043E\u0440 \u043D\u0430\u0443\u0447\u043D\u044B\u0445 \u0441\u0442\u0430\u0442\u0435\u0439 \u0432 Consensus (Playwright)\u2026",
-      "Lite-\u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u044F \u0438 Summarizer \u2192 LanceDB\u2026",
-      "Flash \u0441\u0442\u0440\u043E\u0438\u0442 \u0433\u0440\u0430\u0444 \u0432\u043E\u043A\u0440\u0443\u0433 \u0432\u044B\u0434\u0435\u0440\u0436\u0435\u043A\u2026"
-    ];
-    if (mode === "consensus") {
-      let phaseIdx = 0;
-      setGenStatus(consensusPhases[0]);
-      phaseTimer = setInterval(() => {
-        phaseIdx = (phaseIdx + 1) % consensusPhases.length;
-        setGenStatus(consensusPhases[phaseIdx]);
-      }, 8e3);
-    } else {
-      setGenStatus("SearXNG / whitelist \u0438 Flash\u2026");
-    }
+    const policyPhases = {
+      hybrid: [
+        "Model-First: Flash \u0441\u0442\u0440\u043E\u0438\u0442 \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0443 DAG\u2026",
+        "Lite: \u043A\u043B\u0430\u0441\u0441\u0438\u0444\u0438\u043A\u0430\u0446\u0438\u044F \u043D\u043E\u0434 (BASE / DEEP)\u2026",
+        "DEEP: Exa + \u0431\u043B\u043E\u0433\u0438 (\u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0430)\u2026",
+        "Summarizer \u2192 LanceDB \u2192 \u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0430 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432\u2026"
+      ],
+      academic_only: [
+        "Semantic Scholar / arXiv / Consensus\u2026",
+        "Summarizer \u2192 LanceDB\u2026",
+        "Grounding DEEP-\u043D\u043E\u0434\u2026"
+      ],
+      practical_only: [
+        "Model-First \u2192 Risk \u2192 DEEP: Exa / SearXNG\u2026",
+        "Summarizer \u2192 LanceDB\u2026",
+        "\u041F\u0440\u0438\u0432\u044F\u0437\u043A\u0430 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432 \u043A \u043D\u043E\u0434\u0430\u043C\u2026"
+      ]
+    };
+    const phases = policyPhases[sourcePolicy] || policyPhases.hybrid;
+    setGenStatus(phases[0]);
+    let phaseIdx = 0;
+    phaseTimer = setInterval(() => {
+      if (phaseIdx >= phases.length - 1) return;
+      phaseIdx += 1;
+      setGenStatus(phases[phaseIdx]);
+    }, 12e3);
     try {
-      const graph = await generateCurriculum(text, mode);
+      const graph = await createCurriculum(text, sourcePolicy);
+      setGoal(text);
       await loadWorkspace(graph.curriculum_id);
     } catch (err) {
       setError(String(err.message || err));
     } finally {
       if (phaseTimer) clearInterval(phaseTimer);
       setGenStatus("");
+      setGenBusyAction(null);
       setWorkspaceBusy(false);
     }
   }
-  const applyNodeResponse = (0, import_react17.useCallback)((nodeId, res, userMsg) => {
+  async function runExpandBranch(text) {
+    if (!curriculum?.curriculum_id) return;
+    setError("");
+    setWorkspaceBusy(true);
+    setGenBusyAction("expand");
+    setGenStatus("\u0414\u043E\u0441\u0442\u0440\u043E\u0439\u043A\u0430: Lite \u2192 \u0441\u0431\u043E\u0440 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432 (SearXNG / SS)\u2026");
+    const expandPhases = [
+      "Lite \u2192 \u0432\u0435\u043A\u0442\u043E\u0440 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F\u2026",
+      "\u0421\u0431\u043E\u0440 \u043F\u043E \u0432\u0435\u043A\u0442\u043E\u0440\u0443 (SearXNG / SS / arXiv)\u2026",
+      "Summarizer \u2192 LanceDB\u2026",
+      "Flash \u0434\u043E\u0441\u0442\u0440\u0430\u0438\u0432\u0430\u0435\u0442 \u0432\u0435\u0442\u043A\u0443\u2026"
+    ];
+    let phaseIdx = 0;
+    const phaseTimer = setInterval(() => {
+      if (phaseIdx >= expandPhases.length - 1) return;
+      phaseIdx += 1;
+      setGenStatus(expandPhases[phaseIdx]);
+    }, 1e4);
+    try {
+      const graph = await expandCurriculum(
+        curriculum.curriculum_id,
+        text,
+        sourcePolicy
+      );
+      setGoal("");
+      setLayoutEpoch((n) => n + 1);
+      await loadWorkspace(graph.curriculum_id);
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      clearInterval(phaseTimer);
+      setGenStatus("");
+      setGenBusyAction(null);
+      setWorkspaceBusy(false);
+    }
+  }
+  async function runCreateNewWhileLoaded(text) {
+    clearCanvasForNewRoute();
+    await runCreatePath(text);
+  }
+  (0, import_react22.useEffect)(() => {
+    function onPickMaterial(e) {
+      const id2 = String(e.detail?.id || "").trim();
+      if (!id2) return;
+      setSelectedMaterialId(id2);
+      replaceSkillTreeSearchParams({ material: id2 });
+    }
+    window.addEventListener("ke:select-material", onPickMaterial);
+    return () => window.removeEventListener("ke:select-material", onPickMaterial);
+  }, []);
+  (0, import_react22.useEffect)(() => {
+    localStorage.setItem(MATERIAL_VIEW_LS, materialViewMode);
+  }, [materialViewMode]);
+  const applyNodeResponse = (0, import_react22.useCallback)((nodeId, res, userMsg) => {
     if (res.error) {
       setError(res.error);
       return;
@@ -39194,53 +42564,119 @@ function RoadmapDashboard() {
     setStatuses((prev) => ({ ...prev, [nodeId]: res.node_status }));
     setSessions((prev) => {
       const old = prev[nodeId] || { messages: [] };
-      const hasHistory = Array.isArray(res.history) && res.history.length > 0;
-      const messages = hasHistory ? mergeHistoryWithPendingUser(
-        historyToMessages(res.history),
-        userMsg
-      ) : (() => {
-        const next = [...old.messages];
-        if (userMsg) next.push({ role: "user", content: userMsg });
-        if (res.tutor_message) next.push(tutorMessageFromApi(res));
-        return next;
-      })();
+      const streamId = `stream-${nodeId}`;
+      const messages = buildMessagesAfterChatComplete(
+        res,
+        userMsg,
+        old.messages,
+        streamId
+      );
       return {
         ...prev,
         [nodeId]: {
           initialized: true,
+          prepared: messages.length === 0 && Boolean(res.rag_facts_count || old.prepared),
           content: res.content,
           messages,
           ragLabels: res.rag_fact_labels || old.ragLabels || [],
           masteryDashboard: res.mastery_dashboard || old.masteryDashboard,
+          coverageSummary: res.coverage_summary || res.mastery_dashboard?.coverage_summary || old.coverageSummary || null,
           topicMasteryScore: res.topic_mastery_score ?? old.topicMasteryScore ?? 0,
           learningPhase: res.learning_phase || old.learningPhase,
           learningMode: res.learning_mode || old.learningMode,
-          sourceRegistry: res.source_registry || old.sourceRegistry || []
+          sourceRegistry: Array.isArray(res.source_registry) ? res.source_registry : old.sourceRegistry || [],
+          lectureRagInspector: Array.isArray(res.lecture_rag_inspector) ? res.lecture_rag_inspector : old.lectureRagInspector || [],
+          readyForTransition: Boolean(res.ready_for_transition),
+          lastEvalDirective: String(
+            res.last_eval_directive || old.lastEvalDirective || ""
+          ).trim(),
+          quickReplies: Array.isArray(res.quick_replies) ? res.quick_replies : []
         }
       };
     });
   }, []);
-  async function openNode(node) {
-    if (!curriculum) return;
-    const sid = node.node_id;
-    const initialized = Boolean(sessions[sid]?.initialized);
-    if (tutorBusyNodeId !== null && !initialized) return;
-    setSelectedNode(node);
-    setError("");
-    if (initialized) return;
-    setTutorBusyNodeId(sid);
-    try {
-      const res = await nodeInit(
-        curriculum.curriculum_id,
-        toNodeDataInput(node)
-      );
-      applyNodeResponse(sid, res);
-    } catch (err) {
-      setError(String(err.message || err));
-    } finally {
-      setTutorBusyNodeId(null);
+  const openNode = (0, import_react22.useCallback)(
+    async (node) => {
+      if (!curriculum) return;
+      const sid = node.node_id;
+      const initialized2 = Boolean(sessions[sid]?.initialized);
+      if (tutorBusyNodeId !== null && !initialized2) return;
+      setSelectedNode(node);
+      setSelectedMaterialId(null);
+      replaceSkillTreeSearchParams({ node: sid, material: "" });
+      setError("");
+      const grounding = String(node.grounding_status || "").trim();
+      if (!initialized2 && (grounding === "unverified_deep" || grounding === "grounded" || grounding === "model_only")) {
+        return;
+      }
+      if (initialized2) {
+        try {
+          const regRes = await fetchNodeSourceRegistry(
+            curriculum.curriculum_id,
+            sid
+          );
+          const freshReg = regRes.source_registry || [];
+          setSessions((prev) => ({
+            ...prev,
+            [sid]: {
+              ...prev[sid] || { messages: [] },
+              sourceRegistry: freshReg
+            }
+          }));
+        } catch {
+        }
+        return;
+      }
+      setTutorBusyNodeId(sid);
+      try {
+        const res = await nodeInit(
+          curriculum.curriculum_id,
+          toNodeDataInput(node)
+        );
+        applyNodeResponse(sid, res);
+        const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
+        if (freshGraph) {
+          const freshNode = freshGraph.nodes.find((n) => n.node_id === sid);
+          if (freshNode) setSelectedNode(freshNode);
+        }
+      } catch (err) {
+        setError(String(err.message || err));
+      } finally {
+        setTutorBusyNodeId(null);
+      }
+    },
+    [
+      curriculum,
+      sessions,
+      tutorBusyNodeId,
+      applyNodeResponse,
+      refreshCurriculumGraph
+    ]
+  );
+  (0, import_react22.useEffect)(() => {
+    if (!curriculum?.nodes?.length || workspaceBusy) return;
+    const params = new URLSearchParams(window.location.search);
+    const nodeId = (params.get("node") || "").trim();
+    if (!nodeId) return;
+    if (selectedNode?.node_id === nodeId) return;
+    const node = curriculum.nodes.find((n) => n.node_id === nodeId);
+    if (node) {
+      openNode(node);
+      return;
     }
-  }
+    replaceSkillTreeSearchParams({ node: "", material: "" });
+  }, [
+    curriculum?.curriculum_id,
+    curriculum?.nodes,
+    workspaceBusy,
+    selectedNode?.node_id,
+    openNode
+  ]);
+  (0, import_react22.useEffect)(() => {
+    if (!selectedNode || workspaceBusy) return;
+    const mid = (new URLSearchParams(window.location.search).get("material") || "").trim();
+    if (mid) setSelectedMaterialId(mid);
+  }, [selectedNode?.node_id, workspaceBusy]);
   async function sendTutorMessage(text) {
     if (!curriculum || !selectedNode || tutorBusyNodeId !== null) return;
     const msg = (text || "").trim();
@@ -39249,12 +42685,44 @@ function RoadmapDashboard() {
     setTutorBusyNodeId(nid);
     onTutorPendingUser(msg);
     try {
-      const res = await nodeChat(
+      let finalRes = null;
+      let streamed = "";
+      await nodeChatStream(
         curriculum.curriculum_id,
         toNodeDataInput(selectedNode),
-        msg
+        msg,
+        (evt) => {
+          if (evt.type === "token" && evt.text) {
+            streamed += evt.text;
+            setSessions((prev) => {
+              const old = prev[nid] || { messages: [], initialized: true };
+              const msgs = [...old.messages || []];
+              const streamId = `stream-${nid}`;
+              const idx = msgs.findIndex((m) => m.msg_id === streamId);
+              const row = {
+                role: "tutor",
+                content: streamed,
+                msg_id: streamId
+              };
+              if (idx >= 0) msgs[idx] = row;
+              else msgs.push(row);
+              return {
+                ...prev,
+                [nid]: { ...old, messages: msgs }
+              };
+            });
+          }
+          if (evt.type === "complete" && evt.result) {
+            finalRes = evt.result;
+          }
+          if (evt.type === "error") {
+            throw new Error(evt.detail || "chat-stream error");
+          }
+        }
       );
-      applyNodeResponse(nid, res, msg);
+      if (finalRes) {
+        applyNodeResponse(nid, finalRes, msg);
+      }
     } catch (err) {
       setError(String(err.message || err));
     } finally {
@@ -39285,9 +42753,9 @@ function RoadmapDashboard() {
       const old = prev[nid] || { messages: [], initialized: true };
       const u = (userMsg || "").trim();
       if (!u) return prev;
-      if ((old.messages || []).some(
-        (m) => m.role === "user" && (m.content || "").trim() === u
-      )) {
+      const msgs = old.messages || [];
+      const last = msgs[msgs.length - 1];
+      if (last?.role === "user" && userMessageMatches(last.content, u) && isPendingMsgId(last.msg_id)) {
         return prev;
       }
       return {
@@ -39295,13 +42763,13 @@ function RoadmapDashboard() {
         [nid]: {
           ...old,
           messages: (() => {
-            const msgs = [...old.messages || []];
-            if (msgs.length && msgs[msgs.length - 1].role === "tutor") {
-              msgs.splice(msgs.length - 1, 0, { role: "user", content: u });
-            } else {
-              msgs.push({ role: "user", content: u });
-            }
-            return msgs;
+            const next = [...msgs];
+            next.push({
+              role: "user",
+              content: u,
+              msg_id: `pending-${Date.now()}`
+            });
+            return sortDialogMessages(next);
           })()
         }
       };
@@ -39314,10 +42782,46 @@ function RoadmapDashboard() {
   async function onModeSelect(text) {
     await sendTutorMessage(text);
   }
+  async function restartSelectedNode() {
+    if (!curriculum || !selectedNode || tutorBusyNodeId !== null) return;
+    const nid = selectedNode.node_id;
+    const title = (selectedNode.title || nid).trim();
+    const ok = window.confirm(
+      `\u0421\u0431\u0440\u043E\u0441\u0438\u0442\u044C \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 \u043D\u043E\u0434\u044B \xAB${title}\xBB?
+
+\u0411\u0443\u0434\u0443\u0442 \u0443\u0434\u0430\u043B\u0435\u043D\u044B \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u044B, \u0434\u0438\u0430\u043B\u043E\u0433, \u043F\u0430\u043C\u044F\u0442\u044C \u0442\u044C\u044E\u0442\u043E\u0440\u0430 \u0438 \u0441\u0442\u0430\u0442\u0443\u0441 \u043F\u0440\u043E\u0445\u043E\u0436\u0434\u0435\u043D\u0438\u044F. \u0417\u0430\u0442\u0435\u043C \u0437\u0430\u043D\u043E\u0432\u043E \u0441\u043E\u0431\u0435\u0440\u0443\u0442\u0441\u044F \u043F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u044C\u043D\u044B\u0435 \u0444\u0430\u043A\u0442\u044B (RAG) \u0438 \u043F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u0438\u0442\u0441\u044F \u0441\u0435\u0441\u0441\u0438\u044F.`
+    );
+    if (!ok) return;
+    setTutorBusyNodeId(nid);
+    setError("");
+    setSessions((prev) => {
+      const next = { ...prev };
+      delete next[nid];
+      return next;
+    });
+    setStatuses((prev) => ({ ...prev, [nid]: "unexplored" }));
+    try {
+      const res = await nodeRestart(
+        curriculum.curriculum_id,
+        toNodeDataInput(selectedNode)
+      );
+      applyNodeResponse(nid, res);
+      const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
+      if (freshGraph) {
+        const freshNode = freshGraph.nodes.find((n) => n.node_id === nid);
+        if (freshNode) setSelectedNode(freshNode);
+      }
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setTutorBusyNodeId(null);
+    }
+  }
   const session = selectedNode ? sessions[selectedNode.node_id] : null;
+  const sessionReady = Boolean(session?.initialized);
   const activeId = curriculum?.curriculum_id || "";
   const tutorBusy = tutorBusyNodeId !== null;
-  const composeLocked = tutorBusy;
+  const composeLocked = tutorBusy || selectedNode && !sessionReady;
   const nodeGenerating = selectedNode && tutorBusyNodeId === selectedNode.node_id;
   function formatRouteLabel(c) {
     const title = (c.title || c.target_goal || c.curriculum_id || "").trim();
@@ -39325,31 +42829,31 @@ function RoadmapDashboard() {
     const suffix = c.has_graph === false ? " (\u0431\u0435\u0437 \u0433\u0440\u0430\u0444\u0430)" : "";
     return `${title}${nodes}${suffix}`;
   }
-  return import_react17.default.createElement(
+  return import_react22.default.createElement(
     "div",
     { className: "skill-dashboard" },
-    import_react17.default.createElement(
+    import_react22.default.createElement(
       "header",
       { className: "skill-header" },
-      import_react17.default.createElement(
+      import_react22.default.createElement(
         "div",
         { className: "skill-header-top" },
-        import_react17.default.createElement(
+        import_react22.default.createElement(
           "div",
           null,
-          import_react17.default.createElement("h1", null, "AI Skill Tree & Tutor"),
-          import_react17.default.createElement(
+          import_react22.default.createElement("h1", null, "AI Skill Tree & Tutor"),
+          import_react22.default.createElement(
             "p",
             { className: "muted" },
             "\u041C\u0430\u0440\u0448\u0440\u0443\u0442\u044B: knowledge_engine/.runs/skill_tree_curricula.json"
           ),
-          import_react17.default.createElement(
+          import_react22.default.createElement(
             "a",
             { href: "/app", className: "nav-link-skill" },
             "\u2190 \u0418\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0439 \u0430\u043D\u0430\u043B\u0438\u0437"
           )
         ),
-        ragStatus && import_react17.default.createElement(
+        ragStatus && import_react22.default.createElement(
           "span",
           {
             className: `rag-pill${ragStatus.connected ? "" : " off"}`
@@ -39357,23 +42861,23 @@ function RoadmapDashboard() {
           ragStatus.label
         )
       ),
-      import_react17.default.createElement(
+      import_react22.default.createElement(
         "div",
         { className: "skill-saved-section" },
-        import_react17.default.createElement(
+        import_react22.default.createElement(
           "p",
           { className: "skill-saved-title" },
           `\u0421\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u044B (${curriculaList.length})`
         ),
-        curriculaList.length === 0 ? import_react17.default.createElement(
+        curriculaList.length === 0 ? import_react22.default.createElement(
           "p",
           { className: "skill-saved-empty" },
           "\u041F\u043E\u043A\u0430 \u043D\u0435\u0442 \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u043E\u0432. \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043F\u0443\u0442\u044C \u043D\u0438\u0436\u0435 \u2014 \u043E\u043D \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438."
-        ) : import_react17.default.createElement(
+        ) : import_react22.default.createElement(
           "div",
           { className: "skill-route-list" },
           curriculaList.map(
-            (c) => import_react17.default.createElement(
+            (c) => import_react22.default.createElement(
               "button",
               {
                 key: c.curriculum_id,
@@ -39398,114 +42902,94 @@ function RoadmapDashboard() {
           )
         )
       ),
-      import_react17.default.createElement(
-        "div",
-        { className: "skill-header-actions" },
-        import_react17.default.createElement(
-          "form",
-          { className: "skill-goal-form", onSubmit: onGenerate },
-          import_react17.default.createElement("input", {
-            value: goal,
-            onChange: (e) => setGoal(e.target.value),
-            placeholder: "\u0427\u0435\u043C\u0443 \u0432\u044B \u0445\u043E\u0442\u0438\u0442\u0435 \u043D\u0430\u0443\u0447\u0438\u0442\u044C\u0441\u044F?",
-            required: true
-          }),
-          import_react17.default.createElement(
-            "select",
-            {
-              className: "skill-mode-select",
-              value: mode,
-              onChange: (e) => setMode(e.target.value),
-              "aria-label": "\u0420\u0435\u0436\u0438\u043C \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438"
-            },
-            import_react17.default.createElement(
-              "option",
-              { value: "fast" },
-              "Fast \u2014 \u0431\u044B\u0441\u0442\u0440\u044B\u0439 \u0433\u0440\u0430\u0444"
-            ),
-            import_react17.default.createElement(
-              "option",
-              { value: "consensus" },
-              "Consensus \u2014 \u0433\u043B\u0443\u0431\u043E\u043A\u0438\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 (v0.8)"
-            )
-          ),
-          workspaceBusy && genStatus && import_react17.default.createElement(
-            "p",
-            { className: "muted skill-gen-status", role: "status" },
-            genStatus
-          ),
-          import_react17.default.createElement(
-            "button",
-            { type: "submit", disabled: workspaceBusy },
-            workspaceBusy ? mode === "consensus" ? "\u0413\u043B\u0443\u0431\u043E\u043A\u0430\u044F \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F\u2026" : "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F\u2026" : "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043F\u0443\u0442\u044C"
-          )
-        )
-      )
+      import_react22.default.createElement(CurriculumInputBar, {
+        goal,
+        onGoalChange: setGoal,
+        sourcePolicy,
+        onSourcePolicyChange: setSourcePolicy,
+        activeCurriculumId: activeId,
+        workspaceBusy,
+        genStatus,
+        busyAction: genBusyAction,
+        onCreatePath: runCreatePath,
+        onExpandBranch: runExpandBranch,
+        onCreateNew: runCreateNewWhileLoaded
+      })
     ),
-    error && import_react17.default.createElement("div", { className: "skill-error" }, error),
-    import_react17.default.createElement(
+    error && import_react22.default.createElement("div", { className: "skill-error" }, error),
+    import_react22.default.createElement(
       "div",
       {
         className: "skill-split",
         style: {
-          gridTemplateColumns: `${leftColWidth}px 6px minmax(180px, 1fr) 6px ${rightColWidth}px`
+          gridTemplateColumns: `minmax(180px, 1fr) 6px ${leftColWidth}px 6px ${rightColWidth}px`
         }
       },
-      import_react17.default.createElement(
-        "aside",
-        { className: "skill-chat-column" },
-        curriculum && selectedNode ? import_react17.default.createElement(NodeTutorChat, {
-          session,
-          ragLabels: session?.ragLabels,
-          onSend: sendTutorMessage,
-          disabled: composeLocked,
-          generating: nodeGenerating,
-          curriculumId: curriculum.curriculum_id,
-          nodeData: toNodeDataInput(selectedNode)
-        }) : import_react17.default.createElement(
-          "div",
-          { className: "tutor-panel skill-chat-placeholder" },
-          import_react17.default.createElement("h3", null, "\u0427\u0430\u0442 \u0441 \u0442\u044C\u044E\u0442\u043E\u0440\u043E\u043C"),
-          import_react17.default.createElement(
-            "p",
-            { className: "muted" },
-            curriculum ? "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u2014 \u0434\u0438\u0430\u043B\u043E\u0433 \u043E\u0442\u043A\u0440\u043E\u0435\u0442\u0441\u044F \u0437\u0434\u0435\u0441\u044C (\u043A\u0430\u043A \u0432 Cursor)." : "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442, \u0437\u0430\u0442\u0435\u043C \u043E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u0433\u0440\u0430\u0444\u0435."
-          )
-        )
+      curriculum ? import_react22.default.createElement(RoadmapCanvas, {
+        curriculum,
+        statuses,
+        selectedNodeId: selectedNode?.node_id,
+        onNodeClick: openNode,
+        tutorBusyNodeId,
+        sessions,
+        layoutEpoch
+      }) : import_react22.default.createElement(
+        "div",
+        { className: "skill-canvas-wrap muted", style: { padding: "2rem" } },
+        "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0446\u0435\u043B\u044C \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0439 \u043C\u0430\u0440\u0448\u0440\u0443\u0442."
       ),
-      import_react17.default.createElement(ColumnResizer, {
+      import_react22.default.createElement(ColumnResizer, {
         onDragDelta: (dx) => {
           setLeftColWidth((w) => {
-            const next = Math.min(720, Math.max(240, w + dx));
+            const maxWidth = Math.min(
+              720,
+              maxResizableColumnWidth(rightColRef.current)
+            );
+            const next = Math.min(maxWidth, Math.max(240, w - dx));
             leftColRef.current = next;
             return next;
           });
         },
         onDragEnd: persistColWidths
       }),
-      curriculum ? import_react17.default.createElement(RoadmapCanvas, {
-        curriculum,
-        statuses,
-        selectedNodeId: selectedNode?.node_id,
-        onNodeClick: openNode,
-        tutorBusyNodeId,
-        sessions
-      }) : import_react17.default.createElement(
-        "div",
-        { className: "skill-canvas-wrap muted", style: { padding: "2rem" } },
-        "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0446\u0435\u043B\u044C \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0439 \u043C\u0430\u0440\u0448\u0440\u0443\u0442."
+      import_react22.default.createElement(
+        "aside",
+        { className: "skill-chat-column" },
+        curriculum && selectedNode ? import_react22.default.createElement(NodeTutorChat, {
+          session,
+          onSend: sendTutorMessage,
+          disabled: composeLocked,
+          generating: nodeGenerating,
+          curriculumId: curriculum.curriculum_id,
+          nodeData: toNodeDataInput(selectedNode),
+          curriculum,
+          onOpenNode: openNode
+        }) : import_react22.default.createElement(
+          "div",
+          { className: "tutor-panel skill-chat-placeholder" },
+          import_react22.default.createElement("h3", null, "\u0427\u0430\u0442 \u0441 \u0442\u044C\u044E\u0442\u043E\u0440\u043E\u043C"),
+          import_react22.default.createElement(
+            "p",
+            { className: "muted" },
+            curriculum ? "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u2014 \u0434\u0438\u0430\u043B\u043E\u0433 \u043E\u0442\u043A\u0440\u043E\u0435\u0442\u0441\u044F \u0437\u0434\u0435\u0441\u044C (\u043A\u0430\u043A \u0432 Cursor)." : "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442, \u0437\u0430\u0442\u0435\u043C \u043E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u0433\u0440\u0430\u0444\u0435."
+          )
+        )
       ),
-      import_react17.default.createElement(ColumnResizer, {
+      import_react22.default.createElement(ColumnResizer, {
         onDragDelta: (dx) => {
           setRightColWidth((w) => {
-            const next = Math.min(960, Math.max(280, w - dx));
+            const maxWidth = Math.min(
+              960,
+              maxResizableColumnWidth(leftColRef.current)
+            );
+            const next = Math.min(maxWidth, Math.max(280, w - dx));
             rightColRef.current = next;
             return next;
           });
         },
         onDragEnd: persistColWidths
       }),
-      curriculum ? import_react17.default.createElement(NodeDrawer, {
+      curriculum ? import_react22.default.createElement(NodeDrawer, {
         curriculum,
         selectedNode,
         session,
@@ -39513,17 +42997,21 @@ function RoadmapDashboard() {
         onSelectPrereq: openNode,
         onModeSelect,
         onVerify: runVerify,
+        onRestart: restartSelectedNode,
         composeLocked,
         nodeGenerating,
-        sessions
-      }) : import_react17.default.createElement("aside", { className: "node-drawer empty" })
+        sessions,
+        selectedMaterialId,
+        materialViewMode,
+        onMaterialViewModeChange: setMaterialViewMode
+      }) : import_react22.default.createElement("aside", { className: "node-drawer empty" })
     )
   );
 }
 
 // main.js
 var root2 = (0, import_client.createRoot)(document.getElementById("skill-tree-root"));
-root2.render(import_react18.default.createElement(RoadmapDashboard));
+root2.render(import_react23.default.createElement(RoadmapDashboard));
 /*! Bundled license information:
 
 react/cjs/react.development.js:

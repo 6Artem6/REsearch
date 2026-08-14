@@ -2,13 +2,15 @@
 
 Stateful Consensus (Playwright) + Light RAG + Gemini Lite/Flash + Reasoner.
 
+Это **research-агент** (`/app`, `GRAPH_VERSION=0.8`). Сбор papers **для учебного DAG** (sanitize, SS/arXiv, harvest в ноды): [ACADEMIC_AND_CONSENSUS.md](ACADEMIC_AND_CONSENSUS.md) — тот же prep запроса.
+
 **Снимок версии:** [V0_8_SNAPSHOT.md](V0_8_SNAPSHOT.md) · **разработка:** [DEV_RUNBOOK.md](DEV_RUNBOOK.md)
 
 ## Сессия Consensus
 
 Playwright **persistent profile** в `knowledge_engine/.browser_state/<chromium|firefox>/`.
 
-1. **Один раз войти:** `./knowledge_engine/scripts/consensus-login.sh` (Google/email).  
+1. **Один раз войти:** `./knowledge_engine/scripts/consensus-login.sh` (Google/email).
    CLI без `PLAYWRIGHT_BROWSERS_PATH` ищет Chrome в `~/Library/Caches/ms-playwright` — используйте скрипт или `dev-native.sh`.
 2. Между прогонами браузер можно **не закрывать** (`CONSENSUS_REUSE_BROWSER_SESSION=true`); каждый анализ — **новый чат** (`CONSENSUS_NEW_THREAD_EACH_RUN=true`).
 3. При **uvicorn reload** API закрывает браузер и сохраняет profile; после reload cookies с диска. Для стабильного окна без reload: `KE_API_RELOAD=false`.
@@ -17,6 +19,19 @@ Playwright **persistent profile** в `knowledge_engine/.browser_state/<chromium|
 При **Sign in** / login wall: **soft** `goto` + new thread → **hard** restart browser (тот же profile) (до `CONSENSUS_AUTH_RECOVERY_CYCLES`, default **2**), затем ошибка.
 
 `browser-login` в CLI — **только Gemini**, не Consensus.
+
+## Direct API (без DOM)
+
+HAR reverse-engineering: ручка **`POST /api/paper_search/`**. Отчёт и POC:
+
+- [CONSENSUS_API_DIRECT.md](CONSENSUS_API_DIRECT.md)
+- `python -m knowledge_engine.scripts.check_consensus_playwright --send --record-har`
+- `python -m knowledge_engine.scripts.analyze_consensus_har`
+- `python -m knowledge_engine.scripts.poc_consensus_api --via curl`
+
+Auth: Cloudflare `cf_clearance` + Clerk `__session` (Bearer для `curl_cffi`, TTL ~60s) — нужен периодический Playwright prefetch.
+
+`CONSENSUS_USE_DIRECT_API=true` (default) включает гибридный клиент в продуктовом поиске.
 
 ## Контекст и изоляция
 

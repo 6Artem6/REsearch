@@ -13,6 +13,7 @@ from knowledge_engine.config import (
 )
 from knowledge_engine.llm_locale import GEMINI_RUSSIAN_ROLE
 from knowledge_engine.schemas import ContextBlock, DocumentSummary, EngineState
+from knowledge_engine.src.prompts.engineering_context import GLOBAL_ENGINEERING_CRITERIA
 
 _SLUG_RE = re.compile(r"[^\w\-]+", re.UNICODE)
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -122,18 +123,13 @@ def _abstraction_hints(description: str) -> tuple[list[str], bool]:
 
 
 def _profile_section_hints(block_id: str, content: str) -> tuple[list[str], bool]:
-    lower = content.lower()
+    _ = content
     if block_id == "profile:введение":
         return ["meta_only"], False
-    if block_id == "profile:личные-данные-и-стек":
-        if any(m in lower for m in _PROFILE_NOISE_MARKERS):
-            return ["profile_background_noise"], False
-    if block_id == "profile:проекты-в-разработке":
+    if "оркестратор" in block_id or "личный-фокус" in block_id:
+        return ["orchestrator_focus"], True
+    if block_id == "profile:проекты-кратко" or "проекты" in block_id:
         return ["optional_projects"], False
-    if block_id == "profile:аппаратное-окружение-hardware-ecosystem":
-        return [], True
-    if block_id == "profile:критерии-отбора-решений-knowledge-engine-rules":
-        return [], True
     return [], True
 
 
@@ -202,10 +198,18 @@ def load_profile_blocks() -> list[ContextBlock]:
 
 
 def _format_source_content(summary: DocumentSummary) -> str:
+    from knowledge_engine.schemas.extraction import format_takeaways_for_tutor
+
+    takeaways = [t.strip() for t in summary.key_takeaways if t and t.strip()]
+    takeaway_block = (
+        format_takeaways_for_tutor(takeaways[:12], max_per_bucket=5)
+        if takeaways
+        else "  Takeaways: (нет)"
+    )
     return (
         f"- [{summary.title}] {summary.url}\n"
         f"  CS: {', '.join(summary.cs_concepts[:6])}\n"
-        f"  Takeaways: {'; '.join(summary.key_takeaways[:5])}\n"
+        f"{takeaway_block}\n"
         f"  Failure modes: {'; '.join(summary.failure_modes[:4])}"
     ).strip()
 
@@ -216,7 +220,7 @@ def build_context_blocks(state: EngineState) -> list[ContextBlock]:
 
     system_text = (
         f"{GEMINI_RUSSIAN_ROLE} "
-        "Синтез + Trade-off матрица (Классика / SOTA / Минимализм), failure modes, RAM/latency на Apple Silicon."
+        "Синтез материалов и Trade-off матрица (Классика / SOTA / Минимализм)."
     )
     blocks.append(
         ContextBlock(
@@ -224,6 +228,16 @@ def build_context_blocks(state: EngineState) -> list[ContextBlock]:
             kind="system",
             title="System Role",
             content=system_text,
+            always_include=False,
+            default_include=True,
+        )
+    )
+    blocks.append(
+        ContextBlock(
+            block_id="system:engineering_criteria",
+            kind="system",
+            title="Инженерные критерии",
+            content=GLOBAL_ENGINEERING_CRITERIA,
             always_include=False,
             default_include=True,
         )

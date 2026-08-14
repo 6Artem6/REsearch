@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
-
-from pydantic import BaseModel, Field
-
+from knowledge_engine.schemas.llm_contracts.consensus import (
+    AcademicQueryContract,
+    RefinementSanitizeContract,
+    ValidationResultContract,
+)
 from knowledge_engine.src.retrieval.semantic_scholar import (
     ScholarPaper,
     format_papers_block,
 )
+
+ValidationResult = ValidationResultContract
 
 ACADEMIC_SANITIZER_SYSTEM = """You prepare queries for Consensus.app (peer-reviewed paper search).
 
@@ -57,33 +60,12 @@ refinement_prompt: ONE academic English follow-up for Consensus (no personal/sta
 reason: short status explanation; cite [Sx] when referring to specific papers if SOURCE REGISTRY is provided."""
 
 
-class AcademicQueryPayload(BaseModel):
-    academic_query_en: str = Field(description="Clean English CS query for Consensus")
-    notes: str = Field(
-        default="", description="What was removed from the user question"
-    )
-
-
-class ConsensusDoc(BaseModel):
-    title: str = ""
-    url: str = ""
-    snippet: str = ""
-    source_anchor: str = Field(default="", description="Sx id if known")
-
-
-class ValidationResult(BaseModel):
-    status: Literal["OK", "REJECT", "RETRY"]
-    docs: list[ConsensusDoc] = Field(default_factory=list)
-    refinement_prompt: Optional[str] = None
-    reason: str = ""
-
-
 def sanitize_query_for_consensus(
     user_query: str,
     global_anchor: str,
     grounding_context: str = "",
     preserved_terms: list[str] | None = None,
-) -> AcademicQueryPayload:
+) -> AcademicQueryContract:
     from knowledge_engine.src.analytics.gemini_v07 import run_gemini_lite_structured
     from knowledge_engine.src.processors.consensus_query_prep import (
         build_consensus_sanitize_payload,
@@ -99,7 +81,7 @@ def sanitize_query_for_consensus(
         ACADEMIC_SANITIZER_SYSTEM,
         user_payload,
         global_anchor,
-        AcademicQueryPayload,
+        AcademicQueryContract,
         "consensus_query_sanitize",
     )
 
@@ -108,14 +90,11 @@ def sanitize_message_for_consensus(raw_message: str, global_anchor: str) -> str:
     """Очистка RETRY/refinement перед отправкой в Consensus (English academic only)."""
     from knowledge_engine.src.analytics.gemini_v07 import run_gemini_lite_structured
 
-    class _OneLine(BaseModel):
-        academic_query_en: str
-
     out = run_gemini_lite_structured(
         REFINEMENT_SANITIZER_SYSTEM,
         raw_message.strip(),
         global_anchor,
-        _OneLine,
+        RefinementSanitizeContract,
         "consensus_refinement_sanitize",
     )
     return (out.academic_query_en or "").strip()
@@ -130,7 +109,7 @@ def validate_consensus_response(
     attempt: int,
     max_retries: int,
     extracted_papers: list[ScholarPaper] | None = None,
-) -> ValidationResult:
+) -> ValidationResultContract:
     papers_block = format_papers_block(extracted_papers or [])
     profile_block = (
         developer_profile_context.strip()
@@ -165,6 +144,6 @@ def validate_consensus_response(
         VALIDATOR_SYSTEM,
         user_payload,
         global_anchor,
-        ValidationResult,
+        ValidationResultContract,
         "consensus_validator",
     )

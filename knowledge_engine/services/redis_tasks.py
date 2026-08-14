@@ -28,9 +28,7 @@ def publish_analysis_job(job_id: str, clarify_answer: str | None = None) -> None
 
 
 def publish_analysis_unravel(job_id: str, option_id: int) -> None:
-    publish_task(
-        {"type": "analysis_unravel", "id": job_id, "option_id": option_id}
-    )
+    publish_task({"type": "analysis_unravel", "id": job_id, "option_id": option_id})
 
 
 def publish_v07_run(run_id: str) -> None:

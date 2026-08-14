@@ -4,11 +4,27 @@ from __future__ import annotations
 
 import re
 
-from pydantic import BaseModel, Field
-
-from knowledge_engine.config import GEMINI_LITE_MODEL, GEMINI_RPM_PAUSE_SEC
+from knowledge_engine.config import (
+    CURRICULUM_DEEP_NODE_MAX_HITS,
+    GEMINI_LITE_MODEL,
+    GEMINI_RPM_PAUSE_SEC,
+)
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
-from knowledge_engine.services.curriculum_whitelist_prompt import curriculum_whitelist_prompt_block
+from knowledge_engine.schemas.llm_contracts.curriculum import (
+    GeminiNodePatchContract as _GeminiNodePatch,
+)
+from knowledge_engine.schemas.llm_contracts.curriculum import (
+    GeminiPrimarySourceContract as _GeminiPrimarySource,
+)
+from knowledge_engine.schemas.llm_contracts.curriculum import (
+    GeminiRegistryEntryContract as _GeminiRegistryEntry,
+)
+from knowledge_engine.schemas.llm_contracts.curriculum import (
+    GeminiSourcesEnrichmentContract as _GeminiSourcesEnrichment,
+)
+from knowledge_engine.services.curriculum_whitelist_prompt import (
+    curriculum_whitelist_prompt_block,
+)
 from knowledge_engine.services.gemini_stateless import (
     gemini_lite_model_chain,
     run_gemini_structured_with_chain,
@@ -44,44 +60,6 @@ _SOURCES_SYSTEM = (
 )
 
 
-class _GeminiRegistryEntry(BaseModel):
-    source_id: str = ""
-    title: str = ""
-    whitelist_domain: str = ""
-    source_type: str = ""
-    url: str = ""
-    why_read: str = ""
-
-
-class _GeminiPrimarySource(BaseModel):
-    source_name: str = ""
-    chapter_or_article: str = ""
-    core_concepts: list[str] = Field(default_factory=list)
-
-
-class _GeminiLearningResource(BaseModel):
-    title: str = ""
-    url: str = ""
-    why_read: str = ""
-
-
-class _GeminiNodePatch(BaseModel):
-    node_id: str = ""
-    mapped_source_ids: list[str] = Field(default_factory=list)
-    learning_goal: str = ""
-    primary_source_id: str = ""
-    primary_whitelist_source: _GeminiPrimarySource = Field(
-        default_factory=_GeminiPrimarySource
-    )
-    learning_resources: list[_GeminiLearningResource] = Field(default_factory=list)
-    resource_urls: list[str] = Field(default_factory=list)
-
-
-class _GeminiSourcesEnrichment(BaseModel):
-    curriculum_sources_registry: list[_GeminiRegistryEntry] = Field(default_factory=list)
-    nodes: list[_GeminiNodePatch] = Field(default_factory=list)
-
-
 def _norm_src_id(raw: str, index: int) -> str:
     s = (raw or "").strip()
     if re.match(r"^src_\d+$", s, re.I):
@@ -91,7 +69,9 @@ def _norm_src_id(raw: str, index: int) -> str:
     return f"src_{index}"
 
 
-def _to_registry_entry(raw: _GeminiRegistryEntry, index: int) -> CurriculumSourceRegistryEntry | None:
+def _to_registry_entry(
+    raw: _GeminiRegistryEntry, index: int
+) -> CurriculumSourceRegistryEntry | None:
     title = (raw.title or "").strip()
     url = (raw.url or "").strip()
     domain = (raw.whitelist_domain or "").strip()
@@ -135,7 +115,9 @@ def _nodes_need_sources(graph: CurriculumGraph) -> bool:
     return False
 
 
-def _build_enrichment_payload(inp: CurriculumGenerateInput, graph: CurriculumGraph) -> str:
+def _build_enrichment_payload(
+    inp: CurriculumGenerateInput, graph: CurriculumGraph
+) -> str:
     lines = [
         f"### target_goal\n{inp.target_goal.strip()}",
         f"### curriculum_title\n{graph.title}",
@@ -185,7 +167,11 @@ def _apply_enrichment(
             mapped = [registry[0].source_id]
 
         primary = _to_primary(patch.primary_whitelist_source)
-        lm = LearningMaterials(primary_whitelist_source=primary) if primary else n.learning_materials
+        lm = (
+            LearningMaterials(primary_whitelist_source=primary)
+            if primary
+            else n.learning_materials
+        )
 
         refs: list[CurriculumResourceRef] = []
         for lr in patch.learning_resources or []:
@@ -212,7 +198,11 @@ def _apply_enrichment(
                         )
                     break
 
-        urls = [u.strip() for u in (patch.resource_urls or []) if u.strip().startswith("http")]
+        urls = [
+            u.strip()
+            for u in (patch.resource_urls or [])
+            if u.strip().startswith("http")
+        ]
         for lr in refs:
             if lr.url not in urls:
                 urls.append(lr.url)
@@ -220,14 +210,20 @@ def _apply_enrichment(
         primary_sid = (patch.primary_source_id or "").strip()
         if not primary_sid and mapped:
             primary_sid = mapped[0]
-        primary_sid = _norm_src_id(primary_sid, 1) if primary_sid else (mapped[0] if mapped else "")
+        primary_sid = (
+            _norm_src_id(primary_sid, 1)
+            if primary_sid
+            else (mapped[0] if mapped else "")
+        )
 
         new_nodes.append(
             n.model_copy(
                 update={
-                    "mapped_source_ids": mapped[:3],
+                    "mapped_source_ids": mapped[:CURRICULUM_DEEP_NODE_MAX_HITS],
                     "primary_source_id": primary_sid[:16],
-                    "learning_goal": (patch.learning_goal or n.learning_goal or "")[:600],
+                    "learning_goal": (patch.learning_goal or n.learning_goal or "")[
+                        :600
+                    ],
                     "learning_materials": lm,
                     "learning_resources": refs[:8],
                     "resource_urls": urls[:12],

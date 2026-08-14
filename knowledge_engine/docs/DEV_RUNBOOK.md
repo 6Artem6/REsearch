@@ -2,6 +2,8 @@
 
 Все команды из **корня** `REsearch`.
 
+**AI Skill Tree / Tutor (генерация графа, worker, Exa):** [TUTOR_PIPELINES.md](TUTOR_PIPELINES.md) · UI: [SKILL_TREE_UI.md](SKILL_TREE_UI.md).
+
 ## 1. Один раз (окружение)
 
 ```bash
@@ -10,6 +12,19 @@ cp .env.example .env          # GRAPH_VERSION=0.8, GEMINI_API_KEY
 ```
 
 `setup.sh` поднимает SearXNG, настраивает **Ollama на macOS (Metal)** и создаёт **`.venv` на хосте**.
+
+### Pre-commit (black / isort / flake8)
+
+После `setup.sh` или `make dev-deps`:
+
+```bash
+make pre-commit-install   # git hook перед каждым commit
+make pre-commit-run       # проверить всё дерево вручную
+```
+
+На `git commit` автоматически: `autoflake` → `isort` → `black` (правят файлы), затем `flake8` (блокирует коммит при ошибках). Если форматтеры изменили файлы — добавьте их в коммит и снова `git commit`.
+
+Ручные аналоги: `make format`, `make lint`, `make check`.
 
 ## 2. Постоянная разработка (рекомендуется на Mac)
 
@@ -41,7 +56,7 @@ chmod +x knowledge_engine/scripts/dev-native.sh
 | Кто пишет | `v07_run_service.run_v07_job` — финал; `publish_web_run_progress` — шаги L2a…reasoner; `merge_result` — частичный `result` |
 | API | `GET /api/v1/v07/runs/{id}` — poll; `GET …/view` — UI (`partial` пока `status != completed`) |
 
-SQLite в проекте — только **domain trust** и **source archive** (`domains.sqlite`, `links.sqlite`), не web runs.
+SQLite в проекте — **domain trust** и **source archive** (`domains.sqlite`, `links.sqlite`), а также ingestion схем источников (`.runs/article_diagrams.db`). Web-runs в SQLite не хранятся; подробнее о схемах: [ARTICLE_DIAGRAMS.md](ARTICLE_DIAGRAMS.md).
 
 Ручной правка: править JSON или `python -c "from knowledge_engine.services.v07_run_store import …"` **после остановки API** (или перезапустить `dev-native.sh`), иначе в памяти процесса останется старый статус.
 
@@ -126,3 +141,17 @@ Ollama в контейнере **не используется** — `OLLAMA_BAS
 
 - `KE_TRACE_STDOUT=true`
 - `KE_LOG_PLAIN=true`
+
+### Lecture RAG (dense_material, CE + MMR)
+
+См. [LECTURE_RAG_CONTEXT.md](LECTURE_RAG_CONTEXT.md). В trace ищите `LECTURE_RAG pool`, `ce_filter`, `mmr_pick`.
+
+| Env | Default |
+|-----|---------|
+| `LECTURE_RAG_CANDIDATE_LIMIT` | 15 |
+| `LECTURE_RAG_MMR_TOP_K` | 5 |
+| `LECTURE_RAG_CE_MIN_SCORE` | 0.38 |
+| `LECTURE_RAG_MMR_LAMBDA` | 0.62 |
+| `LECTURE_RAG_RERANK_TIMEOUT_SEC` | 60 |
+
+Требует Ollama (`EMBED_MODEL`) и опционально `sentence_transformers` + `RAG_CROSS_ENCODER_MODEL` для CE.

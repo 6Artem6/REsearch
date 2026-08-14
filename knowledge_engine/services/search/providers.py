@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
 from typing import Any
-from urllib.parse import urlencode
 
 import httpx
 
 from knowledge_engine.config import (
-    ARXIV_API_URL,
     CROSSREF_API_URL,
     HABR_API_URL,
+    LECTURE_EXTERNAL_SEARCH_HTTP_TIMEOUT_SEC,
     SEARXNG_BASE_URL,
     SEARXNG_ENABLED,
     SEARXNG_REQUEST_HEADERS,
@@ -109,8 +107,15 @@ class SemanticScholarProvider(BaseSearchProvider):
     name = "semantic_scholar"
 
     async def search(self, query: str, limit: int = 5, **kwargs: Any) -> list[dict]:
+        from knowledge_engine.src.retrieval.semantic_scholar_rate_limit import (
+            acquire_semantic_scholar_slot_async,
+        )
+
         try:
-            async with httpx.AsyncClient(timeout=12.0) as client:
+            async with httpx.AsyncClient(
+                timeout=LECTURE_EXTERNAL_SEARCH_HTTP_TIMEOUT_SEC,
+            ) as client:
+                await acquire_semantic_scholar_slot_async()
                 res = await client.get(
                     SEMANTIC_SCHOLAR_API_URL,
                     params={
@@ -146,6 +151,39 @@ class ConsensusSearchProvider(BaseSearchProvider):
     name = "consensus"
 
     async def search(self, query: str, limit: int = 5, **kwargs: Any) -> list[dict]:
+        from knowledge_engine.config import CONSENSUS_USE_DIRECT_API
+
+        if CONSENSUS_USE_DIRECT_API:
+            try:
+                from knowledge_engine.services.search.consensus_direct_client import (
+                    acquire_consensus_direct_client,
+                )
+
+                client = await acquire_consensus_direct_client()
+                papers = await client.search_papers(query, limit=limit)
+                out: list[dict] = []
+                for paper in papers:
+                    url = (paper.source_url or "").strip()
+                    if (
+                        not url
+                        and paper.paper_id
+                        and str(paper.paper_id).startswith("10.")
+                    ):
+                        url = f"https://doi.org/{paper.paper_id}"
+                    if not url:
+                        continue
+                    out.append(
+                        {
+                            "title": paper.title,
+                            "url": url,
+                            "snippet": (paper.abstract or paper.tldr or "")[:500],
+                            "source": "consensus",
+                        }
+                    )
+                return out[:limit]
+            except Exception:
+                return []
+
         if not SEARXNG_ENABLED:
             return []
         try:
@@ -179,39 +217,69 @@ class ArxivProvider(BaseSearchProvider):
     name = "arxiv"
 
     async def search(self, query: str, limit: int = 5, **kwargs: Any) -> list[dict]:
-        params = urlencode(
-            {"search_query": f"all:{query}", "start": 0, "max_results": limit}
+        from knowledge_engine.services.search.arxiv_client import get_arxiv_client
+        from knowledge_engine.services.search.arxiv_query_builder import (
+            ArxivQueryBuilder,
+            ArxivQueryParams,
         )
-        url = f"{ARXIV_API_URL}?{params}"
+
+        q = (query or "").strip()
+        if not q and not kwargs.get("arxiv_params"):
+            return []
+        start = int(kwargs.get("start") or 0)
+        sort_by = kwargs.get("sort_by") or kwargs.get("sortBy")
+        sort_order = kwargs.get("sort_order") or kwargs.get("sortOrder")
+        raw_params = kwargs.get("arxiv_params")
+        params = ArxivQueryParams.from_mapping(raw_params) if raw_params else None
+        if params is not None and params.has_precision():
+            built = ArxivQueryBuilder(params).build(
+                free_text_fallback=q,
+                start=start,
+                max_results=limit,
+                sort_by=str(sort_by) if sort_by else None,
+                sort_order=str(sort_order) if sort_order else None,
+            )
+            search_query = built.search_query
+            start = built.start
+            sort_by = built.sort_by
+            sort_order = built.sort_order
+        elif q.lower().startswith(("all:", "ti:", "abs:", "cat:", "au:")):
+            search_query = q
+        else:
+            built = ArxivQueryBuilder(params).build(
+                free_text_fallback=q,
+                start=start,
+                max_results=limit,
+                sort_by=str(sort_by) if sort_by else None,
+                sort_order=str(sort_order) if sort_order else None,
+            )
+            search_query = built.search_query or f"all:{q}"
+            start = built.start
+            sort_by = built.sort_by
+            sort_order = built.sort_order
         try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
-                text = resp.text
+            entries = await get_arxiv_client().search(
+                search_query=search_query,
+                start=start,
+                max_results=limit,
+                sort_by=str(sort_by) if sort_by else None,
+                sort_order=str(sort_order) if sort_order else None,
+            )
         except Exception:
             return []
-        root = ET.fromstring(text)
-        ns = {"a": "http://www.w3.org/2005/Atom"}
         out: list[dict] = []
-        for entry in root.findall("a:entry", ns):
-            title = (entry.findtext("a:title", default="", namespaces=ns) or "").strip()
-            link = ""
-            for link_el in entry.findall("a:link", ns):
-                if link_el.attrib.get("type") == "html":
-                    link = link_el.attrib.get("href", "")
-                    break
-            summary = (
-                entry.findtext("a:summary", default="", namespaces=ns) or ""
-            ).strip()
-            if title and link:
-                out.append(
-                    {
-                        "title": title,
-                        "url": link,
-                        "snippet": summary[:500],
-                        "source": "arxiv",
-                    }
-                )
+        for entry in entries:
+            link = entry.abs_url
+            if not entry.title or not link:
+                continue
+            out.append(
+                {
+                    "title": entry.title,
+                    "url": link,
+                    "snippet": (entry.abstract or "")[:500],
+                    "source": "arxiv",
+                }
+            )
         return out
 
 
@@ -247,3 +315,34 @@ class CrossrefProvider(BaseSearchProvider):
                 }
             )
         return out
+
+
+class ExaSearchProvider(BaseSearchProvider):
+    """Neural search по whitelist-доменам (exa-py). contents = highlights only (no Exa AI summary)."""
+
+    name = "exa"
+
+    async def search(self, query: str, limit: int = 5, **kwargs: Any) -> list[dict]:
+        import asyncio
+
+        from knowledge_engine.config import EXA_API_KEY, EXA_SEARCH_ENABLED
+        from knowledge_engine.services.search.exa_client import (
+            ExaNotConfiguredError,
+            ExaSearchClient,
+        )
+        from knowledge_engine.services.search.exa_transform import (
+            exa_response_to_provider_dicts,
+        )
+
+        if not EXA_SEARCH_ENABLED or not EXA_API_KEY:
+            return [{"error": "Exa not configured", "source": "exa"}]
+
+        client = ExaSearchClient(api_key=EXA_API_KEY)
+        num = max(1, min(limit, 25))
+        try:
+            response = await asyncio.to_thread(client.search, query, num_results=num)
+        except ExaNotConfiguredError as exc:
+            return [{"error": str(exc), "source": "exa"}]
+        except Exception as exc:
+            return [{"error": str(exc), "source": "exa"}]
+        return exa_response_to_provider_dicts(response)[:limit]

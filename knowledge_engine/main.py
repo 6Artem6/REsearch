@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 
 import typer
@@ -38,18 +37,9 @@ console = Console()
 
 def _apply_gemini_research_mode() -> None:
     """CLI --gemini-research: Gemini + API делают bulk, локальный 1.5B Re-Act."""
-    import knowledge_engine.config as cfg
+    from knowledge_engine.config import apply_cli_gemini_research_mode
 
-    os.environ["SKIP_GEMINI"] = "false"
-    os.environ["REQUIRE_GEMINI"] = "true"
-    os.environ["GEMINI_PRIMARY"] = "true"
-    os.environ["GEMINI_PRIMARY"] = "true"
-    cfg.SKIP_GEMINI = False
-    cfg.REQUIRE_GEMINI = True
-    cfg.GEMINI_PRIMARY = True
-    if "SEARXNG_ENABLED" not in os.environ:
-        os.environ["SEARXNG_ENABLED"] = "false"
-        cfg.SEARXNG_ENABLED = False
+    apply_cli_gemini_research_mode()
 
 
 def _run_config() -> dict:
@@ -310,12 +300,10 @@ def serve_api(
     reload: bool = typer.Option(False, "--reload"),
 ) -> None:
     """Запустить FastAPI (uvicorn): docs на /docs."""
-    import os
-
-    os.environ["KE_API_HOST"] = host
-    os.environ["KE_API_PORT"] = str(port)
-    os.environ["KE_API_RELOAD"] = "true" if reload else "false"
     from knowledge_engine.api.__main__ import main as api_main
+    from knowledge_engine.config import set_api_server
+
+    set_api_server(host, port, reload)
 
     console.print(f"[green]API:[/green] http://{host}:{port}/docs")
     api_main()

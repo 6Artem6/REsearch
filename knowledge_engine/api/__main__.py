@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-import os
-
 import uvicorn
 
 import knowledge_engine  # noqa: F401 — Deprecation filter в __init__
-from knowledge_engine.config import PACKAGE_ROOT
+from knowledge_engine.config import (
+    KE_API_HOST,
+    KE_API_PORT,
+    KE_API_RELOAD,
+    PACKAGE_ROOT,
+)
 
 
 def main() -> None:
-    host = os.getenv("KE_API_HOST", "127.0.0.1")
-    port = int(os.getenv("KE_API_PORT", "8765"))
-    reload = os.getenv("KE_API_RELOAD", "false").lower() in ("1", "true", "yes")
+    host = KE_API_HOST
+    port = KE_API_PORT
+    reload = KE_API_RELOAD
     reload_dirs = [
         str(PACKAGE_ROOT / "api"),
         str(PACKAGE_ROOT / "graph"),
