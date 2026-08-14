@@ -1,6 +1,6 @@
 # Source pool (curriculum + evaluator)
 
-См. также [ARCHITECTURE_DEDUP.md](ARCHITECTURE_DEDUP.md), [EXA_SEARCH.md](EXA_SEARCH.md).
+См. также [ARCHITECTURE_DEDUP.md](ARCHITECTURE_DEDUP.md), [EXA_SEARCH.md](EXA_SEARCH.md), [ACADEMIC_AND_CONSENSUS.md](ACADEMIC_AND_CONSENSUS.md).
 
 Единая логика источников — не дублировать в pipeline.
 

@@ -2,6 +2,8 @@
 
 Stateful Consensus (Playwright) + Light RAG + Gemini Lite/Flash + Reasoner.
 
+Это **research-агент** (`/app`, `GRAPH_VERSION=0.8`). Сбор papers **для учебного DAG** (sanitize, SS/arXiv, harvest в ноды): [ACADEMIC_AND_CONSENSUS.md](ACADEMIC_AND_CONSENSUS.md) — тот же prep запроса.
+
 **Снимок версии:** [V0_8_SNAPSHOT.md](V0_8_SNAPSHOT.md) · **разработка:** [DEV_RUNBOOK.md](DEV_RUNBOOK.md)
 
 ## Сессия Consensus

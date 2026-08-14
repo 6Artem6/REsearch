@@ -131,10 +131,12 @@
 
 | Variable | Default | Кратко |
 |----------|---------|--------|
-| `ARXIV_MIN_INTERVAL_SEC` | `3.25` | Cross-process min gap between arXiv HTTP calls (official ≥3s) |
+| `ARXIV_MIN_INTERVAL_SEC` | `3.25` | Exclusive gate: ≥3.25s between successive arXiv API calls (official ≥3s); lock held for whole HTTP + retries |
 | `ARXIV_MAX_RETRIES` | `3` | Retries on HTTP 503/429/403 with exponential backoff |
 | `ARXIV_BACKOFF_BASE_SEC` | `3.0` | Base for `base * 2^n + jitter` before retry |
 | `ARXIV_ID_LIST_CHUNK` | `50` | Max IDs per `id_list` hydrate request |
+| `CURRICULUM_ACADEMIC_SEARXNG_ENGINES` | `arxiv,google scholar` | SearXNG engines for academic track (no bing/google fallback) |
+| `CURRICULUM_ACADEMIC_SEARXNG_CATEGORIES` | `science` | SearXNG categories for academic (not `it`) |
 
 ### Academic rerank / relaxation
 

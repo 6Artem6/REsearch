@@ -23,7 +23,7 @@ Content-Type: application/json
 
 1. **Model-First** (`model_first_flash.py`): Flash строит **ветвящийся** DAG (не линейная цепочка), ≥8–12 нод, пустой реестр. Валидатор: `validate_dag_branching`.
 2. **Risk** (`node_risk_classification.py`): Lite → `BASE` (без поиска) | `DEEP` (нужен RAG).
-3. **Targeted Search** (`targeted_node_search.py`): **Exa** (whitelist blogs + highlights) → SearXNG fallback / SS / arXiv / (опц.) Consensus **только для DEEP**; запросы из терминологии ноды; Lite batch **strict** (без fallback approve).
+3. **Targeted Search** (`targeted_node_search.py`): **Exa** (whitelist blogs) → SearXNG; **академика** SS / arXiv / SearXNG science / **Consensus harvest** — [ACADEMIC_AND_CONSENSUS.md](ACADEMIC_AND_CONSENSUS.md); Lite batch **strict**.
 4. **Grounding** (`targeted_node_grounding.py`): источники к DEEP-нодам; при пустом поиске — `unverified_deep`, граф не сжимается.
 
 `CURRICULUM_TARGETED_NODE_GROUNDING_ENABLED=false` + `CURRICULUM_SEARCH_FIRST_ENABLED=true` — legacy Search-First.

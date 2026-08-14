@@ -51,7 +51,8 @@ Helper: `structured_lecture_to_dense`, константа `STRUCTURED_LECTURE_FI
 | Контракт | Назначение |
 |----------|------------|
 | `LiteQueryPlanContract` | План поисковых запросов |
-| `LiteAcademicQueryContract` | Academic query sanitize |
+| `LiteAcademicQueryContract` | Academic Query Architect: `academic_query_en` |
+| `ArxivQueryParamsContract` | `ti:` / `abs:` / categories / годы для Atom |
 | `LiteBatchEvalContract` | Batch eval hits |
 | `LiteSourceBatchContract` | Batch source eval items |
 | `LiteSiteSuggestionsContract` | Site suggestions |
@@ -60,14 +61,16 @@ Helper: `structured_lecture_to_dense`, константа `STRUCTURED_LECTURE_FI
 
 ## Consensus / academic
 
-Файл: [`consensus.py`](../schemas/llm_contracts/consensus.py).
+Файл: [`consensus.py`](../schemas/llm_contracts/consensus.py). Поток: [ACADEMIC_AND_CONSENSUS.md](ACADEMIC_AND_CONSENSUS.md).
 
 | Контракт | Назначение |
 |----------|------------|
-| `AcademicQueryContract` | Sanitize academic query |
-| `ValidationResultContract` | Validate consensus docs |
-| `ProfileApplicabilityContract` | Profile relevance gate |
-| `RefinementSanitizeContract` | Refinement sanitize |
+| `AcademicQueryContract` | Sanitize → `academic_query_en` для Consensus (preserved_terms + grounding) |
+| `ValidationResultContract` | OK / RETRY / REJECT papers vs вопрос |
+| `ProfileApplicabilityContract` | Нужен ли personal profile в validator |
+| `RefinementSanitizeContract` | RETRY follow-up на английский academic |
+
+Academic Architect (не Consensus.app): `LiteAcademicQueryContract` + `ArxivQueryParamsContract` в [`lite_curriculum.py`](../schemas/llm_contracts/lite_curriculum.py) — SS/arXiv plan.
 
 ---
 

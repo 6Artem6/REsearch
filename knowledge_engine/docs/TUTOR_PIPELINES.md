@@ -8,6 +8,7 @@
 
 | Документ | Тема |
 |----------|------|
+| [INDEX.md](INDEX.md) | Каталог docs + аудит пробелов |
 | [SKILL_TREE_UI.md](SKILL_TREE_UI.md) | UI, worker, Redis, explain SSE |
 | [CURRICULUM_MODULE_1.md](CURRICULUM_MODULE_1.md) | API Modуль 1, env по источникам |
 | [NODE_DEEP_DIVE_MODULE_2.md](NODE_DEEP_DIVE_MODULE_2.md) | Тьютор ноды, память, фазы |
@@ -15,6 +16,7 @@
 | [TUTOR_PROMPT_AND_UI_TEXT.md](TUTOR_PROMPT_AND_UI_TEXT.md) | Compositor, manifest, JSON в UI |
 | [LLM_CONTRACTS.md](LLM_CONTRACTS.md) | Реестр Pydantic Gemini contracts |
 | [EXA_SEARCH.md](EXA_SEARCH.md) | Exa: query plan, rank, domains, EXA_* |
+| [ACADEMIC_AND_CONSENSUS.md](ACADEMIC_AND_CONSENSUS.md) | Papers: sanitize, SS/arXiv, Consensus harvest |
 | [ARTICLE_DIAGRAMS.md](ARTICLE_DIAGRAMS.md) | Схемы источников: ingestion, VLM, Mermaid и нода |
 | [SOURCE_POOL.md](SOURCE_POOL.md) | Провайдеры и квоты |
 | [ARCHITECTURE_DEDUP.md](ARCHITECTURE_DEDUP.md) | Где единая точка сбора источников |
