@@ -6,6 +6,7 @@ import json
 import random
 import re
 import time
+import warnings
 from typing import Any, Callable, Type, TypeVar, Union
 
 from pydantic import BaseModel
@@ -1147,6 +1148,17 @@ def run_gemini_text_with_chain(
     stream_callback: Callable[[str], None] | None = None,
     models: list[str] | None = None,
 ) -> str:
+    """Deprecated internal free-text helper.
+
+    New product features must use ``run_gemini_structured_with_chain`` with an
+    explicit Pydantic ``response_schema``.
+    """
+    warnings.warn(
+        "run_gemini_text_with_chain is deprecated; use "
+        "run_gemini_structured_with_chain with a Pydantic response_schema",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     combined_user = (
         f"GLOBAL ANCHOR (задача и контекст, не игнорировать):\n{global_anchor.strip()}\n\n"
         f"{user_payload.strip()}"

@@ -276,6 +276,27 @@ class ChatSessionManager:
         stored.turns += 1
         self._trim_api_turns(stored)
 
+    def replace_last_model_turn(self, label: str, compact_text: str) -> bool:
+        """
+        Rewrite the last model api_turn with a compact digest (asterisk-question cache hygiene).
+
+        Leaves user turns untouched. Returns True if a model turn was replaced.
+        """
+        lab = (label or "").strip()
+        stored = self._sessions.get(lab)
+        body = (compact_text or "").strip()
+        if not stored or not body:
+            return False
+        for i in range(len(stored.api_turns) - 1, -1, -1):
+            turn = stored.api_turns[i]
+            if (turn.get("role") or "").strip() == "model":
+                stored.api_turns[i] = {
+                    "role": "model",
+                    "content": body[:8000],
+                }
+                return True
+        return False
+
     def compact_dialog_session(self, label: str, handoff_summary: str) -> None:
         """Сброс api_turns в summary (после dense / переполнения окна)."""
         lab = (label or "").strip()

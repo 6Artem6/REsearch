@@ -110,6 +110,8 @@
 | `USE_GITHUB_TREES_API` | `false` (opt-in Git Trees API; repo root → corpus; `/blob/` → target + depth-1 AST deps ≤ 5; 401/403/404/timeout → zip then HTML) |
 | `GITHUB_TOKEN` | empty (optional; raises GitHub REST limit to 5000 req/h) |
 | `MAX_GITHUB_FILE_SIZE_BYTES` | `102400` (skip blobs larger than 100 KB before download) |
+| `MIGRATION_USE_CONTEXT_CACHING` | `false` (Gemini ingest REDUCE cache; fallback Gemma) |
+| `INGEST_CACHE_TTL_SECONDS` | `86400` (ingest cache only; tutor uses `GEMINI_CACHE_TTL_SECONDS`) |
 
 Параллельный MAP на клиенте всегда `asyncio.Semaphore(4)` (Gemma cloud и Ollama). Для Ollama задайте `OLLAMA_NUM_PARALLEL >= 4`.
 

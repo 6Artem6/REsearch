@@ -534,6 +534,43 @@ def _resolve_map_provider() -> tuple[bool, str]:
     return True, "gemma_cloud"
 
 
+async def _try_cached_structured_reduce(
+    job: MapReduceArticleJob,
+    *,
+    system: str,
+    cache_content: str,
+    user_prompt: str,
+    schema: type[T],
+    max_tokens: int | None = None,
+) -> T | None:
+    """REDUCE через Gemini cached_content; None → GemmaCloudClient."""
+    from knowledge_engine import config as ke_config
+
+    if not ke_config.MIGRATION_USE_CONTEXT_CACHING:
+        return None
+    if not (cache_content or "").strip():
+        return None
+    try:
+        from knowledge_engine.services.llm.ingest_context_cache_manager import (
+            IngestContextCacheManager,
+        )
+
+        doc_id = VectorStore.doc_id_for_url(job.url)
+        mgr = IngestContextCacheManager()
+        return await asyncio.to_thread(
+            mgr.generate_structured,
+            doc_id=doc_id,
+            system_instruction=system,
+            cache_content=cache_content,
+            user_prompt=user_prompt,
+            schema=schema,
+            max_tokens=max_tokens,
+        )
+    except Exception as exc:
+        trace(f"INGEST_CACHE REDUCE fallback | {type(exc).__name__}: {exc}")
+        return None
+
+
 async def _structured_reduce_call(
     system: str,
     prompt: str,
@@ -587,6 +624,18 @@ async def _run_legacy_reduce(
         f"BLOG_SPATIAL reduce ▶ legacy | backend={backend} model={model} "
         f"| {job.url[:55]}"
     )
+    cached = await _try_cached_structured_reduce(
+        job,
+        system=_REDUCE_SYSTEM,
+        cache_content=summaries_block,
+        user_prompt=_build_reduce_user_prompt(
+            job,
+            "(Window summaries are supplied via cached_content.)",
+        ),
+        schema=FinalArticleSummaryResponse,
+    )
+    if cached is not None:
+        return cached
     return await _structured_reduce_call(
         _REDUCE_SYSTEM,
         reduce_prompt,
@@ -682,14 +731,28 @@ async def _run_two_phase_reduce(
     synth_full = _build_synthesis_user_prompt(
         job, clean_atoms=clean_atoms, summaries_block=summaries_only
     )
-    final = await _structured_reduce_call(
-        _REDUCE_SYNTHESIS_SYSTEM,
-        synth_full,
-        FinalArticleSummaryResponse,
-        label=f"reduce_synth/{job.job_id[:20]}",
-        http_client=http_client,
-        gemma_rl=gemma_rl,
+    cached = await _try_cached_structured_reduce(
+        job,
+        system=_REDUCE_SYNTHESIS_SYSTEM,
+        cache_content=summaries_only,
+        user_prompt=_build_synthesis_user_prompt(
+            job,
+            clean_atoms=clean_atoms,
+            summaries_block=summaries_only,
+            summaries_in_cache=True,
+        ),
+        schema=FinalArticleSummaryResponse,
     )
+    final = cached
+    if final is None:
+        final = await _structured_reduce_call(
+            _REDUCE_SYNTHESIS_SYSTEM,
+            synth_full,
+            FinalArticleSummaryResponse,
+            label=f"reduce_synth/{job.job_id[:20]}",
+            http_client=http_client,
+            gemma_rl=gemma_rl,
+        )
     if final is None:
         return None
     # Phase-2 contract: factual atoms come from phase 1 (or pooled MAP).
