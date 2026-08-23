@@ -739,6 +739,14 @@ body.skill-col-resizing .tutor-selectable {
   font-weight: 600;
 }
 
+.verify-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  color: var(--ke-muted);
+  border-color: var(--ke-border-color);
+  pointer-events: none;
+}
+
 .drawer-actions {
   display: flex;
   flex-direction: column;
@@ -1047,7 +1055,7 @@ body.skill-col-resizing .tutor-selectable {
   color: var(--ke-body-color);
   cursor: pointer;
   line-height: 1.25;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: all 0.3s ease-in-out;
 }
 
 .tutor-quick-reply-chip:hover:not(:disabled) {
@@ -1218,7 +1226,7 @@ body.skill-col-resizing .tutor-selectable {
   height: 100%;
   background: var(--ke-primary);
   border-radius: 3px;
-  transition: width 0.25s ease;
+  transition: all 0.3s ease-in-out;
 }
 
 .mastery-phase {
@@ -1335,6 +1343,7 @@ body.skill-col-resizing .tutor-selectable {
   padding: 0.4rem 0.5rem;
   background: var(--ke-surface, transparent);
   min-width: 0;
+  transition: all 0.3s ease-in-out;
 }
 
 .depth-layer-head {
@@ -1377,7 +1386,7 @@ body.skill-col-resizing .tutor-selectable {
   height: 100%;
   border-radius: 2px;
   background: var(--ke-primary);
-  transition: width 0.25s ease;
+  transition: all 0.3s ease-in-out;
 }
 
 .depth-layer-pills {
@@ -1470,6 +1479,77 @@ body.skill-col-resizing .tutor-selectable {
   border-radius: 6px;
   padding: 0.35rem 0.45rem;
   min-width: 0;
+  transition: all 0.3s ease-in-out;
+}
+
+.coverage-subtopic.is-entering {
+  animation: fadeInDown 0.3s ease-in-out;
+}
+
+.coverage-subtopic.is-extension {
+  border-color: color-mix(in srgb, var(--ke-accent, #8b5cf6) 35%, var(--ke-border-subtle));
+}
+
+.subtopic-extension-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ke-accent, #8b5cf6);
+  opacity: 0.9;
+}
+
+.overlay-expert-layers {
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed var(--ke-border-subtle);
+  transition: all 0.3s ease-in-out;
+}
+
+.overlay-expert-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.overlay-expert-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--ke-border-subtle);
+  transition: all 0.3s ease-in-out;
+}
+
+.overlay-expert-advanced {
+  color: #c4b5fd;
+  border-color: rgba(139, 92, 246, 0.45);
+  background: rgba(139, 92, 246, 0.16);
+}
+
+.overlay-expert-deep {
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.16);
+}
+
+.overlay-expert-empty {
+  font-size: 0.68rem;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .coverage-subtopic-row {
@@ -1507,6 +1587,7 @@ body.skill-col-resizing .tutor-selectable {
   border: 1px solid transparent;
   white-space: nowrap;
   user-select: none;
+  transition: all 0.3s ease-in-out;
 }
 
 .subtopic-layer-chip-mark {
@@ -1523,17 +1604,55 @@ body.skill-col-resizing .tutor-selectable {
   opacity: 0.95;
 }
 
-.subtopic-layer-chip.is-pending {
-  background: rgba(148, 163, 184, 0.12);
-  border-color: rgba(148, 163, 184, 0.28);
+.subtopic-layer-chip.is-unevaluated {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.2);
   color: #94a3b8;
+  opacity: 0.45;
 }
 
-.subtopic-layer-chip.is-pending .subtopic-layer-chip-mark {
-  opacity: 0.55;
+.subtopic-layer-chip.is-unevaluated .subtopic-layer-chip-mark {
+  opacity: 0.5;
+}
+
+.subtopic-layer-chip.is-partial {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #7dd3fc;
+  opacity: 1;
+}
+
+.subtopic-layer-chip.is-partial .subtopic-layer-chip-mark {
+  color: #38bdf8;
+  font-weight: 900;
+}
+
+.subtopic-layer-chip.is-correction {
+  background: rgba(251, 191, 36, 0.16);
+  border-color: rgba(251, 191, 36, 0.55);
+  color: #fcd34d;
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.2);
+}
+
+.subtopic-layer-chip.is-correction .subtopic-layer-chip-mark {
+  color: #fbbf24;
+  font-weight: 900;
+}
+
+.subtopic-layer-chip.is-misunderstanding {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+  opacity: 1;
+}
+
+.subtopic-layer-chip.is-misunderstanding .subtopic-layer-chip-mark {
+  color: #f87171;
 }
 
 .subtopic-layer-chip.is-passed {
+  opacity: 1;
   box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.15);
 }
 
@@ -1926,37 +2045,6 @@ body.skill-col-resizing .tutor-selectable {
   color: var(--ke-muted, #aaa);
   max-height: 240px;
   overflow: auto;
-}
-
-@media (max-width: 1100px) {
-  .skill-dashboard {
-    height: auto;
-    max-height: none;
-    overflow: auto;
-  }
-
-  .skill-split {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(280px, 42vh) minmax(320px, 50vh) auto;
-    overflow: visible;
-  }
-
-  .skill-chat-column {
-    border-right: none;
-    border-bottom: 1px solid var(--ke-border-color);
-    min-height: 280px;
-    max-height: 42vh;
-    height: auto;
-  }
-
-  .skill-canvas-wrap {
-    min-height: 320px;
-  }
-
-  .node-drawer {
-    max-height: 50vh;
-    height: auto;
-  }
 }
 
 .material-panel {

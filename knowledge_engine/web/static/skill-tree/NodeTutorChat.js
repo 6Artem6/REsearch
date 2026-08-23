@@ -66,8 +66,11 @@ export function NodeTutorChat({
   const composeLocked = Boolean(disabled);
   const explainEnabled = Boolean(curriculumId && nodeData);
   const tutorTurnKey = lastTutorMsgId(messages);
+  const hostQuickCount = Array.isArray(session?.quickReplies)
+    ? session.quickReplies.length
+    : 0;
   const showTransitionChips =
-    Boolean(session?.readyForTransition) &&
+    (Boolean(session?.readyForTransition) || hostQuickCount > 0) &&
     !chipsDismissed &&
     !generating &&
     Boolean(tutorTurnKey);
@@ -76,7 +79,7 @@ export function NodeTutorChat({
     // New tutor turn / new transition flag → show chips again.
     setChipsDismissed(false);
     setNodePickerOpen(false);
-  }, [tutorTurnKey, session?.readyForTransition, session?.lastEvalDirective]);
+  }, [tutorTurnKey, session?.readyForTransition, session?.lastEvalDirective, session?.quickReplies]);
 
   const successorNodes = useMemo(
     () => listSuccessorNodes(curriculum, nodeData?.node_id),
@@ -106,11 +109,6 @@ export function NodeTutorChat({
     if (chip.intent === QUICK_REPLY_INTENTS.nextNode) {
       dismissChips();
       setNodePickerOpen(true);
-      return;
-    }
-    if (chip.intent === QUICK_REPLY_INTENTS.clarify) {
-      dismissChips();
-      inputRef.current?.focus?.();
       return;
     }
     // Gloss / HOW / MECH → send [mode:…] intent to Prompt Factory.

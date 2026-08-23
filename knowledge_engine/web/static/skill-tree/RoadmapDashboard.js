@@ -330,7 +330,7 @@ export function RoadmapDashboard() {
 
   const openNode = useCallback(
     async (node) => {
-      if (!curriculum) return;
+      if (!curriculum || !node?.node_id) return;
       const sid = node.node_id;
       const initialized = Boolean(sessions[sid]?.initialized);
 
@@ -340,15 +340,6 @@ export function RoadmapDashboard() {
       setSelectedMaterialId(null);
       replaceSkillTreeSearchParams({ node: sid, material: "" });
       setError("");
-      const grounding = String(node.grounding_status || "").trim();
-      if (
-        !initialized &&
-        (grounding === "unverified_deep" ||
-          grounding === "grounded" ||
-          grounding === "model_only")
-      ) {
-        return;
-      }
       if (initialized) {
         try {
           const regRes = await fetchNodeSourceRegistry(
@@ -471,6 +462,17 @@ export function RoadmapDashboard() {
       }
     } catch (err) {
       setError(String(err.message || err));
+      const streamId = `stream-${nid}`;
+      setSessions((prev) => {
+        const old = prev[nid] || { messages: [] };
+        return {
+          ...prev,
+          [nid]: {
+            ...old,
+            messages: (old.messages || []).filter((m) => m.msg_id !== streamId),
+          },
+        };
+      });
     } finally {
       setTutorBusyNodeId(null);
     }

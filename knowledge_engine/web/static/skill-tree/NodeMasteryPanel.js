@@ -1,4 +1,6 @@
 import React from "react";
+import { SubConceptsList } from "./SubConceptsList.js";
+import { coreSubConcepts, itemFlag } from "./nodeProgressTypes.js";
 
 const PHASE_LABELS = {
   intro_assessment: "Экспресс-срез",
@@ -14,103 +16,36 @@ const MODE_LABELS = {
   socratic_point: "Сократ (точечно)",
 };
 
-const LAYER_META = [
-  { id: "why", key: "WHY", title: "WHY", subtitle: "Зачем / концепция", flag: "why_passed" },
-  { id: "how", key: "HOW", title: "HOW", subtitle: "Как / архитектура", flag: "how_passed" },
-  {
-    id: "mechanic",
-    key: "MECHANIC",
-    title: "MECHANICS",
-    subtitle: "Механики / реализация",
-    flag: "mechanic_passed",
-  },
-];
-
-const LAYER_STATUS_CLS = {
-  passed: "depth-layer-passed",
-  in_progress: "depth-layer-active",
-  locked: "depth-layer-locked",
-  failed: "depth-layer-failed",
-  gloss: "depth-layer-gloss",
-};
-
-const LAYER_STATUS_LABEL = {
-  passed: "Зачтено",
-  in_progress: "Сейчас",
-  locked: "Ещё не пройден",
-  failed: "Не зачтено",
-  gloss: "Gloss",
-};
-
-function itemFlag(item, flag) {
-  if (typeof item?.[flag] === "boolean") return item[flag];
-  // snake / camel
-  const camel = flag.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-  if (typeof item?.[camel] === "boolean") return item[camel];
-  return false;
-}
-
-/**
- * Aggregate WHY/HOW/MECHANIC from coverage.items[] (source of truth for UI).
- * Backend `layers` used only as status hint when present.
- */
-function layersFromItems(items, backendLayers, activeLayer) {
-  if (!items?.length) return null;
-  const n = items.length;
-  const frac = (flag) => items.filter((i) => itemFlag(i, flag)).length / n;
-  const active = String(activeLayer || "").trim().toUpperCase();
-
-  const build = (id, flag, key) => {
-    const score = frac(flag);
-    const be = backendLayers?.[id];
-    let status = "locked";
-    if (score >= 1) status = "passed";
-    else if (active === key || score > 0) status = "in_progress";
-    // Prefer backend gloss when WHY+HOW closed and mechanic incomplete
-    if (
-      id === "mechanic" &&
-      score < 1 &&
-      (be?.status === "gloss" ||
-        (frac("why_passed") >= 1 && frac("how_passed") >= 1))
-    ) {
-      status = "gloss";
-    } else if (be?.status === "passed" && score >= 1) {
-      status = "passed";
-    }
-    return { status, score };
-  };
-
-  return {
-    why: build("why", "why_passed", "WHY"),
-    how: build("how", "how_passed", "HOW"),
-    mechanic: build("mechanic", "mechanic_passed", "MECHANIC"),
-  };
-}
-
-function normalizeBackendLayers(coverage) {
-  const raw = coverage?.layers;
-  if (!raw || typeof raw !== "object") return null;
-  const pick = (k) => {
-    const row = raw[k] || {};
-    return {
-      status: String(row.status || "locked").toLowerCase(),
-      score: Math.min(1, Math.max(0, Number(row.score) || 0)),
-    };
-  };
-  return { why: pick("why"), how: pick("how"), mechanic: pick("mechanic") };
-}
-
 function layerOverallScore(layers) {
   if (!layers) return null;
   return Math.round(
-    (100 * (layers.why.score + layers.how.score + layers.mechanic.score)) / 3,
+    (100 * (layers.why.score + layers.how.score + layers.mechanic.score)) / 3.0,
   );
 }
 
+function layersFromCoreItems(items, activeLayer) {
+  const core = coreSubConcepts(items);
+  if (!core.length) return null;
+  const n = core.length;
+  const frac = (flag) => core.filter((i) => itemFlag(i, flag)).length / n;
+  const active = String(activeLayer || "").trim().toUpperCase();
+  const build = (flag, key) => {
+    const score = frac(flag);
+    let status = "pending";
+    if (score >= 1) status = "verified";
+    else if (active === key || score > 0) status = "in_progress";
+    return { status, score };
+  };
+  return {
+    why: build("why_passed", "WHY"),
+    how: build("how_passed", "HOW"),
+    mechanic: build("mechanic_passed", "MECHANICS"),
+  };
+}
+
 /**
- * Единственный источник процента mastery для панели ноды и карты.
- * При coverage items прогресс считается из WHY/HOW/MECHANIC, а не из
- * устаревшего topic_mastery_score.
+ * Core mastery % for the node panel and map.
+ * Denominator is Core sub-concepts only (`is_extension === false`).
  */
 export function resolveMasteryScore(masteryDashboard, topicMasteryScore) {
   const dash = masteryDashboard || {};
@@ -121,9 +56,7 @@ export function resolveMasteryScore(masteryDashboard, topicMasteryScore) {
   )
     .trim()
     .toUpperCase();
-  const layers = items.length
-    ? layersFromItems(items, normalizeBackendLayers(coverage), active)
-    : null;
+  const layers = items.length ? layersFromCoreItems(items, active) : null;
   const layerScore = layerOverallScore(layers);
   const backendOverall =
     coverage && coverage.overall_score != null
@@ -151,147 +84,6 @@ export function resolveMasteryScore(masteryDashboard, topicMasteryScore) {
   };
 }
 
-function subtopicHint(item) {
-  const fromBackend = (
-    item.status_hint ||
-    item.statusHint ||
-    ""
-  ).trim();
-  if (fromBackend) return fromBackend;
-
-  const why = itemFlag(item, "why_passed");
-  const how = itemFlag(item, "how_passed");
-  const mech = itemFlag(item, "mechanic_passed");
-  if (why && how && mech) return null;
-  if (why && how && !mech) return "Не хватает механик реализации";
-  if (why && !how) return "Не хватает архитектуры (HOW)";
-  if (!why && (how || mech)) return "Концепция (WHY) не раскрыта";
-  if (!why && !how && !mech) return "Ещё не затронута";
-  return null;
-}
-
-function LayerBadge({ passed, label }) {
-  const short = label === "MECHANIC" ? "MECH" : label;
-  return React.createElement(
-    "span",
-    {
-      className: `subtopic-layer-chip layer-${label.toLowerCase()}${
-        passed ? " is-passed" : " is-pending"
-      }`,
-      title: passed ? `${label}: зачтено` : `${label}: не зачтено`,
-    },
-    React.createElement(
-      "span",
-      { className: "subtopic-layer-chip-mark", "aria-hidden": true },
-      passed ? "✓" : "·",
-    ),
-    React.createElement("span", { className: "subtopic-layer-chip-text" }, short),
-  );
-}
-
-function SubtopicsList({ items }) {
-  if (!items?.length) return null;
-  return React.createElement(
-    "div",
-    { className: "coverage-subtopics" },
-    React.createElement(
-      "div",
-      { className: "coverage-widget-head" },
-      React.createElement("span", { className: "coverage-label" }, "Подтемы"),
-      React.createElement(
-        "span",
-        { className: "coverage-ratio muted" },
-        `${items.length}`,
-      ),
-    ),
-    React.createElement(
-      "ul",
-      { className: "coverage-subtopic-list" },
-      items.map((item) => {
-        const why = itemFlag(item, "why_passed");
-        const how = itemFlag(item, "how_passed");
-        const mech = itemFlag(item, "mechanic_passed");
-        const hint = subtopicHint(item);
-        const st = item.state || "unchecked";
-        return React.createElement(
-          "li",
-          {
-            key: item.id || item.label,
-            className: `coverage-subtopic coverage-subtopic-${st}`,
-          },
-          React.createElement(
-            "div",
-            { className: "coverage-subtopic-row" },
-            React.createElement(
-              "span",
-              { className: "coverage-subtopic-label" },
-              item.label || item.id,
-            ),
-            React.createElement(
-              "span",
-              { className: "coverage-subtopic-badges" },
-              React.createElement(LayerBadge, { passed: why, label: "WHY" }),
-              React.createElement(LayerBadge, { passed: how, label: "HOW" }),
-              React.createElement(LayerBadge, {
-                passed: mech,
-                label: "MECHANIC",
-              }),
-            ),
-          ),
-          hint &&
-            React.createElement(
-              "p",
-              { className: "coverage-subtopic-hint" },
-              hint,
-            ),
-        );
-      }),
-    ),
-  );
-}
-
-function DepthLayersStrip({ layers, active }) {
-  if (!layers) return null;
-  return React.createElement(
-    "div",
-    { className: "depth-layers" },
-    LAYER_META.map((meta) => {
-      const row = layers[meta.id];
-      let status = row.status;
-      if (active === meta.key && status === "locked") status = "in_progress";
-      const cls = LAYER_STATUS_CLS[status] || LAYER_STATUS_CLS.locked;
-      return React.createElement(
-        "div",
-        {
-          key: meta.id,
-          className: `depth-layer ${cls}`,
-          title: `${meta.subtitle}: ${LAYER_STATUS_LABEL[status] || status}`,
-        },
-        React.createElement(
-          "div",
-          { className: "depth-layer-head" },
-          React.createElement("span", { className: "depth-layer-title" }, meta.title),
-          React.createElement(
-            "span",
-            { className: "depth-layer-badge" },
-            LAYER_STATUS_LABEL[status] || status,
-          ),
-        ),
-        React.createElement("div", { className: "depth-layer-sub" }, meta.subtitle),
-        React.createElement("div", {
-          className: "depth-layer-meter",
-          "aria-hidden": true,
-          children: React.createElement("div", {
-            className: "depth-layer-meter-fill",
-            style: { width: `${Math.round(row.score * 100)}%` },
-          }),
-        }),
-      );
-    }),
-  );
-}
-
-/** Future: facts_breakdown / item.facts when AtomicFactMatcher lands. */
 function FactsPreview({ coverage, items }) {
   const flat = coverage?.facts_breakdown || coverage?.factsBreakdown || [];
   const fromItems = (items || []).flatMap((it) => it.facts || []);
@@ -333,44 +125,31 @@ function FactsPreview({ coverage, items }) {
   );
 }
 
-function CoverageWidget({ coverage }) {
+function CoverageWidget({ coverage, score, lastEvalDirective }) {
   const items = coverage?.items || [];
-  if (!items.length) return null;
-
-  const active = String(
+  if (!items.length && Number(score) !== 100) return null;
+  const glossHint = (coverage?.gloss_hint || coverage?.glossHint || "").trim();
+  const activeLayer = String(
     coverage?.active_layer || coverage?.activeLayer || "",
   )
     .trim()
     .toUpperCase();
-  const backendLayers = normalizeBackendLayers(coverage);
-  const layers = layersFromItems(items, backendLayers, active);
-  const glossHint = (
-    coverage?.gloss_hint ||
-    coverage?.glossHint ||
-    ""
-  ).trim();
+  const layers = layersFromCoreItems(items, activeLayer);
   const showGloss =
     Boolean(glossHint) ||
     (layers &&
-      layers.why.status === "passed" &&
-      layers.how.status === "passed" &&
-      layers.mechanic.status !== "passed");
+      layers.why.status === "verified" &&
+      layers.how.status === "verified" &&
+      layers.mechanic.status !== "verified");
 
   return React.createElement(
     "div",
     { className: "coverage-widget coverage-widget-depth" },
-    React.createElement(
-      "div",
-      { className: "coverage-widget-head" },
-      React.createElement("span", { className: "coverage-label" }, "Depth"),
-      React.createElement(
-        "span",
-        { className: "coverage-ratio muted" },
-        active ? `фокус: ${active}` : "WHY → HOW → MECHANIC",
-      ),
-    ),
-    React.createElement(DepthLayersStrip, { layers, active }),
-    React.createElement(SubtopicsList, { items }),
+    React.createElement(SubConceptsList, {
+      items,
+      lastEvalDirective,
+      activeLayer,
+    }),
     showGloss &&
       React.createElement(
         "p",
@@ -386,11 +165,12 @@ export function NodeMasteryPanel({
   status,
   masteryDashboard,
   topicMasteryScore,
+  lastEvalDirective,
   onModeSelect,
   disabled,
 }) {
   const dash = masteryDashboard || {};
-  const { coverage, items, active, layers, score } = resolveMasteryScore(
+  const { coverage, score } = resolveMasteryScore(
     masteryDashboard,
     topicMasteryScore,
   );
@@ -427,7 +207,7 @@ export function NodeMasteryPanel({
         "div",
         {
           className: "mastery-bar",
-          title: layers ? "WHY ⅓ · HOW ⅓ · MECHANIC ⅓" : undefined,
+          title: "Core: WHY · HOW · MECHANICS",
         },
         React.createElement("div", {
           className: "mastery-bar-fill",
@@ -443,7 +223,11 @@ export function NodeMasteryPanel({
       " · ",
       MODE_LABELS[mode] || mode,
     ),
-    React.createElement(CoverageWidget, { coverage }),
+    React.createElement(CoverageWidget, {
+      coverage,
+      score,
+      lastEvalDirective,
+    }),
     (dash.strengths || []).length > 0 &&
       React.createElement(
         "div",
@@ -455,15 +239,17 @@ export function NodeMasteryPanel({
           dash.strengths.map((s, i) => React.createElement("li", { key: i }, s)),
         ),
       ),
-    (dash.polish_zones || []).length > 0 &&
+    (dash.polish_zones || dash.weaknesses || []).length > 0 &&
       React.createElement(
         "div",
         { className: "mastery-zone mastery-zone-warn" },
-        React.createElement("h4", null, "Шлифовка"),
+        React.createElement("h4", null, "Слабые стороны"),
         React.createElement(
           "ul",
           null,
-          dash.polish_zones.map((s, i) => React.createElement("li", { key: i }, s)),
+          (dash.weaknesses || dash.polish_zones || []).map((s, i) =>
+            React.createElement("li", { key: i }, s),
+          ),
         ),
       ),
     (dash.critical_gaps || []).length > 0 &&

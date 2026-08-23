@@ -198,20 +198,30 @@ export function composeTutorDisplayFromApi(res) {
   return String(res?.tutor_message || "").trim();
 }
 
-/** После complete: HTML с сервера + полный tutor_message (включая follow_up_question). */
+/**
+ * After stream complete: attach server HTML to the last tutor message.
+ *
+ * The stream already rendered the full tutor text token-by-token.
+ * We only replace `content` when the streamed text is clearly incomplete
+ * (server knows the full message, stream stopped early). In the normal
+ * case we preserve whatever the user already read and only add `contentHtml`.
+ */
 export function patchLastTutorMessageHtml(messages, res) {
-  const composed = composeTutorDisplayFromApi(res);
   const html = postprocessTutorHtml(String(res.tutor_message_html || "").trim());
-  const fu = String(res?.tutor_dialogue_follow_up || "").trim();
-  let text = repairLectureMarkdownLayout(composed || res.tutor_message || "");
-  if (fu && text && !text.includes(fu)) {
-    text = `${text}\n\n${fu}`.trim();
-  }
-  if (!html && !text) return messages;
+  const serverText = repairLectureMarkdownLayout(
+    composeTutorDisplayFromApi(res) || res.tutor_message || "",
+  );
+  if (!html && !serverText) return messages;
   const copy = [...messages];
   for (let i = copy.length - 1; i >= 0; i -= 1) {
     if (copy[i].role !== "tutor") continue;
-    const useText = text || copy[i].content;
+    const streamed = (copy[i].content || "").trim();
+    // Prefer the streamed content — only fall back to serverText when the stream
+    // clearly did not finish (streamed is significantly shorter than server full text).
+    const useText =
+      serverText && streamed.length < serverText.length - 20
+        ? serverText
+        : streamed || serverText;
     let useHtml = html;
     if (!tutorHtmlMatchesContent(useText, useHtml)) {
       useHtml = "";

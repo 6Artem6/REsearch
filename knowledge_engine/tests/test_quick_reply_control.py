@@ -51,6 +51,33 @@ def test_quick_reply_control_detected() -> None:
     )
 
 
+def test_substantive_answer_with_architecture_not_dozhat_how() -> None:
+    """Regression: WAL / rollback answer contained «архитектуре» → false HOW chip."""
+    msg = (
+        "Если мутации стейта постоянны, то можно пойти по архитектуре снапшота, "
+        "где фиксируется одно начальное состояние, а все изменения - это набор "
+        "последовательных операций над ним как в WAL. Это позволит сохранить "
+        "состояние промежуточное достаточное количество раз с возможностью "
+        "отката к нужному, совершив обратные операции или от начального "
+        "проделав повторно операции."
+    )
+    assert not is_quick_reply_control_message(msg)
+    from knowledge_engine.src.node_deep_dive.concept_map import (
+        classify_gloss_fork_choice,
+    )
+
+    assert classify_gloss_fork_choice(msg) == ""
+
+
+def test_substantive_answer_with_mechanism_not_dozhat_mech() -> None:
+    msg = (
+        "Механизм отката опирается на неизменяемые структуры данных и графовые "
+        "снапшоты, где каждый узел фиксирует дельта-состояние перед вызовом "
+        "внешнего инструмента, чтобы можно было безопасно откатиться."
+    )
+    assert not is_quick_reply_control_message(msg)
+
+
 def test_process_skips_eval_on_dozhat(monkeypatch) -> None:
     called = {"n": 0}
 
@@ -108,3 +135,34 @@ def test_gloss_credits_optional_mech() -> None:
     )
     assert packed.ready_for_transition is True
     assert not (mem.pending_evaluation_concept_id or "").strip()
+
+
+def test_orchestrate_ignores_llm_orchestration_fields() -> None:
+    """Host FSM owns chips/transition — LLM-invented labels and flags are dropped."""
+    mem = _mem_optional_mech()
+    out = DeepDiveLLMOutput(
+        ready_for_transition=True,
+        suggested_next_step="deep_dive_optional",
+        follow_up_question="Выбери шаг.",
+        quick_replies=["Дожать MECHANIC", "invented chip"],
+    )
+    packed = orchestrate_tutor_llm_output(
+        mem, out, user_message="", node_layer="advanced"
+    )
+    assert packed.ready_for_transition is True  # coverage complete, host FSM
+    assert packed.quick_replies == []
+    assert packed.suggested_next_step == "deep_dive_optional"
+
+    held = orchestrate_tutor_llm_output(
+        mem,
+        DeepDiveLLMOutput(
+            ready_for_transition=True,
+            follow_up_question="Что если score=0?",
+            quick_replies=["Идем дальше"],
+        ),
+        user_message="Дожать MECH",
+        node_layer="advanced",
+    )
+    assert held.ready_for_transition is False
+    assert held.quick_replies == []
+    assert held.suggested_next_step is None

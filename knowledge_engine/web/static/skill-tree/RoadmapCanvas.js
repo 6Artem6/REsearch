@@ -131,9 +131,13 @@ function RoadmapFlowInner({
         zoomOnScroll: true,
         zoomOnPinch: true,
         preventScrolling: false,
+        nodesDraggable: false,
+        nodesConnectable: false,
+        nodeClickDistance: 5,
         onNodeClick: (_, node) => {
-          const raw = node.data.raw;
+          const raw = node?.data?.raw;
           const nid = raw?.node_id;
+          if (!nid) return;
           const initialized = Boolean(sessions?.[nid]?.initialized);
           if (tutorBusyNodeId !== null && !initialized) return;
           onNodeClick(raw);

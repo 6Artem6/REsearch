@@ -578,15 +578,33 @@ _SUB_LINE_START_RE = re.compile(
     rf"^({_LETTER_SUB_LABEL_WS})",
     re.IGNORECASE,
 )
+_MATH_OPERATOR_TAIL_RE = re.compile(r"[\+\*\/\=,]\s*$")
 
 _GLUE_ORDERED_IN_P_RE = re.compile(
     r"<p>(?P<body>(?:(?!</p>).)*\d{1,2}\.\s+(?:(?!</p>).)+)</p>",
     re.IGNORECASE | re.DOTALL,
 )
+# Letter sub-items only after a real line break — never mid-sentence «(a + b)».
 _GLUE_SUB_IN_P_RE = re.compile(
-    rf"<p>(?P<body>(?:(?!<\/p>).*)({_LETTER_SUB_LABEL_WS})(?:(?!<\/p>).)+)</p>",
+    rf"<p>(?P<body>(?:(?!<\/p>).)*(?:\n|<br\s*/?>)\s*(?:{_LETTER_SUB_LABEL_WS})(?:(?!<\/p>).)+)</p>",
     re.IGNORECASE | re.DOTALL,
 )
+
+
+def letter_marker_is_paren_continuation(prefix: str) -> bool:
+    """True when a following «b)» closes math/parens, not a list marker.
+
+    CommonMark lists need a newline before the marker. A wrap inside
+    ``(например, сложение a + b)`` is not a list.
+    """
+    prev = (prefix or "").rstrip()
+    if not prev:
+        return False
+    if prev.count("(") > prev.count(")"):
+        return True
+    if prev.endswith(("(", "[", "{")):
+        return True
+    return bool(_MATH_OPERATOR_TAIL_RE.search(prev))
 
 
 def _split_glued_ordered_paragraph(body: str) -> str | None:
@@ -621,28 +639,24 @@ def _split_glued_ordered_paragraph(body: str) -> str | None:
 
 
 def _split_glued_subitems_paragraph(body: str) -> str | None:
+    text = re.sub(r"<br\s*/?>", "\n", body, flags=re.IGNORECASE)
     parts = re.split(
-        rf"(?<=[.!?…])\s+(?=({_LETTER_SUB_LABEL_WS}))",
-        body,
+        rf"\n\s*(?={_LETTER_SUB_LABEL_WS})",
+        text,
         flags=re.IGNORECASE,
     )
     if len(parts) < 2:
-        parts = re.split(
-            rf"\s+(?=({_LETTER_SUB_LABEL_WS}))",
-            body,
-            flags=re.IGNORECASE,
-        )
-    if len(parts) < 2:
         return None
-    items: list[str] = []
-    for part in parts:
-        chunk = part.strip()
-        if not chunk:
-            continue
-        items.append(f"<li>{chunk}</li>")
+    merged = [parts[0]]
+    for part in parts[1:]:
+        if letter_marker_is_paren_continuation(merged[-1]):
+            merged[-1] = f"{merged[-1].rstrip()} {part.lstrip()}"
+        else:
+            merged.append(part)
+    items = [p.strip() for p in merged if p.strip()]
     if len(items) < 2:
         return None
-    return f"<ul>{''.join(items)}</ul>"
+    return f"<ul>{''.join(f'<li>{chunk}</li>' for chunk in items)}</ul>"
 
 
 _WRONG_OL_LETTER_ITEM_RE = re.compile(
@@ -690,9 +704,14 @@ def _list_html_from_paragraph_texts(texts: list[str]) -> str | None:
         cur_kind = None
         cur_items = []
 
+    prev_text = ""
     for raw in texts:
         text = raw.strip()
         if not text:
+            return None
+        if _SUB_LINE_START_RE.match(text) and letter_marker_is_paren_continuation(
+            prev_text
+        ):
             return None
         wrong = _WRONG_NUMBERED_LETTER_LINE_RE.match(text)
         if wrong:
@@ -703,6 +722,7 @@ def _list_html_from_paragraph_texts(texts: list[str]) -> str | None:
                 flush()
             cur_kind = "ul"
             cur_items.append(li)
+            prev_text = text
             continue
         if _ORDERED_LIST_LINE_RE.match(text):
             body = re.sub(r"^\d{1,2}\.\s+", "", text)
@@ -710,6 +730,7 @@ def _list_html_from_paragraph_texts(texts: list[str]) -> str | None:
                 flush()
             cur_kind = "ol"
             cur_items.append(f"<li>{body}</li>")
+            prev_text = text
             continue
         bullet = re.match(r"^-\s+(.*)$", text, re.DOTALL)
         if bullet:
@@ -717,12 +738,14 @@ def _list_html_from_paragraph_texts(texts: list[str]) -> str | None:
                 flush()
             cur_kind = "ul"
             cur_items.append(f"<li>{bullet.group(1).strip()}</li>")
+            prev_text = text
             continue
         if _SUB_LINE_START_RE.match(text):
             if cur_kind and cur_kind != "ul":
                 flush()
             cur_kind = "ul"
             cur_items.append(f"<li>{text}</li>")
+            prev_text = text
             continue
         return None
     flush()
