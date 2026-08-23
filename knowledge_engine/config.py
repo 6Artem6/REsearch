@@ -366,7 +366,33 @@ GUARDRAILS_OLLAMA_MODEL: str = os.getenv(
 # Модель для галочек контекста (1.5B — меньше UMA; 7B через CONTEXT_EVAL_MODEL)
 CONTEXT_EVAL_MODEL: str = os.getenv("CONTEXT_EVAL_MODEL", ROUTER_MODEL)
 CONTEXT_EVAL_NUM_PREDICT: int = int(os.getenv("CONTEXT_EVAL_NUM_PREDICT", "2048"))
-EMBED_MODEL: str = "nomic-embed-text"
+# System-wide Bi-Encoder (LanceDB). Cross-Encoder is RAG_CROSS_ENCODER_MODEL only.
+EMBED_MODEL: str = os.getenv("EMBED_MODEL", "BAAI/bge-m3").strip() or "BAAI/bge-m3"
+# Pinned Hub commit: reuse cached pytorch_model.bin; do not follow floating main.
+EMBED_MODEL_REVISION: str = os.getenv(
+    "EMBED_MODEL_REVISION",
+    "5617a9f61b028005a4858fdac845db406aefb181",
+).strip()
+# Semantic control-chip routing (BGE-M3 cosine vs reference phrases)
+VECTOR_INTENT_THRESHOLD: float = float(os.getenv("VECTOR_INTENT_THRESHOLD", "0.82"))
+VECTOR_INTENT_ENABLED: bool = os.getenv("VECTOR_INTENT_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+# deep_analysis digest ranking: edge/bottleneck/trade-off thesis via embeddings
+EDGE_CASE_VECTOR_THRESHOLD: float = float(
+    os.getenv("EDGE_CASE_VECTOR_THRESHOLD", "0.48")
+)
+EDGE_CASE_VECTOR_ENABLED: bool = os.getenv(
+    "EDGE_CASE_VECTOR_ENABLED", "true"
+).lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 # Контекст KV: router (1.5B) vs heavy (7B). OLLAMA_NUM_CTX — legacy alias для heavy.
 OLLAMA_ROUTER_NUM_CTX: int = int(os.getenv("OLLAMA_ROUTER_NUM_CTX", "2048"))
 OLLAMA_HEAVY_NUM_CTX: int = int(
@@ -880,17 +906,21 @@ SEMANTIC_SCHOLAR_ENRICH_TIMEOUT_SEC: float = float(
 SEMANTIC_SCHOLAR_ENABLED: bool = _env_bool("SEMANTIC_SCHOLAR_ENABLED", False)
 LIGHT_RAG_MIN_COSINE_SIM: float = float(os.getenv("LIGHT_RAG_MIN_COSINE_SIM", "0.42"))
 LIGHT_RAG_PROFILE_LIMIT: int = int(os.getenv("LIGHT_RAG_PROFILE_LIMIT", "5"))
-# Модуль 3 — Directional RAG Gateway (без LLM)
+# Cross-Encoder: Inbound Gate / RAG rerank ONLY (not domain_registry embeddings).
 RAG_CROSS_ENCODER_MODEL: str = os.getenv(
     "RAG_CROSS_ENCODER_MODEL", "BAAI/bge-reranker-v2-m3"
 )
+RAG_CROSS_ENCODER_REVISION: str = os.getenv(
+    "RAG_CROSS_ENCODER_REVISION",
+    "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+).strip()
 # Cross-Encoder memory: fp16 on MPS, optional idle unload (cross_encoder.py)
 RAG_CE_TORCH_DTYPE: str = os.getenv("RAG_CE_TORCH_DTYPE", "auto").strip().lower()
 RAG_CE_AUTO_UNLOAD: bool = _env_bool("RAG_CE_AUTO_UNLOAD", False)
 RAG_CE_AUTO_UNLOAD_IDLE_SEC: float = float(
     os.getenv("RAG_CE_AUTO_UNLOAD_IDLE_SEC", "300")
 )
-RAG_DEFAULT_MIN_RELEVANCE: float = float(os.getenv("RAG_DEFAULT_MIN_RELEVANCE", "0.50"))
+RAG_DEFAULT_MIN_RELEVANCE: float = float(os.getenv("RAG_DEFAULT_MIN_RELEVANCE", "0.55"))
 RAG_DEFAULT_MAX_FACTS: int = int(os.getenv("RAG_DEFAULT_MAX_FACTS", "4"))
 RAG_RETRIEVAL_PER_DIRECTION: int = int(os.getenv("RAG_RETRIEVAL_PER_DIRECTION", "5"))
 RAG_LATENCY_WARN_MS: float = float(os.getenv("RAG_LATENCY_WARN_MS", "100"))
@@ -955,6 +985,15 @@ EXCLUDED_SOURCES_BLACKLIST: tuple[str, ...] = tuple(
     ).split(",")
     if d.strip()
 )
+
+# Bi-Encoder alias (must stay BAAI/bge-m3; same space as EMBED_MODEL).
+DOMAIN_REGISTRY_EMBED_MODEL: str = (
+    os.getenv("DOMAIN_REGISTRY_EMBED_MODEL", EMBED_MODEL).strip() or EMBED_MODEL
+)
+DOMAIN_REGISTRY_COSINE_MIN: float = float(
+    os.getenv("DOMAIN_REGISTRY_COSINE_MIN", "0.82")
+)
+DOMAIN_REGISTRY_SEARCH_LIMIT: int = int(os.getenv("DOMAIN_REGISTRY_SEARCH_LIMIT", "8"))
 
 # Имена провайдеров в SearchRegistry (можно сузить список)
 SEARCH_ACTIVE_PROVIDERS: tuple[str, ...] = (
@@ -1228,7 +1267,7 @@ LECTURE_RAG_TOP_K: int = int(os.getenv("LECTURE_RAG_TOP_K", "3"))
 # Lecture dense: расширенный пул → CE rerank → MMR (services/lecture_context_rerank.py)
 LECTURE_RAG_CANDIDATE_LIMIT: int = int(os.getenv("LECTURE_RAG_CANDIDATE_LIMIT", "8"))
 LECTURE_RAG_MMR_TOP_K: int = int(os.getenv("LECTURE_RAG_MMR_TOP_K", "3"))
-LECTURE_RAG_CE_MIN_SCORE: float = float(os.getenv("LECTURE_RAG_CE_MIN_SCORE", "0.48"))
+LECTURE_RAG_CE_MIN_SCORE: float = float(os.getenv("LECTURE_RAG_CE_MIN_SCORE", "0.50"))
 LECTURE_RAG_CONTEXT_MAX_CHARS: int = int(
     os.getenv("LECTURE_RAG_CONTEXT_MAX_CHARS", "9000")
 )
