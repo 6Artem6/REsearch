@@ -182,6 +182,9 @@
 | `EXA_EXCLUDE_TEXT` | api reference… | Exa excludeText ≤5 слов |
 | `EXA_PRACTICAL_HIGHLIGHT_QUERY` | (см. `config.py`) | Fallback highlights |
 | `EXCLUDED_SOURCES_BLACKLIST` | medium,dev.to,… | exclude_domains |
+| `DOMAIN_REGISTRY_EMBED_MODEL` | `BAAI/bge-m3` | Bi-Encoder gist доменов |
+| `DOMAIN_REGISTRY_COSINE_MIN` | `0.82` | Порог Pre-Discovery lookup |
+| `DOMAIN_REGISTRY_SEARCH_LIMIT` | `8` | Max official hosts из LanceDB |
 
 Ключевые для tutor/RAG:
 

@@ -1091,6 +1091,15 @@ CURRICULUM_PRACTICAL_SEARXNG_CATEGORIES: str = os.getenv(
 CURRICULUM_ACADEMIC_SEARXNG_LIMIT: int = int(
     os.getenv("CURRICULUM_ACADEMIC_SEARXNG_LIMIT", "8")
 )
+# Академический SearXNG: явные engines (не bing/google fallback).
+CURRICULUM_ACADEMIC_SEARXNG_ENGINES: str = os.getenv(
+    "CURRICULUM_ACADEMIC_SEARXNG_ENGINES", "arxiv,google scholar"
+)
+# HTTP: categories=["science"] (arXiv / Google Scholar). Не путать с it
+# (github/hn/stackoverflow) — те для practical/community, не academic.
+CURRICULUM_ACADEMIC_SEARXNG_CATEGORIES: str = os.getenv(
+    "CURRICULUM_ACADEMIC_SEARXNG_CATEGORIES", "science"
+)
 CURRICULUM_USE_V08_CONSENSUS: bool = _env_bool("CURRICULUM_USE_V08_CONSENSUS", True)
 CURRICULUM_CONSENSUS_MIN_APPROVED_ACADEMIC: int = int(
     os.getenv("CURRICULUM_CONSENSUS_MIN_APPROVED_ACADEMIC", "2")

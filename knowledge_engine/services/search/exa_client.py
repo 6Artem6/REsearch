@@ -89,6 +89,9 @@ class ExaSearchResponse:
     hits: list[ExaSearchHit]
     include_domains: list[str]
     exclude_domains: list[str]
+    search_type: str = "auto"
+    category: str = ""
+    used_unrestricted_fallback: bool = False
 
 
 def _parse_hit(item: Any) -> ExaSearchHit:
@@ -128,8 +131,75 @@ def _parse_hit(item: Any) -> ExaSearchHit:
     )
 
 
+def build_exa_search_kwargs(
+    query: str,
+    *,
+    num_results: int = 15,
+    search_type: str = "auto",
+    include_domains: list[str] | None = None,
+    exclude_domains: list[str] | None = None,
+    exclude_text: list[str] | None = None,
+    category: str | None = None,
+    highlight_query: str = DEFAULT_HIGHLIGHT_QUERY,
+    highlight_max_characters: int = 2000,
+    highlight_num_sentences: int = 5,
+    whitelist_dict: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    """Pure kwargs builder for Exa.search (unit-testable, no network)."""
+    inc = include_domains
+    if inc is None:
+        wl = (
+            whitelist_dict if whitelist_dict is not None else APPROVED_SOURCES_WHITELIST
+        )
+        inc = get_clean_exa_domains(wl)
+    inc = [d for d in (inc or []) if (d or "").strip()]
+    exc = merge_exa_exclude_domains(exclude_domains)
+    if exclude_text is not None:
+        excl_text = normalize_exa_exclude_text(exclude_text)
+    else:
+        excl_text = normalize_exa_exclude_text(EXA_EXCLUDE_TEXT)
+    contents = build_exa_contents_dict(
+        highlight_query=highlight_query,
+        highlight_max_characters=highlight_max_characters,
+        highlight_num_sentences=highlight_num_sentences,
+    )
+    kwargs: dict[str, Any] = {
+        "num_results": num_results,
+        "type": (search_type or "auto").strip() or "auto",
+        "contents": contents,
+        "exclude_domains": exc,
+    }
+    if inc:
+        kwargs["include_domains"] = inc
+    cat = (category or "").strip()
+    if cat:
+        kwargs["category"] = cat
+    if excl_text:
+        kwargs["exclude_text"] = excl_text
+    _ = query
+    return kwargs
+
+
+def _run_exa_sdk_search(exa: Any, query: str, search_kwargs: dict[str, Any]) -> Any:
+    """Call exa.search; drop `category` once if the SDK/API rejects it."""
+    try:
+        return exa.search(query, **search_kwargs)
+    except TypeError:
+        if "category" not in search_kwargs:
+            raise
+        retry = dict(search_kwargs)
+        retry.pop("category", None)
+        return exa.search(query, **retry)
+    except Exception:
+        if "category" not in search_kwargs:
+            raise
+        retry = dict(search_kwargs)
+        retry.pop("category", None)
+        return exa.search(query, **retry)
+
+
 class ExaSearchClient:
-    """Обёртка над exa-py: поиск только по очищенным доменам whitelist."""
+    """Обёртка над exa-py: whitelist, dynamic domains, category, hybrid type."""
 
     def __init__(self, api_key: str | None = None) -> None:
         self._api_key = (api_key or EXA_API_KEY or "").strip()
@@ -155,10 +225,12 @@ class ExaSearchClient:
         include_domains: list[str] | None = None,
         exclude_domains: list[str] | None = None,
         exclude_text: list[str] | None = None,
+        category: str | None = None,
         highlight_query: str = DEFAULT_HIGHLIGHT_QUERY,
         highlight_max_characters: int = 2000,
         highlight_num_sentences: int = 5,
         whitelist_dict: dict[str, list[str]] | None = None,
+        allow_unrestricted_fallback: bool = False,
     ) -> ExaSearchResponse:
         q = (query or "").strip()
         if not q:
@@ -175,40 +247,126 @@ class ExaSearchClient:
                 "Пакет exa-py не установлен (pip install exa-py)"
             ) from exc
 
-        inc = include_domains
-        if inc is None:
-            inc = self.whitelist_include_domains(whitelist_dict)
-        exc = merge_exa_exclude_domains(exclude_domains)
-        if exclude_text is not None:
-            excl_text = normalize_exa_exclude_text(exclude_text)
-        else:
-            excl_text = normalize_exa_exclude_text(EXA_EXCLUDE_TEXT)
-
-        exa = Exa(api_key=self._api_key)
-        contents = build_exa_contents_dict(
+        search_kwargs = build_exa_search_kwargs(
+            q,
+            num_results=num_results,
+            search_type=search_type,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
+            exclude_text=exclude_text,
+            category=category,
             highlight_query=highlight_query,
             highlight_max_characters=highlight_max_characters,
             highlight_num_sentences=highlight_num_sentences,
+            whitelist_dict=whitelist_dict,
         )
-        search_kwargs: dict[str, Any] = {
-            "include_domains": inc,
-            "exclude_domains": exc,
-            "num_results": num_results,
-            "type": search_type,
-            "contents": contents,
-        }
-        if excl_text:
-            search_kwargs["exclude_text"] = excl_text
-        response = exa.search(q, **search_kwargs)
-
+        exa = Exa(api_key=self._api_key)
+        response = _run_exa_sdk_search(exa, q, search_kwargs)
         results = getattr(response, "results", None) or []
         hits = [_parse_hit(r) for r in results if r is not None]
+        used_fallback = False
+        if (
+            not hits
+            and allow_unrestricted_fallback
+            and search_kwargs.get("include_domains")
+        ):
+            retry = dict(search_kwargs)
+            retry.pop("include_domains", None)
+            retry.pop("category", None)
+            response = _run_exa_sdk_search(exa, q, retry)
+            results = getattr(response, "results", None) or []
+            hits = [_parse_hit(r) for r in results if r is not None]
+            used_fallback = True
+            search_kwargs = retry
+
+        inc_used = list(search_kwargs.get("include_domains") or [])
         return ExaSearchResponse(
             query=q,
             hits=hits,
-            include_domains=list(inc),
-            exclude_domains=exc,
+            include_domains=inc_used,
+            exclude_domains=list(search_kwargs.get("exclude_domains") or []),
+            search_type=str(search_kwargs.get("type") or search_type or "auto"),
+            category=str(search_kwargs.get("category") or ""),
+            used_unrestricted_fallback=used_fallback,
         )
+
+    def search_expanded(
+        self,
+        query: str,
+        *,
+        num_results: int = 15,
+        highlight_query: str = DEFAULT_HIGHLIGHT_QUERY,
+    ) -> ExaSearchResponse:
+        """Lite domains → HTTP validate → Exa Pass 1; category Pass 2 on miss."""
+        from knowledge_engine.services.search.exa_domain_validate import (
+            prepare_exa_pass1_domains_blocking,
+        )
+        from knowledge_engine.services.search.exa_source_expand import (
+            absorb_new_exa_hosts,
+            exa_pass2_categories,
+            expand_search_context_with_flash_lite,
+            filter_pass1_official_hosts,
+        )
+        from knowledge_engine.ui.run_log import trace
+
+        ctx = expand_search_context_with_flash_lite(query)
+        live = prepare_exa_pass1_domains_blocking(ctx.primary_domains)
+        validated = filter_pass1_official_hosts(live)
+        exclude_text: list[str] | None = [] if ctx.include_official_docs else None
+
+        response: ExaSearchResponse | None = None
+        if validated:
+            trace(f"EXA pass 1 ▶ | include_domains={validated} category=None")
+            response = self.search(
+                query,
+                num_results=num_results,
+                search_type=ctx.search_type,
+                include_domains=validated,
+                category=None,
+                exclude_text=exclude_text,
+                highlight_query=highlight_query,
+                allow_unrestricted_fallback=False,
+            )
+            trace(f"EXA pass 1 ✓ | hits={len(response.hits)}")
+
+        if response is None or not response.hits:
+            for cat in exa_pass2_categories(ctx):
+                trace(f"EXA pass 2 ▶ | include_domains=∅ category={cat}")
+                response = self.search(
+                    query,
+                    num_results=num_results,
+                    search_type=ctx.search_type,
+                    include_domains=[],
+                    category=cat,
+                    exclude_text=exclude_text,
+                    highlight_query=highlight_query,
+                    allow_unrestricted_fallback=False,
+                )
+                trace(f"EXA pass 2 ✓ | category={cat} hits={len(response.hits)}")
+                if response.hits:
+                    break
+            if (response is None or not response.hits) and ctx.use_broader_search:
+                trace("EXA pass 2 ▶ | include_domains=∅ category=None")
+                response = self.search(
+                    query,
+                    num_results=num_results,
+                    search_type=ctx.search_type,
+                    include_domains=[],
+                    category=None,
+                    exclude_text=exclude_text,
+                    highlight_query=highlight_query,
+                    allow_unrestricted_fallback=False,
+                )
+
+        if response is None:
+            response = ExaSearchResponse(
+                query=query,
+                hits=[],
+                include_domains=[],
+                exclude_domains=[],
+            )
+        absorb_new_exa_hosts([h.url for h in response.hits])
+        return response
 
 
 def exa_search_whitelist(

@@ -535,10 +535,6 @@ def _stream_is_academic_hit(hit: CurriculumSearchHit) -> bool:
     return tier in _STREAM_ACADEMIC_TIERS or tier.startswith("consensus")
 
 
-def _stream_hit_extract_words(hit: CurriculumSearchHit) -> int:
-    return sum(len((e or "").split()) for e in (hit.key_extracts or []))
-
-
 def _stream_skip_lite_validate(hit: CurriculumSearchHit) -> bool:
     """Exa уже прошёл Lite на этапе exa_transform; academic — всегда Lite в consumer."""
     tier = (hit.source_tier or "").strip().lower()
@@ -547,11 +543,9 @@ def _stream_skip_lite_validate(hit: CurriculumSearchHit) -> bool:
     return False
 
 
-def _stream_skip_practical_ingest(hit: CurriculumSearchHit) -> bool:
-    """Exa/lite path already produced usable extracts — avoid serial map-reduce."""
-    if not hit.skip_ollama_summary:
-        return False
-    return _stream_hit_extract_words(hit) >= 80
+def _stream_skip_practical_ingest(_hit: CurriculumSearchHit) -> bool:
+    """Never skip full-body MAP ingest because Exa highlights exist."""
+    return False
 
 
 def paper_to_stream_discovery_hit(paper: ScholarPaper) -> CurriculumSearchHit | None:

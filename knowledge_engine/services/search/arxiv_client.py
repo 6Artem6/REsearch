@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import random
 import re
 import xml.etree.ElementTree as ET
@@ -19,8 +20,7 @@ from knowledge_engine.config import (
     ARXIV_TIMEOUT_SEC,
 )
 from knowledge_engine.services.search.arxiv_rate_limit import (
-    acquire_arxiv_slot_async,
-    arxiv_pause_before_retry_async,
+    arxiv_request_exclusive_async,
 )
 from knowledge_engine.ui.run_log import trace
 
@@ -154,55 +154,57 @@ class ArxivClient:
         query = urlencode(params)
         url = f"{self.api_url}?{query}"
         last_exc: Exception | None = None
-        async with httpx.AsyncClient(
-            timeout=self.timeout_sec,
-            follow_redirects=True,
-        ) as client:
-            for attempt in range(self.max_retries + 1):
-                await acquire_arxiv_slot_async()
-                try:
-                    resp = await client.get(url)
-                except Exception as exc:
-                    last_exc = exc
-                    if attempt >= self.max_retries:
-                        break
-                    wait = self._backoff_seconds(attempt)
-                    trace(
-                        f"arXiv API ⊘ transport {exc} — backoff {wait:.2f}s "
-                        f"(attempt {attempt + 1}/{self.max_retries + 1})"
-                    )
-                    await arxiv_pause_before_retry_async(wait)
-                    continue
-
-                if resp.status_code in _RETRYABLE_STATUS:
-                    if attempt >= self.max_retries:
+        # One exclusive gate for the whole attempt chain: arXiv must stay
+        # sequential (≥ ARXIV_MIN_INTERVAL_SEC); other providers stay async.
+        async with arxiv_request_exclusive_async():
+            async with httpx.AsyncClient(
+                timeout=self.timeout_sec,
+                follow_redirects=True,
+            ) as client:
+                for attempt in range(self.max_retries + 1):
+                    try:
+                        resp = await client.get(url)
+                    except Exception as exc:
+                        last_exc = exc
+                        if attempt >= self.max_retries:
+                            break
+                        wait = self._backoff_seconds(attempt)
                         trace(
-                            f"arXiv API ✗ HTTP {resp.status_code} after retries | "
-                            f"{query[:120]}"
+                            f"arXiv API ⊘ transport {exc} — backoff {wait:.2f}s "
+                            f"(attempt {attempt + 1}/{self.max_retries + 1})"
                         )
+                        await asyncio.sleep(wait)
+                        continue
+
+                    if resp.status_code in _RETRYABLE_STATUS:
+                        if attempt >= self.max_retries:
+                            trace(
+                                f"arXiv API ✗ HTTP {resp.status_code} after retries | "
+                                f"{query[:120]}"
+                            )
+                            return []
+                        wait = self._backoff_seconds(attempt)
+                        trace(
+                            f"arXiv API ⊘ HTTP {resp.status_code} — backoff {wait:.2f}s "
+                            f"(attempt {attempt + 1}/{self.max_retries + 1})"
+                        )
+                        await asyncio.sleep(wait)
+                        continue
+
+                    try:
+                        resp.raise_for_status()
+                    except Exception as exc:
+                        trace(f"arXiv API ✗ HTTP {resp.status_code} | {exc}")
                         return []
-                    wait = self._backoff_seconds(attempt)
-                    trace(
-                        f"arXiv API ⊘ HTTP {resp.status_code} — backoff {wait:.2f}s "
-                        f"(attempt {attempt + 1}/{self.max_retries + 1})"
-                    )
-                    await arxiv_pause_before_retry_async(wait)
-                    continue
 
-                try:
-                    resp.raise_for_status()
-                except Exception as exc:
-                    trace(f"arXiv API ✗ HTTP {resp.status_code} | {exc}")
-                    return []
-
-                entries = _parse_atom_entries(resp.text)
-                if not entries and (
-                    resp.text.strip().startswith("<!DOCTYPE")
-                    or "<feed" not in resp.text[:500]
-                ):
-                    trace(f"arXiv API ✗ non-atom body (HTTP {resp.status_code})")
-                    return []
-                return entries
+                    entries = _parse_atom_entries(resp.text)
+                    if not entries and (
+                        resp.text.strip().startswith("<!DOCTYPE")
+                        or "<feed" not in resp.text[:500]
+                    ):
+                        trace(f"arXiv API ✗ non-atom body (HTTP {resp.status_code})")
+                        return []
+                    return entries
 
         if last_exc is not None:
             trace(f"arXiv API ✗ {last_exc}")

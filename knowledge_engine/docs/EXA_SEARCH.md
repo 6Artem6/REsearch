@@ -1,8 +1,8 @@
 # Exa Search — архитектура и конфигурация
 
-Нейронный поиск по whitelist-доменам через [exa-py](https://docs.exa.ai/).  
-Код: `services/search/exa_client.py`, `exa_transform.py`, `exa_domains.py`.  
-Whitelist: `src/source_evaluator/whitelist.py` (`APPROVED_SOURCES_WHITELIST`).
+Нейронный поиск через [exa-py](https://docs.exa.ai/): Pass 1 — HTTP-живые хосты с классом `OFFICIAL_DOCS`; Pass 2 — нативные категории Exa без `include_domains`.  
+Код: `services/search/exa_client.py`, `exa_transform.py`, `exa_domains.py`, `exa_source_expand.py`, `exa_domain_validate.py`.  
+Whitelist (ранжирование / evaluator, не Pass 1): `src/source_evaluator/whitelist.py`.
 
 **См. также:** [SOURCE_POOL.md](SOURCE_POOL.md), [TUTOR_PIPELINES.md](TUTOR_PIPELINES.md), [ENV_VARIABLES.md](ENV_VARIABLES.md).
 
@@ -12,12 +12,17 @@ Whitelist: `src/source_evaluator/whitelist.py` (`APPROVED_SOURCES_WHITELIST`).
 
 ```mermaid
 flowchart TB
-  subgraph Plan["Query plan (Gemini Lite)"]
-    QP["build_exa_query_plan\n6 векторов EN/RU"]
+  subgraph Discover["Discovery (Flash Lite + HTTP + LanceDB)"]
+    L["expand_search_context_with_flash_lite\ntopic_vector_query + CANONICAL_SPEC / OFFICIAL_DOCS / SOURCE_TREE"]
+    R["LanceDB domain_registry\nBGE-M3 cosine ≥ 0.82 → OFFICIAL_DOCS"]
+    H["HTTP HEAD/GET live hosts"]
+    A["filter_pass1_official_hosts\nbatch classify_exa_domains_batch_with_flash_lite"]
+    P1["Pass 1 Exa\ninclude_domains=official\ncategory=None"]
+    P2["Pass 2 Exa\nno include_domains\ncategory=github|pdf|research paper"]
   end
 
-  subgraph API["Exa API"]
-    C["ExaSearchClient.search\ninclude_domains + highlights"]
+  subgraph Plan["Query plan (Gemini Lite)"]
+    QP["build_exa_query_plan\n6 векторов EN/RU"]
   end
 
   subgraph Rank["Post-process"]
@@ -28,7 +33,12 @@ flowchart TB
     LR["опц. Lite rerank"]
   end
 
-  QP --> C --> M --> RR --> UR --> PF --> LR
+  L --> R --> H --> A --> P1
+  P1 -->|0 hits| P2
+  QP --> P1
+  P1 --> M
+  P2 --> M
+  M --> RR --> UR --> PF --> LR
 ```
 
 ### Multi-Vector Query Plan (`build_exa_query_plan`)
@@ -124,6 +134,19 @@ Round-robin по host: сначала 1-я статья с каждого дом
 
 ## 3. Источники и домены (`exa_domains.py`)
 
+### Двухпроходный Discovery
+
+1. **Flash Lite expand** (`expand_search_context_with_flash_lite`): гипотезы `primary_domains` (CANONICAL_SPEC / OFFICIAL_DOCS / SOURCE_TREE) **и** `topic_vector_query` — верхнеуровневый English gist темы (тот же уровень абстракции, что `general_summary` домена). Агрегаторы, Q&A и SEO-академии запрещены.
+2. **Pre-Discovery lookup** (`domain_registry.search_official_docs`): Bi-Encoder `BAAI/bge-m3` эмбеддит `topic_vector_query`, ищет в LanceDB `domain_registry`. В Pass 1 попадают только `OFFICIAL_DOCS` с **cosine ≥ `DOMAIN_REGISTRY_COSINE_MIN` (0.82)**. При miss — остаются гипотезы Lite.
+3. **HTTP-валидация** (`prepare_exa_pass1_domains`, timeout 2s): `HEAD`/`GET` на `https://<host>`. Живость ≠ `OFFICIAL_DOCS`.
+4. **Authority filter** (`filter_pass1_official_hosts`): **один** вызов `classify_exa_domains_batch_with_flash_lite` на все неизвестные живые хосты. Контракт `BatchDomainAuthorityResponse`. В Pass 1 `include_domains` только `OFFICIAL_DOCS` (или static `foundational_docs`).
+5. **Pass 1:** Exa `include_domains = official hosts`, `category = None`. Пустой список → Pass 2.
+6. **Pass 2:** без `include_domains`, с `exclude_domains` и нативной категорией Exa (`github` / `pdf` / `research paper`).
+
+KEEP-классы (`OFFICIAL_DOCS`, `VENDOR_BLOG`, `ACADEMIC_OR_PAPER`) с непустым `general_summary` upsert в `domain_registry` (вектор gist, не Cross-Encoder). `BAAI/bge-reranker-v2-m3` остаётся только Inbound Gate / RAG.
+
+`is_official_docs_host` = whitelist `foundational_docs` **или** динамический `OFFICIAL_DOCS`. Префиксы/суффиксы хоста не используются.
+
 ### `APPROVED_SOURCES_WHITELIST`
 
 Категории в `whitelist.py`:
@@ -181,6 +204,9 @@ Exa `include_domains` принимает только хосты → path-зап
 | `EXA_EXCLUDE_TEXT` | `api reference documentation sdk classes` | Exa `excludeText` (≤5 слов после normalize) |
 | `EXA_PRACTICAL_HIGHLIGHT_QUERY` | engineering deep-dive prompt (см. `config.py`) | Fallback highlight query |
 | `EXCLUDED_SOURCES_BLACKLIST` | medium,dev.to,twitter,… | `exclude_domains` для Exa |
+| `DOMAIN_REGISTRY_EMBED_MODEL` | `BAAI/bge-m3` | Bi-Encoder для gist доменов (не reranker) |
+| `DOMAIN_REGISTRY_COSINE_MIN` | `0.82` | Жёсткий порог cosine Pre-Discovery lookup |
+| `DOMAIN_REGISTRY_SEARCH_LIMIT` | `8` | Max `OFFICIAL_DOCS` хостов из LanceDB |
 
 Связанные curriculum-лимиты (не `EXA_*`, но влияют на контур):
 
@@ -197,13 +223,17 @@ Exa `include_domains` принимает только хосты → path-зап
 
 | Модуль | Роль |
 |--------|------|
-| `exa_client.py` | SDK wrapper, highlights, whitelist domains |
-| `exa_domains.py` | `clean_domain_for_exa`, `get_clean_exa_domains` |
+| `exa_client.py` | SDK wrapper, highlights, two-pass `search_expanded` |
+| `exa_domains.py` | `clean_domain_for_exa`, whitelist + dynamic `OFFICIAL_DOCS` |
+| `exa_domain_validate.py` | HTTP liveness Pass 1 |
+| `exa_source_expand.py` | Lite expand + **batch** authority + registry merge |
+| `domain_registry.py` | LanceDB `domain_registry` upsert / cosine lookup |
+| `bge_m3_embed.py` | SentenceTransformer `BAAI/bge-m3` (не Cross-Encoder) |
 | `exa_transform.py` | Query plan, rank, RR, fetch DEEP/simple |
 | `providers.py` | `ExaSearchProvider` |
 | `practical_url_filters.py` | Post-filter practical |
 | `whitelist.py` | `APPROVED_SOURCES_WHITELIST` |
 
-Trace-маркеры: `CURRICULUM exa ▶/✓/✗`, `exa query_plan`, `fair_round_robin`, `exa lite rerank`, `LECTURE_EXA`.
+Trace-маркеры: `EXA domain HTTP ▶/✓/⊘`, `EXA pass 1/2`, `DOMAIN_REGISTRY`, `CURRICULUM exa ▶/✓/✗`, `exa query_plan`, `fair_round_robin`, `exa lite rerank`, `LECTURE_EXA`.
 
-Тесты: `tests/services/search/test_exa_transform.py`.
+Тесты: `tests/services/search/test_exa_source_expand.py`, `test_domain_registry.py`, `test_exa_transform.py`.

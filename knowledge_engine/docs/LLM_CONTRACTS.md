@@ -84,6 +84,20 @@ Academic Architect (не Consensus.app): `LiteAcademicQueryContract` + `ArxivQue
 
 ---
 
+## Exa search (Flash Lite)
+
+Файл: [`exa_search.py`](../schemas/llm_contracts/exa_search.py). Пайплайн: [EXA_SEARCH.md](EXA_SEARCH.md).
+
+| Контракт | Назначение | Labels |
+|----------|------------|--------|
+| `ExaSearchContextExpansion` | Декомпозиция запроса: `primary_domains`, Exa category/type, **`topic_vector_query`** (верхнеуровневый gist для BGE-M3 lookup) | `exa / search_context_expand` |
+| `DomainAuthorityVerdict` | Один хост: `classification` → KEEP/REJECT (`status` выравнивается валидатором) | `exa / domain_authority` |
+| `DomainAuthorityItem` / `BatchDomainAuthorityResponse` | **Один** Lite-вызов на пачку хостов; `general_summary` — канонический gist ресурса (не список узких тем) | `exa / domain_authority_batch` |
+
+KEEP (`OFFICIAL_DOCS`, `VENDOR_BLOG`, `ACADEMIC_OR_PAPER`) пишется в LanceDB `domain_registry` с эмбеддингом `BAAI/bge-m3`. Pass 1 `include_domains` — только `OFFICIAL_DOCS`. Cross-Encoder `bge-reranker-v2-m3` сюда не входит (Inbound Gate / RAG).
+
+---
+
 ## Research v0.4 Gemini
 
 Файл: [`v04_gemini.py`](../schemas/llm_contracts/v04_gemini.py).
