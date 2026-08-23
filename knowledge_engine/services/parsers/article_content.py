@@ -26,6 +26,7 @@ def extract_article_body_html(raw_html: str, page_url: str) -> str | None:
             include_images=True,
             include_links=False,
             include_tables=True,
+            include_formatting=True,
         )
         if fragment and len(fragment.strip()) > 80:
             return fragment.strip()

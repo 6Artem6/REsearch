@@ -23,6 +23,8 @@ class WorkJobKind(str, Enum):
     CURRICULUM_GENERATE = "curriculum_generate"
     CURRICULUM_EXPAND = "curriculum_expand"
     NODE_DEEP_DIVE = "node_deep_dive"
+    RAG_GATEWAY = "rag_gateway"
+    NODE_EXPLAIN = "node_explain"
 
 
 class WorkJobStatus(str, Enum):

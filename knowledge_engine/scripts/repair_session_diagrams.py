@@ -54,15 +54,27 @@ def main() -> int:
         "--diagram-ids",
         nargs="+",
         required=True,
-        help="e.g. diagram-1 diagram-3",
+        help="e.g. diagram-1 diagram-3  or  1 3",
     )
     parser.add_argument("--no-gemma", action="store_true")
+    parser.add_argument(
+        "--force-gemma",
+        action="store_true",
+        help="Send to Gemma even if currently valid",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     cid = args.curriculum_id.strip()
     nid = args.node_id.strip()
-    targets = {d.strip() for d in args.diagram_ids if d.strip()}
+
+    def _norm(s: str) -> str:
+        t = (s or "").strip()
+        if t.isdigit():
+            return f"diagram-{t}"
+        return t
+
+    targets = {_norm(d) for d in args.diagram_ids if (d or "").strip()}
 
     session = get_session(cid, nid)
     diagrams = list(session.content.diagrams or [])
@@ -78,13 +90,28 @@ def main() -> int:
             continue
         raw = d.mermaid or ""
         before_ok = validate_mermaid_syntax(strip_mermaid_fences(raw))
-        new, reason = _repair_one(
-            raw,
-            allow_gemma=not args.no_gemma,
-        )
-        after_ok = (
-            validate_mermaid_syntax(strip_mermaid_fences(new)) if new else before_ok
-        )
+        if before_ok and args.force_gemma and not args.no_gemma:
+            # Force path: treat as invalid for repair_one by using ingest directly
+            from knowledge_engine.services.mermaid_validate import (
+                process_mermaid_for_ingest,
+            )
+
+            fixed = process_mermaid_for_ingest(raw, allow_gemma_repair=True)
+            if fixed and validate_mermaid_syntax(strip_mermaid_fences(fixed)):
+                new, reason = fixed.strip(), "force_repaired"
+            else:
+                new, reason = None, "force_failed"
+            after_ok = (
+                validate_mermaid_syntax(strip_mermaid_fences(new)) if new else before_ok
+            )
+        else:
+            new, reason = _repair_one(
+                raw,
+                allow_gemma=not args.no_gemma,
+            )
+            after_ok = (
+                validate_mermaid_syntax(strip_mermaid_fences(new)) if new else before_ok
+            )
         print(f"{did}: before_valid={before_ok} -> {reason} after_valid={after_ok}")
         if new and not args.dry_run:
             d.mermaid = new

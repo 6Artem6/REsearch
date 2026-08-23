@@ -140,6 +140,10 @@ def enrich_session_blob_for_client(
     from knowledge_engine.src.node_deep_dive.tutor_dialogue import (
         recover_tutor_display_from_chat_sessions,
     )
+    from knowledge_engine.src.node_deep_dive.tutor_field_limits import (
+        SCHEMA_FOLLOW_UP_QUESTION_MAX,
+        SCHEMA_TUTOR_MESSAGE_MAX,
+    )
 
     full_display = ""
     recovered = ""
@@ -149,9 +153,11 @@ def enrich_session_blob_for_client(
             recovered, fu_rec = recover_tutor_display_from_chat_sessions(memory)
             if recovered:
                 full_display = recovered
-                memory.last_tutor_display_message = recovered[:12_000]
+                memory.last_tutor_display_message = recovered[:SCHEMA_TUTOR_MESSAGE_MAX]
                 if fu_rec:
-                    memory.last_tutor_follow_up_question = fu_rec[:2000]
+                    memory.last_tutor_follow_up_question = fu_rec[
+                        :SCHEMA_FOLLOW_UP_QUESTION_MAX
+                    ]
         if not full_display and (memory.last_tutor_follow_up_question or "").strip():
             fu = memory.last_tutor_follow_up_question.strip()
             for i in range(len(merged_hist) - 1, -1, -1):

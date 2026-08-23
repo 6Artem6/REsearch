@@ -1,77 +1,162 @@
-"""Shared Ollama LLM helpers."""
+"""Gemma Cloud SSOT: structured + text LLM (replaces ChatOllama)."""
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypeVar
+import asyncio
+import concurrent.futures
+from typing import Any, Iterator, TypeVar
 
 from langchain_core.messages import BaseMessage
-from langchain_ollama import ChatOllama
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from knowledge_engine.config import (
-    CONTEXT_EVAL_MODEL,
-    LOCAL_ROUTER_MODEL,
-    OLLAMA_BASE_URL,
-    OLLAMA_HEAVY_KEEP_ALIVE,
-    OLLAMA_HEAVY_NUM_CTX,
-    OLLAMA_NUM_PREDICT,
-    OLLAMA_ROUTER_KEEP_ALIVE,
-    OLLAMA_ROUTER_NUM_CTX,
-    REACT_EVAL_MODEL,
-    ROUTER_MODEL,
-    SELECTION_PROMPTS_OLLAMA_MODEL,
-)
-from knowledge_engine.ui.logger import append_stream_token, clear_stream
-from knowledge_engine.ui.run_log import ollama_invoke
+from knowledge_engine.config import GEMMA_PRIMARY_MODEL, gemma_cloud_api_key_available
+from knowledge_engine.ui.run_log import gemma_cloud_invoke
 
 T = TypeVar("T", bound=BaseModel)
 
-OllamaTier = Literal["router", "heavy", "auto"]
+# Back-compat alias: callers still pass model names; cloud slot is always Gemma primary.
+OllamaTier = str
 
 
-def _router_model_names() -> frozenset[str]:
-    return frozenset(
-        {
-            ROUTER_MODEL,
-            LOCAL_ROUTER_MODEL,
-            REACT_EVAL_MODEL,
-            SELECTION_PROMPTS_OLLAMA_MODEL,
-            CONTEXT_EVAL_MODEL,
-        }
+class _GemmaTextEnvelope(BaseModel):
+    text: str = Field(default="", description="Plain assistant reply.")
+
+
+def _run_coro(coro: Any) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
+def _messages_to_system_user(messages: list[BaseMessage]) -> tuple[str, str]:
+    system_parts: list[str] = []
+    user_parts: list[str] = []
+    for msg in messages:
+        content = msg.content if isinstance(msg.content, str) else str(msg.content)
+        name = type(msg).__name__.lower()
+        if "system" in name:
+            system_parts.append(content)
+        else:
+            user_parts.append(content)
+    return "\n\n".join(system_parts).strip(), "\n\n".join(user_parts).strip()
+
+
+def _client(model: str | None = None):
+    from knowledge_engine.services.llm.gemma_client import GemmaCloudClient
+
+    chosen = (model or "").strip()
+    low = chosen.lower()
+    if (
+        not chosen
+        or "qwen" in low
+        or "ollama" in low
+        or ":1.5b" in low
+        or ":7b" in low
+    ):
+        chosen = GEMMA_PRIMARY_MODEL
+    return GemmaCloudClient(model=chosen)
+
+
+async def complete_structured_async(
+    schema: type[T],
+    system: str,
+    user: str,
+    *,
+    label: str = "gemma_structured",
+    model: str | None = None,
+) -> T | None:
+    if not gemma_cloud_api_key_available():
+        raise RuntimeError("Gemma Cloud API key missing (GEMINI_API_KEY / GEMMA_API_KEY)")
+    return await _client(model).complete_structured(system, user, schema, label=label)
+
+
+def complete_structured_sync(
+    schema: type[T],
+    system: str,
+    user: str,
+    *,
+    label: str = "gemma_structured",
+    model: str | None = None,
+) -> T | None:
+    return _run_coro(
+        complete_structured_async(schema, system, user, label=label, model=model)
     )
 
 
-def resolve_ollama_tier(model: str) -> Literal["router", "heavy"]:
-    name = (model or "").strip()
-    if name in _router_model_names():
-        return "router"
-    low = name.lower()
-    if ":1.5b" in low or "-1.5b" in low:
-        return "router"
-    return "heavy"
+class GemmaStructuredRunnable:
+    """LangChain-shaped ``.invoke(messages)`` over Gemma Cloud structured JSON."""
+
+    def __init__(
+        self,
+        schema: type[T],
+        *,
+        model: str,
+        temperature: float = 0.2,
+        label: str = "gemma_structured",
+    ) -> None:
+        self.schema = schema
+        self.model = model or GEMMA_PRIMARY_MODEL
+        self.temperature = temperature
+        self._label = label
+
+    def invoke(self, messages: list[BaseMessage], **_kwargs: Any) -> T | None:
+        system, user = _messages_to_system_user(messages)
+        return complete_structured_sync(
+            self.schema,
+            system,
+            user,
+            label=self._label,
+            model=self.model,
+        )
 
 
-def chat_ollama(
+class GemmaTextRunnable:
+    """LangChain-shaped text invoke/stream over Gemma Cloud."""
+
+    def __init__(self, *, model: str, temperature: float = 0.2) -> None:
+        self.model = model or GEMMA_PRIMARY_MODEL
+        self.temperature = temperature
+
+    def invoke(self, messages: list[BaseMessage], **_kwargs: Any) -> Any:
+        system, user = _messages_to_system_user(messages)
+        client = _client(self.model)
+
+        async def _go() -> _GemmaTextEnvelope | None:
+            return await client.complete_structured(
+                system,
+                user,
+                _GemmaTextEnvelope,
+                label="gemma_text",
+            )
+
+        parsed = _run_coro(_go())
+        text = (parsed.text if parsed is not None else "") or ""
+
+        class _Msg:
+            content = text
+
+        return _Msg()
+
+    def stream(self, messages: list[BaseMessage], **_kwargs: Any) -> Iterator[Any]:
+        msg = self.invoke(messages)
+        yield msg
+
+
+def chat_llm(
     model: str,
     temperature: float = 0.2,
     num_predict: int | None = None,
     tier: OllamaTier = "auto",
-) -> ChatOllama:
-    resolved = tier if tier != "auto" else resolve_ollama_tier(model)
-    if resolved == "router":
-        num_ctx = OLLAMA_ROUTER_NUM_CTX
-        keep_alive = OLLAMA_ROUTER_KEEP_ALIVE
-    else:
-        num_ctx = OLLAMA_HEAVY_NUM_CTX
-        keep_alive = OLLAMA_HEAVY_KEEP_ALIVE
-    return ChatOllama(
-        model=model,
-        base_url=OLLAMA_BASE_URL,
-        temperature=temperature,
-        num_ctx=num_ctx,
-        num_predict=num_predict if num_predict is not None else OLLAMA_NUM_PREDICT,
-        keep_alive=keep_alive,
-    )
+) -> GemmaTextRunnable:
+    _ = (num_predict, tier)
+    return GemmaTextRunnable(model=model, temperature=temperature)
+
+
+# Historical name — no ChatOllama underneath.
+chat_ollama = chat_llm
 
 
 def structured_chat(
@@ -80,14 +165,18 @@ def structured_chat(
     temperature: float = 0.2,
     num_predict: int | None = None,
     tier: OllamaTier = "auto",
-) -> ChatOllama:
-    return chat_ollama(
-        model, temperature, num_predict, tier=tier
-    ).with_structured_output(schema, method="json_schema")
+) -> GemmaStructuredRunnable:
+    _ = (num_predict, tier)
+    return GemmaStructuredRunnable(
+        schema,
+        model=model,
+        temperature=temperature,
+        label=f"structured/{getattr(schema, '__name__', 'schema')}",
+    )
 
 
-def invoke_logged(llm: ChatOllama, messages: list[BaseMessage], label: str) -> Any:
-    return ollama_invoke(llm, messages, label)
+def invoke_logged(llm: Any, messages: list[BaseMessage], label: str) -> Any:
+    return gemma_cloud_invoke(llm, messages, label)
 
 
 def stream_chat(
@@ -96,13 +185,12 @@ def stream_chat(
     temperature: float = 0.2,
     label: str = "LLM",
 ) -> str:
-    """Потоковая генерация с отображением токенов в UI."""
+    from knowledge_engine.ui.logger import append_stream_token, clear_stream
+
     clear_stream()
-    llm = chat_ollama(model, temperature)
-    chunks: list[str] = []
-    for chunk in llm.stream(messages):
-        part = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
-        if part:
-            chunks.append(part)
-            append_stream_token(part)
-    return "".join(chunks)
+    llm = chat_llm(model, temperature)
+    msg = gemma_cloud_invoke(llm, messages, label)
+    text = msg.content if hasattr(msg, "content") else str(msg)
+    if text:
+        append_stream_token(text)
+    return text or ""

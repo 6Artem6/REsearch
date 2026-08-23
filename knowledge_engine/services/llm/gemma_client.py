@@ -33,9 +33,6 @@ from knowledge_engine.config import (
     GEMMA_PRIMARY_MODEL,
     GEMMA_QUOTA_SHARED,
 )
-from knowledge_engine.services.article_ingestion.paragraph_token_splitter import (
-    estimate_text_tokens,
-)
 from knowledge_engine.services.llm.rate_limiter import (
     AsyncRateLimiter,
     get_gemma_rate_limiter,
@@ -43,6 +40,14 @@ from knowledge_engine.services.llm.rate_limiter import (
 from knowledge_engine.ui.run_log import trace
 
 logger = logging.getLogger(__name__)
+
+
+def _estimate_text_tokens(text: str) -> int:
+    from knowledge_engine.services.article_ingestion.paragraph_token_splitter import (
+        estimate_text_tokens,
+    )
+
+    return estimate_text_tokens(text)
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.I)
 _THOUGHT_BLOCK_RE = re.compile(r"<thought\b[^>]*>.*?</thought>", re.I | re.DOTALL)
@@ -57,6 +62,10 @@ class GemmaRateLimitError(Exception):
     def __init__(self, retry_after: float | None = None) -> None:
         self.retry_after = retry_after
         super().__init__("rate limited")
+
+
+class GemmaTransientError(Exception):
+    """Retryable cloud failure: HTTP 5xx, timeouts, transport errors."""
 
 
 @dataclass
@@ -224,7 +233,7 @@ class GemmaCloudClient:
         self, system: str, prompt: str, schema: type[BaseModel]
     ) -> int:
         user_prompt = _gemma_user_content(prompt)
-        return estimate_text_tokens(f"{system}\n{user_prompt}")
+        return _estimate_text_tokens(f"{system}\n{user_prompt}")
 
     def estimate_request_tokens(
         self,
@@ -237,7 +246,7 @@ class GemmaCloudClient:
         if schema is not None:
             inp = self.estimate_input_tokens(system, prompt, schema)
         else:
-            inp = estimate_text_tokens(f"{system}\n{prompt}")
+            inp = _estimate_text_tokens(f"{system}\n{prompt}")
         out_cap = (
             max_output_tokens
             if max_output_tokens is not None
@@ -321,18 +330,21 @@ class GemmaCloudClient:
         }
 
         @retry(
-            retry=retry_if_exception_type(GemmaRateLimitError),
-            stop=stop_after_attempt(5),
+            retry=retry_if_exception_type((GemmaRateLimitError, GemmaTransientError)),
+            stop=stop_after_attempt(3),
             wait=_GemmaRetryWait(),
             reraise=True,
         )
         async def _post_once() -> httpx.Response:
-            if client is not None:
-                resp = await client.post(url, json=payload, headers=headers)
-            else:
-                timeout = httpx.Timeout(self._timeout)
-                async with httpx.AsyncClient(timeout=timeout) as ephemeral:
-                    resp = await ephemeral.post(url, json=payload, headers=headers)
+            try:
+                if client is not None:
+                    resp = await client.post(url, json=payload, headers=headers)
+                else:
+                    timeout = httpx.Timeout(self._timeout)
+                    async with httpx.AsyncClient(timeout=timeout) as ephemeral:
+                        resp = await ephemeral.post(url, json=payload, headers=headers)
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                raise GemmaTransientError(str(exc)) from exc
             if resp.status_code == 429:
                 retry_after: float | None = None
                 ra = resp.headers.get("Retry-After")
@@ -342,6 +354,8 @@ class GemmaCloudClient:
                     except ValueError:
                         retry_after = None
                 raise GemmaRateLimitError(retry_after)
+            if resp.status_code in (500, 502, 503, 504):
+                raise GemmaTransientError(f"HTTP {resp.status_code}")
             resp.raise_for_status()
             return resp
 
@@ -557,7 +571,7 @@ class RateLimitedLLMClient:
         max_output_tokens: int | None = None,
     ) -> int:
         if not self._slots:
-            inp = estimate_text_tokens(f"{system}\n{prompt}")
+            inp = _estimate_text_tokens(f"{system}\n{prompt}")
             cap = (
                 max_output_tokens
                 if max_output_tokens is not None
@@ -575,7 +589,7 @@ class RateLimitedLLMClient:
         self, system: str, prompt: str, schema: type[BaseModel]
     ) -> tuple[int, int, int]:
         if not self._slots:
-            inp = estimate_text_tokens(f"{system}\n{prompt}")
+            inp = _estimate_text_tokens(f"{system}\n{prompt}")
             cap = resolve_gemma_map_max_output_tokens(inp)
             return inp, cap, inp + cap
         return self._slots[0].client.estimate_budget(system, prompt, schema)

@@ -1,6 +1,9 @@
-"""Постановка задач в очередь worker."""
+"""Постановка задач в очередь worker. API никогда не исполняет ML-jobs inline."""
 
 from __future__ import annotations
+
+import time
+from typing import Any
 
 from fastapi import HTTPException
 
@@ -14,16 +17,14 @@ from knowledge_engine.services.work_job_store import (
 from knowledge_engine.ui.run_log import trace
 
 
-def _inline_fallback_allowed() -> bool:
-    return KE_WORKER_INLINE_FALLBACK
-
-
-def require_worker_or_inline() -> None:
+def require_worker() -> None:
     if worker_is_alive():
         return
-    if _inline_fallback_allowed():
-        trace("WARN: worker offline — KE_WORKER_INLINE_FALLBACK")
-        return
+    if KE_WORKER_INLINE_FALLBACK:
+        trace(
+            "WARN: KE_WORKER_INLINE_FALLBACK ignored — vector/RAG jobs "
+            "cannot run in the API process"
+        )
     raise HTTPException(
         status_code=503,
         detail=(
@@ -33,44 +34,49 @@ def require_worker_or_inline() -> None:
     )
 
 
-def enqueue_curriculum_generate(payload: dict) -> str:
-    require_worker_or_inline()
-    if not worker_is_alive():
-        from knowledge_engine.services.work_handlers import run_work_job
+def require_worker_or_inline() -> None:
+    """Compat alias: inline ML in API is disabled."""
+    require_worker()
 
-        job = work_job_store.create(WorkJobKind.CURRICULUM_GENERATE, payload)
-        try:
-            result = run_work_job(job)
-            work_job_store.complete(job.id, result)
-        except Exception as exc:
-            from knowledge_engine.services.work_handlers import format_work_error
 
-            work_job_store.fail(job.id, format_work_error(exc))
-        return job.id
-    job = work_job_store.create(WorkJobKind.CURRICULUM_GENERATE, payload)
+def _enqueue(kind: WorkJobKind, payload: dict) -> str:
+    require_worker()
+    job = work_job_store.create(kind, payload)
     return job.id
+
+
+def wait_job_result(job_id: str, *, timeout_sec: float) -> dict[str, Any]:
+    deadline = time.monotonic() + max(1.0, float(timeout_sec))
+    last = None
+    while time.monotonic() < deadline:
+        job = work_job_store.get(job_id)
+        last = job
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"Work job not found: {job_id}")
+        if job.status == WorkJobStatus.COMPLETED:
+            return dict(job.result or {})
+        if job.status == WorkJobStatus.FAILED:
+            raise HTTPException(
+                status_code=503,
+                detail=job.error or "worker job failed",
+            )
+        time.sleep(0.05)
+    detail = "worker timeout"
+    if last is not None:
+        detail = f"worker timeout (status={last.status.value})"
+    raise HTTPException(status_code=504, detail=detail)
+
+
+def enqueue_curriculum_generate(payload: dict) -> str:
+    return _enqueue(WorkJobKind.CURRICULUM_GENERATE, payload)
 
 
 def enqueue_curriculum_expand(payload: dict) -> str:
-    require_worker_or_inline()
-    if not worker_is_alive():
-        from knowledge_engine.services.work_handlers import run_work_job
-
-        job = work_job_store.create(WorkJobKind.CURRICULUM_EXPAND, payload)
-        try:
-            result = run_work_job(job)
-            work_job_store.complete(job.id, result)
-        except Exception as exc:
-            from knowledge_engine.services.work_handlers import format_work_error
-
-            work_job_store.fail(job.id, format_work_error(exc))
-        return job.id
-    job = work_job_store.create(WorkJobKind.CURRICULUM_EXPAND, payload)
-    return job.id
+    return _enqueue(WorkJobKind.CURRICULUM_EXPAND, payload)
 
 
 def enqueue_node_deep_dive(payload: dict) -> str:
-    require_worker_or_inline()
+    require_worker()
     cid = str(payload.get("curriculum_id") or "").strip()
     nid = str((payload.get("node_data") or {}).get("node_id") or "").strip()
     action = str(payload.get("user_action") or "init").strip().lower()
@@ -101,17 +107,13 @@ def enqueue_node_deep_dive(payload: dict) -> str:
                     f"→ existing job={existing.id} status={existing.status.value}"
                 )
             return existing.id
-    if not worker_is_alive():
-        from knowledge_engine.services.work_handlers import run_work_job
-
-        job = work_job_store.create(WorkJobKind.NODE_DEEP_DIVE, payload)
-        try:
-            result = run_work_job(job)
-            work_job_store.complete(job.id, result)
-        except Exception as exc:
-            from knowledge_engine.services.work_handlers import format_work_error
-
-            work_job_store.fail(job.id, format_work_error(exc))
-        return job.id
     job = work_job_store.create(WorkJobKind.NODE_DEEP_DIVE, payload)
     return job.id
+
+
+def enqueue_rag_gateway(payload: dict) -> str:
+    return _enqueue(WorkJobKind.RAG_GATEWAY, payload)
+
+
+def enqueue_node_explain(payload: dict) -> str:
+    return _enqueue(WorkJobKind.NODE_EXPLAIN, payload)

@@ -66,10 +66,15 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw.lower() in ("1", "true", "yes")
 
 
-OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_AUTO_START: bool = _env_bool("OLLAMA_AUTO_START", False)
-ROUTER_MODEL: str = "qwen2.5-coder:1.5b"
-MAIN_MODEL: str = "qwen2.5-coder:7b"
+# Local Ollama daemon is disabled. LLM SSOT is Gemma Cloud (GEMMA_* / GEMINI_API_KEY).
+OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "")
+OLLAMA_AUTO_START: bool = False
+ROUTER_MODEL: str = os.getenv(
+    "ROUTER_MODEL", os.getenv("GEMMA_FALLBACK_MODEL", "gemma-4-26b-a4b-it")
+)
+MAIN_MODEL: str = os.getenv(
+    "MAIN_MODEL", os.getenv("GEMMA_PRIMARY_MODEL", "gemma-4-31b-it")
+)
 LOCAL_ROUTER_MODEL: str = os.getenv("LOCAL_ROUTER_MODEL", ROUTER_MODEL)
 LOCAL_HEAVY_MODEL: str = os.getenv("LOCAL_HEAVY_MODEL", MAIN_MODEL)
 # Smart Selection Prompts (v0.8) — быстрые подсказки при выделении текста
@@ -90,7 +95,7 @@ SELECTION_PROMPTS_KEEP_ALIVE: str = os.getenv(
 # Pre-filter картинок перед VLM (article ingest)
 ARTICLE_DIAGRAM_FILTER_OLLAMA_MODEL: str = os.getenv(
     "ARTICLE_DIAGRAM_FILTER_OLLAMA_MODEL",
-    os.getenv("MAIN_MODEL", "qwen2.5-coder:7b"),
+    os.getenv("MAIN_MODEL", "gemma-4-31b-it"),
 )
 ARTICLE_DIAGRAM_FILTER_TIMEOUT_SEC: float = float(
     os.getenv("ARTICLE_DIAGRAM_FILTER_TIMEOUT_SEC", "45")
@@ -106,7 +111,7 @@ ARTICLE_MAX_DIAGRAMS_PER_ARTICLE: int = int(
 )
 BLOG_SPATIAL_SUMMARIZER_MODEL: str = os.getenv(
     "BLOG_SPATIAL_SUMMARIZER_MODEL",
-    os.getenv("MAIN_MODEL", "qwen2.5-coder:7b"),
+    os.getenv("MAIN_MODEL", "gemma-4-31b-it"),
 )
 BLOG_SPATIAL_NUM_CTX: int = int(os.getenv("BLOG_SPATIAL_NUM_CTX", "16384"))
 BLOG_SPATIAL_NUM_PREDICT: int = int(os.getenv("BLOG_SPATIAL_NUM_PREDICT", "4096"))
@@ -328,6 +333,13 @@ REDUCE_STRATEGY: str = (
     if _REDUCE_STRATEGY_RAW in ("two_phase", "legacy")
     else "two_phase"
 )
+# Phase 1 migration toggles — defaults preserve the current (legacy) pipeline.
+_CODE_PARSER_MODE_RAW = (os.getenv("CODE_PARSER_MODE", "linear") or "linear").strip().lower()
+CODE_PARSER_MODE: str = (
+    _CODE_PARSER_MODE_RAW if _CODE_PARSER_MODE_RAW in ("linear", "ast") else "linear"
+)
+CHUNK_ANCHOR_INJECTION: bool = _env_bool("CHUNK_ANCHOR_INJECTION", False)
+ANCHOR_REGEX_VALIDATE: bool = _env_bool("ANCHOR_REGEX_VALIDATE", False)
 _CLAIM_DEDUP_MODE_RAW = (os.getenv("CLAIM_DEDUP_MODE", "none") or "none").strip().lower()
 _CLAIM_DEDUP_ALLOWED = ("none", "exact", "entity_consensus", "llm", "claim_mmr")
 CLAIM_DEDUP_MODE: str = (
@@ -341,12 +353,8 @@ SPO_RERANKER_DUPLICATE_THRESHOLD: float = float(
 MAX_CONSENSUS_BATCH_TOKENS: int = int(os.getenv("MAX_CONSENSUS_BATCH_TOKENS", "3072"))
 MAX_CONSENSUS_NODES_PER_BATCH: int = int(os.getenv("MAX_CONSENSUS_NODES_PER_BATCH", "10"))
 MAX_PRIMARY_ANCHORS: int = int(os.getenv("MAX_PRIMARY_ANCHORS", "3"))
-_CODE_PARSER_MODE_RAW = (os.getenv("CODE_PARSER_MODE", "linear") or "linear").strip().lower()
-CODE_PARSER_MODE: str = (
-    _CODE_PARSER_MODE_RAW if _CODE_PARSER_MODE_RAW in ("linear", "ast") else "linear"
-)
-CHUNK_ANCHOR_INJECTION: bool = _env_bool("CHUNK_ANCHOR_INJECTION", False)
-ANCHOR_REGEX_VALIDATE: bool = _env_bool("ANCHOR_REGEX_VALIDATE", False)
+MIGRATION_USE_CONTEXT_CACHING: bool = _env_bool("MIGRATION_USE_CONTEXT_CACHING", False)
+INGEST_CACHE_TTL_SECONDS: int = int(os.getenv("INGEST_CACHE_TTL_SECONDS", "86400"))
 # Phase 3A: GitHub Git Trees API (no full .zip). Default off → existing HTML/raw fetch.
 USE_GITHUB_TREES_API: bool = _env_bool("USE_GITHUB_TREES_API", False)
 _GITHUB_TOKEN_RAW = (os.getenv("GITHUB_TOKEN") or "").strip()
@@ -354,8 +362,6 @@ GITHUB_TOKEN: str | None = _GITHUB_TOKEN_RAW or None
 MAX_GITHUB_FILE_SIZE_BYTES: int = int(
     os.getenv("MAX_GITHUB_FILE_SIZE_BYTES", str(100 * 1024))
 )
-MIGRATION_USE_CONTEXT_CACHING: bool = _env_bool("MIGRATION_USE_CONTEXT_CACHING", False)
-INGEST_CACHE_TTL_SECONDS: int = int(os.getenv("INGEST_CACHE_TTL_SECONDS", "86400"))
 GEMMA_EST_OUTPUT_TOKENS: int = int(
     os.getenv("GEMMA_EST_OUTPUT_TOKENS", str(GEMMA_MAP_MAX_OUTPUT_TOKENS))
 )
@@ -386,10 +392,10 @@ COMPETENCY_EXTRACT_TIMEOUT_SEC: float = float(
 COMPETENCY_EXTRACT_NUM_PREDICT: int = int(
     os.getenv("COMPETENCY_EXTRACT_NUM_PREDICT", "320")
 )
-# v0.7 guardrails (Stage 0/1) — structured JSON через Ollama 7B
+# v0.7 guardrails (Stage 0/1) — structured JSON via Gemma Cloud
 GUARDRAILS_OLLAMA_MODEL: str = os.getenv(
     "GUARDRAILS_OLLAMA_MODEL",
-    os.getenv("GUARDRAILS_MODEL", "qwen2.5-coder:7b"),
+    os.getenv("GUARDRAILS_MODEL", "gemma-4-31b-it"),
 )
 # Модель для галочек контекста (1.5B — меньше UMA; 7B через CONTEXT_EVAL_MODEL)
 CONTEXT_EVAL_MODEL: str = os.getenv("CONTEXT_EVAL_MODEL", ROUTER_MODEL)

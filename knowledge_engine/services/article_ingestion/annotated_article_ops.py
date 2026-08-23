@@ -66,7 +66,7 @@ def fig_anchor_p_id(
 
 def kept_p_id_set(
     paragraph_map: dict[str, str],
-    keep_ranges: list[tuple[str, str]],
+    keep_ranges: list[tuple[str, str]] | list[list[str]],
 ) -> set[str]:
     order = sorted_p_ids(paragraph_map)
     idx = p_index_map(paragraph_map)

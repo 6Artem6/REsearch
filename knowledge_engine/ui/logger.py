@@ -1,4 +1,4 @@
-"""Rich Live + потоковый вывод токенов Ollama."""
+"""Rich Live + потоковый вывод токенов Gemma Cloud."""
 
 from __future__ import annotations
 
@@ -121,16 +121,16 @@ def on_node_end(node_id: str, elapsed: float, detail: str = "") -> None:
     set_phase("ожидание…")
 
 
-def on_ollama_start(model: str, label: str) -> None:
+def on_gemma_cloud_start(model: str, label: str) -> None:
     from knowledge_engine.ui.run_log import trace
 
     short = label if len(label) <= 56 else label[:53] + "…"
-    set_phase(f"Ollama {model}")
-    trace(f"OLLAMA ▶ {model} | {label}")
-    _append_status_line(f"{_elapsed_prefix()} │ ▶ OLLAMA  {model}  {short}")
+    set_phase(f"Gemma Cloud {model}")
+    trace(f"GEMMA_CLOUD ▶ {model} | {label}")
+    _append_status_line(f"{_elapsed_prefix()} │ ▶ GEMMA_CLOUD  {model}  {short}")
 
 
-def on_ollama_end(model: str, label: str, elapsed: float, ok: bool = True) -> None:
+def on_gemma_cloud_end(model: str, label: str, elapsed: float, ok: bool = True) -> None:
     global _ollama_seconds, _ollama_call_count
     _ollama_seconds += elapsed
     _ollama_call_count += 1
@@ -138,11 +138,16 @@ def on_ollama_end(model: str, label: str, elapsed: float, ok: bool = True) -> No
 
     short = label if len(label) <= 48 else label[:45] + "…"
     mark = "✓" if ok else "✗"
-    trace(f"OLLAMA {mark} {model} | {label} ({elapsed:.1f}s)")
+    trace(f"GEMMA_CLOUD {mark} {model} | {label} ({elapsed:.1f}s)")
     _append_status_line(
-        f"{_elapsed_prefix()} │ {mark} OLLAMA  {model}  {short} ({elapsed:.1f}s)",
+        f"{_elapsed_prefix()} │ {mark} GEMMA_CLOUD  {model}  {short} ({elapsed:.1f}s)",
         permanent_console=not ok,
     )
+
+
+# Historical aliases — logs are GEMMA_CLOUD, not Ollama.
+on_ollama_start = on_gemma_cloud_start
+on_ollama_end = on_gemma_cloud_end
 
 
 def append_stream_token(token: str) -> None:
@@ -188,7 +193,7 @@ def print_timing_summary() -> None:
     total = time.monotonic() - _run_start
     lines = [
         f"Итого прогона: {total:.1f}s ({total / 60:.1f} min)",
-        f"Ollama: {_ollama_seconds:.1f}s ({_ollama_call_count} вызовов)",
+        f"Gemma Cloud: {_ollama_seconds:.1f}s ({_ollama_call_count} вызовов)",
     ]
     for name, sec in sorted(_node_seconds.items(), key=lambda x: -x[1]):
         lines.append(f"  узел {name}: {sec:.1f}s")

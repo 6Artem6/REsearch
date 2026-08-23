@@ -110,8 +110,11 @@ def _ensure_model(state: dict[str, Any], model: str) -> dict[str, Any]:
     if not isinstance(row, dict):
         row = {}
         models[model] = row
-    if "daily_limit_rpd" not in row:
+    # Before daily_limit_source existed, a generic ``limit: 15`` from an RPM
+    # 429 could be persisted as RPD. Rebuild legacy caps from configuration.
+    if "daily_limit_source" not in row:
         row["daily_limit_rpd"] = default_daily_limit_rpd(model)
+        row["daily_limit_source"] = "config"
     row.setdefault("local_requests_today", 0)
     row.setdefault("daily_blocked", False)
     row.setdefault("rpm_blocked_until", None)
@@ -411,6 +414,7 @@ def set_model_daily_limit_rpd(model: str, limit: int) -> None:
         _roll_day(state)
         row = _ensure_model(state, m)
         row["daily_limit_rpd"] = cap
+        row["daily_limit_source"] = "config_override"
         _save_unlocked(state)
 
 
@@ -449,7 +453,10 @@ def record_gemini_error(model: str, exc: BaseException) -> None:
         row["last_request_at"] = _now_iso()
         row["block_source"] = "api_error"
         if details.get("limit"):
-            row["daily_limit_rpd"] = int(details["limit"])
+            row["last_reported_quota_limit"] = int(details["limit"])
+            row["last_reported_quota_class"] = kind_429
+            if kind_429 == "rpd":
+                row["reported_daily_limit_rpd"] = int(details["limit"])
         code = details.get("http_like_code")
         if code == 404:
             row["unavailable"] = True
@@ -486,7 +493,15 @@ def apply_probe_result(row: dict[str, Any], count_probe: bool = False) -> None:
         details = row.get("quota_details") or {}
         blob = (row.get("error_preview") or "")[:1200]
         if details.get("limit"):
-            mrow["daily_limit_rpd"] = int(details["limit"])
+            quota_kind = (
+                "rpd"
+                if row.get("likely_daily_per_model")
+                else _classify_429(blob, details)
+            )
+            mrow["last_reported_quota_limit"] = int(details["limit"])
+            mrow["last_reported_quota_class"] = quota_kind
+            if quota_kind == "rpd":
+                mrow["reported_daily_limit_rpd"] = int(details["limit"])
         mrow["last_probe_at"] = _now_iso()
         mrow["block_source"] = "probe"
         if status == "ok":

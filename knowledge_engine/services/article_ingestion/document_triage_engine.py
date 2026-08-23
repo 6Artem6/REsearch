@@ -38,6 +38,12 @@ def detect_source_format(
     low_url = (page_url or "").lower()
     if low_url.endswith(".md") or low_url.endswith(".markdown"):
         return "markdown"
+    from knowledge_engine.services.article_ingestion.raw_source import (
+        is_code_or_raw_source,
+    )
+
+    if is_code_or_raw_source(page_url, text):
+        return "markdown"
     head = text[:8000].lower()
     if "<html" in head or "<body" in head or "<article" in head:
         return "html"
@@ -55,6 +61,14 @@ class DocumentTriageEngine:
         raw: bytes | str | None = None,
     ) -> tuple[AnnotatedArticle, TriageOutcome | None]:
         if not BLOG_SPATIAL_TRIAGE_ENABLED:
+            from knowledge_engine.ingest.pipeline_audit import pipeline_audit
+
+            pipeline_audit(
+                "Triage",
+                annotated.page_url,
+                annotated.annotated_markdown,
+                extra="DOC_TRIAGE disabled",
+            )
             return annotated, None
         order = sorted_p_ids(annotated.paragraph_map)
         if len(order) < 4:
@@ -96,6 +110,14 @@ class DocumentTriageEngine:
                 f"DOC_TRIAGE restore FIG | text prune dropped "
                 f"{fig_before - fig_after_prune} → kept {len(pruned.fig_map)} for VLM"
             )
+        from knowledge_engine.ingest.pipeline_audit import pipeline_audit
+
+        pipeline_audit(
+            "Triage",
+            annotated.page_url,
+            pruned.annotated_markdown,
+            extra=f"DOC_TRIAGE P {len(order)}→{len(pruned.paragraph_map)}",
+        )
         trace(
             f"DOC_TRIAGE ✓ | P {len(order)}→{len(pruned.paragraph_map)} "
             f"FIG {fig_before}→{len(pruned.fig_map)} "

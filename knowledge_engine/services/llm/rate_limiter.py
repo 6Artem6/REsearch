@@ -146,6 +146,14 @@ class AsyncRateLimiter:
                 self._record(now, wall, est)
                 return True
             sleep_for = wait
+        from knowledge_engine.ui.run_log import trace
+
+        snap = self.snapshot(model=model)
+        trace(
+            f"BLOG_SPATIAL gemma slot wait ▶ | model={model or 'gemma'} "
+            f"{sleep_for:.1f}s (max_wait={max_wait:.0f}s) "
+            f"rpm {snap.rpm_used}/{snap.max_rpm} tpm {snap.tpm_used}/{snap.max_tpm}"
+        )
         await asyncio.sleep(min(sleep_for, max_wait if max_wait > 0 else sleep_for))
         async with self._lock:
             now = time.monotonic()

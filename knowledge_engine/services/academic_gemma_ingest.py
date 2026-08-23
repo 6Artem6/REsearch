@@ -154,7 +154,7 @@ async def ingest_academic_body_gemma(
         url=url,
         registry=None,
     )
-    store.save_summary(summary)
+    store.save_summary(summary, skip_rag_ingest=True)
     # Align MAP bodies + window_summary by window_index (skip empty bodies).
     map_texts: list[str] = []
     window_summaries: list[str | None] = []

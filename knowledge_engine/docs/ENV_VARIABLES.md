@@ -36,11 +36,12 @@
 | `KE_USE_REDIS` | true if `REDIS_URL` |
 | `KE_REDIS_LOGS` | = `KE_USE_REDIS` |
 | `KE_TASKS_CHANNEL` | `ke:tasks` |
+| `KE_PROCESS_ROLE` | set by entrypoint (`api` / `worker`); do not put in `.env` |
 | `KE_REDIS_LOG_MAX_LINES` | `20000` |
 | `KE_WORKER_POLL_SEC` | `0.4` |
 | `KE_WORKER_HEARTBEAT_SEC` | `10` |
 | `KE_WORKER_STALE_RUNNING_SEC` | `300` |
-| `KE_WORKER_INLINE_FALLBACK` | `false` |
+| `KE_WORKER_INLINE_FALLBACK` | `false` (ignored for ML: API never loads BGE/CE) |
 | `KE_WORKER_RELOAD_DEBOUNCE_SEC` | `1.0` |
 | `KE_WORKER_STOP_TIMEOUT_SEC` | `30` |
 | `KE_NODE_DIVE_TIMEOUT_SEC` | `900` |
@@ -97,6 +98,9 @@
 | `GEMMA_MAP_MAX_OUTPUT_TOKENS` | `4096` (fixed) |
 | `GEMMA_REDUCE_MAX_OUTPUT_TOKENS` | `4096` |
 | `REDUCE_STRATEGY` | `two_phase` (`legacy` = single FinalArticleSummary call) |
+| `CODE_PARSER_MODE` | `linear` (`ast` = tree-sitter Python/JS/TS, fallback linear) |
+| `CHUNK_ANCHOR_INJECTION` | `false` (opt-in `[A1]`…`[An]` on MAP/REDUCE context) |
+| `ANCHOR_REGEX_VALIDATE` | `false` (opt-in `[A99 (? unverified)]`; never touches `[S*]`/`[R*]`/`arr[0]`) |
 | `CLAIM_DEDUP_MODE` | `none` (`exact` = identical SPO; `entity_consensus` = bge-m3 + reranker + cloud) |
 | `CLAIM_MMR_LAMBDA` | `0.7` (does **not** change `LECTURE_RAG_MMR_LAMBDA`) |
 | `SPO_CLUSTER_THRESHOLD` | `0.85` (cosine gate before reranker) |
@@ -104,14 +108,11 @@
 | `MAX_CONSENSUS_BATCH_TOKENS` | `3072` (system + batch; Gemma tokenizer; packer SSOT) |
 | `MAX_CONSENSUS_NODES_PER_BATCH` | `10` (soft cap; token budget of 3072 can split smaller) |
 | `MAX_PRIMARY_ANCHORS` | `3` (anti-bloat `primary_anchors`; full set in `all_anchors`) |
-| `CODE_PARSER_MODE` | `linear` (`ast` = tree-sitter Python/JS/TS, fallback linear) |
-| `CHUNK_ANCHOR_INJECTION` | `false` (opt-in `[A1]`…`[An]` on MAP/REDUCE context) |
-| `ANCHOR_REGEX_VALIDATE` | `false` (opt-in `[A99 (? unverified)]`; never touches `[S*]`/`[R*]`/`arr[0]`) |
+| `MIGRATION_USE_CONTEXT_CACHING` | `false` (Gemini ingest REDUCE cache; fallback Gemma) |
+| `INGEST_CACHE_TTL_SECONDS` | `86400` (ingest cache only; tutor uses `GEMINI_CACHE_TTL_SECONDS`) |
 | `USE_GITHUB_TREES_API` | `false` (opt-in Git Trees API; repo root → corpus; `/blob/` → target + depth-1 AST deps ≤ 5; 401/403/404/timeout → zip then HTML) |
 | `GITHUB_TOKEN` | empty (optional; raises GitHub REST limit to 5000 req/h) |
 | `MAX_GITHUB_FILE_SIZE_BYTES` | `102400` (skip blobs larger than 100 KB before download) |
-| `MIGRATION_USE_CONTEXT_CACHING` | `false` (Gemini ingest REDUCE cache; fallback Gemma) |
-| `INGEST_CACHE_TTL_SECONDS` | `86400` (ingest cache only; tutor uses `GEMINI_CACHE_TTL_SECONDS`) |
 
 Параллельный MAP на клиенте всегда `asyncio.Semaphore(4)` (Gemma cloud и Ollama). Для Ollama задайте `OLLAMA_NUM_PARALLEL >= 4`.
 
@@ -192,6 +193,11 @@
 
 | Variable | Default |
 |----------|---------|
+| `EMBED_MODEL` | `BAAI/bge-m3` |
+| `EMBED_MODEL_REVISION` | `5617a9f…` | Pin Hub commit; load from `~/.cache/huggingface` |
+| `RAG_CROSS_ENCODER_MODEL` | `BAAI/bge-reranker-v2-m3` |
+| `RAG_CROSS_ENCODER_REVISION` | `953dc6f…` | Pin reranker snapshot |
+| `RAG_DEFAULT_MIN_RELEVANCE` | `0.55` |
 | `RAG_CE_AUTO_UNLOAD` | `false` |
 | `RAG_CE_AUTO_UNLOAD_IDLE_SEC` | `300` |
 | `LECTURE_RAG_*` | см. `config.py` |

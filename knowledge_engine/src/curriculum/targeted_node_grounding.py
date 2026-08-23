@@ -244,18 +244,9 @@ async def lazy_ground_deep_node_on_demand(
         registry_entries=registry,
     )
     if hits:
-        need_summarize = [
-            h
-            for h in hits
-            if sum(len((e or "").split()) for e in (h.key_extracts or [])) < 100
-            or not (h.key_extracts or [])
-        ]
-        if need_summarize:
-            summarized = await summarize_whitelist_blog_hits_async(
-                need_summarize, target_goal
-            )
-            by_url = {h.url.strip().rstrip("/").lower(): h for h in summarized}
-            hits = [by_url.get(h.url.strip().rstrip("/").lower(), h) for h in hits]
+        summarized = await summarize_whitelist_blog_hits_async(hits, target_goal)
+        by_url = {h.url.strip().rstrip("/").lower(): h for h in summarized}
+        hits = [by_url.get(h.url.strip().rstrip("/").lower(), h) for h in hits]
         hits = enrich_search_hits_with_extracts(hits, target_goal)
         persist_approved_curriculum_hits_to_lancedb(
             hits,

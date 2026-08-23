@@ -147,6 +147,7 @@ def clean_text_document(
                 text,
                 include_comments=False,
                 include_tables=True,
+                include_formatting=True,
                 output_format="markdown",
             )
             if extracted:

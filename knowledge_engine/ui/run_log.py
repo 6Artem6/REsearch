@@ -1,4 +1,4 @@
-"""Файловый trace прогона: фазы графа, Ollama, статусы (дополняет Rich Live)."""
+"""Файловый trace прогона: фазы графа, Gemma Cloud, статусы (дополняет Rich Live)."""
 
 from __future__ import annotations
 
@@ -213,11 +213,11 @@ def node_end(node_id: str, detail: str = "") -> None:
     on_node_end(node_id, elapsed, detail)
 
 
-def ollama_invoke(llm: Any, messages: list[Any], label: str) -> Any:
-    from knowledge_engine.ui.logger import on_ollama_end, on_ollama_start
+def gemma_cloud_invoke(llm: Any, messages: list[Any], label: str) -> Any:
+    from knowledge_engine.ui.logger import on_gemma_cloud_end, on_gemma_cloud_start
 
-    model = getattr(llm, "model", None) or getattr(llm, "model_name", "ollama")
-    on_ollama_start(str(model), label)
+    model = getattr(llm, "model", None) or getattr(llm, "model_name", "gemma-cloud")
+    on_gemma_cloud_start(str(model), label)
     t0 = time.monotonic()
     try:
         result = llm.invoke(messages)
@@ -237,14 +237,18 @@ def ollama_invoke(llm: Any, messages: list[Any], label: str) -> Any:
             else:
                 raw = str(result)
             trace_llm_messages(label, messages, raw, model=str(model))
-        on_ollama_end(str(model), label, time.monotonic() - t0, ok=True)
+        on_gemma_cloud_end(str(model), label, time.monotonic() - t0, ok=True)
         return result
     except Exception as exc:
         from knowledge_engine.ui.errors import format_error_with_cause
 
-        on_ollama_end(str(model), label, time.monotonic() - t0, ok=False)
-        trace(f"OLLAMA ✗ {model} | {label} — {format_error_with_cause(exc)}")
+        on_gemma_cloud_end(str(model), label, time.monotonic() - t0, ok=False)
+        trace(f"GEMMA_CLOUD ✗ {model} | {label} — {format_error_with_cause(exc)}")
         raise
+
+
+# Historical name — same Gemma Cloud path.
+ollama_invoke = gemma_cloud_invoke
 
 
 _ensure_trace_worker()

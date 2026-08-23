@@ -4,6 +4,8 @@
 
 **AI Skill Tree / Tutor (генерация графа, worker, Exa):** [TUTOR_PIPELINES.md](TUTOR_PIPELINES.md) · UI: [SKILL_TREE_UI.md](SKILL_TREE_UI.md).
 
+Полный каталог setup, diagnostics и maintenance CLI: [SCRIPTS.md](SCRIPTS.md).
+
 ## 1. Один раз (окружение)
 
 ```bash
@@ -69,7 +71,7 @@ SQLite в проекте — **domain trust** и **source archive** (`domains.sq
 export PYTHONPATH="$(pwd)"
 source .venv/bin/activate
 python -m knowledge_engine.api
-# или: uvicorn knowledge_engine.api:app --reload --port 8765
+# Entry point sets KE_PROCESS_ROLE=api (do not load BGE/CE in uvicorn import-string mode).
 ```
 
 **Legacy:** API в Docker + watch — `./knowledge_engine/scripts/dev-watch.sh` (Ollama всё равно на хосте через `host.docker.internal`).
@@ -150,8 +152,8 @@ Ollama в контейнере **не используется** — `OLLAMA_BAS
 |-----|---------|
 | `LECTURE_RAG_CANDIDATE_LIMIT` | 15 |
 | `LECTURE_RAG_MMR_TOP_K` | 5 |
-| `LECTURE_RAG_CE_MIN_SCORE` | 0.38 |
+| `LECTURE_RAG_CE_MIN_SCORE` | 0.50 |
 | `LECTURE_RAG_MMR_LAMBDA` | 0.62 |
 | `LECTURE_RAG_RERANK_TIMEOUT_SEC` | 60 |
 
-Требует Ollama (`EMBED_MODEL`) и опционально `sentence_transformers` + `RAG_CROSS_ENCODER_MODEL` для CE.
+Требует `sentence_transformers` (`EMBED_MODEL=BAAI/bge-m3` + `RAG_CROSS_ENCODER_MODEL` для CE). Ollama остаётся для локальных LLM, не для эмбеддингов.

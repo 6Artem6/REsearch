@@ -23,7 +23,6 @@ from knowledge_engine.services.academic_gemma_ingest import ingest_academic_body
 from knowledge_engine.services.gemini_search_grounding import (
     search_grounded_whitelist_blogs_detailed,
 )
-from knowledge_engine.services.summarizer import summarize_article
 from knowledge_engine.services.vector_store import VectorStore
 from knowledge_engine.services.web_extract import (
     is_anti_bot_fetch_result,
@@ -39,6 +38,9 @@ from knowledge_engine.src.curriculum.source_hit_curation import (
 )
 from knowledge_engine.src.curriculum.url_validate import validate_and_filter_urls
 from knowledge_engine.ui.run_log import trace
+
+DEEP_BLOG_EXTRACT_WORDS = 120
+PRE_MAP_MIN_BODY_WORDS = 80
 
 _BLOG_SOURCE_TIERS = frozenset(
     {
@@ -85,11 +87,15 @@ def _split_extracts(text: str, max_chunks: int = 6, chunk_len: int = 600) -> lis
 
 def _extracts_from_document_summary(ds) -> list[str]:
     """Полноценные выжимки из LanceDB (Consensus summarizer)."""
+    extra: list[str] = []
+    exec_sum = (getattr(ds, "executive_summary", None) or "").strip()
+    if exec_sum:
+        extra.append(exec_sum)
     return _deep_extract_blocks(
         list(ds.key_takeaways or []),
         list(ds.failure_modes or []),
-        [],
-        min_words=150,
+        extra,
+        min_words=80,
         max_words=300,
     )
 
@@ -656,12 +662,28 @@ def _ingest_exa_highlights_fallback(
 def _summary_to_extracts_and_title(
     hit: CurriculumSearchHit,
     summary,
+    *,
+    source_text: str = "",
 ) -> tuple[list[str], str]:
+    extra: list[str] = []
+    exec_sum = (getattr(summary, "executive_summary", None) or "").strip()
+    if exec_sum:
+        extra.append(exec_sum)
     extracts = _deep_extract_blocks(
         list(summary.key_takeaways or []),
         list(summary.failure_modes or []),
-        [],
+        extra,
+        min_words=80,
+        max_words=300,
     )
+    if _extract_word_count(extracts) < DEEP_BLOG_EXTRACT_WORDS and (source_text or "").strip():
+        extracts = _deep_extract_blocks(
+            list(summary.key_takeaways or []),
+            list(summary.failure_modes or []),
+            extra + [source_text.strip()],
+            min_words=80,
+            max_words=300,
+        )
     if not extracts:
         fallback = (hit.snippet or "").strip() or " ".join(summary.key_takeaways or [])[
             :2000
@@ -676,13 +698,14 @@ def _ingest_url_with_spatial_map_reduce(
     *,
     tier_label: str,
 ) -> tuple[list[str], str]:
-    """Gemma/Ollama BLOG_SPATIAL map-reduce; Ollama summarize_article только как fallback."""
+    """Gemma Cloud BLOG_SPATIAL map-reduce; structured Gemma fallback writes *_map_* windows."""
     from knowledge_engine.services.article_ingestion.blog_spatial_pipeline import (
         ingest_blog_with_spatial_mapping,
+        persist_gemma_cloud_map_fallback,
     )
 
     sid = (hit.source_id or "").strip()
-    _, summary, _saved = ingest_blog_with_spatial_mapping(
+    annotated, summary, _saved = ingest_blog_with_spatial_mapping(
         hit.title or hit.url,
         hit.url,
         sid,
@@ -692,16 +715,20 @@ def _ingest_url_with_spatial_map_reduce(
     if summary is None:
         trace(
             f"CURRICULUM spatial map-reduce ⊘ | {tier_label} | "
-            f"fallback summarizer | {hit.url[:55]}"
+            f"fallback Gemma Cloud MAP | {hit.url[:55]}"
         )
         text, _method = smart_fetch_page_text(hit.url)
-        if len((text or "").strip()) < 200:
+        body = (text or "").strip() or (html or "").strip()
+        if len(body) < 200:
             return [], hit.title
-        summary = summarize_article(
-            hit.title or hit.url, hit.url, _text_for_summarizer(text)
+        summary = persist_gemma_cloud_map_fallback(
+            hit.title or hit.url, hit.url, _text_for_summarizer(body)
         )
-        VectorStore().save_summary(summary)
-    return _summary_to_extracts_and_title(hit, summary)
+        if summary is None:
+            return [], hit.title
+        return _summary_to_extracts_and_title(hit, summary, source_text=body)
+    source = (annotated.annotated_markdown if annotated else "") or html
+    return _summary_to_extracts_and_title(hit, summary, source_text=source)
 
 
 def _ingest_blog_url(hit: CurriculumSearchHit) -> tuple[list[str], str]:
@@ -732,14 +759,22 @@ def _ingest_blog_url(hit: CurriculumSearchHit) -> tuple[list[str], str]:
         )
         if ing is None:
             return [], hit.title
-        return _summary_to_extracts_and_title(hit, ing.summary)
+        return _summary_to_extracts_and_title(hit, ing.summary, source_text=text)
 
     cached = _extracts_from_lancedb_url(hit.url)
-    if cached:
+    if cached and _lancedb_has_map_windows(hit.url):
         trace(f"CURRICULUM summarizer reuse LanceDB ⊘ blog | {hit.url[:60]}")
         _try_blog_spatial_diagrams(hit)
         return cached
     html, fetch_method = smart_fetch_page_html(hit.url)
+    from knowledge_engine.ingest.pipeline_audit import pipeline_audit
+
+    pipeline_audit(
+        "Fetch",
+        hit.url,
+        html or "",
+        extra=f"method={fetch_method} blog_ingest",
+    )
     if is_anti_bot_fetch_result("", fetch_method, html=html):
         add_blocked_domain(hit.url, "anti_bot_detected")
         trace(f"CURRICULUM ingest anti_bot → exa highlights | blog | {hit.url[:60]}")
@@ -749,6 +784,20 @@ def _ingest_blog_url(hit: CurriculumSearchHit) -> tuple[list[str], str]:
         _try_blog_spatial_diagrams(hit)
         return [], hit.title
     if len((html or "").strip()) < 200:
+        trace(
+            f"[Triage Pre-MAP] Skip MAP {hit.url} due to: fetched body < 200 chars"
+        )
+        _try_blog_spatial_diagrams(hit)
+        return [], hit.title
+    body_words = len((html or "").split())
+    if body_words < PRE_MAP_MIN_BODY_WORDS:
+        trace(
+            f"[Triage Pre-MAP] Skip MAP {hit.url} due to: "
+            f"body_words={body_words} < {PRE_MAP_MIN_BODY_WORDS}"
+        )
+        fb = _ingest_exa_highlights_fallback(hit)
+        if fb:
+            return fb
         _try_blog_spatial_diagrams(hit)
         return [], hit.title
 
@@ -855,13 +904,41 @@ def _ingest_academic_url(hit: CurriculumSearchHit) -> tuple[list[str], str]:
     if ing is None:
         _try_auto_article_diagrams(hit)
         return [], hit.title
-    extracts, title = _summary_to_extracts_and_title(hit, ing.summary)
+    extracts, title = _summary_to_extracts_and_title(
+        hit, ing.summary, source_text=text
+    )
     _try_auto_article_diagrams(hit)
     return extracts, title
 
 
 def _hit_extract_words(hit: CurriculumSearchHit) -> int:
     return sum(len((e or "").split()) for e in hit.key_extracts)
+
+
+def _extract_word_count(extracts: list[str] | None) -> int:
+    return sum(len((e or "").split()) for e in (extracts or []))
+
+
+def _log_post_map_drop(url: str, extracts: list[str], *, reason: str) -> None:
+    trace(f"[Triage Post-MAP] Dropped {url} due to: {reason}")
+
+
+def _log_post_map_extract_quality(url: str, extracts: list[str]) -> None:
+    from knowledge_engine.ingest.pipeline_audit import pipeline_audit
+
+    joined = "\n".join(extracts or [])
+    pipeline_audit("MAP", url, joined, extra="curriculum key_extracts after REDUCE")
+    words = _extract_word_count(extracts)
+    if extracts and words >= DEEP_BLOG_EXTRACT_WORDS:
+        return
+    if not extracts:
+        reason = "empty extracts after MAP/fallback"
+    else:
+        reason = (
+            f"extract_words={words} < {DEEP_BLOG_EXTRACT_WORDS} "
+            "(takeaways/executive_summary too short for deep_blogs)"
+        )
+    _log_post_map_drop(url, extracts, reason=reason)
 
 
 def hit_requires_mandatory_academic_ingest(hit: CurriculumSearchHit) -> bool:
@@ -1009,8 +1086,26 @@ def _extracts_from_lancedb_url(url: str) -> tuple[list[str], str] | None:
     return extracts[:8], title
 
 
+def _lancedb_has_map_windows(url: str) -> bool:
+    """True when rag_chunks already has MAP windows for this URL (not passport-only)."""
+    u = (url or "").strip()
+    if not u.startswith("http"):
+        return False
+    try:
+        from knowledge_engine.db.rag_chunks_schema import COL_CHUNK_ID
+
+        store = VectorStore()
+        doc_id = store.doc_id_for_url(u)
+        return any(
+            "_map_" in str(row.get(COL_CHUNK_ID) or "")
+            for row in store.fetch_rag_chunks_by_doc_id(doc_id)
+        )
+    except Exception:
+        return False
+
+
 _INGEST_URL_SEM = asyncio.Semaphore(max(1, KE_INGEST_URL_CONCURRENCY))
-_SUMMARIZER_MAX_INPUT_CHARS = 2500
+_SUMMARIZER_MAX_INPUT_CHARS = 500_000
 
 
 def _text_for_summarizer(text: str) -> str:
@@ -1090,7 +1185,9 @@ async def _ingest_academic_hit_async(
                     )
                     if ing is None:
                         return None
-                    extracts, title = _summary_to_extracts_and_title(hit, ing.summary)
+                    extracts, title = _summary_to_extracts_and_title(
+                        hit, ing.summary, source_text=body
+                    )
                     _try_auto_article_diagrams(hit)
             else:
                 html, fetch_method = smart_fetch_page_html(hit.url)
@@ -1134,7 +1231,7 @@ async def _ingest_academic_hit_async(
                         if ing is None:
                             return None
                         extracts, title = _summary_to_extracts_and_title(
-                            hit, ing.summary
+                            hit, ing.summary, source_text=text
                         )
                         _try_auto_article_diagrams(hit)
             if not extracts:
@@ -1185,6 +1282,7 @@ async def _ingest_blog_hit_async(hit: CurriculumSearchHit) -> CurriculumSearchHi
     async with _INGEST_URL_SEM:
         try:
             extracts, title = await asyncio.to_thread(_ingest_blog_url, hit)
+            _log_post_map_extract_quality(hit.url, extracts)
             if not extracts:
                 return hit
             return hit.model_copy(update={"title": title, "key_extracts": extracts})
@@ -1236,13 +1334,12 @@ async def summarize_whitelist_blog_hits_async(
                 )
             )
             continue
-        if _hit_extract_words(h) >= 120:
+        if _hit_extract_words(h) >= DEEP_BLOG_EXTRACT_WORDS:
             out.append(h)
             continue
         academic_tasks.append(asyncio.create_task(_ingest_academic_hit_async(h)))
 
     blog_tasks: list[asyncio.Task] = []
-    spatial_hits: list[CurriculumSearchHit] = []
     diagram_ingest_hits: list[CurriculumSearchHit] = list(academic_hits)
     for h in blog_hits:
         if is_academic_pdf_url(h.url):
@@ -1251,14 +1348,6 @@ async def summarize_whitelist_blog_hits_async(
                     _ingest_academic_hit_async(h, force_full_ingest=True)
                 )
             )
-            continue
-        if h.skip_ollama_summary and h.key_extracts:
-            out.append(h)
-            spatial_hits.append(h)
-            continue
-        if h.key_extracts and _hit_extract_words(h) >= 120:
-            out.append(h)
-            spatial_hits.append(h)
             continue
         blog_tasks.append(asyncio.create_task(_ingest_blog_hit_async(h)))
 
@@ -1276,8 +1365,6 @@ async def summarize_whitelist_blog_hits_async(
         _collect_academic(),
         _collect_blog(),
     )
-    if spatial_hits:
-        diagram_ingest_hits.extend(spatial_hits)
     if diagram_ingest_hits:
         seen_url: set[str] = set()
         deduped: list[CurriculumSearchHit] = []
@@ -1301,12 +1388,12 @@ async def summarize_whitelist_blog_hits_async(
     blog_deep = sum(
         1
         for h in out
-        if h.source_tier in _BLOG_SOURCE_TIERS and _hit_extract_words(h) >= 120
+        if h.source_tier in _BLOG_SOURCE_TIERS and _hit_extract_words(h) >= DEEP_BLOG_EXTRACT_WORDS
     )
     academic_deep = sum(
         1
         for h in out
-        if h.source_tier in _ACADEMIC_SOURCE_TIERS and _hit_extract_words(h) >= 120
+        if h.source_tier in _ACADEMIC_SOURCE_TIERS and _hit_extract_words(h) >= DEEP_BLOG_EXTRACT_WORDS
     )
     trace(
         f"CURRICULUM summarizer ✓ | deep_blogs={blog_deep} deep_academic={academic_deep}"
@@ -1360,7 +1447,7 @@ def _summarize_whitelist_blog_hits_sequential(
     out: list[CurriculumSearchHit] = list(other_hits)
 
     for h in academic_hits:
-        if _hit_extract_words(h) >= 120:
+        if _hit_extract_words(h) >= DEEP_BLOG_EXTRACT_WORDS:
             out.append(h)
             continue
         try:
@@ -1372,14 +1459,9 @@ def _summarize_whitelist_blog_hits_sequential(
             trace(f"CURRICULUM academic summarizer skip | {h.url[:50]} | {exc}")
 
     for h in blog_hits:
-        if h.skip_ollama_summary and h.key_extracts:
-            out.append(h)
-            continue
-        if h.key_extracts and _hit_extract_words(h) >= 120:
-            out.append(h)
-            continue
         try:
             extracts, title = _ingest_blog_url(h)
+            _log_post_map_extract_quality(h.url, extracts)
             if not extracts:
                 out.append(h)
                 continue
@@ -1390,12 +1472,12 @@ def _summarize_whitelist_blog_hits_sequential(
     blog_deep = sum(
         1
         for h in out
-        if h.source_tier in _BLOG_SOURCE_TIERS and _hit_extract_words(h) >= 120
+        if h.source_tier in _BLOG_SOURCE_TIERS and _hit_extract_words(h) >= DEEP_BLOG_EXTRACT_WORDS
     )
     academic_deep = sum(
         1
         for h in out
-        if h.source_tier in _ACADEMIC_SOURCE_TIERS and _hit_extract_words(h) >= 120
+        if h.source_tier in _ACADEMIC_SOURCE_TIERS and _hit_extract_words(h) >= DEEP_BLOG_EXTRACT_WORDS
     )
     trace(
         f"CURRICULUM summarizer ✓ | deep_blogs={blog_deep} deep_academic={academic_deep}"

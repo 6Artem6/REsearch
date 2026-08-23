@@ -75,6 +75,10 @@ def test_map_reduce_prompts_require_scope_tags():
     assert "knowledge_atoms" in _MAP_SYSTEM
     assert "DO NOT output <thought>" in _MAP_SYSTEM
     assert "knowledge_atoms" in _REDUCE_SYSTEM
+    assert "mirror of knowledge_atoms" not in _REDUCE_SYSTEM
+    assert "3–7 compressed synthesis" in _REDUCE_SYSTEM
+    assert "full knowledge_atoms catalog" in _CRITICAL_REDUCE_RULES
+    assert "must stay consistent with key_takeaways" not in _CRITICAL_REDUCE_RULES
     assert "[SCOPE: PRINCIPLE|MECHANIC|INSTANCE]" in _CRITICAL_REDUCE_RULES
     assert "Do NOT drop any unique fact" in _REDUCE_DEDUP_SYSTEM
     assert "source_chunk_ids" in _REDUCE_DEDUP_SYSTEM
@@ -174,10 +178,12 @@ def test_paragraph_inspection_result_validates_atoms():
     assert result.atoms[1].scope is ScopeType.INSTANCE
 
 
-def test_normalize_final_mirrors_atoms_into_tagged_takeaways():
+def test_normalize_final_preserves_synthesis_takeaways():
     final = FinalArticleSummaryResponse(
-        executive_summary="Обзор",
-        key_takeaways=["сырой без тега достаточно длинный тезис для теста"],
+        executive_summary="Обзор архитектуры изоляции агентов.",
+        key_takeaways=[
+            "[SCOPE: PRINCIPLE] Изоляция обязательна на границе процесса"
+        ],
         knowledge_atoms=[
             KnowledgeAtom(
                 scope=ScopeType.MECHANIC,
@@ -190,9 +196,41 @@ def test_normalize_final_mirrors_atoms_into_tagged_takeaways():
         ],
     )
     out = normalize_final_knowledge(final)
-    assert all(t.startswith("[SCOPE:") for t in out.key_takeaways)
-    assert any("MECHANIC" in t for t in out.key_takeaways)
-    assert any("INSTANCE" in t for t in out.key_takeaways)
+    assert out.key_takeaways == [
+        "[SCOPE: PRINCIPLE] Изоляция обязательна на границе процесса"
+    ]
+    assert out.executive_summary == "Обзор архитектуры изоляции агентов."
+    assert len(out.knowledge_atoms) == 2
+    assert out.knowledge_atoms[0].scope is ScopeType.MECHANIC
+    assert out.knowledge_atoms[1].scope is ScopeType.INSTANCE
+
+
+def test_document_summary_from_final_copies_executive_summary():
+    from knowledge_engine.services.article_ingestion.blog_spatial_pipeline import (
+        _document_summary_from_final,
+    )
+    from knowledge_engine.services.vector_store import _summary_document
+
+    final = FinalArticleSummaryResponse(
+        executive_summary="Сжатый паспорт статьи про изоляцию.",
+        key_takeaways=["[SCOPE: PRINCIPLE] Изоляция на границе процесса"],
+        knowledge_atoms=[
+            KnowledgeAtom(
+                scope=ScopeType.PRINCIPLE,
+                statement="Изоляция агента обязательна и это отдельный атом",
+            )
+        ],
+    )
+    ds = _document_summary_from_final(
+        final, title="Isolation", url="https://example.com/a"
+    )
+    assert ds.executive_summary == "Сжатый паспорт статьи про изоляцию."
+    assert ds.key_takeaways == [
+        "[SCOPE: PRINCIPLE] Изоляция на границе процесса"
+    ]
+    assert "отдельный атом" not in " ".join(ds.key_takeaways)
+    fts = _summary_document(ds)
+    assert fts.index("Сжатый паспорт") < fts.index("[SCOPE: PRINCIPLE]")
 
 
 def test_normalize_map_extracts_inline_scope_tags():
@@ -229,13 +267,55 @@ def test_format_document_summary_uses_triangulation_blocks():
     ds = DocumentSummary(
         title="AI Agents isolation",
         url="https://example.com/agents",
+        executive_summary="Изоляция агента — базис безопасного tool-call контура.",
         key_takeaways=[
             "[SCOPE: PRINCIPLE] Изоляция и межсетевой перехват — базис безопасности агентов",
             "[SCOPE: INSTANCE] AJV даёт 8.3 мс на валидации схемы",
         ],
     )
     text = _format_document_summary(ds, 1)
+    exec_pos = text.index("Изоляция агента — базис")
+    take_pos = text.index("FUNDAMENTAL PRINCIPLES")
+    assert exec_pos < take_pos
     assert "FUNDAMENTAL PRINCIPLES" in text
     assert "PRACTICAL CASES" in text
     assert "8.3" in text
     assert "Выжимка:" not in text
+
+
+def test_map_window_accepts_bare_string_required_diagrams():
+    mapped = MapWindowResponse.model_validate(
+        {
+            "window_role": "Конфигурация инициализации и JIT-оптимизатор",
+            "window_summary": "PyConfig then JIT fitness.",
+            "knowledge_atoms": [
+                {
+                    "scope": "INSTANCE",
+                    "statement": "AVG_SLOTS_PER_INSTRUCTION is 6.",
+                    "context_quote": "#define AVG_SLOTS_PER_INSTRUCTION 6",
+                }
+            ],
+            "required_diagrams": [
+                "ConfigInitializationFlow",
+                "JitFitnessDecayModel",
+            ],
+        }
+    )
+    assert len(mapped.knowledge_atoms) == 1
+    assert [d.figure_id for d in mapped.required_diagrams] == [
+        "ConfigInitializationFlow",
+        "JitFitnessDecayModel",
+    ]
+    assert all(d.referenced_paragraphs == [] for d in mapped.required_diagrams)
+
+
+def test_map_code_prompt_forbids_bare_string_diagrams():
+    from knowledge_engine.services.article_ingestion.blog_spatial_summarizer import (
+        _MAP_SYSTEM_CODE,
+    )
+
+    assert "required_diagrams — []" in _MAP_SYSTEM
+    assert "required_diagrams — []" in _MAP_SYSTEM_CODE
+    assert "never a bare string" in _MAP_SYSTEM
+    assert "never a bare string" in _MAP_SYSTEM_CODE
+    assert "Do not select figures for VLM" in _MAP_SYSTEM_CODE

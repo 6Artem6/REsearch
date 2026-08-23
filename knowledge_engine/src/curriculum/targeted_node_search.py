@@ -1010,6 +1010,7 @@ async def search_sources_for_deep_node_async(
     )
     from knowledge_engine.src.curriculum.source_material_pipeline import (
         ingest_mandatory_academic_hits_async,
+        summarize_whitelist_blog_hits_async,
     )
 
     valid = await ingest_mandatory_academic_hits_async(
@@ -1017,6 +1018,7 @@ async def search_sources_for_deep_node_async(
         label=f"post_replenish:{node.node_id}",
         defer_missing=on_demand,
     )
+    valid = await summarize_whitelist_blog_hits_async(valid, goal)
     trace(
         f"CURRICULUM targeted search ✓ | node={node.node_id} "
         f"stream_hits={len(merged)} valid_after_replenish={len(valid)}"

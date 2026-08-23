@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from typing import Type, TypeVar
 
@@ -56,6 +57,17 @@ def run_gemini_lite_text(
     label: str,
     stream_callback: Callable[[str], None] | None = None,
 ) -> str:
+    """Deprecated: do not use for new product features.
+
+    Prefer ``run_gemini_lite_structured`` with an explicit Pydantic
+    ``response_schema``.
+    """
+    warnings.warn(
+        "run_gemini_lite_text is deprecated; use run_gemini_lite_structured "
+        "with a Pydantic response_schema",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if not is_gemini_available():
         raise GeminiUnavailableError("Gemini недоступен для v0.7 analytics")
     models = gemini_lite_model_chain(GEMINI_LITE_MODEL)
@@ -99,7 +111,17 @@ def run_gemini_flash_text(
     global_anchor: str,
     label: str,
 ) -> str:
-    """Текстовый ответ Flash (REPL / follow-up) с retry и model chain."""
+    """Deprecated: do not use for new product features.
+
+    Prefer ``run_gemini_flash_structured`` with an explicit Pydantic
+    ``response_schema``.
+    """
+    warnings.warn(
+        "run_gemini_flash_text is deprecated; use run_gemini_flash_structured "
+        "with a Pydantic response_schema",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if not is_gemini_available():
         raise GeminiUnavailableError("Gemini недоступен для v0.7 analytics")
     return run_gemini_text_with_chain(

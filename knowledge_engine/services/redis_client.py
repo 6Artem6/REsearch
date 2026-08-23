@@ -17,7 +17,7 @@ def redis_enabled() -> bool:
 def _redis_client_kwargs(*, for_pubsub: bool = False) -> dict[str, Any]:
     """
     Command clients keep TCP alive (idle Redis/Docker often drops quiet sockets).
-    Pub/sub must not run redis-py health PINGs on the subscribed connection.
+    Explicit health checks are used instead of redis-py's connection health PING.
     """
     return {
         "decode_responses": True,
@@ -25,8 +25,9 @@ def _redis_client_kwargs(*, for_pubsub: bool = False) -> dict[str, Any]:
         "socket_timeout": cfg.REDIS_SOCKET_TIMEOUT_SEC,
         "retry_on_timeout": True,
         "socket_keepalive": True,
-        # Avoid health_check on pub/sub: PING on a SUBSCRIBEd connection breaks it.
-        "health_check_interval": 0 if for_pubsub else 30,
+        # redis-py 5.3.1 can recurse connect → health PING → connect forever
+        # while recovering a stale socket. Pub/sub PINGs are invalid as well.
+        "health_check_interval": 0,
     }
 
 
@@ -38,11 +39,12 @@ def get_redis() -> Any:
     if _command_client is None:
         import redis
 
-        _command_client = redis.Redis.from_url(
+        client = redis.Redis.from_url(
             cfg.REDIS_URL,
             **_redis_client_kwargs(for_pubsub=False),
         )
-        _command_client.ping()
+        client.ping()
+        _command_client = client
     return _command_client
 
 
@@ -54,11 +56,12 @@ def get_redis_pubsub_client() -> Any:
     if _pubsub_client is None:
         import redis
 
-        _pubsub_client = redis.Redis.from_url(
+        client = redis.Redis.from_url(
             cfg.REDIS_URL,
             **_redis_client_kwargs(for_pubsub=True),
         )
-        _pubsub_client.ping()
+        client.ping()
+        _pubsub_client = client
     return _pubsub_client
 
 
@@ -91,4 +94,5 @@ def redis_ping() -> bool:
         get_redis().ping()
         return True
     except Exception:
+        reset_redis_command_client()
         return False

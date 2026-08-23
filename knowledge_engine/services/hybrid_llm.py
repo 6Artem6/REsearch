@@ -1,4 +1,4 @@
-"""Гибрид: Gemini API (тяжёлые задачи) + локальный Ollama (Re-Act / fallback)."""
+"""Гибрид: Gemini API (тяжёлые задачи) + Gemma Cloud (Re-Act / fallback)."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def run_structured_hybrid(
     local_num_predict: int | None = None,
 ) -> T:
     """
-    Stateless structured JSON: Gemini при доступности, иначе / при ошибке — Ollama.
+    Stateless structured JSON: Gemini when available, else / on error — Gemma Cloud.
     rpm_pause_sec — пауза перед облачным вызовом (лимит RPM).
     """
     model = local_model or MAIN_MODEL
@@ -110,7 +110,7 @@ def run_react_evaluation(
     response_schema: type[T],
     label: str,
 ) -> T:
-    """Re-Act evaluator: только локальная быстрая модель."""
+    """Re-Act evaluator: Gemma Cloud (structured)."""
     return run_local_structured(
         REACT_EVAL_MODEL,
         response_schema,

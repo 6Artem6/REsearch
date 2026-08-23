@@ -88,7 +88,17 @@
 | Что | Модуль |
 |-----|--------|
 | CE + dedup фактов | `src/rag_gateway/gateway.py` |
+| Процесс | только **worker** (`WorkJobKind.RAG_GATEWAY` / `NODE_DEEP_DIVE`); API — очередь |
 | Документация | [RAG_GATEWAY_MODULE_3.md](RAG_GATEWAY_MODULE_3.md) |
+
+## Local ML weights (BGE-M3 / Cross-Encoder)
+
+| Что | Модуль |
+|-----|--------|
+| Role guard | `services/ml_runtime.py` (`KE_PROCESS_ROLE=api\|worker`) |
+| Bi-encoder load | `services/search/bge_m3_embed.py` |
+| CE load | `src/rag_gateway/cross_encoder.py` |
+| SSE worker→API | `services/job_stream.py` |
 
 ---
 

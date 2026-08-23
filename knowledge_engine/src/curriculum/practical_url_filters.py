@@ -38,9 +38,13 @@ def practical_url_reject_reason(url: str) -> str | None:
     if not u.startswith("http"):
         return "not_http"
     low = u.lower()
-    for marker in _PRACTICAL_API_DOC_PATH_MARKERS:
-        if marker in low:
-            return f"practical_api_doc_path:{marker}"
+    from knowledge_engine.services.search.exa_domains import is_official_docs_host
+
+    official = is_official_docs_host(u)
+    if not official:
+        for marker in _PRACTICAL_API_DOC_PATH_MARKERS:
+            if marker in low:
+                return f"practical_api_doc_path:{marker}"
     try:
         host = (urlparse(u).netloc or "").lower()
     except Exception:

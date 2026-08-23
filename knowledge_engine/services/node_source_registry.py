@@ -157,3 +157,26 @@ def build_session_source_registry(
 
 def registry_for_prompt(registry: list[dict[str, Any]]) -> str:
     return format_registry_for_prompt(registry)
+
+
+def registry_for_curriculum_node(
+    curriculum_id: str, node_id: str
+) -> list[dict[str, Any]]:
+    """Mapped [Sx] registry for a node from the saved curriculum graph."""
+    cid = (curriculum_id or "").strip()
+    nid = (node_id or "").strip()
+    from knowledge_engine.services.skill_tree_store import get_curriculum_graph
+
+    graph = get_curriculum_graph(cid) or {}
+    mapped: list[str] = []
+    for n in graph.get("nodes") or []:
+        if not isinstance(n, dict):
+            continue
+        if str(n.get("node_id") or n.get("id") or "").strip() == nid:
+            mapped = [
+                str(x).strip()
+                for x in (n.get("mapped_source_ids") or [])
+                if str(x).strip()
+            ]
+            break
+    return build_session_source_registry(cid, mapped)

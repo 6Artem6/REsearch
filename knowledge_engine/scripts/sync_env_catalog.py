@@ -42,6 +42,7 @@ SECRET_KEYS = frozenset(
         "SEMANTIC_SCHOLAR_API_KEY",
         "GEMMA_API_KEY",
         "DATABASE_URL",
+        "GITHUB_TOKEN",
     }
 )
 
@@ -227,6 +228,9 @@ SECTIONS: list[tuple[str, list[str]]] = [
             "EXA_EXCLUDE_TEXT",
             "EXA_PRACTICAL_HIGHLIGHT_QUERY",
             "EXCLUDED_SOURCES_BLACKLIST",
+            "DOMAIN_REGISTRY_EMBED_MODEL",
+            "DOMAIN_REGISTRY_COSINE_MIN",
+            "DOMAIN_REGISTRY_SEARCH_LIMIT",
             "CURRICULUM_TARGETED_NODE_GROUNDING_ENABLED",
             "CURRICULUM_SEARCH_FIRST_ENABLED",
             "CURRICULUM_SEARCH_TARGET_HITS",
@@ -272,6 +276,8 @@ SECTIONS: list[tuple[str, list[str]]] = [
             "CURRICULUM_PRACTICAL_SEARXNG_ENGINES",
             "CURRICULUM_PRACTICAL_SEARXNG_CATEGORIES",
             "CURRICULUM_ACADEMIC_SEARXNG_LIMIT",
+            "CURRICULUM_ACADEMIC_SEARXNG_ENGINES",
+            "CURRICULUM_ACADEMIC_SEARXNG_CATEGORIES",
             "CURRICULUM_LITE_BATCH_EVAL_FALLBACK_N",
             "CURRICULUM_LITE_SITE_SUGGEST_ENABLED",
             "CURRICULUM_PRACTICAL_SNIPPET_MIN_CHARS",
@@ -318,7 +324,10 @@ SECTIONS: list[tuple[str, list[str]]] = [
     (
         "RAG / lecture / personal",
         [
+            "EMBED_MODEL",
+            "EMBED_MODEL_REVISION",
             "RAG_CROSS_ENCODER_MODEL",
+            "RAG_CROSS_ENCODER_REVISION",
             "RAG_CE_TORCH_DTYPE",
             "RAG_CE_AUTO_UNLOAD",
             "RAG_CE_AUTO_UNLOAD_IDLE_SEC",
@@ -359,6 +368,7 @@ SECTIONS: list[tuple[str, list[str]]] = [
             "NODE_DIVE_LECTURE_SEARCH_TIMEOUT_SEC",
             "LECTURE_MAX_OUTPUT_TOKENS",
             "GEMINI_TUTOR_MAX_OUTPUT_TOKENS",
+            "GEMINI_DEEP_ANALYSIS_MAX_OUTPUT_TOKENS",
             "GEMINI_INTRO_MAX_OUTPUT_TOKENS",
             "GEMINI_LITE_MAX_OUTPUT_TOKENS",
             "LECTURE_GENERATION_TEMPERATURE",
@@ -481,7 +491,7 @@ MANUAL_DEFAULTS: dict[str, str] = {
     "MAX_URLS": "5",
     "GRAPH_RECURSION_LIMIT": "0",
     "OLLAMA_NUM_PARALLEL": "1",
-    "LECTURE_RAG_CE_MIN_SCORE": "0.48",
+    "LECTURE_RAG_CE_MIN_SCORE": "0.50",
     "CURRICULUM_GEMINI_WEB_HARVEST_ENABLED": "true",
     "CONSENSUS_INPUT_SELECTOR": (
         "textarea[data-testid='new-thread-input'],textarea[data-testid='search-input'],"

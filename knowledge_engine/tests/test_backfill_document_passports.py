@@ -57,6 +57,14 @@ def test_passport_is_filled() -> None:
             ],
         )
     )
+    assert VectorStore.passport_is_filled(
+        DocumentSummary(
+            title="t",
+            url="https://x.test",
+            executive_summary="Reduce synthesis passport prose about isolation.",
+            key_takeaways=[],
+        )
+    )
 
 
 def test_curriculum_scope_helpers(monkeypatch) -> None:

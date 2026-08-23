@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
     def _startup_log() -> None:
         import knowledge_engine.config as cfg
         from knowledge_engine.services.job_store import _JOB_STORE_PATH, job_store
+        from knowledge_engine.services.ml_runtime import get_process_role
 
         n = len(job_store.list_recent(limit=10_000))
         print(
@@ -51,6 +52,12 @@ def create_app() -> FastAPI:
             f"| job_store={_JOB_STORE_PATH} "
             f"| consensus_profile={cfg.BROWSER_PROFILE_PATH}",
             flush=True,
+        )
+        from knowledge_engine.services.ml_runtime import get_process_role
+
+        trace(
+            f"API ▶ startup | process_role={get_process_role() or 'unset'} "
+            "(ML weights load only in worker)"
         )
 
     @app.on_event("shutdown")

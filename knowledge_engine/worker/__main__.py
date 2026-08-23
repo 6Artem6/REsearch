@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import knowledge_engine.config as cfg
 from knowledge_engine.services.gemini_quota_store import clear_stale_quota_blocks
+from knowledge_engine.services.ml_runtime import mark_worker_process
 from knowledge_engine.services.redis_client import (
     get_redis_pubsub_client,
     redis_enabled,
@@ -92,6 +93,7 @@ def _safe_redis_command(label: str, fn, default=None):
     errors = (
         redis.exceptions.TimeoutError,
         redis.exceptions.ConnectionError,
+        RecursionError,
         OSError,
     )
     try:
@@ -175,6 +177,7 @@ def _run_redis_pubsub_loop() -> None:
 
 
 def main() -> None:
+    mark_worker_process()
     cleared = clear_stale_quota_blocks()
     if cleared:
         trace(f"WORKER ▶ quota store cleared {cleared} stale block(s)")
@@ -188,6 +191,31 @@ def main() -> None:
     n = recover_stale_running_work_jobs()
     if n:
         trace(f"WORKER ▶ recovered {n} stale running work job(s)")
+    try:
+        from knowledge_engine.src.node_deep_dive.vector_intent_router import (
+            warm_vector_intent_router,
+        )
+
+        stats = warm_vector_intent_router()
+        trace(
+            f"WORKER ▶ vector intent warm | embedded={stats.get('embedded')} "
+            f"loaded={stats.get('loaded_from_db')} error={stats.get('error')}"
+        )
+    except Exception as exc:
+        trace(f"WORKER ▶ vector intent warm skip | {exc}")
+    try:
+        from knowledge_engine.src.node_deep_dive.edge_case_lexicon import (
+            warm_edge_case_lexicon,
+        )
+
+        edge_stats = warm_edge_case_lexicon()
+        trace(
+            f"WORKER ▶ edge-case lexicon warm | "
+            f"embedded={edge_stats.get('embedded')} "
+            f"loaded={edge_stats.get('loaded_from_db')} error={edge_stats.get('error')}"
+        )
+    except Exception as exc:
+        trace(f"WORKER ▶ edge-case lexicon warm skip | {exc}")
     if redis_enabled():
         n_pending = _safe_redis_command(
             "startup republish pending",
