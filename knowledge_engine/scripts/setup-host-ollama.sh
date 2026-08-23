@@ -23,7 +23,6 @@ echo "==> Pull моделей (имена как в config.py / LOCAL_*_MODEL)"
 # Алиасы qwen2.5:* при необходимости — подтяните вручную; в проекте — coder-теги.
 ollama pull qwen2.5-coder:1.5b
 ollama pull qwen2.5-coder:7b
-ollama pull nomic-embed-text
 
 echo ""
 echo "Готово. OLLAMA_BASE_URL=http://localhost:11434"

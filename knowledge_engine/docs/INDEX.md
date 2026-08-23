@@ -1,6 +1,6 @@
 # Каталог документации Knowledge Engine
 
-Индекс `knowledge_engine/docs/` + аудит **код ↔ docs** (2026-08-14).  
+Индекс `knowledge_engine/docs/` + аудит **код ↔ docs** (2026-08-18).
 Корневой обзор продукта: [README.md](../../README.md).
 
 **Когда обновлять этот файл:** новый подсистемный модуль без своего `.md`, смена канонического DAG тьютора, новый LLM-контракт.
@@ -15,11 +15,12 @@
 | [NODE_DEEP_DIVE_MODULE_2.md](NODE_DEEP_DIVE_MODULE_2.md) | Модуль 2: DAG, MemorySaver, single-writer | Актуальна для оркестрации |
 | [TUTOR_PROMPT_AND_UI_TEXT.md](TUTOR_PROMPT_AND_UI_TEXT.md) | Контракт тьютора, режимы, BLOCK 1–3 | Актуальна для dialogue/lecture |
 | [TUTOR_LANGGRAPH_MIGRATION.md](TUTOR_LANGGRAPH_MIGRATION.md) | ADR миграции | **Устарела как «Phase 0/1»** — граф уже полный |
-| [LLM_CONTRACTS.md](LLM_CONTRACTS.md) | Реестр Pydantic Gemini | Частично: нет `EvaluatorCritiqueContract`, `ArxivQueryParamsContract` |
+| [LLM_CONTRACTS.md](LLM_CONTRACTS.md) | Реестр Pydantic Gemini + регламент prompt/contract | Частично: нет `EvaluatorCritiqueContract`, `ArxivQueryParamsContract` |
 | [EXA_SEARCH.md](EXA_SEARCH.md) | Exa: plan, rank, domains, `EXA_*` | Актуальна |
 | [ACADEMIC_AND_CONSENSUS.md](ACADEMIC_AND_CONSENSUS.md) | Papers: query sanitize, SS/arXiv, Consensus harvest | Актуальна |
 | [SOURCE_POOL.md](SOURCE_POOL.md) | Провайдеры discovery | Актуальна |
 | [ENV_VARIABLES.md](ENV_VARIABLES.md) | Env-каталог | Краткий; детали Exa → EXA_SEARCH |
+| [SCRIPTS.md](SCRIPTS.md) | Все 52 setup / diagnostic / maintenance / legacy CLI из `scripts/` | Актуальна; ключи сверены с кодом |
 | [CURRICULUM_MODULE_1.md](CURRICULUM_MODULE_1.md) | Модуль 1 curriculum | Актуальна |
 | [RAG_GATEWAY_MODULE_3.md](RAG_GATEWAY_MODULE_3.md) | Directional RAG | Актуальна |
 | [LECTURE_RAG_CONTEXT.md](LECTURE_RAG_CONTEXT.md) | Dense: LanceDB → CE → MMR | Актуальна |
@@ -67,6 +68,7 @@ Host-слой тьютора (чипы, overlay, векторы) **не** опи
 | Задача | Документ |
 |--------|----------|
 | Поднять dev | [DEV_RUNBOOK.md](DEV_RUNBOOK.md) |
+| Найти CLI / maintenance-скрипт | [SCRIPTS.md](SCRIPTS.md) |
 | Понять продукт Skill Tree | [TUTOR_PIPELINES.md](TUTOR_PIPELINES.md) |
 | Curriculum DAG | [CURRICULUM_MODULE_1.md](CURRICULUM_MODULE_1.md) |
 | Чат тьютора (граф) | [NODE_DEEP_DIVE_MODULE_2.md](NODE_DEEP_DIVE_MODULE_2.md) |

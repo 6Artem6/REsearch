@@ -20,6 +20,7 @@ WATCH_DIRS: tuple[Path, ...] = tuple(
         KE / "graph",
         KE / "services",
         KE / "nodes",
+        KE / "schemas",
         KE / "ui",
         KE / "src",
         KE / "worker",

@@ -73,6 +73,7 @@ docker-compose.override.yml
 # Local DB & Temp dumps
 lancedb_data/
 knowledge_engine/tmp/
+knowledge_engine/scripts/output/
 logs/session_traces/
 
 # Offline tokenizer vocab (~26 MB; see tokenizers_cache/README.md)
