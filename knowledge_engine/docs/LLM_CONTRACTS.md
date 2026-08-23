@@ -120,6 +120,19 @@ Academic Architect (не Consensus.app): `LiteAcademicQueryContract` + `ArxivQue
 
 ---
 
+## Ingest gate (Flash Lite, before Gemma Map-Reduce)
+
+Файл: [`paper_structure_schema.py`](../src/parsers/paper_structure_schema.py). Двухпроходный inbound gate: [`paper_structure_analyzer.py`](../src/parsers/paper_structure_analyzer.py).
+
+| Контракт | Назначение | Labels |
+|----------|------------|--------|
+| `PaperStructureAnalysis` | Проход 1: `priority` CORE/CONTEXT/DROP, `topic_relevance` 0–10 | `ingest_gate / paper_structure` |
+| `PaperCredibilityAnalysis` / `ParagraphCredibility` | Проход 2: `semantic_level`, `technical_correctness`, `information_density` | `ingest_gate / paper_credibility` |
+
+Хост считает `P_i` из трёх осей (`CONTRADICTION` → 0) и `Q_article` как взвешенную сумму по `topic_relevance`. Блоги с `Q < 0.65` отклоняются целиком (`Failed parametric credibility score`); `CONTRADICTION` вырезается даже если порог пройден.
+
+---
+
 ## Streaming ↔ контракты
 
 Реализация: `services/gemini_json_stream.py` → `ChatSessionManager.send_chat_message_stream` / `gemini_stateless.run_gemini_structured_with_chain`.

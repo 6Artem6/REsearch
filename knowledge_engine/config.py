@@ -520,6 +520,11 @@ KE_INGEST_URL_CONCURRENCY: int = max(
 ACADEMIC_INGEST_MAX_BODY_CHARS: int = int(
     os.getenv("ACADEMIC_INGEST_MAX_BODY_CHARS", "80000")
 )
+# Two-pass inbound gate (Flash Lite structure + parametric credibility) before Gemma MAP.
+INGEST_GATE_ENABLED: bool = _env_bool("INGEST_GATE_ENABLED", True)
+INGEST_GATE_BLOG_QUALITY_MIN: float = float(
+    os.getenv("INGEST_GATE_BLOG_QUALITY_MIN", "0.65")
+)
 GEMMA_BUDGET_MAX_TPM: int = int(os.getenv("GEMMA_BUDGET_MAX_TPM", "14400"))
 GEMMA_BUDGET_MAX_RPM: int = int(os.getenv("GEMMA_BUDGET_MAX_RPM", "27"))
 GEMMA_BUDGET_OVERFLOW_WAIT_SEC: float = float(

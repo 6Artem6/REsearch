@@ -262,39 +262,61 @@ class SpatialDiagramIngestJob:
     article_title: str = ""
     toc_nodes: list[TOCNode] = field(default_factory=list)
     trust_score: float = 1.0
+    gate_rejected: bool = False
+    gate_reject_reason: str | None = None
+    gate_quality: float | None = None
 
 
-def _maybe_filter_annotated_academic_pdf(
+def _apply_inbound_ingest_gate(
     annotated: AnnotatedArticle,
     page_url: str,
     title: str,
     content_raw: bytes | str | None,
-) -> AnnotatedArticle:
+) -> tuple[AnnotatedArticle, object | None]:
+    from knowledge_engine.config import INGEST_GATE_ENABLED
     from knowledge_engine.src.parsers.paper_structure_analyzer import (
         get_cached_prepared_paper_body,
         is_academic_pdf_url,
         prepare_paper_body_for_gemma,
+        run_inbound_ingest_gate,
         try_fetch_pdf_bytes_for_url,
     )
 
-    if not is_academic_pdf_url(page_url):
-        return annotated
-    cached_filtered = get_cached_prepared_paper_body(page_url)
-    if cached_filtered and len(cached_filtered.strip()) >= 80:
-        trace(f"PAPER_STRUCTURE spatial cache ✓ | skip analyze | {page_url[:55]}")
-        annotated.annotated_markdown = cached_filtered
-        return annotated
     pdf_b: bytes | None = None
     if isinstance(content_raw, bytes) and content_raw[:5] == b"%PDF-":
         pdf_b = content_raw
-    else:
+    elif is_academic_pdf_url(page_url):
         pdf_b = try_fetch_pdf_bytes_for_url(page_url)
+
     plain = (
         "\n\n".join(annotated.paragraph_map.values())
         if annotated.paragraph_map
         else (annotated.annotated_markdown or "")
     )
-    topic = (title or page_url).strip() or "scientific paper"
+    topic = (title or page_url).strip() or "technical article"
+
+    if INGEST_GATE_ENABLED:
+        result = run_inbound_ingest_gate(
+            plain,
+            topic,
+            pdf_bytes=pdf_b,
+            label=page_url[:48],
+            page_url=page_url,
+        )
+        if not result.accepted:
+            annotated.annotated_markdown = ""
+            return annotated, result
+        if result.body and len(result.body.strip()) >= 80:
+            annotated.annotated_markdown = result.body
+        return annotated, result
+
+    if not is_academic_pdf_url(page_url):
+        return annotated, None
+    cached_filtered = get_cached_prepared_paper_body(page_url)
+    if cached_filtered and len(cached_filtered.strip()) >= 80:
+        trace(f"PAPER_STRUCTURE spatial cache ✓ | skip analyze | {page_url[:55]}")
+        annotated.annotated_markdown = cached_filtered
+        return annotated, None
     filtered = prepare_paper_body_for_gemma(
         plain,
         topic,
@@ -305,7 +327,7 @@ def _maybe_filter_annotated_academic_pdf(
     if filtered and len(filtered.strip()) >= 80:
         trace(f"PAPER_STRUCTURE spatial ✓ | annotated body filtered | {page_url[:55]}")
         annotated.annotated_markdown = filtered
-    return annotated
+    return annotated, None
 
 
 def prepare_spatial_diagram_job(
@@ -429,18 +451,32 @@ def prepare_spatial_diagram_job(
         source_id=sid,
         page_url=page_url,
     )
-    annotated = _maybe_filter_annotated_academic_pdf(
+    annotated, gate_result = _apply_inbound_ingest_gate(
         annotated,
         page_url,
         article_title,
         content_raw,
     )
+    gate_rejected = False
+    gate_reason: str | None = None
+    gate_quality: float | None = None
+    if gate_result is not None and not getattr(gate_result, "accepted", True):
+        gate_rejected = True
+        gate_reason = getattr(gate_result, "reject_reason", None)
+        gate_quality = getattr(gate_result, "quality", None)
+        trace(
+            f"INGEST_GATE spatial ⊘ | {gate_reason} | Q={gate_quality} | "
+            f"{page_url[:55]}"
+        )
     return SpatialDiagramIngestJob(
         source_id=sid,
         page_url=fetch_url,
         annotated=annotated,
         article_title=article_title,
         toc_nodes=toc_nodes,
+        gate_rejected=gate_rejected,
+        gate_reject_reason=gate_reason,
+        gate_quality=gate_quality,
     )
 
 
@@ -499,7 +535,15 @@ async def run_spatial_diagram_ingest_jobs_async(
 
     registries: dict[str, object] = {}
     map_jobs: list[MapReduceArticleJob] = []
+    saved: dict[str, int] = {}
     for j in jobs:
+        if j.gate_rejected:
+            trace(
+                f"BLOG_SPATIAL map-reduce ⊘ | {j.gate_reject_reason} | "
+                f"Q={j.gate_quality} | {j.page_url[:55]}"
+            )
+            saved[j.page_url] = 0
+            continue
         aid = canonical_article_id(j.source_id, j.page_url)
         reg = persist_figure_registry(aid, j.annotated)
         run_vlm_on_registry(
@@ -512,6 +556,9 @@ async def run_spatial_diagram_ingest_jobs_async(
         registries[j.page_url] = reg
         map_jobs.append(_map_job_from_ingest(j, figure_registry=reg))
 
+    if not map_jobs:
+        return saved
+
     # Prefer high-trust articles earlier in the shared MAP pool ordering
     map_jobs.sort(key=lambda m: float(m.trust_score or 1.0), reverse=True)
 
@@ -520,7 +567,6 @@ async def run_spatial_diagram_ingest_jobs_async(
         f"chunks={sum(len(m.windows) for m in map_jobs)} | VLM→MAP order"
     )
     finals = await map_reduce_jobs_pooled_async(map_jobs)
-    saved: dict[str, int] = {}
     by_url = {j.page_url: j for j in jobs}
     store = VectorStore()
     for url, outcome in finals.items():
@@ -652,12 +698,18 @@ def ingest_blog_with_spatial_mapping(
     if not annotated.annotated_markdown:
         return annotated, None, 0
 
-    annotated = _maybe_filter_annotated_academic_pdf(
+    annotated, gate_result = _apply_inbound_ingest_gate(
         annotated,
         page_url,
         title or page_url,
         raw,
     )
+    if gate_result is not None and not getattr(gate_result, "accepted", True):
+        trace(
+            f"BLOG_SPATIAL pipeline ⊘ | {getattr(gate_result, 'reject_reason', '')} "
+            f"| Q={getattr(gate_result, 'quality', None)} | {page_url[:60]}"
+        )
+        return annotated, None, 0
 
     fig_ids = _figure_ids(annotated)
     aid = canonical_article_id(source_id, page_url)
