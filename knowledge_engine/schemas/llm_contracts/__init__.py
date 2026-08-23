@@ -1,5 +1,13 @@
 """Pydantic v2 контракты для Gemini structured JSON (единый реестр)."""
 
+from knowledge_engine.schemas.drill_schemas import (
+    ActiveDrillStepResponse,
+    AnswerAccuracyGrade,
+    DrillStepResponse,
+    LayerCompletionTutorOutput,
+    StandardDrillTutorOutput,
+    TechnicalConceptAudit,
+)
 from knowledge_engine.schemas.llm_contracts.analytics_v07 import (
     ChunkExtractionContract,
     ConceptGraphContract,
@@ -21,6 +29,15 @@ from knowledge_engine.schemas.llm_contracts.curriculum import (
     ModelFirstPayloadContract,
 )
 from knowledge_engine.schemas.llm_contracts.domain import DomainProfilerBatchContract
+from knowledge_engine.schemas.llm_contracts.evaluator_critique import (
+    EvaluatorCritiqueContract,
+)
+from knowledge_engine.schemas.llm_contracts.exa_search import (
+    BatchDomainAuthorityResponse,
+    DomainAuthorityItem,
+    DomainAuthorityVerdict,
+    ExaSearchContextExpansion,
+)
 from knowledge_engine.schemas.llm_contracts.lite_curriculum import (
     ArxivQueryParamsContract,
     LiteAcademicQueryContract,
@@ -35,6 +52,8 @@ from knowledge_engine.schemas.llm_contracts.source_eval import (
 )
 from knowledge_engine.schemas.llm_contracts.tutor import (
     STRUCTURED_LECTURE_FIELD_RULES,
+    DeepDiveDeepAnalysisContract,
+    DeepDiveExplainContract,
     DeepDiveTutorContract,
     DialogueFactManifestContract,
     IntroAssessmentContract,
@@ -51,15 +70,30 @@ from knowledge_engine.schemas.llm_contracts.v04_gemini import (
     ResearchEvaluationContract,
 )
 from knowledge_engine.schemas.llm_contracts.vlm import VlmBatchResponseContract
+from knowledge_engine.ingest.tiered_code_pruner import TieredClassificationResult
+from knowledge_engine.schemas.research_schemas import (
+    ClarificationConstraintsResponse,
+    HarvestedLinksResponse,
+    ReplFollowUpResponse,
+)
+from knowledge_engine.schemas.unraveling_schemas import UnravelingNodeResponse
+from knowledge_engine.src.parsers.paper_structure_schema import (
+    PaperCredibilityAnalysis,
+    PaperStructureAnalysis,
+)
 
 # Реестр label → контракт (для trace / документации)
 GEMINI_STRUCTURED_CONTRACTS: dict[str, type] = {
     "node_deep_dive / intro_assessment": IntroAssessmentContract,
     "node_deep_dive / dense_material": StructuredLectureResponse,
     "node_deep_dive/tutor": DeepDiveTutorContract,
+    "node_deep_dive / tutor_explain": DeepDiveExplainContract,
+    "node_deep_dive / drill_active": ActiveDrillStepResponse,
+    "node_deep_dive / drill_complete": LayerCompletionTutorOutput,
     "node_deep_dive / step_analysis": StepAnalysisContract,
     "node_deep_dive / fact_manifest": DialogueFactManifestContract,
     "node_deep_dive / sub_concept_gap": SubConceptGapEvalContract,
+    "node_deep_dive / deep_analysis_eval": EvaluatorCritiqueContract,
     "node_deep_dive / node_explain": NodeExplainContract,
     "node_selection_explain": NodeExplainContract,
     "contextual_explainer": NodeExplainContract,
@@ -74,6 +108,10 @@ GEMINI_STRUCTURED_CONTRACTS: dict[str, type] = {
     "v04 / l2_extract": L2EvidenceExtractionContract,
     "v04 / research_eval": ResearchEvaluationContract,
     "v04 / matrix": AnalysisReportContract,
+    "v04 / unraveling": UnravelingNodeResponse,
+    "curriculum / harvest_links": HarvestedLinksResponse,
+    "intent_and_clarify / constraints": ClarificationConstraintsResponse,
+    "v07 / repl_follow_up": ReplFollowUpResponse,
     "vlm / batch": VlmBatchResponseContract,
     "v07 / chunk_extract": ChunkExtractionContract,
     "v07 / concept_graph": ConceptGraphContract,
@@ -90,19 +128,38 @@ GEMINI_STRUCTURED_CONTRACTS: dict[str, type] = {
     "curriculum / lite_source_batch": LiteSourceBatchContract,
     "curriculum / lite_site_suggestions": LiteSiteSuggestionsContract,
     "domain_profiler_batch": DomainProfilerBatchContract,
+    "exa / search_context_expand": ExaSearchContextExpansion,
+    "exa / domain_authority": DomainAuthorityVerdict,
+    "exa / domain_authority_batch": BatchDomainAuthorityResponse,
+    "ingest_gate / paper_structure": PaperStructureAnalysis,
+    "ingest_gate / paper_credibility": PaperCredibilityAnalysis,
+    "ingest / tiered_code_prune": TieredClassificationResult,
 }
 
 __all__ = [
     "GEMINI_STRUCTURED_CONTRACTS",
     "STRUCTURED_LECTURE_FIELD_RULES",
+    "ActiveDrillStepResponse",
+    "AnswerAccuracyGrade",
+    "LayerCompletionTutorOutput",
+    "StandardDrillTutorOutput",
+    "DrillStepResponse",
+    "TechnicalConceptAudit",
+    "UnravelingNodeResponse",
+    "HarvestedLinksResponse",
+    "ClarificationConstraintsResponse",
+    "ReplFollowUpResponse",
     "StructuredLectureResponse",
     "structured_lecture_to_dense",
     "IntroAssessmentContract",
     "DeepDiveTutorContract",
+    "DeepDiveExplainContract",
+    "DeepDiveDeepAnalysisContract",
     "StepAnalysisContract",
     "DialogueFactManifestContract",
     "NodeExplainContract",
     "SubConceptGapEvalContract",
+    "EvaluatorCritiqueContract",
     "CurriculumReasonerContract",
     "FlashCurriculumPayloadContract",
     "ModelFirstPayloadContract",
@@ -121,6 +178,9 @@ __all__ = [
     "TradeoffMatrixContract",
     "AcademicQueryContract",
     "ValidationResultContract",
+    "PaperCredibilityAnalysis",
+    "PaperStructureAnalysis",
+    "TieredClassificationResult",
     "ProfileApplicabilityContract",
     "RefinementSanitizeContract",
     "SourceEvaluatorLiteContract",
@@ -130,4 +190,8 @@ __all__ = [
     "LiteBatchEvalContract",
     "LiteSiteSuggestionsContract",
     "DomainProfilerBatchContract",
+    "ExaSearchContextExpansion",
+    "DomainAuthorityVerdict",
+    "DomainAuthorityItem",
+    "BatchDomainAuthorityResponse",
 ]

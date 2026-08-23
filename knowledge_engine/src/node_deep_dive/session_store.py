@@ -296,13 +296,20 @@ def save_session(
             recover_tutor_display_from_chat_sessions,
         )
 
+        from knowledge_engine.src.node_deep_dive.tutor_field_limits import (
+            SCHEMA_FOLLOW_UP_QUESTION_MAX,
+            SCHEMA_TUTOR_MESSAGE_MAX,
+        )
+
         full = (memory.last_tutor_display_message or "").strip()
         if not full:
             full, fu = recover_tutor_display_from_chat_sessions(memory)
             if full:
-                memory.last_tutor_display_message = full[:12_000]
+                memory.last_tutor_display_message = full[:SCHEMA_TUTOR_MESSAGE_MAX]
                 if fu:
-                    memory.last_tutor_follow_up_question = fu[:2000]
+                    memory.last_tutor_follow_up_question = fu[
+                        :SCHEMA_FOLLOW_UP_QUESTION_MAX
+                    ]
         if full:
             norm_history = patch_last_tutor_history_content(norm_history, full)
     _repair_tutor_history_markdown(norm_history)

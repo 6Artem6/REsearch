@@ -5,6 +5,12 @@ Runtime-реестр label → тип: `GEMINI_STRUCTURED_CONTRACTS` в `__init_
 
 **Инвариант:** system prompt + `response_schema` задают контракт; UI/API не парсят произвольный prose как источник истины (кроме display-склейки).
 
+**Регламент (агент + код):** [`.cursor/rules/llm-prompt-and-contract-standards.mdc`](../../.cursor/rules/llm-prompt-and-contract-standards.mdc)
+
+- Намерение: `[mode:]` / `[action:]` / точный chip **или** векторный каталог — не substring / regex по сырому тексту.
+- Валидация ответа: Pydantic (Enum, discriminated union, типы полей) — не `FORBIDDEN_PHRASES` / `in lowered`.
+- System prompt и `Field(description=…)` — английский; user-facing output — русский; под description — русский комментарий.
+
 ---
 
 ## Node Deep-Dive / Tutor
@@ -20,8 +26,12 @@ Runtime-реестр label → тип: `GEMINI_STRUCTURED_CONTRACTS` в `__init_
 | `SubConceptGapEvalContract` | Gap eval одного pending id | `updates[]` (0–1 × `SubConceptStatusUpdate`) | `node_deep_dive / sub_concept_gap` |
 | `DialogueFactManifestContract` | Extract при ротации окна | `agreed_concepts`, `open_bottlenecks`, … | `node_deep_dive / fact_manifest` |
 | `NodeExplainContract` | Пояснение выделения | `explanation`, `cited_source_ids` (`R*` / `S*`) | `node_selection_explain`, `node_deep_dive / node_explain`, `contextual_explainer` |
+| `ActiveDrillStepResponse` (`StandardDrillTutorOutput`) | Layer Drill checkpoint | `audit`, `status_header`, `theory_body`, **`next_question`** | `node_deep_dive / drill_active` |
+| `LayerCompletionTutorOutput` | Слой только что закрыт (`is_layer_just_completed`) | `praise`, `layer_summary`, `transition_framing` — **нет** `next_question` | `node_deep_dive / drill_complete` |
 
-Вложенные (не в реестре labels отдельно): `VerifiedSourceReference`, `ConceptUpdateContract`, `SubConceptStatusUpdate`.
+Вложенные (не в реестре labels отдельно): `VerifiedSourceReference`, `ConceptUpdateContract`, `SubConceptStatusUpdate` (`accuracy_grade`, `correct_claims`, `detected_errors_or_misconceptions`; Python закрывает слой только на `EXACT_AND_CORRECT` без ошибок).
+
+**Context-Bounded Evaluation:** допустимая глубина ответа = слой абстракции, явно запрошенный `last_tutor_question` (вопрос + ввод того же хода). `GAP_EVAL_SYSTEM` / overlay eval и Question Factory читают SSOT `context_bounded_eval.py` (универсальный Scope Ceiling, без доменного жаргона). Evaluator не ставит PARTIAL за незапрошенный более глубокий слой; опущение ≠ ошибка; фабрика обязана scope-lock каждый критерий в тексте вопроса.
 
 Helper: `structured_lecture_to_dense`, константа `STRUCTURED_LECTURE_FIELD_RULES`.
 
@@ -142,6 +152,7 @@ KEEP (`OFFICIAL_DOCS`, `VENDOR_BLOG`, `ACADEMIC_OR_PAPER`) пишется в Lan
 |----------|------------|--------|
 | `PaperStructureAnalysis` | Проход 1: `priority` CORE/CONTEXT/DROP, `topic_relevance` 0–10 | `ingest_gate / paper_structure` |
 | `PaperCredibilityAnalysis` / `ParagraphCredibility` | Проход 2: `semantic_level`, `technical_correctness`, `information_density` | `ingest_gate / paper_credibility` |
+| `TieredClassificationResult` | Сжатие исходников до MAP: `high_functions` / `medium_functions` / `low_functions` | `ingest / tiered_code_prune` |
 
 Хост считает `P_i` из трёх осей (`CONTRADICTION` → 0) и `Q_article` как взвешенную сумму по `topic_relevance`. Блоги с `Q < 0.65` отклоняются целиком (`Failed parametric credibility score`); `CONTRADICTION` вырезается даже если порог пройден.
 
@@ -169,6 +180,8 @@ KEEP (`OFFICIAL_DOCS`, `VENDOR_BLOG`, `ACADEMIC_OR_PAPER`) пишется в Lan
 | `NodeExplainContract` | `JsonFieldStreamFilter("explanation")` | дельты `explanation` |
 | `StructuredLectureResponse` | `JsonFieldStreamFilter("lecture_body")` | дельты `lecture_body` |
 | `IntroAssessmentContract` | `tutor_message` (via `structured_stream_text_field`) | дельты intro |
+| `ActiveDrillStepResponse` | `TutorDialogueFieldsStreamFilter` | header → audit → theory → **Вопрос:** |
+| `LayerCompletionTutorOutput` | `TutorDialogueFieldsStreamFilter` | praise → layer_summary → transition_framing |
 
 Резолв поля: `structured_stream_text_field(schema)` — для `DeepDiveTutorContract` возвращает `None` (специальный dialogue filter).
 

@@ -65,27 +65,27 @@ def test_recency_appears_once_in_dialogue():
 def test_dialogue_depth_and_evaluation_rules():
     text = build_dialogue_system()
     assert "DEPTH_AND_EVALUATION_RULES" in text
+    assert "CONTEXT-BOUNDED QUESTION FACTORY" in text
     assert "Senior Systems Architect" in text
     assert "follow_up_question" in text
-    assert "TOPIC COMPLETION RULE" in text
-    assert "ready_for_transition=true" in text
-    assert "MUST NOT be empty" in text
-    assert "Do NOT invent or name next curriculum nodes" in text or (
-        "Do NOT invent or name the next curriculum node" in text
-    )
-    assert (
-        "OPTIONAL LAYERS" in text
-        or "OPTIONAL_LAYER" in text
-        or "опциональный слой" in text
-    )
-    assert "sota" in text.lower()
-    assert "Хочу Gloss" in text
-    assert "DEEP DIVE & MECH EXTRACTION" in text
-    assert "DO NOT CLOSE THE NODE AUTOMATICALLY" in text
+    assert "TOPIC COMPLETION INSTRUCTIONS" in text
+    assert "Host Pathway Flag" in text
+    assert "base_complete" in text
+    assert "optional_fork" in text
+    assert "overlay_offer" in text
+    assert "EVALUATOR_CRITIQUE_JSON" in text
+    assert "Host-owned (Python)" in text
+    assert "USER CHOICE HANDLING" not in text
+    assert "Базовая теория закрыта/усвоена" in text  # only as FORBIDDEN
+    assert "DEEP DIVE & MECH CONTENT RULES" in text
+    assert "Host next_action" in text or "chip processing" in text.lower()
+    # Must not teach LLM to invent chip menus / compute flags.
+    assert 'quick_replies=[' not in text
+    assert "WHEN USER REQUESTS" not in text
 
 
 def test_lecture_chat_topic_completion_cta():
     text = build_lecture_chat_system()
     assert "TOPIC COMPLETION" in text
-    assert "do NOT invent next node" in text.lower() or "GRAPH LIMIT" in text
-    assert "sota" in text.lower() or "SotA" in text
+    assert "Host Pathway Flag" in text or "pathway" in text.lower()
+    assert "USER CHOICE HANDLING" not in text

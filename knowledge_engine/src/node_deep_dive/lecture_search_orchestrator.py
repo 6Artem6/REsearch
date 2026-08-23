@@ -128,7 +128,7 @@ def _exa_sources_sync(query: str, limit: int) -> list[VerifiedExternalSource]:
     if not client.is_configured():
         return []
     try:
-        resp = client.search(query, num_results=max(3, limit))
+        resp = client.search_expanded(query, num_results=max(3, limit))
     except (ExaNotConfiguredError, ValueError) as exc:
         trace(f"LECTURE_EXA skip | {exc}")
         return []

@@ -23,42 +23,23 @@ from knowledge_engine.src.node_deep_dive.user_mastery_profile import (
     rebuild_competency_profile_from_sessions,
 )
 
-_BEGIN_MARKERS = (
-    "начать",
-    "start",
-    "[begin]",
-    "приступим",
-    "давай",
-    "go",
-)
-
-_SKIP_MARKERS = (
-    "уже знаю",
-    "знаю тему",
-    "пропустить",
-    "пропусти ноду",
-    "не нужно",
-    "equivalence",
-    "passed",
-)
-
 _FAST_TRACK_RATIO = 0.7
 
 
 def is_begin_user_message(text: str) -> bool:
-    t = (text or "").strip().lower()
-    if not t:
-        return False
-    if t in _BEGIN_MARKERS or t.startswith("[begin]"):
-        return True
-    return any(m in t for m in ("начать", "приступ", "start lesson"))
+    from knowledge_engine.src.node_deep_dive.control_intent import (
+        is_short_begin_message,
+    )
+
+    return is_short_begin_message(text)
 
 
 def user_declines_node_equivalence(text: str) -> bool:
-    t = (text or "").strip().lower()
-    if not t:
-        return False
-    return any(m in t for m in _SKIP_MARKERS)
+    from knowledge_engine.src.node_deep_dive.control_intent import (
+        is_short_skip_node_message,
+    )
+
+    return is_short_skip_node_message(text)
 
 
 def _normalize_concept_key(text: str) -> str:

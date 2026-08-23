@@ -16,6 +16,10 @@ from knowledge_engine.src.node_deep_dive.tutor_dialogue import (
     coerce_deep_dive_llm_output,
     resolve_tutor_display_message,
 )
+from knowledge_engine.src.node_deep_dive.tutor_field_limits import (
+    SCHEMA_FOLLOW_UP_QUESTION_MAX,
+    SCHEMA_TUTOR_MESSAGE_MAX,
+)
 
 
 def persist_node(state: TutorGraphState) -> TutorGraphState:
@@ -49,10 +53,10 @@ def persist_node(state: TutorGraphState) -> TutorGraphState:
     history = repair_history_with_memory(history, memory)
     history = patch_last_tutor_history_content(history, tutor)
     if llm_out is not None and tutor:
-        memory.last_tutor_display_message = tutor[:12_000]
+        memory.last_tutor_display_message = tutor[:SCHEMA_TUTOR_MESSAGE_MAX]
         memory.last_tutor_follow_up_question = (
             llm_out.follow_up_question or ""
-        ).strip()[:2000]
+        ).strip()[:SCHEMA_FOLLOW_UP_QUESTION_MAX]
     return {
         **state,
         "memory": memory,

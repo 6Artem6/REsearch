@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 from knowledge_engine.config import (
+    GEMINI_DEEP_ANALYSIS_MAX_OUTPUT_TOKENS,
     GEMINI_INTRO_MAX_OUTPUT_TOKENS,
     GEMINI_PROBE_BEFORE_USE,
     GEMINI_RPM_PAUSE_SEC,
@@ -153,9 +154,6 @@ from knowledge_engine.src.node_deep_dive.tutor_prompt_builder import (
     build_intro_system,
     compose_system_prompt,
 )
-from knowledge_engine.src.node_deep_dive.tutor_reply_sanitize import (
-    sanitize_tutor_message_for_transition,
-)
 from knowledge_engine.src.node_deep_dive.tutor_source_citations import (
     build_tutor_source_registry,
     coerce_references_to_registry,
@@ -176,31 +174,17 @@ from knowledge_engine.src.rag_gateway.schemas import (
 from knowledge_engine.ui.run_log import trace
 from knowledge_engine.web.llm_text_repair import repair_llm_display_text
 
-_LECTURE_STUB_MARKERS = (
-    "материал в панели",
-    "материал перед вами",
-    "материал справа",
-    "смотрите справа",
-    "смотрите материал",
-    "в панели справа",
-)
-
 
 def _is_explicit_lecture_request(user_msg: str) -> bool:
-    t = (user_msg or "").lower()
-    return any(
-        k in t
-        for k in (
-            "дай лекцию",
-            "дай плотн",
-            "плотный материал",
-            "dense material",
-            "лекцию по",
-            "развернут",
-            "подробн",
-            "объясни подроб",
-        )
+    """Dense lecture ask — explicit tag or short stub; never long free-text."""
+    from knowledge_engine.src.node_deep_dive.control_intent import (
+        is_short_lecture_request,
     )
+    from knowledge_engine.src.node_deep_dive.lecture_scope import (
+        is_lecture_request_message,
+    )
+
+    return is_short_lecture_request(user_msg) or is_lecture_request_message(user_msg)
 
 
 def _lecture_request(
@@ -262,25 +246,20 @@ def _is_dialogue_feedback_mode(
 
 
 def _tutor_message_is_lecture_stub(text: str) -> bool:
-    t = (text or "").strip()
-    if len(t) < 280:
-        return True
-    low = t.lower()
-    return any(m in low for m in _LECTURE_STUB_MARKERS) and len(t) < 900
+    """Short wrap is a stub; quality is owned by StructuredLectureResponse, not phrases."""
+    return len((text or "").strip()) < 280
 
 
 def _compose_dense_chat_message(dense: DenseMaterialOutput) -> str:
     from knowledge_engine.services.lecture_body_format import (
-        append_checkpoint_to_lecture_body,
+        clip_lecture_keeping_checkpoint,
         strip_lecture_credit_scoreboard,
     )
 
     body = (dense.lecture_body or "").strip() or (dense.summary or "").strip()
     body = repair_llm_display_text(strip_lecture_credit_scoreboard(body))
     checkpoint = (dense.checkpoint_prompt or "").strip()
-    # Keep question in the same message body (streamed + persisted together).
-    body = append_checkpoint_to_lecture_body(body, checkpoint)
-    return body[:12_000]
+    return clip_lecture_keeping_checkpoint(body, checkpoint)
 
 
 def _ensure_lecture_in_tutor_message(
@@ -288,25 +267,20 @@ def _ensure_lecture_in_tutor_message(
     content_summary: str,
     lecture_body: str = "",
 ) -> str:
+    from knowledge_engine.services.lecture_body_format import (
+        clip_lecture_keeping_checkpoint,
+    )
+
     merged = (tutor or "").strip()
     fallback = (lecture_body or "").strip() or (content_summary or "").strip()
     if fallback and _tutor_message_is_lecture_stub(merged):
-        if (
-            merged
-            and len(merged) >= 80
-            and not any(m in merged.lower() for m in _LECTURE_STUB_MARKERS)
-        ):
-            return merged[:12_000]
         checkpoint_tail = ""
         if merged and "**Самопроверка:**" in merged:
             checkpoint_tail = merged.split("**Самопроверка:**", 1)[-1].strip()
         elif merged and len(merged) < 400:
             checkpoint_tail = merged
-        out = fallback
-        if checkpoint_tail and checkpoint_tail not in out:
-            out = f"{out}\n\n**Самопроверка:** {checkpoint_tail}"
-        return out[:12_000]
-    return (merged or fallback)[:12_000]
+        return clip_lecture_keeping_checkpoint(fallback, checkpoint_tail)
+    return clip_lecture_keeping_checkpoint(merged or fallback)
 
 
 def _merge_node_data_from_graph(
@@ -586,6 +560,7 @@ def _invoke_tutor(
     node_session_key: str = "",
     *,
     strip_chat_history: bool = False,
+    emit_stream_plaque: bool = True,
 ) -> DeepDiveLLMOutput:
     from knowledge_engine.src.node_deep_dive.subconcept_invariants import (
         format_subconcept_hard_anchor,
@@ -594,18 +569,62 @@ def _invoke_tutor(
     node_for_tutor = enrich_node_learning_materials_from_graph(node, curriculum_id)
     node_ctx = format_node_curriculum_context_for_tutor(node_for_tutor, curriculum_id)
     from knowledge_engine.src.node_deep_dive.prompt_factory import (
+        deep_analysis_hard_guard_block,
+        display_user_after_mode_prefix,
+        format_deep_analysis_novelty_block,
         is_factory_control_mode,
-        parse_tutor_mode_prefix,
+        requires_deep_analysis_guard,
         select_system_prompt_and_mode,
+    )
+    from knowledge_engine.src.node_deep_dive.star_task_fsm import (
+        get_star_task_status,
+        overlay_factory_mode_tag,
+        star_task_blocks_transition,
+    )
+    from knowledge_engine.schemas.llm_contracts.tutor import (
+        DeepDiveDeepAnalysisContract,
+        DeepDiveExplainContract,
+    )
+    from knowledge_engine.src.node_deep_dive.drill_orchestrator import (
+        drill_response_to_llm_output,
+        is_drill_structured_schema,
+        select_drill_response_schema,
+    )
+    from knowledge_engine.schemas.drill_schemas import (
+        align_structured_tutor_with_host,
+    )
+    from knowledge_engine.src.node_deep_dive.concept_map_state import (
+        compose_host_transparency_plaque,
+        stream_host_transparency_plaque,
     )
 
     raw_user_msg = user_msg
-    cleaned_user_msg, factory_mode = parse_tutor_mode_prefix(user_msg)
+    cleaned_user_msg, factory_mode = display_user_after_mode_prefix(user_msg)
     # Behavior/chip classify keep the prefix; LLM/RAG see the cleaned body.
     user_msg = cleaned_user_msg or user_msg
+    star_guard = requires_deep_analysis_guard(
+        factory_mode,
+        star_task_status=get_star_task_status(memory),
+    )
+    drill_schema = select_drill_response_schema(memory)
+    evaluator_skipped = bool(getattr(memory, "evaluator_skipped", False))
+    layer_just_completed = bool(getattr(memory, "is_layer_just_completed", False))
+    if layer_just_completed:
+        # Evaluator latch owns the contract — do not fall back to Explain/overlay.
+        star_guard = False
+    elif evaluator_skipped:
+        drill_schema = None
+        star_guard = False
+    elif drill_schema is not None:
+        # Layer Drill owns the JSON contract — overlay isolation must not leak.
+        star_guard = False
     dlg_focus = dialogue_focus_text(user_msg, memory)
     prompt_mode = resolve_interaction_prompt_mode(memory, intent, user_msg)
-    use_lite_layers = prompt_mode == InteractionPromptMode.DIALOGUE_FEEDBACK
+    # Deep Analysis needs full SOURCE REGISTRY snippets + node curriculum —
+    # not the dialogue-lite strip that drops mapped summaries.
+    use_lite_layers = (
+        prompt_mode == InteractionPromptMode.DIALOGUE_FEEDBACK and not star_guard
+    )
     behavior_block = build_tutor_behavior_state_block(
         intent,
         action,
@@ -618,13 +637,27 @@ def _invoke_tutor(
     )
     ensure_sub_concept_map(memory, node_for_tutor)
     nid = (memory.next_question_concept_id or "").strip()
-    focus_row = find_sub_concept(memory, nid) if nid else None
-    if focus_row is None or focus_row.status == "verified":
-        focus_sc = select_next_sub_concept(memory)
-        memory.next_question_concept_id = focus_sc.id if focus_sc is not None else ""
+    from knowledge_engine.src.node_deep_dive.star_task_fsm import (
+        current_layer_drill_concept_id,
+        layer_drill_is_active,
+    )
+
+    if layer_drill_is_active(memory):
+        drill_cid = current_layer_drill_concept_id(memory)
+        if drill_cid:
+            memory.next_question_concept_id = drill_cid
+    else:
+        focus_row = find_sub_concept(memory, nid) if nid else None
+        if focus_row is None or focus_row.status == "verified":
+            focus_sc = select_next_sub_concept(memory)
+            memory.next_question_concept_id = (
+                focus_sc.id if focus_sc is not None else ""
+            )
     concept_block = format_concept_map_for_tutor(
         memory,
         focus_id=memory.next_question_concept_id,
+        suppress_topic_completion=star_guard,
+        node_layer=str(getattr(node, "layer", "") or ""),
     )
     hard_anchor = format_subconcept_hard_anchor(memory)
     layer1 = build_layer1_explicit_cache_context(
@@ -638,18 +671,82 @@ def _invoke_tutor(
         is_lightweight=use_lite_layers,
     )
     atoms_block = ""
+    rag_exhausted = False
     try:
         from knowledge_engine.services.dialog_atoms_rag import (
-            retrieve_dialog_knowledge_atoms,
+            retrieve_dialog_knowledge_atoms_detailed,
+        )
+        from knowledge_engine.src.node_deep_dive.deep_analysis_coverage import (
+            deep_analysis_retrieval_knobs,
+            mutate_deep_analysis_query,
         )
 
-        atoms_block = retrieve_dialog_knowledge_atoms(
+        base_q = ""
+        knobs: dict = {
+            "lambda_mult": 1.0,
+            "query_noise": 0.0,
+            "stochastic_sample": False,
+            "pool_mult": 3,
+        }
+        if star_guard:
+            from knowledge_engine.services.dialog_atoms_rag import (
+                build_dialog_atoms_query,
+            )
+
+            base_q = build_dialog_atoms_query(
+                node_for_tutor, user_msg, focus_hint=dlg_focus
+            )
+            base_q = mutate_deep_analysis_query(base_q, memory)
+            knobs = deep_analysis_retrieval_knobs(memory)
+
+        atoms_result = retrieve_dialog_knowledge_atoms_detailed(
             user_msg,
             node_for_tutor,
             (curriculum_id or "").strip(),
+            force_allow_instance=star_guard,
+            cite_r_index=star_guard,
+            top_k=12 if star_guard else None,
+            exclude_keys=(
+                list(memory.deep_analysis_used_atom_keys or []) if star_guard else None
+            ),
+            exclude_chunk_ids=(
+                list(memory.deep_analysis_used_chunk_ids or []) if star_guard else None
+            ),
+            exclude_atom_ids=(
+                list(memory.deep_analysis_used_chunk_ids or []) if star_guard else None
+            ),
+            focus_hint=dlg_focus if star_guard else "",
+            query_override=base_q if star_guard else "",
+            lambda_mult=float(knobs["lambda_mult"]),
+            query_noise=float(knobs["query_noise"]),
+            stochastic_sample=bool(knobs["stochastic_sample"]),
+            pool_mult=int(knobs["pool_mult"]),
         )
+        atoms_block = atoms_result.block
+        rag_exhausted = bool(atoms_result.rag_exhausted)
+        if star_guard:
+            memory.last_deep_analysis_atom_keys = list(atoms_result.atom_keys or [])[
+                :24
+            ]
+            memory.last_deep_analysis_atom_ids = list(atoms_result.atom_ids or [])[:24]
+            memory.last_deep_analysis_chunk_ids = list(atoms_result.chunk_ids or [])[
+                :48
+            ]
     except Exception as exc:
         trace(f"DIALOG_ATOMS skip | {exc}")
+        if star_guard:
+            memory.last_deep_analysis_atom_keys = []
+            memory.last_deep_analysis_atom_ids = []
+            memory.last_deep_analysis_chunk_ids = []
+    if star_guard:
+        trace(
+            "PROMPT_FACTORY | deep_analysis/star_task context=full "
+            f"| lite={use_lite_layers} | atoms_len={len(atoms_block or '')} "
+            f"| star={get_star_task_status(memory)} | node_completed=false "
+            f"| rag_exhausted={rag_exhausted} "
+            f"| used_atoms={len(memory.deep_analysis_used_atom_keys or [])} "
+            f"| used_chunks={len(memory.deep_analysis_used_chunk_ids or [])}"
+        )
     layer2 = build_layer2_session_state_context(
         memory,
         node_for_tutor,
@@ -669,21 +766,113 @@ def _invoke_tutor(
     movable_body = behavior_block
     if concept_block and not use_lite_layers:
         movable_body = f"{behavior_block}\n\n{concept_block}"
+    # Always surface structured EvaluatorCritique when present (Phase 2),
+    # including dialogue-lite turns that omit the full concept_map block.
+    try:
+        from knowledge_engine.src.node_deep_dive.eval_result_adapter import (
+            format_evaluator_critique_for_tutor,
+            should_inject_evaluator_critique,
+        )
+
+        if should_inject_evaluator_critique(memory):
+            critique_block = format_evaluator_critique_for_tutor(
+                getattr(memory, "last_evaluator_critique", None)
+            )
+            if critique_block and "[EVALUATOR_CRITIQUE_JSON]" not in movable_body:
+                movable_body = f"{movable_body}\n\n{critique_block}"
+    except Exception:
+        pass
     if hard_anchor:
         movable_body = f"{hard_anchor}\n\n{movable_body}"
-    tutor_label = "node_deep_dive/tutor"
+    poles_block = ""
+    attraction_summary = ""
+    if star_guard:
+        # Host-authoritative flags — do not rely on the model for orchestration.
+        flags = deep_analysis_hard_guard_block()
+        try:
+            from knowledge_engine.src.node_deep_dive.deep_analysis_coverage import (
+                attraction_summary_from_rows,
+            )
+            from knowledge_engine.src.node_deep_dive.socratic_poles import (
+                build_socratic_poles_payload,
+            )
+
+            poles_payload = build_socratic_poles_payload(
+                memory,
+                str(getattr(node_for_tutor, "node_id", "") or ""),
+                curriculum_id=(curriculum_id or "").strip(),
+                node=node_for_tutor,
+                topic_query=dlg_focus
+                or str(getattr(node_for_tutor, "title", "") or ""),
+                include_cross_node=True,
+            )
+            poles_block = str(poles_payload.get("block") or "")
+            attraction_summary = attraction_summary_from_rows(
+                list(poles_payload.get("attraction") or [])
+            )
+        except Exception as exc:
+            trace(f"SOCRATIC_POLES build skip | {exc}")
+            poles_block = ""
+            attraction_summary = ""
+        registry_empty = not bool(
+            getattr(node_for_tutor, "mapped_source_ids", None) or []
+        )
+        atoms_empty = not bool((atoms_block or "").strip()) or rag_exhausted
+        # Dynamic layer at BOTTOM of movable (cache-friendly: static system
+        # stays invariant; poles + digests + coverage change every Asterisk-question turn).
+        novelty = format_deep_analysis_novelty_block(
+            memory,
+            rag_exhausted=rag_exhausted,
+            poles_block=poles_block,
+            attraction_summary=attraction_summary,
+            registry_empty=registry_empty,
+            atoms_empty=atoms_empty,
+        )
+        movable_body = f"{flags}\n\n{movable_body}\n\n{novelty}".strip()
+    tutor_label = (
+        "node_deep_dive/tutor_deep_analysis" if star_guard else "node_deep_dive/tutor"
+    )
+    if drill_schema is not None:
+        tutor_label = (
+            "node_deep_dive/drill_complete"
+            if getattr(drill_schema, "__name__", "") == "LayerCompletionTutorOutput"
+            else "node_deep_dive/drill_active"
+        )
     tutor_chat = chat_mgr.get(tutor_label)
     include_sliding_window = (
         False if strip_chat_history else (tutor_chat is None or tutor_chat.turns <= 0)
     )
     compose_ctx = PromptComposeContext(memory=memory)
     default_system = compose_system_prompt(prompt_mode, context=compose_ctx)
+    # Under star_guard always use the isolated overlay system so the
+    # default dialogue TOPIC COMPLETION rules never reach the model.
+    # Static poles rules live in that system; dynamic poles stay in movable.
+    overlay_tag = overlay_factory_mode_tag(memory, factory_mode)
+    system_msg = f"[mode:{overlay_tag}] _" if star_guard else raw_user_msg
     system, factory_mode, _ = select_system_prompt_and_mode(
-        raw_user_msg,
+        system_msg,
         default_system_prompt=default_system,
+        memory=memory,
     )
     if is_factory_control_mode(factory_mode):
         trace(f"PROMPT_FACTORY | mode={factory_mode} | isolated system prompt")
+    if star_guard and rag_exhausted:
+        trace("PROMPT_FACTORY | deep_analysis rag_exhausted=true (no unseen atoms)")
+    if star_guard and poles_block:
+        trace(
+            "PROMPT_FACTORY | deep_analysis socratic_poles injected | "
+            f"block_len={len(poles_block)}"
+        )
+    tutor_max_tokens = GEMINI_TUTOR_MAX_OUTPUT_TOKENS
+    if star_guard:
+        tutor_max_tokens = max(
+            int(GEMINI_TUTOR_MAX_OUTPUT_TOKENS),
+            int(GEMINI_DEEP_ANALYSIS_MAX_OUTPUT_TOKENS),
+        )
+        trace(
+            f"PROMPT_FACTORY | deep_analysis/star_task "
+            f"max_output_tokens={tutor_max_tokens} | node_completed=false"
+        )
     dynamic = build_dynamic_suffix(
         memory,
         user_msg,
@@ -700,30 +889,137 @@ def _invoke_tutor(
             user_message_len=len((user_msg or "").strip()),
         ),
     )
-    raw = run_gemini_structured_with_chain(
-        GEMINI_TUTOR_MODEL,
-        system,
-        movable_body,
-        anchor,
-        DeepDiveTutorContract,
-        label,
-        rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
-        chat_manager=chat_mgr,
-        chat_label=tutor_label,
-        handoff_summary="" if strip_chat_history else handoff,
-        delta_user_message=dynamic,
-        pinned_context=pinned,
-        stream_callback=stream_callback,
-        models=gemini_tutor_model_chain(),
-        http_timeout_sec=GEMINI_TUTOR_TIMEOUT_SEC,
-        max_output_tokens=GEMINI_TUTOR_MAX_OUTPUT_TOKENS,
-        prompt_trace=prompt_trace,
-        layer1_context=layer1,
-        layer2_context=layer2,
-        node_session_key=(node_session_key or "").strip()
-        or f"{curriculum_id}/{node_for_tutor.node_id}",
+    response_schema: type = (
+        DeepDiveDeepAnalysisContract if star_guard else DeepDiveTutorContract
     )
-    return DeepDiveLLMOutput.model_validate(raw.model_dump())
+    if evaluator_skipped:
+        response_schema = DeepDiveExplainContract
+    elif drill_schema is not None:
+        response_schema = drill_schema
+    last_err: Exception | None = None
+    raw = None
+    max_attempts = 2 if (star_guard or drill_schema is not None) else 1
+    plaque = ""
+    if not evaluator_skipped:
+        if emit_stream_plaque:
+            plaque = stream_host_transparency_plaque(stream_callback, memory)
+        else:
+            plaque = compose_host_transparency_plaque(memory)
+    for attempt in range(max_attempts):
+        attempt_dynamic = dynamic
+        if attempt > 0 and last_err is not None:
+            if star_guard:
+                attempt_dynamic = (
+                    f"{dynamic}\n\n"
+                    "### RETRY — previous JSON rejected (structural)\n"
+                    f"{type(last_err).__name__}: {last_err}\n"
+                    "Include a non-empty follow_up_question "
+                    "(one engineering design question from Sections 2–4)."
+                )
+                trace(
+                    f"PROMPT_FACTORY | deep_analysis contract retry "
+                    f"attempt={attempt + 1} | {type(last_err).__name__}"
+                )
+            elif drill_schema is not None:
+                schema_name = getattr(drill_schema, "__name__", "") or ""
+                if schema_name == "LayerCompletionTutorOutput":
+                    attempt_dynamic = (
+                        f"{dynamic}\n\n"
+                        "### RETRY — previous JSON rejected\n"
+                        f"{type(last_err).__name__}: {last_err}\n"
+                        "Fill praise, layer_summary, and transition_framing only. "
+                        "There is no next_question field."
+                    )
+                else:
+                    attempt_dynamic = (
+                        f"{dynamic}\n\n"
+                        "### RETRY — previous JSON rejected (theory_body too short)\n"
+                        f"{type(last_err).__name__}: {last_err}\n"
+                        "Expand theory_body to at least 150 Russian words of real "
+                        "technical content (structures, dispatch, code). "
+                        "Do not pad with filler phrases."
+                    )
+                trace(
+                    f"PROMPT_FACTORY | drill contract retry "
+                    f"attempt={attempt + 1} | {type(last_err).__name__}"
+                )
+        try:
+            raw = run_gemini_structured_with_chain(
+                GEMINI_TUTOR_MODEL,
+                system,
+                movable_body,
+                anchor,
+                response_schema,
+                label if attempt == 0 else f"{label} / contract_retry",
+                rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
+                chat_manager=chat_mgr,
+                chat_label=tutor_label,
+                handoff_summary="" if strip_chat_history else handoff,
+                delta_user_message=attempt_dynamic,
+                pinned_context=pinned,
+                stream_callback=stream_callback if attempt == 0 else None,
+                models=gemini_tutor_model_chain(),
+                http_timeout_sec=GEMINI_TUTOR_TIMEOUT_SEC,
+                max_output_tokens=tutor_max_tokens,
+                prompt_trace=prompt_trace,
+                layer1_context=layer1,
+                layer2_context=layer2,
+                node_session_key=(node_session_key or "").strip()
+                or f"{curriculum_id}/{node_for_tutor.node_id}",
+            )
+            break
+        except Exception as exc:
+            last_err = exc
+            msg = str(exc).lower()
+            retryable = (star_guard and "follow_up_question" in msg) or (
+                drill_schema is not None
+                and getattr(drill_schema, "__name__", "") == "ActiveDrillStepResponse"
+                and "theory_body" in msg
+            )
+            if not retryable or attempt >= max_attempts - 1:
+                raise
+    assert raw is not None
+    raw = align_structured_tutor_with_host(raw, memory)
+    if is_drill_structured_schema(response_schema):
+        cid = (memory.next_question_concept_id or "").strip()
+        out = drill_response_to_llm_output(raw, memory=memory, concept_id=cid)
+    else:
+        out = DeepDiveLLMOutput.model_validate(raw.model_dump())
+    if evaluator_skipped:
+        out = out.model_copy(update={"feedback_on_answer": ""})
+    elif plaque:
+        fb = (out.feedback_on_answer or "").strip()
+        merged = f"{plaque}\n\n{fb}" if fb else plaque
+        out = out.model_copy(update={"feedback_on_answer": merged[:4000]})
+    # Asterisk question: compact last model api_turn → thesis digest (prefix-cache hygiene).
+    if star_guard:
+        try:
+            from knowledge_engine.src.node_deep_dive.deep_analysis_coverage import (
+                compact_assistant_turn_for_api_history,
+            )
+
+            compact = compact_assistant_turn_for_api_history(
+                out.technical_explanation or "",
+                follow_up_question=out.follow_up_question or "",
+                references=list(out.references or []),
+            )
+            if compact and chat_mgr.replace_last_model_turn(tutor_label, compact):
+                trace(
+                    "PROMPT_FACTORY | deep_analysis api_turns compacted | "
+                    f"label={tutor_label} | digest_len={len(compact)}"
+                )
+        except Exception as exc:
+            trace(f"PROMPT_FACTORY deep_analysis compact skip | {exc}")
+    # Deterministic host override — model must not own orchestration flags.
+    if star_guard or star_task_blocks_transition(memory):
+        out = out.model_copy(
+            update={
+                "ready_for_transition": False,
+                "suggested_next_step": None,
+                "quick_replies": [],
+            }
+        )
+    return out
 
 
 def _merge_content(
@@ -1041,7 +1337,11 @@ async def _mark_passed_by_equivalence(
         "Можно перейти к следующим нодам на карте."
     )
     if memory is not None:
-        memory.intro_question_pending = False
+        from knowledge_engine.src.node_deep_dive.control_intent import (
+            clear_pending_control_slot,
+        )
+
+        clear_pending_control_slot(memory)
         merge_mastery_from_session_memory(
             req.curriculum_id,
             memory,
@@ -1110,9 +1410,16 @@ async def _deliver_lazy_intro(
             )
 
     set_dialogue_anchor(memory, node, tutor)
-    focus = select_next_sub_concept(memory)
-    set_pending_evaluation_for_tutor_turn(memory, focus.id if focus else "")
-    memory.intro_question_pending = True
+    if ratio >= 0.7 and labels:
+        from knowledge_engine.src.node_deep_dive.control_intent import (
+            mark_awaiting_mode_selection,
+        )
+
+        mark_awaiting_mode_selection(memory)
+    else:
+        focus = select_next_sub_concept(memory)
+        set_pending_evaluation_for_tutor_turn(memory, focus.id if focus else "")
+        memory.intro_question_pending = True
     memory.chat_sessions = chat_mgr.to_memory_blob()
     llm_out = deep_dive_llm_output_from_chat_text(
         tutor,
@@ -1197,20 +1504,7 @@ async def _finalize_node_deep_dive(
             node_layer=str(getattr(node, "layer", "") or ""),
         )
         if llm_out.ready_for_transition:
-            tutor = sanitize_tutor_message_for_transition(
-                compose_tutor_dialogue_from_output(llm_out) or tutor or ""
-            )
-            repacked = deep_dive_llm_output_from_chat_text(
-                tutor,
-                node_status=llm_out.node_status,
-            )
-            llm_out = llm_out.model_copy(
-                update={
-                    "feedback_on_answer": repacked.feedback_on_answer,
-                    "technical_explanation": repacked.technical_explanation,
-                    "follow_up_question": repacked.follow_up_question,
-                }
-            )
+            tutor = compose_tutor_dialogue_from_output(llm_out) or tutor or ""
     if memory is not None and (tutor or "").strip():
         if not llm_out.ready_for_transition:
             follow = (llm_out.follow_up_question or "").strip()
@@ -1433,10 +1727,15 @@ async def finalize_graph_chat_response(state: dict[str, Any]) -> NodeDeepDiveRes
     content = scrub_content_references(content, source_registry)
 
     if memory is not None and tutor:
-        memory.last_tutor_display_message = tutor[:12_000]
+        from knowledge_engine.src.node_deep_dive.tutor_field_limits import (
+            SCHEMA_FOLLOW_UP_QUESTION_MAX,
+            SCHEMA_TUTOR_MESSAGE_MAX,
+        )
+
+        memory.last_tutor_display_message = tutor[:SCHEMA_TUTOR_MESSAGE_MAX]
         memory.last_tutor_follow_up_question = (
             llm_out.follow_up_question or ""
-        ).strip()[:2000]
+        ).strip()[:SCHEMA_FOLLOW_UP_QUESTION_MAX]
 
     key = save_session(
         req.curriculum_id,
@@ -1464,38 +1763,73 @@ async def finalize_graph_chat_response(state: dict[str, Any]) -> NodeDeepDiveRes
     dlg_tech = (llm_out.technical_explanation or "").strip()
     dlg_fu = (llm_out.follow_up_question or "").strip()
     from knowledge_engine.src.node_deep_dive.concept_map import (
-        classify_gloss_fork_choice,
+        first_optional_layer_concept_id,
+        gloss_fork_quick_replies,
+        host_ready_for_transition,
         is_full_depth_closure,
+        open_optional_layers,
         sub_concept_coverage_complete,
     )
+    from knowledge_engine.src.node_deep_dive.star_task_fsm import (
+        is_overlay_eval_kind,
+        layer_drill_is_active,
+        star_task_blocks_transition,
+    )
+    from knowledge_engine.src.node_deep_dive.tutor_behavior_state import (
+        overlay_offer_host_chips,
+    )
 
-    ready_tr = bool(getattr(llm_out, "ready_for_transition", False))
-    chip = classify_gloss_fork_choice((req.user_message or "").strip())
-    if chip in ("how", "mech"):
-        ready_tr = False
-    elif mem is not None:
-        pending = (mem.pending_evaluation_concept_id or "").strip()
-        if pending and not ready_tr:
-            # Awaiting deep-dive control answer — keep chips off.
-            ready_tr = False
-        elif not ready_tr:
-            layer = str(getattr(node, "layer", "") or "foundation")
-            if is_full_depth_closure(mem, layer) and (
-                sub_concept_coverage_complete(mem)
-                or (mem.learning_phase or "") == "pathway_decision"
+    user_msg = (req.user_message or "").strip()
+    layer = str(getattr(node, "layer", "") or "foundation")
+    ready_tr = False
+    if mem is not None:
+        ready_tr = host_ready_for_transition(
+            mem, user_message=user_msg, node_layer=layer
+        )
+        if llm_out.ready_for_transition and not layer_drill_is_active(mem):
+            ready_tr = True
+
+    # Host-authoritative pathway chips from BGE/FSM — never copy LLM labels.
+    host_quick: list[str] = []
+    if mem is not None:
+        from knowledge_engine.src.node_deep_dive.intent_definitions import (
+            MODE_SELECTION_CHIP_LABELS,
+            MODE_SELECTION_SLOT,
+        )
+
+        if (getattr(mem, "pending_control_slot", "") or "") == MODE_SELECTION_SLOT:
+            host_quick = list(MODE_SELECTION_CHIP_LABELS)
+        elif star_task_blocks_transition(mem) or is_overlay_eval_kind(
+            mem.pending_eval_kind
+        ):
+            host_quick = []
+        elif ready_tr or sub_concept_coverage_complete(mem) or (
+            mem.learning_phase or ""
+        ) == "pathway_decision":
+            teaching = (getattr(mem, "active_optional_layer", "") or "").strip().upper()
+            if layer_drill_is_active(mem) or (
+                teaching in ("HOW", "MECHANIC")
+                and first_optional_layer_concept_id(mem, teaching)
             ):
-                ready_tr = True
-            elif (
-                sub_concept_coverage_complete(mem)
-                or (mem.learning_phase or "") == "pathway_decision"
-            ) and chip == "gloss":
-                ready_tr = True
-            elif (
-                sub_concept_coverage_complete(mem)
-                or (mem.learning_phase or "") == "pathway_decision"
-            ) and not pending:
-                # Threshold met (optional layers may still be open) — allow chips.
-                ready_tr = True
+                host_quick = []
+            else:
+                open_layers = open_optional_layers(mem, layer)
+                from knowledge_engine.src.node_deep_dive.sub_concept_evaluator import (
+                    normalize_node_layer,
+                )
+
+                ly = normalize_node_layer(layer)
+                if (
+                    open_layers
+                    and not is_full_depth_closure(mem, ly)
+                    and ly != "sota"
+                ):
+                    host_quick = gloss_fork_quick_replies(open_layers)
+                else:
+                    # Core closed → overlay_offer chips (adaptive ADVANCED vs DEEP).
+                    host_quick = overlay_offer_host_chips(
+                        mem, curriculum_id=req.curriculum_id
+                    )
     base = NodeDeepDiveResponse(
         node_id=node.node_id,
         node_status=status,
@@ -1504,11 +1838,7 @@ async def finalize_graph_chat_response(state: dict[str, Any]) -> NodeDeepDiveRes
         tutor_dialogue_feedback=dlg_fb,
         tutor_dialogue_technical=dlg_tech,
         tutor_dialogue_follow_up=dlg_fu,
-        quick_replies=[
-            str(x).strip()
-            for x in (getattr(llm_out, "quick_replies", None) or [])
-            if str(x).strip()
-        ][:4],
+        quick_replies=host_quick,
         ready_for_transition=ready_tr,
         last_eval_directive=(
             (getattr(mem, "last_eval_directive", None) or "").strip()[:64]
@@ -1623,9 +1953,16 @@ async def run_lazy_intro_turn(state: dict[str, Any]) -> dict[str, Any]:
             )
 
     set_dialogue_anchor(memory, node, tutor)
-    focus = select_next_sub_concept(memory)
-    set_pending_evaluation_for_tutor_turn(memory, focus.id if focus else "")
-    memory.intro_question_pending = True
+    if ratio >= 0.7 and labels:
+        from knowledge_engine.src.node_deep_dive.control_intent import (
+            mark_awaiting_mode_selection,
+        )
+
+        mark_awaiting_mode_selection(memory)
+    else:
+        focus = select_next_sub_concept(memory)
+        set_pending_evaluation_for_tutor_turn(memory, focus.id if focus else "")
+        memory.intro_question_pending = True
     memory.chat_sessions = chat_mgr.to_memory_blob()
     llm_out = deep_dive_llm_output_from_chat_text(
         tutor,
@@ -1649,7 +1986,11 @@ async def run_equivalence_turn(state: dict[str, Any]) -> dict[str, Any]:
         "Можно перейти к следующим нодам на карте."
     )
     if memory is not None:
-        memory.intro_question_pending = False
+        from knowledge_engine.src.node_deep_dive.control_intent import (
+            clear_pending_control_slot,
+        )
+
+        clear_pending_control_slot(memory)
         merge_mastery_from_session_memory(
             req.curriculum_id,
             memory,
@@ -1922,13 +2263,52 @@ async def run_dense_lecture_turn(
             content.summary,
             (dense.lecture_body or "").strip(),
         )
-    llm_out = deep_dive_llm_output_from_chat_text(tutor)
+    from knowledge_engine.src.node_deep_dive.subconcept_invariants import (
+        resolve_active_subconcept_id,
+    )
+
+    focus_id = (state.get("focus_sub_concept_id") or "").strip() or (
+        resolve_active_subconcept_id(memory)
+    )
+    if focus_id:
+        memory.next_question_concept_id = focus_id
+    else:
+        trace(
+            "WARN dense_lecture | empty focus_sub_concept_id — "
+            "lecture without map anchor (silent credit loss risk)"
+        )
+
+    checkpoint = (dense.checkpoint_prompt or "").strip()
+    llm_kwargs: dict[str, Any] = {}
+    if focus_id:
+        llm_kwargs["question_sub_concept_id"] = focus_id
+    # Dense lecture: bind semantic fields from StructuredLectureResponse, not chat-text
+    # heuristics (single-paragraph lectures otherwise fill follow_up_question).
+    if checkpoint:
+        from knowledge_engine.services.lecture_body_format import (
+            strip_lecture_credit_scoreboard,
+        )
+
+        lecture_body = repair_llm_display_text(
+            strip_lecture_credit_scoreboard((dense.lecture_body or "").strip())
+        )
+        from knowledge_engine.services.lecture_body_format import (
+            strip_trailing_checkpoint_from_lecture_body,
+        )
+
+        tech = strip_trailing_checkpoint_from_lecture_body(lecture_body, checkpoint)
+        llm_kwargs["technical_explanation"] = tech or lecture_body
+        llm_kwargs["follow_up_question"] = checkpoint
+    llm_out = deep_dive_llm_output_from_chat_text(tutor, **llm_kwargs)
+    if focus_id and not (llm_out.question_sub_concept_id or "").strip():
+        llm_out = llm_out.model_copy(update={"question_sub_concept_id": focus_id})
     return {
         **state,
         "memory": memory,
         "content": content,
         "tutor_message": tutor,
         "llm_out": llm_out,
+        "focus_sub_concept_id": focus_id or (state.get("focus_sub_concept_id") or ""),
     }
 
 

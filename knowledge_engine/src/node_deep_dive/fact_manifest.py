@@ -92,6 +92,20 @@ def update_manifest_from_evicted(
     content = (evicted.get("content") or "").strip()
     if not content:
         return
+    role_l = role.lower()
+    # Deep Analysis / open Star Task tutor turns must not seed fact_manifest with
+    # synthesized constraints / homework hypotheses — only later user answers may.
+    from knowledge_engine.src.node_deep_dive.star_task_fsm import (
+        is_overlay_eval_kind,
+        star_task_blocks_transition,
+    )
+
+    if role_l in ("tutor", "model", "assistant") and (
+        is_overlay_eval_kind(memory.pending_eval_kind)
+        or star_task_blocks_transition(memory)
+    ):
+        trace("NODE_DIVE fact_manifest skip | deep_analysis/star_task tutor eviction")
+        return
     if _evicted_tutor_needs_question_strip(memory, evicted):
         content = sanitize_evicted_tutor_content_for_manifest(content)
         trace("NODE_DIVE fact_manifest | sanitized unanswered tutor tail in evicted")

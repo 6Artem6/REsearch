@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from knowledge_engine.src.node_deep_dive.tutor_field_limits import (
+    SCHEMA_TUTOR_MESSAGE_MAX,
+)
 from knowledge_engine.src.node_deep_dive.schemas import DeepDiveLLMOutput
 from knowledge_engine.src.node_deep_dive.tutor_dialogue import (
     compose_tutor_dialogue_message,
@@ -31,7 +34,7 @@ def tutor_content_for_active_window(
             parts.append(tech)
         combined = "\n\n".join(parts).strip()
         if combined:
-            return combined[:12_000]
+            return combined[:SCHEMA_TUTOR_MESSAGE_MAX]
     fallback = (fallback_compose_text or "").strip()
     if not fallback and llm_out is not None:
         fallback = compose_tutor_dialogue_message(
@@ -40,4 +43,4 @@ def tutor_content_for_active_window(
         )
     if not fallback:
         return ""
-    return sanitize_evicted_tutor_content_for_manifest(fallback)[:12_000]
+    return sanitize_evicted_tutor_content_for_manifest(fallback)[:SCHEMA_TUTOR_MESSAGE_MAX]

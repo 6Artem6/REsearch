@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from knowledge_engine.src.node_deep_dive.concept_map_state import (
     find_sub_concept,
+    row_is_fully_mastered,
     select_next_sub_concept,
 )
 from knowledge_engine.src.node_deep_dive.memory_schemas import SessionMemory
@@ -18,6 +19,9 @@ SUBCONCEPT_HARD_ANCHOR_RULE = (
     "FORBIDDEN: choose the lecture topic from chat_history / prior turns.\n"
     "Ignore earlier dialogue when selecting which sub-concept to teach.\n"
     "`question_sub_concept_id` MUST equal `{active_id}` when `follow_up_question` is set.\n"
+    "STRICT REPULSION: NEVER generate a checkpoint / follow-up quiz for a sub-topic "
+    "whose status is verified AND why_passed AND how_passed AND mechanic_passed "
+    "(fully closed). Those ids are done — do not re-test them.\n"
 )
 
 
@@ -25,8 +29,15 @@ def resolve_active_subconcept_id(memory: SessionMemory) -> str:
     """Active generation focus (lecture + next question), not the asked-eval pointer alone."""
     nxt = select_next_sub_concept(memory)
     if nxt is not None:
+        if row_is_fully_mastered(nxt):
+            return ""
         return nxt.id
-    return (memory.next_question_concept_id or "").strip()
+    leftover = (memory.next_question_concept_id or "").strip()
+    if leftover:
+        row = find_sub_concept(memory, leftover)
+        if row is not None and row_is_fully_mastered(row):
+            return ""
+    return leftover
 
 
 def resolve_active_subconcept_label(memory: SessionMemory, active_id: str = "") -> str:
@@ -40,7 +51,12 @@ def resolve_active_subconcept_label(memory: SessionMemory, active_id: str = "") 
 def format_subconcept_hard_anchor(memory: SessionMemory) -> str:
     active_id = resolve_active_subconcept_id(memory)
     if not active_id:
-        return ""
+        return (
+            "=== STRICT SUBCONCEPT REPULSION ===\n"
+            "NEVER generate a checkpoint / follow-up quiz for a sub-topic whose "
+            "status is verified AND why_passed AND how_passed AND mechanic_passed "
+            "(fully closed). Those ids are done — do not re-test them.\n"
+        )
     label = resolve_active_subconcept_label(memory, active_id)
     return SUBCONCEPT_HARD_ANCHOR_RULE.format(
         active_id=active_id,
@@ -63,6 +79,18 @@ def enforce_question_sub_concept_invariant(
     follow = (llm_out.follow_up_question or "").strip()
     if not follow:
         return llm_out, False
+    qid = (llm_out.question_sub_concept_id or "").strip()
+    if qid:
+        qrow = find_sub_concept(memory, qid)
+        if qrow is not None and row_is_fully_mastered(qrow):
+            trace(
+                "STATE_DRIFT | follow-up on fully mastered "
+                f"id={qid} — strip checkpoint question"
+            )
+            repaired = llm_out.model_copy(
+                update={"follow_up_question": "", "question_sub_concept_id": None}
+            )
+            return repaired, True
     active_id = resolve_active_subconcept_id(memory)
     if not active_id:
         return llm_out, False

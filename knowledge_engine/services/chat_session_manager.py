@@ -460,8 +460,12 @@ class ChatSessionManager:
             ),
         )
 
-    def _invalidate_live_chat(self, label: str) -> None:
+    def invalidate_live_chat(self, label: str) -> None:
+        """Drop the live SDK chat so the next send rebuilds history with a new schema."""
         self._live.pop(label, None)
+
+    def _invalidate_live_chat(self, label: str) -> None:
+        self.invalidate_live_chat(label)
 
     def get_or_create_live_chat(
         self,
@@ -796,6 +800,9 @@ class ChatSessionManager:
             registry_delete,
         )
         from knowledge_engine.services.gemini_json_stream import (
+            DRILL_ACTIVE_STREAM_FIELDS,
+            DRILL_COMPLETE_STREAM_FIELDS,
+            TUTOR_EXPLAIN_STREAM_FIELDS,
             JsonFieldStreamFilter,
             wrap_stream_callback_for_json_field,
             wrap_stream_callback_for_tutor_dialogue_fields,
@@ -804,9 +811,24 @@ class ChatSessionManager:
         schema_name = getattr(response_schema, "__name__", "") or ""
         field = (stream_text_field or "").strip()
         field_filter: JsonFieldStreamFilter | None = None
-        if schema_name == "DeepDiveTutorContract" and stream_callback is not None:
+        if (
+            schema_name in ("DeepDiveTutorContract", "DeepDiveDeepAnalysisContract")
+            and stream_callback is not None
+        ):
             field_filter = wrap_stream_callback_for_tutor_dialogue_fields(
                 stream_callback
+            )
+        elif schema_name == "DeepDiveExplainContract" and stream_callback is not None:
+            field_filter = wrap_stream_callback_for_tutor_dialogue_fields(
+                stream_callback, fields=TUTOR_EXPLAIN_STREAM_FIELDS
+            )
+        elif schema_name == "ActiveDrillStepResponse" and stream_callback is not None:
+            field_filter = wrap_stream_callback_for_tutor_dialogue_fields(
+                stream_callback, fields=DRILL_ACTIVE_STREAM_FIELDS
+            )
+        elif schema_name == "LayerCompletionTutorOutput" and stream_callback is not None:
+            field_filter = wrap_stream_callback_for_tutor_dialogue_fields(
+                stream_callback, fields=DRILL_COMPLETE_STREAM_FIELDS
             )
         elif field and response_schema is not None:
             field_filter = wrap_stream_callback_for_json_field(field, stream_callback)

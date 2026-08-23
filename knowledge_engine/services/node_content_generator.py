@@ -23,9 +23,10 @@ from knowledge_engine.services.gemini_stateless import (
     run_gemini_structured_with_chain,
 )
 from knowledge_engine.services.lecture_body_format import (
-    append_checkpoint_to_lecture_body,
+    format_self_check_block,
     sanitize_lecture_body_markdown,
     strip_lecture_credit_scoreboard,
+    strip_trailing_checkpoint_from_lecture_body,
 )
 from knowledge_engine.services.lecture_rag_context import (
     build_lecture_generation_payload,
@@ -69,7 +70,7 @@ def _sanitize_dense_output(
     body = sanitize_lecture_body_markdown(dense.lecture_body or "")
     body = strip_lecture_credit_scoreboard(body)
     checkpoint = (dense.checkpoint_prompt or "").strip()
-    body = append_checkpoint_to_lecture_body(body, checkpoint)
+    body = strip_trailing_checkpoint_from_lecture_body(body, checkpoint)
     snippets = [
         sanitize_lecture_body_markdown(s) if "```" in (s or "") else (s or "")
         for s in (dense.code_snippets or [])
@@ -198,21 +199,17 @@ def generate_dense_material(
     memory.chat_sessions = mgr.to_memory_blob()
     result = structured_lecture_to_dense(structured, allowed_urls=allowed_urls or set())
     result = _sanitize_dense_output(result, allowed_urls or set())
-    # Stream may have finished on raw lecture_body before sanitize/checkpoint merge.
+    # Stream may have finished on raw lecture_body before host strips PART 2.
     if stream_callback is not None:
-        final_body = (result.lecture_body or "").strip()
-        raw_body = sanitize_lecture_body_markdown(
-            getattr(structured, "lecture_body", None) or ""
-        )
-        raw_body = strip_lecture_credit_scoreboard(raw_body)
-        if final_body and final_body != raw_body:
-            # Emit only the missing tail (usually checkpoint_prompt).
-            if raw_body and final_body.startswith(raw_body):
-                tail = final_body[len(raw_body) :].lstrip()
-                if tail:
-                    stream_callback("\n\n" + tail)
-            elif not raw_body:
-                stream_callback(final_body)
+        checkpoint = (result.checkpoint_prompt or "").strip()
+        marker_block = format_self_check_block(checkpoint)
+        if marker_block:
+            raw_body = sanitize_lecture_body_markdown(
+                getattr(structured, "lecture_body", None) or ""
+            )
+            raw_body = strip_lecture_credit_scoreboard(raw_body)
+            if "**Самопроверка:**" not in raw_body and marker_block not in raw_body:
+                stream_callback("\n\n" + marker_block)
     trace("NODE_DIVE dense_material ✓ | лекция в чат + панель (summary/diagram/refs)")
     return result
 

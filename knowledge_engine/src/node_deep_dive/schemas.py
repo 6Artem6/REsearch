@@ -18,6 +18,18 @@ from knowledge_engine.src.node_deep_dive.memory_schemas import (
     CoreConceptRecord,
     LectureExtractedConcept,
     NodeStatus,
+    OverlayMasteryRecord,
+)
+from knowledge_engine.src.node_deep_dive.tutor_field_limits import (
+    PROMPT_FOLLOW_UP_MAX_CHARS,
+    SCHEMA_BRIDGE_TO_NEXT_MAX,
+    SCHEMA_CHECKPOINT_PROMPT_MAX,
+    SCHEMA_FEEDBACK_ON_ANSWER_MAX,
+    SCHEMA_FOLLOW_UP_QUESTION_MAX,
+    SCHEMA_LECTURE_BODY_MAX,
+    SCHEMA_SUMMARY_MAX,
+    SCHEMA_TECHNICAL_EXPLANATION_MAX,
+    SCHEMA_TUTOR_MESSAGE_MAX,
 )
 
 UserAction = Literal["init", "chat", "verify"]
@@ -143,6 +155,22 @@ class CoverageItem(BaseModel):
     why_passed: bool = False
     how_passed: bool = False
     mechanic_passed: bool = False
+    is_extension: bool = Field(
+        default=False,
+        description=(
+            "True when the subtopic is a dynamic overlay/extension "
+            "(excluded from Core WHY/HOW/MECHANICS bars)."
+        ),
+    )
+    last_accuracy_grade: str = Field(
+        default="",
+        max_length=32,
+        description=(
+            "Last Evaluator AnswerAccuracyGrade for this sub-topic: "
+            "EXACT_AND_CORRECT | PARTIAL | NEEDS_CORRECTION | MISUNDERSTANDING."
+        ),
+    )
+    # RU: последняя оценка модели; на активном слое дожима показывается в бейдже.
     status_hint: str = Field(
         default="",
         max_length=240,
@@ -177,6 +205,28 @@ class CoverageSummary(BaseModel):
     overall_score: int = Field(default=0, ge=0, le=100)
     active_layer: ActiveDepthLayer | None = None
     gloss_hint: str = Field(default="", max_length=400)
+    deep_mastery_ids: list[str] = Field(
+        default_factory=list,
+        max_length=16,
+        description=(
+            "Sub-concept ids with Deep Mastery from asterisk-question deep_analysis; "
+            "parallel to WHY/HOW/MECH overall_score"
+        ),
+    )
+    deep_mastery_count: int = Field(
+        default=0,
+        ge=0,
+        le=16,
+        description="len(deep_mastery_ids); separate from base depth %",
+    )
+    overlay_awards: list[OverlayMasteryRecord] = Field(
+        default_factory=list,
+        max_length=16,
+        description=(
+            "Asterisk-question overlay awards with overlay_type "
+            "(ADVANCED_ASTERISK | DEEP_ASTERISK) so UI/host can tell L4 vs L5/L6."
+        ),
+    )
     facts_breakdown: list[FactEvaluation] = Field(
         default_factory=list,
         max_length=64,
@@ -230,22 +280,25 @@ class NodeDeepDiveResponse(BaseModel):
     node_id: str
     node_status: NodeStatus
     content: NodeContentBlock
-    tutor_message: str = Field(max_length=12_000)
+    tutor_message: str = Field(max_length=SCHEMA_TUTOR_MESSAGE_MAX)
     tutor_message_html: str = Field(default="", max_length=200_000)
     tutor_dialogue_feedback: str = Field(
         default="",
-        max_length=4000,
+        max_length=SCHEMA_FEEDBACK_ON_ANSWER_MAX,
         description="Семантическое поле feedback_on_answer (для UI склейки)",
     )
     tutor_dialogue_technical: str = Field(
         default="",
-        max_length=10_000,
+        max_length=SCHEMA_TECHNICAL_EXPLANATION_MAX,
         description="Семантическое поле technical_explanation",
     )
     tutor_dialogue_follow_up: str = Field(
         default="",
-        max_length=2000,
-        description="Семантическое поле follow_up_question",
+        max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX,
+        description=(
+            f"Семантическое поле follow_up_question; "
+            f"target ≤{PROMPT_FOLLOW_UP_MAX_CHARS} chars"
+        ),
     )
     quick_replies: list[str] = Field(
         default_factory=list,
@@ -294,12 +347,12 @@ class DenseMaterialOutput(BaseModel):
 
     lecture_body: str = Field(
         default="",
-        max_length=24_000,
+        max_length=SCHEMA_LECTURE_BODY_MAX,
         description=(
             "Полная лекция для чата (Markdown). См. также StructuredLectureResponse.lecture_body"
         ),
     )
-    summary: str = Field(default="", max_length=12_000)
+    summary: str = Field(default="", max_length=SCHEMA_SUMMARY_MAX)
     referenced_diagram_id: str | None = Field(
         default=None,
         max_length=64,
@@ -307,8 +360,8 @@ class DenseMaterialOutput(BaseModel):
     )
     references: list[RichReferenceItem] = Field(default_factory=list, max_length=6)
     code_snippets: list[str] = Field(default_factory=list, max_length=4)
-    bridge_to_next: str = Field(default="", max_length=2000)
-    checkpoint_prompt: str = Field(default="", max_length=2000)
+    bridge_to_next: str = Field(default="", max_length=SCHEMA_BRIDGE_TO_NEXT_MAX)
+    checkpoint_prompt: str = Field(default="", max_length=SCHEMA_CHECKPOINT_PROMPT_MAX)
     extracted_concepts: list[LectureExtractedConcept] = Field(
         default_factory=list,
         max_length=5,
@@ -332,9 +385,13 @@ class DeepDiveLLMOutput(BaseModel):
         description="Catalog diagram id for panel; server resolves Mermaid",
     )
     references: list[RichReferenceItem] = Field(default_factory=list)
-    feedback_on_answer: str = Field(default="", max_length=4000)
-    technical_explanation: str = Field(default="", max_length=10_000)
-    follow_up_question: str = Field(default="", max_length=2000)
+    feedback_on_answer: str = Field(default="", max_length=SCHEMA_FEEDBACK_ON_ANSWER_MAX)
+    technical_explanation: str = Field(default="", max_length=SCHEMA_TECHNICAL_EXPLANATION_MAX)
+    follow_up_question: str = Field(
+        default="",
+        max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX,
+        description=f"Target ≤{PROMPT_FOLLOW_UP_MAX_CHARS} characters",
+    )
     question_sub_concept_id: str | None = None
     new_gap_to_record: str | None = None
     introduced_terms: list[str] = Field(default_factory=list, max_length=16)

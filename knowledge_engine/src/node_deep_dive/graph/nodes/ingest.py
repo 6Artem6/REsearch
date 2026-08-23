@@ -33,7 +33,12 @@ def ingest_node(state: TutorGraphState) -> TutorGraphState:
         }
 
     memory = _ensure_memory(session, node, _RAG_PLACEHOLDER)
-    if memory.intro_question_pending and raw_user:
+    from knowledge_engine.src.resilience_manager import reset_asterisk_fsm_hops
+
+    reset_asterisk_fsm_hops(memory)
+    # Слот mode_selection держит intro_question_pending до точного чипа.
+    slot = (getattr(memory, "pending_control_slot", None) or "").strip()
+    if memory.intro_question_pending and raw_user and slot != "mode_selection":
         memory.intro_question_pending = False
 
     from knowledge_engine.src.node_deep_dive.content_assets import (

@@ -6,9 +6,11 @@ from knowledge_engine.services.curriculum_whitelist_prompt import (
     enrich_node_learning_materials_from_graph,
 )
 from knowledge_engine.src.node_deep_dive.concept_map import (
+    classify_gloss_fork_choice,
     ensure_sub_concept_map,
     select_next_sub_concept,
     set_pending_evaluation_for_tutor_turn,
+    start_overlay_push,
 )
 from knowledge_engine.src.node_deep_dive.graph.state import TutorGraphState
 from knowledge_engine.src.node_deep_dive.learning_loop import (
@@ -96,9 +98,57 @@ def coverage_router_node(state: TutorGraphState) -> TutorGraphState:
         )
 
     ensure_sub_concept_map(memory, node)
+    from knowledge_engine.src.node_deep_dive.control_intent import (
+        apply_mode_selection_intent,
+        classify_control_chip,
+    )
+
+    chip = classify_control_chip(raw_user, memory=memory)
+    if chip in ("practice", "check", "skip"):
+        apply_mode_selection_intent(memory, chip)
+    choice = classify_gloss_fork_choice(raw_user)
+    if choice in ("how", "mech") and chip not in ("practice", "check"):
+        from knowledge_engine.src.node_deep_dive.star_task_fsm import start_layer_drill
+
+        start_layer_drill(memory, "HOW" if choice == "how" else "MECH")
+    elif choice in ("gloss", "next"):
+        from knowledge_engine.src.node_deep_dive.star_task_fsm import clear_layer_drill
+
+        clear_layer_drill(memory)
+    elif choice in ("deep_analysis", "advanced_analysis", "deep_design"):
+        start_overlay_push(memory, choice)
+
     focus = select_next_sub_concept(memory)
+    from knowledge_engine.src.node_deep_dive.star_task_fsm import (
+        layer_drill_is_active,
+    )
+
+    if layer_drill_is_active(memory) and focus is None:
+        from knowledge_engine.src.node_deep_dive.star_task_fsm import clear_layer_drill
+
+        clear_layer_drill(memory)
+        focus = select_next_sub_concept(memory)
+    elif (
+        (getattr(memory, "active_optional_layer", "") or "").strip().upper()
+        in ("HOW", "MECHANIC")
+        and focus is None
+    ):
+        memory.active_optional_layer = ""
+        focus = select_next_sub_concept(memory)
     focus_id = (focus.id if focus else "").strip()
-    memory.next_question_concept_id = focus_id
+    if not focus_id:
+        trace(
+            "WARN coverage_router | empty focus_sub_concept_id — "
+            "lecture/tutor without map anchor (silent credit loss risk)"
+        )
+    else:
+        # Explicit generation focus before dense/tutor LLM (never lecture «in vacuo»).
+        memory.next_question_concept_id = focus_id
+        if focus is not None:
+            trace(
+                f"NODE_DIVE focus pinned | concept={focus_id} "
+                f"label={(focus.label or '')[:80]}"
+            )
     interaction_mode = resolve_interaction_prompt_mode(memory, intent, user_msg)
 
     wants_dense = _needs_dense_material(memory, intent, user_msg, lecture_pressed)

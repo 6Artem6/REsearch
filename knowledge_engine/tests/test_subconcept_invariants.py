@@ -80,3 +80,26 @@ def test_question_drift_force_corrects_to_active():
     repaired, drifted = enforce_question_sub_concept_invariant(mem, out)
     assert drifted is True
     assert repaired.question_sub_concept_id == "post_execution_validation"
+
+
+def test_fully_mastered_follow_up_is_stripped():
+    mem = _hooks_memory()
+    mem.sub_concepts[0].why_passed = True
+    mem.sub_concepts[0].how_passed = True
+    mem.sub_concepts[0].mechanic_passed = True
+    mem.sub_concepts[0].status = "verified"
+    mem.sub_concepts[1].status = "verified"
+    mem.sub_concepts[1].why_passed = True
+    mem.sub_concepts[1].how_passed = True
+    mem.sub_concepts[1].mechanic_passed = True
+    mem.next_question_concept_id = "pre_execution_hooks"
+    out = DeepDiveLLMOutput(
+        technical_explanation="текст",
+        follow_up_question="Как устроены pre-execution hooks?",
+        question_sub_concept_id="pre_execution_hooks",
+    )
+    repaired, drifted = enforce_question_sub_concept_invariant(mem, out)
+    assert drifted is True
+    assert repaired.follow_up_question == ""
+    assert repaired.question_sub_concept_id is None
+    assert resolve_active_subconcept_id(mem) == ""

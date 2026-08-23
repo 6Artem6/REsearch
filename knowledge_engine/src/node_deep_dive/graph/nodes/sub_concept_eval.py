@@ -14,14 +14,30 @@ from knowledge_engine.ui.run_log import trace
 logger = logging.getLogger(__name__)
 
 
+def _with_memory(state: TutorGraphState, memory) -> TutorGraphState:
+    return {
+        **state,
+        "memory": memory,
+        "is_layer_just_completed": bool(
+            getattr(memory, "is_layer_just_completed", False)
+        ),
+    }
+
+
 def sub_concept_eval_node(state: TutorGraphState) -> TutorGraphState:
     """Gap eval for ``pending_evaluation_concept_id`` only; skip if no pending."""
     req = state["request"]
     memory = state["memory"]
+    memory.evaluator_skipped = False
     user_message = (req.user_message or "").strip()
     if not user_message:
         logger.info("sub_concept_eval_node skip | empty user_message")
-        return state
+        from knowledge_engine.src.node_deep_dive.sub_concept_evaluator import (
+            mark_evaluator_skipped,
+        )
+
+        mark_evaluator_skipped(memory, "empty user_message")
+        return _with_memory(state, memory)
 
     pending = stored_pending_evaluation_id(memory)
     if not pending:
@@ -31,11 +47,14 @@ def sub_concept_eval_node(state: TutorGraphState) -> TutorGraphState:
             getattr(memory, "asked_question_sub_concept_id", ""),
             getattr(memory, "pending_evaluation_concept_id", ""),
         )
-        trace(
-            "NODE_DIVE sub_concept evaluation skip | no pending "
-            "(silent credit loss risk)"
+        from knowledge_engine.src.node_deep_dive.sub_concept_evaluator import (
+            mark_evaluator_skipped,
         )
-        return state
+
+        mark_evaluator_skipped(
+            memory, "no pending (silent credit loss risk)"
+        )
+        return _with_memory(state, memory)
 
     from knowledge_engine.src.node_deep_dive.lecture_scope import (
         is_lecture_request_message,
@@ -43,26 +62,32 @@ def sub_concept_eval_node(state: TutorGraphState) -> TutorGraphState:
 
     if is_lecture_request_message(user_message):
         logger.info("sub_concept_eval_node skip | lecture request")
-        trace(
-            "NODE_DIVE sub_concept evaluation skip | lecture request "
-            "(not a user answer)"
+        from knowledge_engine.src.node_deep_dive.sub_concept_evaluator import (
+            mark_evaluator_skipped,
         )
-        return state
+
+        mark_evaluator_skipped(
+            memory, "lecture request (not a user answer)"
+        )
+        return _with_memory(state, memory)
 
     from knowledge_engine.src.node_deep_dive.concept_map import (
         is_quick_reply_control_message,
     )
 
-    if is_quick_reply_control_message(user_message):
+    if is_quick_reply_control_message(user_message, memory):
         logger.info(
             "sub_concept_eval_node skip | quick-reply control chip "
             "(not a scored answer)"
         )
-        trace(
-            "NODE_DIVE sub_concept evaluation skip | quick-reply control "
-            "(Gloss / Дожать / next — evaluator off)"
+        from knowledge_engine.src.node_deep_dive.sub_concept_evaluator import (
+            mark_evaluator_skipped,
         )
-        return state
+
+        mark_evaluator_skipped(
+            memory, "quick-reply control (Gloss / Дожать / next — evaluator off)"
+        )
+        return _with_memory(state, memory)
 
     try:
         process_sub_concept_user_answer(
@@ -86,7 +111,10 @@ def sub_concept_eval_node(state: TutorGraphState) -> TutorGraphState:
             if row is not None and row.status == "unchecked":
                 layer = str(getattr(req.node_data, "layer", "") or "foundation")
                 directive = apply_degraded_threshold(
-                    row, layer=layer, reason=f"node_exc:{type(exc).__name__}"
+                    row,
+                    layer=layer,
+                    reason=f"node_exc:{type(exc).__name__}",
+                    memory=memory,
                 )
                 memory.last_eval_directive = directive
                 from knowledge_engine.src.node_deep_dive.concept_map_state import (
@@ -96,4 +124,4 @@ def sub_concept_eval_node(state: TutorGraphState) -> TutorGraphState:
                 memory.last_evaluator_feedback = build_evaluator_feedback(row)
         except Exception as inner:
             logger.exception("degraded threshold also failed: %s", inner)
-    return {**state, "memory": memory}
+    return _with_memory(state, memory)

@@ -21,6 +21,7 @@ from knowledge_engine.src.node_deep_dive.memory_schemas import (
     SubConceptRecord,
 )
 from knowledge_engine.src.node_deep_dive.prompt_factory import (
+    display_user_after_mode_prefix,
     factory_mode_to_gloss_choice,
     is_factory_control_mode,
     parse_tutor_mode_prefix,
@@ -91,7 +92,26 @@ def test_factory_mode_maps_to_gloss_choice() -> None:
     assert factory_mode_to_gloss_choice("deep_dive_how") == "how"
     assert factory_mode_to_gloss_choice("gloss") == "gloss"
     assert is_factory_control_mode("deep_dive_mech")
+    assert is_factory_control_mode("deep_analysis")
     assert not is_factory_control_mode("default")
+    assert not is_factory_control_mode("lecture")
+
+
+def test_parse_and_select_deep_analysis() -> None:
+    from knowledge_engine.src.node_deep_dive.deep_analysis_prompt import (
+        DEEP_ANALYSIS_PROMPT,
+    )
+
+    body, mode = parse_tutor_mode_prefix("[mode:deep_analysis] challenge")
+    assert mode == "deep_analysis"
+    assert body == "challenge"
+    system, mode, cleaned = select_system_prompt_and_mode(
+        "[mode:deep_analysis] challenge",
+        default_system_prompt="DEFAULT",
+    )
+    assert mode == "deep_analysis"
+    assert DEEP_ANALYSIS_PROMPT.strip() in system
+    assert cleaned == "challenge"
 
 
 def test_classify_mode_prefixed_chips() -> None:
@@ -140,3 +160,28 @@ def test_orchestrate_mode_mech_holds_transition() -> None:
         node_layer="advanced",
     )
     assert packed.ready_for_transition is False
+
+
+def test_overlay_chip_payload_keeps_simple_body() -> None:
+    body, mode = parse_tutor_mode_prefix(
+        "[mode:deep_design] Архитектурный дизайн"
+    )
+    assert mode == "deep_design"
+    assert body == "Архитектурный дизайн"
+    body, mode = parse_tutor_mode_prefix(
+        "[mode:advanced_analysis] Анализ уязвимостей"
+    )
+    assert mode == "advanced_analysis"
+    assert body == "Анализ уязвимостей"
+
+
+def test_tag_only_overlay_display_fallback() -> None:
+    body, mode = display_user_after_mode_prefix("[mode:deep_design]")
+    assert mode == "deep_design"
+    assert body == "Архитектурный дизайн"
+    body, mode = display_user_after_mode_prefix("[mode:advanced_analysis]")
+    assert mode == "advanced_analysis"
+    assert body == "Анализ уязвимостей"
+    raw_body, raw_mode = parse_tutor_mode_prefix("[mode:deep_design]")
+    assert raw_mode == "deep_design"
+    assert raw_body == ""

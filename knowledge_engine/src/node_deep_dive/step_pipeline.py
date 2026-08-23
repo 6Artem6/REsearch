@@ -93,51 +93,27 @@ def heuristic_step_analysis(
     learning_phase: str = "",
 ) -> StepAnalysisOutput:
     """Без LLM, если step_analysis недоступен (503/квота)."""
-    text = (user_message or "").lower()
+    from knowledge_engine.src.node_deep_dive.control_intent import (
+        has_explicit_control_tag,
+        is_short_lecture_request,
+    )
+
+    raw = (user_message or "").strip()
+    text = raw.lower()
     phase = (learning_phase or "").strip()
     if phase == "intro_assessment":
-        if not any(
-            k in text
-            for k in (
-                "[mode:lecture]",
-                "mode:lecture",
-                "дай лекцию",
-                "плотный материал",
-                "dense material",
-            )
+        if not (
+            has_explicit_control_tag(raw) or is_short_lecture_request(raw)
         ):
             return StepAnalysisOutput(
                 intent="ANSWER", concept_updates=[], critical_gap=None
             )
     intent: UserIntent = "ANSWER"
-    if any(
-        k in text
-        for k in (
-            "[mode:lecture]",
-            "mode:lecture",
-            "дай лекцию",
-            "плотный материал",
-            "dense material",
-            "объясни подроб",
-            "разжуй",
-            "покажи пример",
-            "пример кода",
-            "дай схем",
-            "нарисуй",
-            "mermaid",
-            "как работает",
-        )
+    # Explicit [mode:lecture] / registered lecture chip only — no substring stems.
+    if is_short_lecture_request(raw) or (
+        has_explicit_control_tag(raw) and "[mode:lecture]" in text
     ):
         intent = "INTENT_EXPLAIN"
-    elif any(
-        k in text
-        for k in ("итог", "закрой тему", "заверш", "подведи", "резюме", "finalize")
-    ):
-        intent = "INTENT_FINALIZE"
-    elif any(
-        k in text for k in ("другой ракурс", "смени тему", "другую тему", "переключ")
-    ):
-        intent = "INTENT_SHIFT_FOCUS"
     return StepAnalysisOutput(intent=intent, concept_updates=[], critical_gap=None)
 
 
@@ -147,32 +123,26 @@ def should_run_step_analysis_llm(
     action: str,
 ) -> bool:
     """LLM step_analysis только при смене режима / finalize / verify."""
+    from knowledge_engine.src.node_deep_dive.control_intent import (
+        classify_control_chip,
+        has_explicit_control_tag,
+    )
+
     act = (action or "").strip().lower()
     if act == "verify":
         return True
-    text = (user_message or "").lower()
-    triggers = (
-        "intent_finalize",
-        "finalize",
-        "итог",
-        "закрой тему",
-        "заверш",
-        "подведи",
-        "резюме",
-        "смени тему",
-        "другой ракурс",
-        "переключ",
-        "intent_shift",
-        "[mode:",
-        "mode:lecture",
-        "mode:blitz",
-        "mode:socratic",
+    raw = (user_message or "").strip()
+    from knowledge_engine.src.node_deep_dive.intent_definitions import (
+        MODE_SELECTION_SLOT_INTENTS,
     )
-    if any(k in text for k in triggers):
+
+    chip = classify_control_chip(raw, memory=memory)
+    # Слот практика/проверка/пропустить уже классифицирован — Lite LLM не нужен.
+    if chip in MODE_SELECTION_SLOT_INTENTS:
+        return False
+    if has_explicit_control_tag(raw) or "[mode:" in (raw or "").lower():
         return True
-    if memory.learning_phase in ("checkpoint", "finalize") and "готов" in text:
-        return True
-    return False
+    return bool(chip)
 
 
 def run_step_analysis(

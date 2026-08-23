@@ -11,9 +11,10 @@ DEEP_DIVE_HOW_PROMPT = (
     "(prefer catalog diagram ids when a node catalog is present — do not invent Mermaid "
     "if the catalog forbids generation).\n"
     "3. MANDATORY: End your response with EXACTLY ONE question testing architectural "
-    "trade-offs.\n\n"
+    "trade-offs. Name in that question every invariant the Evaluator may require.\n\n"
     "STRICT RULE: DO NOT write any completion phrases or transition prompts.\n"
-    "Set ready_for_transition=false. Put the practice question in follow_up_question "
+    "Chip processing is already done by the Python host before this turn. "
+    "Host owns orchestration flags. Put the practice question in follow_up_question "
     "and set question_sub_concept_id to the active sub-topic id from the payload.\n"
 )
 """
