@@ -133,6 +133,18 @@ Academic Architect (не Consensus.app): `LiteAcademicQueryContract` + `ArxivQue
 
 ---
 
+## Entity-guided REDUCE consensus (opt-in)
+
+Файл: [`models/consensus.py`](../models/consensus.py). Движок: `services/deduplication/entity_consensus_engine.py` + `consensus_synthesizer.py`. Флаг `CLAIM_DEDUP_MODE` (`none` по умолчанию — Gemma atom-dedup без консенсуса).
+
+| Контракт | Назначение |
+|----------|------------|
+| `RawFact` | SPO из MAP-атомов (`canonical_text`, `all_anchors`) |
+| `ConsensusNode` | Узел REDUCE: `status` consensus/disputed/unique (**default `consensus`**, unknown/missing coerce — не роняет батч); `primary_anchors` ≤ 3; `summary_text` alias `summary`; полный набор в `all_anchors` |
+| `ConsensusBatchResponse` | Облачный арбитр: батч ≤ `MAX_CONSENSUS_BATCH_TOKENS` (3072) **и** ≤ `MAX_CONSENSUS_NODES_PER_BATCH` (10) фактов; лимиты считает токенизатор модели в `consensus_batch_token_counts` |
+
+---
+
 ## Streaming ↔ контракты
 
 Реализация: `services/gemini_json_stream.py` → `ChatSessionManager.send_chat_message_stream` / `gemini_stateless.run_gemini_structured_with_chain`.

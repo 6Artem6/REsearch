@@ -97,6 +97,13 @@
 | `GEMMA_MAP_MAX_OUTPUT_TOKENS` | `4096` (fixed) |
 | `GEMMA_REDUCE_MAX_OUTPUT_TOKENS` | `4096` |
 | `REDUCE_STRATEGY` | `two_phase` (`legacy` = single FinalArticleSummary call) |
+| `CLAIM_DEDUP_MODE` | `none` (`exact` = identical SPO; `entity_consensus` = bge-m3 + reranker + cloud) |
+| `CLAIM_MMR_LAMBDA` | `0.7` (does **not** change `LECTURE_RAG_MMR_LAMBDA`) |
+| `SPO_CLUSTER_THRESHOLD` | `0.85` (cosine gate before reranker) |
+| `SPO_RERANKER_DUPLICATE_THRESHOLD` | `0.88` (bge-reranker-v2-m3 duplicate merge) |
+| `MAX_CONSENSUS_BATCH_TOKENS` | `3072` (system + batch; Gemma tokenizer; packer SSOT) |
+| `MAX_CONSENSUS_NODES_PER_BATCH` | `10` (soft cap; token budget of 3072 can split smaller) |
+| `MAX_PRIMARY_ANCHORS` | `3` (anti-bloat `primary_anchors`; full set in `all_anchors`) |
 
 Параллельный MAP на клиенте всегда `asyncio.Semaphore(4)` (Gemma cloud и Ollama). Для Ollama задайте `OLLAMA_NUM_PARALLEL >= 4`.
 

@@ -328,6 +328,19 @@ REDUCE_STRATEGY: str = (
     if _REDUCE_STRATEGY_RAW in ("two_phase", "legacy")
     else "two_phase"
 )
+_CLAIM_DEDUP_MODE_RAW = (os.getenv("CLAIM_DEDUP_MODE", "none") or "none").strip().lower()
+_CLAIM_DEDUP_ALLOWED = ("none", "exact", "entity_consensus", "llm", "claim_mmr")
+CLAIM_DEDUP_MODE: str = (
+    _CLAIM_DEDUP_MODE_RAW if _CLAIM_DEDUP_MODE_RAW in _CLAIM_DEDUP_ALLOWED else "none"
+)
+CLAIM_MMR_LAMBDA: float = float(os.getenv("CLAIM_MMR_LAMBDA", "0.7"))
+SPO_CLUSTER_THRESHOLD: float = float(os.getenv("SPO_CLUSTER_THRESHOLD", "0.85"))
+SPO_RERANKER_DUPLICATE_THRESHOLD: float = float(
+    os.getenv("SPO_RERANKER_DUPLICATE_THRESHOLD", "0.88")
+)
+MAX_CONSENSUS_BATCH_TOKENS: int = int(os.getenv("MAX_CONSENSUS_BATCH_TOKENS", "3072"))
+MAX_CONSENSUS_NODES_PER_BATCH: int = int(os.getenv("MAX_CONSENSUS_NODES_PER_BATCH", "10"))
+MAX_PRIMARY_ANCHORS: int = int(os.getenv("MAX_PRIMARY_ANCHORS", "3"))
 GEMMA_EST_OUTPUT_TOKENS: int = int(
     os.getenv("GEMMA_EST_OUTPUT_TOKENS", str(GEMMA_MAP_MAX_OUTPUT_TOKENS))
 )

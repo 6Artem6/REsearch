@@ -295,6 +295,7 @@ class MapReduceArticleJob:
     all_figure_ids: list[str] = field(default_factory=list)
     figure_registry: object | None = None
     trust_score: float = 1.0
+    consensus_nodes: list[object] = field(default_factory=list)
 
 
 @dataclass
@@ -303,6 +304,7 @@ class MapReduceJobOutcome:
 
     final: FinalArticleSummaryResponse | None
     map_results: list[MapWindowResponse | None] = field(default_factory=list)
+    consensus_nodes: list[object] = field(default_factory=list)
 
 
 @dataclass
@@ -573,7 +575,35 @@ async def _run_two_phase_reduce(
     )
 
     clean_atoms = list(raw_atoms)
+    consensus_applied = False
     if raw_atoms:
+        from knowledge_engine.services.deduplication.entity_consensus_engine import (
+            apply_entity_consensus_to_atoms,
+            claim_dedup_is_enabled,
+        )
+
+        if claim_dedup_is_enabled():
+            try:
+                collapsed = await apply_entity_consensus_to_atoms(
+                    raw_atoms,
+                    http_client=http_client,
+                    gemma_rl=gemma_rl,
+                )
+            except Exception as exc:
+                trace(
+                    f"BLOG_SPATIAL reduce ⚠ entity_consensus failed | "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                collapsed = None
+            if collapsed is not None:
+                clean_atoms, nodes = collapsed
+                job.consensus_nodes = list(nodes)
+                consensus_applied = True
+                trace(
+                    f"BLOG_SPATIAL reduce ✓ entity_consensus | "
+                    f"atoms_out={len(clean_atoms)} nodes={len(nodes)}"
+                )
+    if raw_atoms and not consensus_applied:
         trace(
             f"BLOG_SPATIAL reduce ▶ two_phase/dedup | backend={backend} "
             f"model={model} atoms_in={len(raw_atoms)} | {job.url[:55]}"
@@ -597,7 +627,7 @@ async def _run_two_phase_reduce(
                 "BLOG_SPATIAL reduce ⚠ two_phase/dedup failed — "
                 "using pooled MAP atoms"
             )
-    else:
+    elif not raw_atoms:
         trace("BLOG_SPATIAL reduce ⚠ two_phase/dedup skip | no MAP atoms")
 
     # Provenance: union source_chunk_ids even if Gemma dropped them on merge.
@@ -771,6 +801,7 @@ async def map_reduce_jobs_pooled_async(
                 finals[state.job.job_id] = MapReduceJobOutcome(
                     final=final,
                     map_results=list(state.results),
+                    consensus_nodes=list(state.job.consensus_nodes),
                 )
             finally:
                 reduce_queue.task_done()
