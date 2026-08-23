@@ -44,7 +44,7 @@ def persist_approved_curriculum_hits_to_lancedb(
         ds = _hit_to_document_summary(hit)
         if not ds:
             continue
-        store.save_summary(ds)
+        store.save_summary(ds, skip_rag_ingest=True)
         saved += 1
         trace(
             f"CURRICULUM LanceDB persist ✓ | {label} | "

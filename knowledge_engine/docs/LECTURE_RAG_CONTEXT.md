@@ -7,7 +7,9 @@
 ## Когда вызывается
 
 - `POST /node/chat` с `[mode:lecture]` или явным запросом плотной лекции.
-- `engine.run_node_deep_dive` → `needs_dense` → `retrieve_lecture_rag_context()` → (условно) `fetch_verified_external_sources()` → `generate_dense_material()`.
+- `engine.run_node_deep_dive` (worker: `NODE_DEEP_DIVE`) → `needs_dense` → `retrieve_lecture_rag_context()` → (условно) `fetch_verified_external_sources()` → `generate_dense_material()`.
+
+Векторный поиск, LightRAG и Cross-Encoder **не вызываются из процесса API**. `POST /node/chat-stream` проксирует SSE с worker (`ke:jobstream:{job_id}` / JSONL).
 
 Перед **LECTURE_SEARCH** (Exa / Semantic Scholar / Consensus): если после RAG достаточно локальных фрагментов (`local_sources_count >= LECTURE_MIN_LOCAL_SOURCES`, по умолчанию 3) или есть pinned whitelist — первичный внешний поиск пропускается (`[LECTURE_PIPELINE] External search bypassed…`). Жёсткое отключение: `LECTURE_EXTERNAL_SEARCH_ENABLED=false`. Запрос модели `search_external_materials` после лекции по-прежнему вызывает внешний поиск без этого guardrail.
 
@@ -92,14 +94,14 @@ hits). Hard cutoff gates **retrieval → lecture context**, not window splitting
 
 - Критерий: **фокус пользователя** (`user_query`), если пусто — search query ноды.
 - Вызов: `score_relevance_pairs()` из `src/rag_gateway/cross_encoder.py` (тот же стек, что Directional RAG Gateway).
-- Модель: `RAG_CROSS_ENCODER_MODEL` (`BAAI/bge-reranker-v2-m3`) или cosine fallback на Ollama `EMBED_MODEL`.
+- Модель: `RAG_CROSS_ENCODER_MODEL` (`BAAI/bge-reranker-v2-m3`); сырые логиты → σ(x) ∈ [0, 1]. Cosine fallback — тот же Bi-Encoder `EMBED_MODEL` (`BAAI/bge-m3`).
 - Отсечка шума: `LECTURE_RAG_CE_MIN_SCORE`.
 
 ### Step 3 — MMR
 
 - Реализация: greedy MMR в `services/lecture_context_rerank.py` (не библиотека).
 - Relevance: scores CE (0…1).
-- Similarity между чанками: косинус эмбеддингов Ollama (не cross-encoder между чанками).
+- Similarity между чанками: косинус эмбеддингов `BAAI/bge-m3` (не cross-encoder между чанками).
 - λ: `LECTURE_RAG_MMR_LAMBDA` (default 0.62) — выше → ближе к чистой релевантности, ниже → больше разнообразия.
 
 ### Step 4 — Склейка
@@ -115,7 +117,7 @@ hits). Hard cutoff gates **retrieval → lecture context**, not window splitting
 | Таймаут LightRAG (`LECTURE_RAG_LIGHT_TIMEOUT_SEC`) | пул без vector hits |
 | Таймаут CE/MMR (`LECTURE_RAG_RERANK_TIMEOUT_SEC`) | `fallback_dedupe_candidates` — URL + exact-text, лимит как legacy |
 | Ошибка всего блока rerank | полный fallback: сбор пула + legacy dedupe |
-| CE недоступен | уже внутри `cross_encoder.py` → Ollama cosine |
+| CE недоступен | уже внутри `cross_encoder.py` → BGE-M3 cosine |
 
 Тяжёлые операции: `run_blocking_timed` + пулы `blocking_pools` (`pool_rag_io`, `pool_rag_ce`) для collect/CE (без глобального UMA-lock на весь collect — иначе таймаут оставляет «зомби»-поток).
 
@@ -139,10 +141,10 @@ hits). Hard cutoff gates **retrieval → lecture context**, not window splitting
 |------------|---------|----------|
 | `LECTURE_RAG_CANDIDATE_LIMIT` | 15 | Первичный пул |
 | `LECTURE_RAG_MMR_TOP_K` | 5 | Чанков после MMR |
-| `LECTURE_RAG_CE_MIN_SCORE` | 0.38 | Мин. CE score |
+| `LECTURE_RAG_CE_MIN_SCORE` | 0.50 | Мин. CE score после σ(logit) |
 | `LECTURE_RAG_MMR_LAMBDA` | 0.62 | Баланс rel / diversity |
 | `LECTURE_RAG_RERANK_TIMEOUT_SEC` | 60 | Таймаут rerank+MMR |
-| `LECTURE_RAG_COLLECT_TIMEOUT_SEC` | 90 | Таймаут LanceDB/Ollama collect (в thread) |
+| `LECTURE_RAG_COLLECT_TIMEOUT_SEC` | 90 | Таймаут LanceDB collect (в thread) |
 | `LECTURE_RAG_LIGHT_TIMEOUT_SEC` | 45 | Таймаут LightRAG vector_search |
 | `LECTURE_RAG_KNODE_CANDIDATE_LIMIT` | 4 | Knowledge nodes в пуле |
 | `LECTURE_RAG_TOP_K` | 3 | Legacy лимит при full fallback |

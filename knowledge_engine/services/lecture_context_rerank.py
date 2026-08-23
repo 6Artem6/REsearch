@@ -7,11 +7,9 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from knowledge_engine.config import (
-    EMBED_MODEL,
     LECTURE_RAG_CE_MIN_SCORE,
     LECTURE_RAG_MMR_LAMBDA,
     LECTURE_RAG_MMR_TOP_K,
-    OLLAMA_BASE_URL,
 )
 from knowledge_engine.src.rag_gateway.cross_encoder import score_relevance_pairs
 from knowledge_engine.ui.run_log import trace
@@ -47,14 +45,10 @@ def _cosine(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def _embed_texts_sync(texts: list[str]) -> list[np.ndarray]:
-    from langchain_ollama import OllamaEmbeddings
+    from knowledge_engine.services.search.bge_m3_embed import embed_texts_bge_m3
 
-    emb = OllamaEmbeddings(model=EMBED_MODEL, base_url=OLLAMA_BASE_URL)
-    out: list[np.ndarray] = []
-    for t in texts:
-        v = np.asarray(emb.embed_query((t or "")[:8000]), dtype=np.float64)
-        out.append(v)
-    return out
+    vecs = embed_texts_bge_m3([(t or "")[:8000] for t in texts])
+    return [np.asarray(v, dtype=np.float64) for v in vecs]
 
 
 def _mmr_select_indices(

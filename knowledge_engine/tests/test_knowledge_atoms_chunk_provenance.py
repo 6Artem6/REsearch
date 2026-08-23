@@ -194,6 +194,114 @@ def test_upsert_knowledge_atoms_and_window_summary(tmp_path, monkeypatch) -> Non
     ] == ["ws1", "ws2"]
 
 
+def test_rag_chunks_migrates_missing_window_summary(tmp_path, monkeypatch) -> None:
+    """Pre-window_summary Lance table is rebuilt instead of dropping the column."""
+    from unittest.mock import MagicMock
+
+    import lancedb
+
+    import knowledge_engine.config as cfg
+    import knowledge_engine.services.vector_store as vs_mod
+    from knowledge_engine.db.embed_model_guard import expected_embed_model
+    from knowledge_engine.schemas import DocumentSummary
+
+    monkeypatch.setattr(cfg, "LANCE_DB_PATH", tmp_path)
+    monkeypatch.setattr(vs_mod, "LANCE_DB_PATH", tmp_path)
+
+    store = vs_mod.VectorStore.__new__(vs_mod.VectorStore)
+    store._embeddings = MagicMock()
+    store._embeddings.embed_query = MagicMock(return_value=[0.05] * 8)
+    store._db = lancedb.connect(str(tmp_path))
+
+    store._db.create_table(
+        "rag_chunks",
+        data=[
+            {
+                "chunk_id": "legacy_1",
+                "doc_id": "legacy-doc",
+                "url": "https://example.com/legacy",
+                "title": "Legacy",
+                "chunk_text": "legacy body",
+                "chunk_vector": [0.01] * 8,
+                "doc_summary_text": "legacy sum",
+                "doc_meta_vector": [0.02] * 8,
+                "chunk_index": 0,
+                "chunks_in_doc": 1,
+                "trust_score": 1.0,
+                "embed_model": expected_embed_model(),
+            }
+        ],
+    )
+
+    url = "https://example.com/new-map"
+    summary = DocumentSummary(
+        title="New",
+        url=url,
+        cs_concepts=[],
+        key_takeaways=[],
+        failure_modes=[],
+        diagram_descriptions=[],
+    )
+    n = store.upsert_rag_academic_map_windows(
+        url,
+        "New",
+        ["window body"],
+        summary,
+        window_summaries=["gemma window digest"],
+    )
+    assert n == 1
+    chunks = store._db.open_table("rag_chunks").to_arrow()
+    names = set(chunks.schema.names)
+    assert "window_summary" in names
+    by_id = {
+        chunks.column("chunk_id")[i].as_py(): chunks.column("window_summary")[i].as_py()
+        for i in range(chunks.num_rows)
+    }
+    assert by_id["legacy_1"] in ("", None)
+    new_summaries = [v for k, v in by_id.items() if k != "legacy_1"]
+    assert new_summaries == ["gemma window digest"]
+
+
+def test_persist_spatial_lancedb_upserts_atoms() -> None:
+    from unittest.mock import MagicMock
+
+    from knowledge_engine.schemas import DocumentSummary
+    from knowledge_engine.services.article_ingestion.blog_spatial_pipeline import (
+        _persist_spatial_lancedb,
+    )
+
+    store = MagicMock()
+    store.upsert_knowledge_atoms.return_value = 1
+    store.upsert_rag_academic_map_windows.return_value = 1
+    summary = DocumentSummary(
+        title="t",
+        url="https://example.com/a",
+        cs_concepts=[],
+        key_takeaways=[],
+        failure_modes=[],
+        diagram_descriptions=[],
+    )
+    atom = KnowledgeAtom(
+        scope=ScopeType.PRINCIPLE,
+        statement="Isolation is not a security boundary",
+    )
+    n = _persist_spatial_lancedb(
+        store,
+        url="https://example.com/a",
+        title="t",
+        summary=summary,
+        window_texts=["body"],
+        map_results=[],
+        knowledge_atoms=[atom],
+    )
+    assert n == 1
+    store.save_summary.assert_called_once()
+    store.upsert_knowledge_atoms.assert_called_once()
+    args, _kwargs = store.upsert_knowledge_atoms.call_args
+    assert args[0] == "https://example.com/a"
+    assert args[1] == [atom]
+
+
 def test_doc_id_for_url_stable() -> None:
     a = VectorStore.doc_id_for_url("https://Example.com/paper/")
     b = VectorStore.doc_id_for_url("https://example.com/paper")

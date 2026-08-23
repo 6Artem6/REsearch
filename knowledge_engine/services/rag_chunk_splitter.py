@@ -4,6 +4,15 @@ from __future__ import annotations
 
 from knowledge_engine.config import RAG_CHUNK_OVERLAP, RAG_CHUNK_SIZE
 
+_BOUNDARY_LOOKBACK = 80
+
+
+def _last_whitespace_index(text: str) -> int:
+    best = -1
+    for ch in (" ", "\n", "\t"):
+        best = max(best, text.rfind(ch))
+    return best
+
 
 def split_sliding_window(
     text: str,
@@ -12,7 +21,7 @@ def split_sliding_window(
     overlap: int | None = None,
     min_chunk_chars: int = 48,
 ) -> list[str]:
-    """~500–800 char windows with overlap (defaults from config)."""
+    """~500–800 char windows with overlap; snap cuts to whitespace when possible."""
     raw = (text or "").replace("\r\n", "\n").strip()
     if not raw:
         return []
@@ -20,14 +29,35 @@ def split_sliding_window(
     ov = int(overlap if overlap is not None else RAG_CHUNK_OVERLAP)
     size = max(200, min(size, 1200))
     ov = max(0, min(ov, size // 2))
-    step = max(1, size - ov)
     out: list[str] = []
     start = 0
-    while start < len(raw):
-        piece = raw[start : start + size].strip()
+    n = len(raw)
+    while start < n:
+        hard_end = min(start + size, n)
+        end = hard_end
+        if hard_end < n:
+            floor = start + min_chunk_chars
+            lookback_from = max(floor, hard_end - _BOUNDARY_LOOKBACK)
+            region = raw[lookback_from:hard_end]
+            br = _last_whitespace_index(region)
+            if br >= 0:
+                end = lookback_from + br
+        if end <= start:
+            end = hard_end
+        piece = raw[start:end].strip()
         if len(piece) >= min_chunk_chars:
             out.append(piece)
-        if start + size >= len(raw):
+        if end >= n:
             break
-        start += step
+        nxt = end - ov
+        if nxt <= start:
+            nxt = end
+        else:
+            while nxt < end and nxt < n and not raw[nxt].isspace():
+                nxt += 1
+            while nxt < n and raw[nxt].isspace():
+                nxt += 1
+        if nxt <= start:
+            nxt = end
+        start = nxt
     return out

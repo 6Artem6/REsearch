@@ -118,6 +118,9 @@ def _format_document_summary(
         f"### {tag} {index}: {ds.title}",
         f"URL: {ds.url}",
     ]
+    exec_sum = (ds.executive_summary or "").strip()
+    if exec_sum:
+        lines.append(exec_sum)
     if ds.cs_concepts:
         lines.append("Концепты: " + ", ".join(ds.cs_concepts[:16]))
     if ds.key_takeaways:
@@ -164,6 +167,7 @@ def _format_registry_stub(
 def _plain_from_document_summary(ds: DocumentSummary) -> str:
     parts = [
         ds.title,
+        (ds.executive_summary or "").strip(),
         " ".join(ds.cs_concepts or []),
         " ".join(ds.key_takeaways or []),
         " ".join(ds.failure_modes or []),
@@ -523,6 +527,17 @@ def _year_from_row_meta(row: dict[str, object]) -> int | None:
     return None
 
 
+def _chunk_plain_for_lecture(row: dict[str, object]) -> str:
+    """MAP window_summary + chunk_text for the lecture prompt (scoring stays on chunk_text)."""
+    from knowledge_engine.db.rag_chunks_schema import COL_CHUNK_TEXT, COL_WINDOW_SUMMARY
+
+    text = str(row.get(COL_CHUNK_TEXT) or "").strip()
+    ws = str(row.get(COL_WINDOW_SUMMARY) or "").strip()
+    if ws:
+        return f"{ws}\n\n{text}"
+    return text
+
+
 def _append_mandatory_mapped_rag_chunks(
     query: str,
     candidates: list[LectureContextCandidate],
@@ -570,7 +585,7 @@ def _append_mandatory_mapped_rag_chunks(
                 LectureContextCandidate(
                     label=_PINNED_RAG_LABEL,
                     formatted="",
-                    plain=text[:6000],
+                    plain=_chunk_plain_for_lecture(row)[:6000],
                     url_key=key,
                     source_id=doc_id,
                     source_title=str(row.get(COL_TITLE) or url or doc_id)[:200],
@@ -708,7 +723,7 @@ def _append_fine_rag_chunk_candidates(
             LectureContextCandidate(
                 label="rag_fine_chunk",
                 formatted="",
-                plain=text[:6000],
+                plain=_chunk_plain_for_lecture(row)[:6000],
                 url_key=key,
                 source_id=doc_id,
                 source_title=str(row.get(COL_TITLE) or url or doc_id)[:200],
@@ -1448,7 +1463,7 @@ def build_lecture_generation_payload(
 
         cmap = format_concept_map_for_tutor(
             memory,
-            include_evaluator_transparency=False,
+            include_evaluator_transparency=True,
         )
         if cmap.strip():
             block2_parts.append(cmap.strip())
@@ -1459,6 +1474,10 @@ def build_lecture_generation_payload(
     block3_parts: list[str] = [BLOCK_DYNAMIC_HEADER]
 
     if memory is not None:
+        from knowledge_engine.src.node_deep_dive.concept_map_state import (
+            format_lecture_target_focus_and_gaps,
+        )
+
         session_block = build_shared_session_context_block(
             memory,
             user_message="",
@@ -1466,6 +1485,22 @@ def build_lecture_generation_payload(
         )
         if session_block:
             block3_parts.append(session_block)
+        target_focus = format_lecture_target_focus_and_gaps(memory)
+        if target_focus.strip():
+            block3_parts.append(target_focus.strip())
+        open_q = (memory.last_tutor_follow_up_question or "").strip()
+        if open_q:
+            block3_parts.append(
+                "[OPEN_NODE_QUESTION]\n"
+                "An unanswered node/user question was pending before this lecture:\n"
+                f"{open_q[:2000]}\n"
+                "If [TARGET_FOCUS_AND_GAPS] names an open probe_layer or "
+                "focus_hint, PART 2 checkpoint_prompt MUST test that gap — "
+                "do not blindly re-state this question when it belongs to an "
+                "already-passed layer. Otherwise RE-STATE or REFINE this "
+                "question so it tests the concepts explained in PART 1. "
+                "Do not answer it inside lecture_body."
+            )
 
     if (memory_rag_profile or "").strip():
         block3_parts.append(
