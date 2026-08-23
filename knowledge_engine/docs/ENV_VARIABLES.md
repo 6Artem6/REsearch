@@ -104,6 +104,12 @@
 | `MAX_CONSENSUS_BATCH_TOKENS` | `3072` (system + batch; Gemma tokenizer; packer SSOT) |
 | `MAX_CONSENSUS_NODES_PER_BATCH` | `10` (soft cap; token budget of 3072 can split smaller) |
 | `MAX_PRIMARY_ANCHORS` | `3` (anti-bloat `primary_anchors`; full set in `all_anchors`) |
+| `CODE_PARSER_MODE` | `linear` (`ast` = tree-sitter Python/JS/TS, fallback linear) |
+| `CHUNK_ANCHOR_INJECTION` | `false` (opt-in `[A1]`…`[An]` on MAP/REDUCE context) |
+| `ANCHOR_REGEX_VALIDATE` | `false` (opt-in `[A99 (? unverified)]`; never touches `[S*]`/`[R*]`/`arr[0]`) |
+| `USE_GITHUB_TREES_API` | `false` (opt-in Git Trees API; repo root → corpus; `/blob/` → target + depth-1 AST deps ≤ 5; 401/403/404/timeout → zip then HTML) |
+| `GITHUB_TOKEN` | empty (optional; raises GitHub REST limit to 5000 req/h) |
+| `MAX_GITHUB_FILE_SIZE_BYTES` | `102400` (skip blobs larger than 100 KB before download) |
 
 Параллельный MAP на клиенте всегда `asyncio.Semaphore(4)` (Gemma cloud и Ollama). Для Ollama задайте `OLLAMA_NUM_PARALLEL >= 4`.
 

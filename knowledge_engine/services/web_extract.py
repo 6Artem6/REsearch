@@ -15,6 +15,7 @@ from knowledge_engine.ui.run_log import trace
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _MIN_TEXT_CHARS = 300
+_MAX_EXTRACT_CHARS = 500_000
 _HTTP_TIMEOUT = 10.0
 _FETCH_BYTES_TIMEOUT = 45.0
 _DOI_LANDING_TIMEOUT = 35.0
@@ -22,6 +23,27 @@ _USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 )
+_GITHUB_BLOB_RE = re.compile(
+    r"^https?://(?:www\.)?github\.com/([^/]+)/([^/]+)/blob/(.+)$",
+    re.IGNORECASE,
+)
+
+
+def github_blob_to_raw_fetch_url(url: str) -> str:
+    """github.com/.../blob/{ref}/{path} → raw.githubusercontent.com (fetch URL only)."""
+    raw_url = (url or "").strip()
+    m = _GITHUB_BLOB_RE.match(raw_url)
+    if not m:
+        return raw_url
+    owner, repo, rest = m.group(1), m.group(2), m.group(3).lstrip("/")
+    if not rest:
+        return raw_url
+    rewritten = f"https://raw.githubusercontent.com/{owner}/{repo}/{rest}"
+    if rewritten != raw_url:
+        trace(f"WEB github blob → raw | {raw_url[:70]}")
+    return rewritten
+
+
 _CHALLENGE_MARKERS = (
     "just a moment",
     "cloudflare",
@@ -61,8 +83,34 @@ def is_anti_bot_fetch_result(
     return False
 
 
-def _clean_html(html: str, max_chars: int = 12000) -> str:
+def _clean_html(html: str, max_chars: int = 12_000) -> str:
+    """Cheap tag-strip for anti-bot / thin-page probes only — not article body."""
     text = _HTML_TAG_RE.sub(" ", html)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:max_chars]
+
+
+def _extract_readable_text(html: str, *, url: str = "", max_chars: int = _MAX_EXTRACT_CHARS) -> str:
+    """Full-document text for ingest. Trafilatura first; regex strip is fallback."""
+    raw = html or ""
+    if not raw.strip():
+        return ""
+    try:
+        import trafilatura
+
+        extracted = trafilatura.extract(
+            raw,
+            url=(url or None),
+            include_comments=False,
+            include_tables=True,
+            include_formatting=True,
+            include_links=False,
+        )
+        if extracted and len(extracted.strip()) >= 80:
+            return extracted.strip()[:max_chars]
+    except Exception as exc:
+        trace(f"WEB trafilatura ✗ | {type(exc).__name__}: {exc}")
+    text = _HTML_TAG_RE.sub(" ", raw)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:max_chars]
 
@@ -87,7 +135,31 @@ def _httpx_get(url: str, timeout: float = _HTTP_TIMEOUT) -> httpx.Response | Non
 
 
 def smart_fetch_page_html(url: str) -> tuple[str, str]:
-    """Возвращает (raw_html, метод: httpx | playwright | failed)."""
+    """Возвращает (raw_html, метод: httpx | playwright | github_trees | github_zip | github_blob | failed)."""
+    from knowledge_engine.ingest.dependency_resolver import (
+        maybe_fetch_github_blob_with_deps,
+    )
+    from knowledge_engine.services.article_ingestion.github_tree_loader import (
+        maybe_fetch_github_repo_corpus,
+    )
+
+    github_corpus = maybe_fetch_github_repo_corpus(url)
+    if github_corpus is not None:
+        text, method = github_corpus
+        trace(f"WEB github {method} ✓ {url[:60]} | {len(text)} chars")
+        from knowledge_engine.ingest.pipeline_audit import pipeline_audit
+
+        pipeline_audit("Fetch", url, text, extra=f"method={method}")
+        return text, method
+    blob_expanded = maybe_fetch_github_blob_with_deps(url)
+    if blob_expanded is not None:
+        text, method = blob_expanded
+        trace(f"WEB github {method} ✓ {url[:60]} | {len(text)} chars")
+        from knowledge_engine.ingest.pipeline_audit import pipeline_audit
+
+        pipeline_audit("Fetch", url, text, extra=f"method={method}")
+        return text, method
+    url = github_blob_to_raw_fetch_url(url)
     resp = _httpx_get(url)
     if resp is not None:
         if resp.status_code in (403, 503):
@@ -107,6 +179,9 @@ def smart_fetch_page_html(url: str) -> tuple[str, str]:
                     text = _clean_html(html)
                     if len(text) >= _MIN_TEXT_CHARS:
                         trace(f"WEB httpx html ✓ {url[:60]} | {len(html)} bytes")
+                        from knowledge_engine.ingest.pipeline_audit import pipeline_audit
+
+                        pipeline_audit("Fetch", url, html, extra="method=httpx")
                         return html, "httpx"
                     trace(
                         f"WEB httpx thin {len(text)} sym < {_MIN_TEXT_CHARS} → Playwright"
@@ -118,6 +193,9 @@ def smart_fetch_page_html(url: str) -> tuple[str, str]:
             trace(f"WEB playwright challenge html | {url[:50]}")
             return "", "failed"
         trace(f"WEB playwright html ✓ {url[:60]} | {len(html)} bytes")
+        from knowledge_engine.ingest.pipeline_audit import pipeline_audit
+
+        pipeline_audit("Fetch", url, html or "", extra="method=playwright")
         return html, "playwright"
     except Exception as exc:
         trace(f"WEB playwright ✗ {url[:60]} | {exc}")
@@ -178,7 +256,16 @@ def smart_fetch_page_text(url: str) -> tuple[str, str]:
     html, method = smart_fetch_page_html(url)
     if not html:
         return "", "failed"
-    return _clean_html(html), method
+    if method in ("github_trees", "github_zip", "github_blob"):
+        from knowledge_engine.ingest.pipeline_audit import pipeline_audit
+
+        pipeline_audit("Clean", url, html, extra=f"method={method} passthrough")
+        return html, method
+    text = _extract_readable_text(html, url=url)
+    from knowledge_engine.ingest.pipeline_audit import pipeline_audit
+
+    pipeline_audit("Clean", url, text, extra=f"method={method} trafilatura")
+    return text, method
 
 
 def resolve_embedded_pdf_url(html: str, page_url: str) -> str | None:

@@ -26,6 +26,8 @@ _BLOCK_TAGS = frozenset(
         "pre",
         "td",
         "th",
+        "dt",
+        "dd",
     }
 )
 _SKIP_TAGS = frozenset({"script", "style", "svg"})
@@ -135,6 +137,14 @@ def build_annotated_article(
         emit_figure(img, None)
 
     annotated = "\n\n".join(lines).strip()
+    from knowledge_engine.ingest.pipeline_audit import pipeline_audit
+
+    pipeline_audit(
+        "Annotate",
+        url,
+        annotated,
+        extra=f"P={len(paragraph_map)} FIG={len(fig_map)}",
+    )
     trace(
         f"BLOG_SPATIAL annotate ✓ | P={len(paragraph_map)} FIG={len(fig_map)} "
         f"chars={len(annotated)} | {url[:70]}"

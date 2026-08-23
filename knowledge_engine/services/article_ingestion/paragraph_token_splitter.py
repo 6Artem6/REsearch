@@ -83,6 +83,114 @@ class TokenWindowChunk:
     section_heading: str = ""
 
 
+_LEGACY_ANCHOR_PREFIX_RE = re.compile(r"^\[ANCHOR:[^\]]*\]\n?")
+_ORDINAL_ANCHOR_PREFIX_RE = re.compile(r"^\[A\d+\]\n?")
+
+
+def strip_context_anchor_prefix(body: str) -> str:
+    """Снять ``[A{i}]`` / legacy ``[ANCHOR: …]`` с первой строки (для перенумерации)."""
+    text = (body or "").lstrip("\n")
+    text = _LEGACY_ANCHOR_PREFIX_RE.sub("", text, count=1)
+    text = _ORDINAL_ANCHOR_PREFIX_RE.sub("", text, count=1)
+    return text
+
+
+def maybe_prepend_chunk_anchor(body: str, ordinal: int) -> str:
+    """Opt-in паспорт ``[A{i}]`` в начало тела чанка (i — номер в текущем контексте).
+
+    При ``CHUNK_ANCHOR_INJECTION=false`` возвращает ``body`` без изменений.
+    Повторный вызов идемпотентен для того же ordinal.
+    """
+    from knowledge_engine import config as ke_config
+
+    if not ke_config.CHUNK_ANCHOR_INJECTION:
+        return body
+    try:
+        idx = int(ordinal)
+    except (TypeError, ValueError):
+        return body or ""
+    if idx < 1:
+        return body or ""
+    marker = f"[A{idx}]"
+    stripped = strip_context_anchor_prefix(body or "")
+    return f"{marker}\n{stripped}"
+
+
+def build_anchor_index_map(
+    windows: list[TokenWindowChunk],
+    *,
+    url: str,
+) -> dict[str, dict[str, object]]:
+    """Локальный ``index_map``: ``A1`` → ``chunk_id`` ``{doc_id}_map_{n}`` + позиция."""
+    from knowledge_engine.db.rag_chunks_schema import map_window_chunk_id
+    from knowledge_engine.services.vector_store import VectorStore
+
+    index_map: dict[str, dict[str, object]] = {}
+    if not windows:
+        return index_map
+    doc_id = VectorStore.doc_id_for_url(url)
+    for position, win in enumerate(windows, start=1):
+        key = f"A{position}"
+        cid = map_window_chunk_id(doc_id, win.window_index)
+        index_map[key] = {
+            "chunk_id": cid,
+            "window_index": win.window_index,
+            "position": position,
+        }
+    return index_map
+
+
+def ordinal_for_window(
+    window_index: int,
+    index_map: dict[str, dict[str, object]] | None,
+) -> int:
+    """1-based ordinal в текущем ``index_map``; иначе ``window_index + 1``."""
+    for key, meta in (index_map or {}).items():
+        if not isinstance(meta, dict):
+            continue
+        try:
+            if int(meta.get("window_index", -1)) != int(window_index):
+                continue
+        except (TypeError, ValueError):
+            continue
+        pos = meta.get("position")
+        try:
+            if pos is not None:
+                return int(pos)
+        except (TypeError, ValueError):
+            pass
+        if str(key).startswith("A") and str(key)[1:].isdigit():
+            return int(str(key)[1:])
+    try:
+        return int(window_index) + 1
+    except (TypeError, ValueError):
+        return 1
+
+
+def apply_chunk_anchors_to_windows(
+    windows: list[TokenWindowChunk],
+    *,
+    url: str,
+) -> dict[str, dict[str, object]]:
+    """Собрать ``index_map``; при флаге препендить ``[A{{i}}]`` к ``body``."""
+    from knowledge_engine import config as ke_config
+
+    index_map = build_anchor_index_map(windows, url=url)
+    if not ke_config.CHUNK_ANCHOR_INJECTION or not windows:
+        return index_map
+    for key, meta in index_map.items():
+        try:
+            win_idx = int(meta.get("window_index", -1))
+            position = int(meta.get("position") or int(str(key)[1:]))
+        except (TypeError, ValueError):
+            continue
+        for win in windows:
+            if win.window_index == win_idx:
+                win.body = maybe_prepend_chunk_anchor(win.body, position)
+                break
+    return index_map
+
+
 class ParagraphTokenSplitter:
     def split_annotated_text_by_tokens(
         self,

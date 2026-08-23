@@ -341,6 +341,19 @@ SPO_RERANKER_DUPLICATE_THRESHOLD: float = float(
 MAX_CONSENSUS_BATCH_TOKENS: int = int(os.getenv("MAX_CONSENSUS_BATCH_TOKENS", "3072"))
 MAX_CONSENSUS_NODES_PER_BATCH: int = int(os.getenv("MAX_CONSENSUS_NODES_PER_BATCH", "10"))
 MAX_PRIMARY_ANCHORS: int = int(os.getenv("MAX_PRIMARY_ANCHORS", "3"))
+_CODE_PARSER_MODE_RAW = (os.getenv("CODE_PARSER_MODE", "linear") or "linear").strip().lower()
+CODE_PARSER_MODE: str = (
+    _CODE_PARSER_MODE_RAW if _CODE_PARSER_MODE_RAW in ("linear", "ast") else "linear"
+)
+CHUNK_ANCHOR_INJECTION: bool = _env_bool("CHUNK_ANCHOR_INJECTION", False)
+ANCHOR_REGEX_VALIDATE: bool = _env_bool("ANCHOR_REGEX_VALIDATE", False)
+# Phase 3A: GitHub Git Trees API (no full .zip). Default off → existing HTML/raw fetch.
+USE_GITHUB_TREES_API: bool = _env_bool("USE_GITHUB_TREES_API", False)
+_GITHUB_TOKEN_RAW = (os.getenv("GITHUB_TOKEN") or "").strip()
+GITHUB_TOKEN: str | None = _GITHUB_TOKEN_RAW or None
+MAX_GITHUB_FILE_SIZE_BYTES: int = int(
+    os.getenv("MAX_GITHUB_FILE_SIZE_BYTES", str(100 * 1024))
+)
 GEMMA_EST_OUTPUT_TOKENS: int = int(
     os.getenv("GEMMA_EST_OUTPUT_TOKENS", str(GEMMA_MAP_MAX_OUTPUT_TOKENS))
 )
