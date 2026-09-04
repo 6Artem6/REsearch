@@ -8,7 +8,7 @@ from knowledge_engine.src.curriculum.schemas import CurriculumSearchHit
 from knowledge_engine.ui.run_log import trace
 
 
-def ingest_document_summary(
+async def ingest_document_summary(
     summary: DocumentSummary,
     *,
     body_text: str | None = None,
@@ -19,7 +19,7 @@ def ingest_document_summary(
     persist one LanceDB row per chunk.
     """
     vs = store or VectorStore()
-    n = vs.upsert_rag_chunks_from_summary(summary, body_text=body_text)
+    n = await vs.upsert_rag_chunks_from_summary(summary, body_text=body_text)
     if n:
         trace(
             f"RAG_CHUNKS ingest ✓ | chunks={n} | "
@@ -28,7 +28,7 @@ def ingest_document_summary(
     return n
 
 
-def ingest_exa_highlights_fallback(
+async def ingest_exa_highlights_fallback(
     hit: CurriculumSearchHit,
     *,
     body_text: str | None = None,
@@ -41,7 +41,7 @@ def ingest_exa_highlights_fallback(
     if len(text) < 40:
         return 0
     vs = store or VectorStore()
-    n = vs.upsert_rag_exa_highlights_fallback(
+    n = await vs.upsert_rag_exa_highlights_fallback(
         hit.url,
         hit.title or hit.url,
         text,

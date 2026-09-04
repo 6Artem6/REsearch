@@ -104,6 +104,17 @@ class KnowledgeAtom(BaseModel):
         default_factory=list,
         description="IDs of MAP windows / rag_chunks that mention this fact",
     )
+    cluster_key: str = Field(
+        default="general",
+        max_length=64,
+        description="Short entity or topic tag, e.g. 'cpylex', 'gil_lock'",
+    )
+
+    @field_validator("cluster_key", mode="before")
+    @classmethod
+    def _coerce_cluster_key(cls, v: object) -> str:
+        raw = str(v or "general").strip().lower() or "general"
+        return raw[:64]
 
     @field_validator("source_chunk_ids", mode="before")
     @classmethod

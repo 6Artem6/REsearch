@@ -56,10 +56,22 @@ def max_nodes_per_consensus_batch() -> int:
 
 
 def consensus_max_output_tokens() -> int:
-    """Completion cap for consensus JSON — same value packing uses."""
+    """Completion cap for consensus JSON — same value packing uses.
+
+    AUDIT FIX: this used to hardcode `min(2048, GEMMA_REDUCE_MAX_OUTPUT_TOKENS)`
+    — a silent, undocumented HALVING of the real configured REDUCE output
+    ceiling (4096 by default). build_token_bounded_batches() derives its
+    output_budget straight from this value (`output_cap * 0.75`), so the
+    2048 clamp capped every consensus batch's PROJECTED output at 1536
+    tokens — confirmed live: batches flushed at facts=6-9 / ~150-160 output
+    tokens per node, i.e. the packer hit this output ceiling long before the
+    input window (3072) or the node cap (10) ever bound, leaving 50-63% of
+    the input budget unused per call and forcing 9 sequential micro-batches
+    instead of a handful of dense ones. Respect the real configured ceiling
+    like MAP already does for its own output cap."""
     from knowledge_engine.config import GEMMA_REDUCE_MAX_OUTPUT_TOKENS
 
-    return min(2048, int(GEMMA_REDUCE_MAX_OUTPUT_TOKENS))
+    return max(1, int(GEMMA_REDUCE_MAX_OUTPUT_TOKENS))
 
 
 def consensus_batch_limits() -> ConsensusBatchLimits:
@@ -84,7 +96,7 @@ def _micro_batches(facts: list[RawFact]) -> list[list[RawFact]]:
     return build_token_bounded_batches({"batch": facts})
 
 
-def _nodes_from_facts(facts: list[RawFact]) -> list[ConsensusNode]:
+def nodes_from_facts(facts: list[RawFact]) -> list[ConsensusNode]:
     from knowledge_engine.services.deduplication.entity_consensus_engine import (
         apply_anti_bloat_anchors,
     )
@@ -140,7 +152,7 @@ async def synthesize_consensus_batches(
     if not work:
         return []
     if not allow_cloud:
-        return [node for batch in work for node in _nodes_from_facts(batch)]
+        return [node for batch in work for node in nodes_from_facts(batch)]
 
     output_cap = consensus_max_output_tokens()
     limits = consensus_batch_limits()
@@ -152,7 +164,7 @@ async def synthesize_consensus_batches(
         parsed: ConsensusBatchResponse | None,
     ) -> list[ConsensusNode]:
         if parsed is None or not (parsed.nodes or []):
-            return _nodes_from_facts(batch)
+            return nodes_from_facts(batch)
         nodes: list[ConsensusNode] = []
         for node in parsed.nodes:
             all_a = _unique_anchors(node.all_anchors or node.primary_anchors)
@@ -191,14 +203,44 @@ async def synthesize_consensus_batches(
                         label="consensus_batch",
                         client=http_client,
                         max_tokens=output_cap,
+                        # Part of the REDUCE critical path (blocks REDUCE_DONE) —
+                        # ignore the TPM/RPM headroom reserved away from MAP.
+                        priority=True,
                     )
                 else:
+                    # AUDIT FIX: this used to call complete_structured() with
+                    # no limiter at all — a real, callable hole past the
+                    # shared TPM/RPM counter for any caller that omits
+                    # gemma_rl (dead in the current pipeline, since
+                    # map_reduce_jobs_pooled_async always builds one, but
+                    # prompt.txt asked for 100% coverage regardless of
+                    # caller). complete_structured()'s own `limiter` kwarg
+                    # only reconciles AFTER the call — it never blocks
+                    # admission — so this path must acquire against the SAME
+                    # registry entry build_gemma_model_slots() uses for the
+                    # primary model BEFORE sending the request, exactly like
+                    # RateLimitedLLMClient._pick_slot() does for the gated
+                    # branch above.
+                    from knowledge_engine.config import GEMMA_PRIMARY_MODEL
+                    from knowledge_engine.services.llm.rate_limiter import (
+                        get_gemma_rate_limiter,
+                    )
+
+                    fallback_limiter = get_gemma_rate_limiter(
+                        slot=f"gemma:{GEMMA_PRIMARY_MODEL}"
+                    )
+                    await fallback_limiter.acquire(
+                        input_tokens + projected_output_tokens,
+                        model=GEMMA_PRIMARY_MODEL,
+                        priority=True,
+                    )
                     parsed = await GemmaCloudClient().complete_structured(
                         system,
                         prompt,
                         ConsensusBatchResponse,
                         label="consensus_batch",
                         client=http_client,
+                        limiter=fallback_limiter,
                         max_tokens=output_cap,
                     )
             except Exception as exc:

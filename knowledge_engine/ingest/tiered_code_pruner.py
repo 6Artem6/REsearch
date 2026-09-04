@@ -17,6 +17,17 @@ from knowledge_engine.services.article_ingestion.ast_code_chunker import (
 logger = logging.getLogger(__name__)
 
 CodeTier = Literal["HIGH", "MEDIUM", "LOW"]
+"""Importance / RAG priority — what Flash Lite classifies from the catalog."""
+
+RenderFormat = Literal["FULL", "HEADER_ONLY", "SKIP"]
+"""How much text a function contributes to the MAP document. Orthogonal to
+``CodeTier``: importance is a judgment about the function's role (Flash Lite's
+call, from the catalog); render format is the assembler's decision about
+output size, made from tier *plus* the function's own metadata (docstring,
+length, whether a HIGH-tier function calls it) — never a static tier->format
+table. See ``resolve_render_format`` (defined near ``assemble_tiered_context``,
+after ``AstFunctionSpan`` exists)."""
+
 
 _TS_FUNC_TYPES = frozenset(
     {
@@ -25,6 +36,10 @@ _TS_FUNC_TYPES = frozenset(
         "generator_function_declaration",
         "method_definition",
         "method_declaration",
+        # Function-like macros (#define NAME(args) ...) — real callables with
+        # a name/params/expansion; plain preproc_def (#define NAME value) is
+        # a constant, not a function, and is deliberately excluded.
+        "preproc_function_def",
     }
 )
 _TS_CALL_TYPES = frozenset({"call_expression", "call"})
@@ -33,6 +48,32 @@ _TS_BODY_TYPES = frozenset(
     {"compound_statement", "statement_block", "block", "body"}
 )
 _PRUNE_LANGS = frozenset({"python", "c", "cpp", "javascript", "typescript", "tsx"})
+
+# C/C++ syntax keywords that must never reach the symbol catalog as a
+# "function" name. Tree-sitter's error-recovery parsing can mis-tag a
+# statement node as function_definition when it can't cleanly parse a nearby
+# construct (observed on real CPython source: an `else if` block inside a
+# malformed region got typed as function_definition) — no legitimate
+# function/macro is ever literally named after one of these keywords in any
+# of _PRUNE_LANGS, so filtering by name is a safe, language-agnostic guard
+# regardless of which grammar mis-parsed.
+_SYNTAX_KEYWORD_BLACKLIST = frozenset(
+    {
+        "if",
+        "else",
+        "for",
+        "while",
+        "do",
+        "switch",
+        "case",
+        "return",
+        "goto",
+        "struct",
+        "union",
+        "typedef",
+        "enum",
+    }
+)
 
 
 class TieredClassificationResult(BaseModel):
@@ -116,20 +157,92 @@ class ExternalCallGraph:
     cross_calls: list[ExternalCallLink]
 
 
+# STATIC PREFIX — this entire block is a byte-stable module constant reused
+# verbatim on every classify_code_tiers_flash_lite() call, so it sits first
+# in the Gemini request and only the per-call <function_catalog> user
+# message (dynamic suffix) varies. That ordering is what makes the prefix
+# eligible for the provider's implicit context-cache reuse across calls —
+# nothing here should ever be interpolated with request-specific data.
+#
+# A hash-keyed numeric {hash: tier} wire format was evaluated (measured
+# against the real Gemini API) as a way to shrink output tokens further.
+# It's a dead end: Gemini's structured-output schema rejects dynamic-key
+# objects outright (`additionalProperties is not supported in the Gemini
+# API`), and the schema-legal substitute — a JSON array of {hash, tier}
+# objects — measured ~34% SLOWER in practice (avg 13.3s vs 9.9s over 3
+# trials each on pystate.c, 170 symbols): the per-entry "hash"/"tier" key
+# labels outweigh the savings from short hashes vs. full names. Reverted;
+# keep this name-based three-list format.
 _TIER_SYSTEM = (
-    "You classify functions in ONE source file for a knowledge-ingest MAP pass.\n"
-    "You receive the full file and the AST function-name catalog. "
-    "Assign every catalog name to exactly one tier.\n"
-    "HIGH: architectural logic, algorithms, entry points, interpreter/runtime "
-    "state (locks, eval loop, schedulers). Example names: take_gil, drop_gil, "
+    "You are an expert static analysis assistant specializing in AST context "
+    "pruning. You classify functions/macros from ONE source file for a "
+    "knowledge-ingest MAP pass.\n"
+    "You receive ONLY a <function_catalog> — name, signature, and leading "
+    "comment for each symbol. Bodies are withheld by design (token budget); "
+    "judge importance from name/signature/comment alone.\n\n"
+    "Assign every catalog name to exactly one IMPORTANCE tier — this is RAG "
+    "priority, a judgment about the symbol's architectural role. It does "
+    "NOT by itself decide how much text a symbol contributes to the output "
+    "document (that RenderFormat decision is a separate, downstream step "
+    "that also weighs call-graph and docstring signals you don't see here).\n\n"
+    "TIERS:\n"
+    "- HIGH: kept in full downstream. Reserved EXCLUSIVELY for core domain "
+    "orchestrators, state machines, and complex non-trivial algorithms.\n"
+    "- MEDIUM: kept as signature-only downstream. Setup, allocation, "
+    "dependency wiring, and helpers called by HIGH-tier code.\n"
+    "- LOW: dropped downstream. Trivial accessors, state checks, boilerplate "
+    "wrappers, and noise artifacts.\n\n"
+    "SYMBOL CATEGORIES & NAME-PATTERN RULES:\n\n"
+    "1. LIFECYCLE & MANAGEMENT (Assign: MEDIUM):\n"
+    "   Category: setup, allocation, teardown, and initialization logic.\n"
+    "   Name patterns: contains init, fini, new, free, alloc, delete, clear, "
+    "reset, reinit, prealloc, bind, unbind.\n"
+    "   Rule: signature matters for API surface; internal allocation detail "
+    "rarely matters during high-level analysis.\n\n"
+    "2. ACCESSORS & BOOLEAN CHECKS (Assign: LOW):\n"
+    "   Category: single-statement getters, setters, state inspection, "
+    "condition validators.\n"
+    "   Name patterns: starts with or contains is_, has_, get_, set_, "
+    "check_, can_.\n"
+    "   Rule: self-documenting through their signature alone; drop entirely.\n\n"
+    "3. UTILITY & HELPER WRAPPERS (Assign: MEDIUM, or LOW if trivial):\n"
+    "   Category: repetitive internal macros, boilerplate list manipulation, "
+    "single-pass utility bridges.\n"
+    "   Name patterns: test_, ensure_, zap_, find_, lookup_.\n"
+    "   Rule: MEDIUM by default; downgrade to LOW only if the "
+    "name/signature/comment gives no sign of branching or business logic.\n\n"
+    "4. CORE DOMAIN FLOW (Assign: HIGH):\n"
+    "   Category: primary execution loops, key algorithms, coordination "
+    "routines, complex business logic. Example names: take_gil, drop_gil, "
     "PyEval_SaveThread.\n"
-    "MEDIUM: helpers, wrappers, error plumbing, type checks that support HIGH.\n"
-    "LOW: alloc/free, logging, getters/setters, trivial boilerplate.\n"
-    "Do not invent names outside the catalog. If unsure, use MEDIUM "
-    "(never LOW for unknown architectural role).\n"
+    "   Rule: HIGH only if the symbol orchestrates multi-step domain "
+    "behavior — not merely because it's long.\n\n"
+    "Do not invent names outside the catalog. If a name matches no pattern "
+    "above and its architectural role is unclear, use MEDIUM (never LOW for "
+    "unknown role).\n"
     "Return TieredClassificationResult JSON only: high_functions, "
     "medium_functions, low_functions."
 )
+
+_CATALOG_COMMENT_MAX_CHARS = 250
+
+
+def _catalog_entry(fn: AstFunctionSpan) -> str:
+    """One <function_catalog> bullet — name/signature/comment, NEVER body."""
+    lines = [f"* Name: {fn.name}"]
+    sig = (fn.signature or fn.name).strip().replace("\n", " ")
+    lines.append(f"  Signature: {sig}")
+    comment = (fn.leading_comment or fn.docstring or "").strip().replace("\n", " ")
+    if comment:
+        if len(comment) > _CATALOG_COMMENT_MAX_CHARS:
+            comment = comment[:_CATALOG_COMMENT_MAX_CHARS].rstrip() + "…"
+        lines.append(f"  Comment: {comment}")
+    return "\n".join(lines)
+
+
+def _build_function_catalog(functions: list[AstFunctionSpan]) -> str:
+    entries = "\n".join(_catalog_entry(fn) for fn in functions)
+    return f"<function_catalog>\n{entries}\n</function_catalog>"
 
 
 def _lang_from_path(path: str) -> str:
@@ -332,6 +445,15 @@ def _extract_ts_functions(code: str, lang: str, *, bodies: bool) -> list[AstFunc
         span = _span_from_ts(source, node)
         if span is None:
             continue
+        if span.name in _SYNTAX_KEYWORD_BLACKLIST:
+            logger.warning(
+                "tiered prune: dropped syntax-keyword false positive "
+                "name=%r type=%s line=%d (tree-sitter mis-parse)",
+                span.name,
+                ntype,
+                span.start_line,
+            )
+            continue
         if not bodies:
             span.body = ""
             span.calls = []
@@ -520,18 +642,15 @@ def _normalize_classification(
 
 
 def classify_code_tiers_flash_lite(
-    raw_code: str,
-    *,
-    function_names: list[str] | None = None,
+    functions: list[AstFunctionSpan],
 ) -> TieredClassificationResult:
-    catalog = _unique_names(function_names or [])
-    if not catalog:
-        for guess in ("c", "cpp", "python", "javascript", "typescript"):
-            catalog = _unique_names(
-                [fn.name for fn in extract_functions_from_source(raw_code, guess)]
-            )
-            if catalog:
-                break
+    """Classify importance from a signature+comment catalog — zero body overhead.
+
+    ``functions`` may carry bodies (the caller needs them later for FULL
+    rendering) but this call never puts them in the prompt: only
+    name/signature/leading_comment reach Flash Lite (``_build_function_catalog``).
+    """
+    catalog = _unique_names([fn.name for fn in functions])
     if not catalog:
         return TieredClassificationResult()
     from knowledge_engine.services.gemini_stateless import (
@@ -542,13 +661,9 @@ def classify_code_tiers_flash_lite(
 
     if not is_gemini_available():
         return TieredClassificationResult(high_functions=list(catalog))
-    listed = "\n".join(f"- {name}" for name in catalog)
     user = (
-        f"AST function catalog ({len(catalog)} names — classify each one):\n"
-        f"{listed}\n\n"
-        "<source_file>\n"
-        f"{raw_code}\n"
-        "</source_file>"
+        f"Function catalog ({len(catalog)} names — classify each one):\n\n"
+        f"{_build_function_catalog(functions)}"
     )
     try:
         parsed = run_gemini_lite_structured(
@@ -590,12 +705,83 @@ def _medium_stub(span: AstFunctionSpan, high: set[str], lang: str) -> str:
     return "\n".join(parts).strip()
 
 
+def _importance_map(classification: TieredClassificationResult) -> dict[str, CodeTier]:
+    """name -> importance tier, from the (already mutually-exclusive) classification lists."""
+    out: dict[str, CodeTier] = {}
+    for name in classification.high_functions:
+        out[name] = "HIGH"
+    for name in classification.medium_functions:
+        out[name] = "MEDIUM"
+    for name in classification.low_functions:
+        out[name] = "LOW"
+    return out
+
+
+_LONG_FUNCTION_LINE_THRESHOLD = 40
+
+
+@dataclass
+class RenderDecision:
+    format: RenderFormat
+    reason: str
+
+
+def _names_called_by_high(
+    functions: list[AstFunctionSpan], high: set[str]
+) -> set[str]:
+    """Reverse call edge: names that at least one HIGH-tier function calls into."""
+    out: set[str] = set()
+    for span in functions:
+        if span.name not in high:
+            continue
+        for callee, _line in span.calls:
+            out.add(callee)
+    return out
+
+
+def resolve_render_format(
+    tier: CodeTier,
+    span: AstFunctionSpan,
+    *,
+    called_by_high: bool = False,
+    compressed: bool = False,
+) -> RenderDecision:
+    """Assembly-time policy — deliberately NOT a static tier->format table.
+
+    Tier informs the decision but never dictates it alone: the same tier can
+    resolve to a different format depending on the function's own metadata
+    (docstring/comment presence, body length) and its place in the call graph.
+    ``compressed`` is an optional stricter-budget switch a caller may set to
+    push long, uncommented MEDIUM functions down to SKIP.
+    """
+    has_comment = bool((span.docstring or span.leading_comment or "").strip())
+    line_count = max(1, span.end_line - span.start_line + 1)
+
+    if tier == "HIGH":
+        return RenderDecision("FULL", "high_priority_default")
+
+    if tier == "MEDIUM":
+        if called_by_high:
+            return RenderDecision("HEADER_ONLY", "referenced_by_high_tier")
+        if has_comment:
+            return RenderDecision("HEADER_ONLY", "documented_medium")
+        if compressed and line_count > _LONG_FUNCTION_LINE_THRESHOLD:
+            return RenderDecision("SKIP", "long_uncommented_medium_compressed")
+        return RenderDecision("HEADER_ONLY", "medium_default")
+
+    # tier == "LOW"
+    if has_comment:
+        return RenderDecision("HEADER_ONLY", "low_with_documented_side_effects")
+    return RenderDecision("SKIP", "trivial_getter")
+
+
 def assemble_tiered_context(
     raw_code: str,
     classification: TieredClassificationResult,
     external_calls: ExternalCallGraph | None,
     *,
     lang: str = "c",
+    compressed: bool = False,
 ) -> str:
     graph = external_calls or ExternalCallGraph([], [], [])
     by_name = {fn.name: fn for fn in graph.target_functions}
@@ -604,8 +790,8 @@ def assemble_tiered_context(
             fn.name: fn for fn in extract_functions_from_source(raw_code, lang)
         }
     high = set(classification.high_functions)
-    medium = set(classification.medium_functions)
-    low = set(classification.low_functions)
+    importance = _importance_map(classification)
+    called_by_high = _names_called_by_high(list(by_name.values()), high)
 
     ext_lines: list[str] = ["## AST External Signatures & Cross-Calls"]
     if graph.dep_signatures:
@@ -629,18 +815,34 @@ def assemble_tiered_context(
     ordered = list(by_name.values())
     ordered.sort(key=lambda s: (s.start_line, s.name))
     emitted: set[str] = set()
+    render_counts: dict[RenderFormat, int] = {"FULL": 0, "HEADER_ONLY": 0, "SKIP": 0}
     cursor = 0
     src_lines = (raw_code or "").replace("\r\n", "\n").split("\n")
     for span in ordered:
         gap = "\n".join(src_lines[cursor : span.start_line - 1]).strip()
         if gap:
             engine.append(gap)
-        if span.name in low:
+        tier = importance.get(span.name, "MEDIUM")
+        decision = resolve_render_format(
+            tier,
+            span,
+            called_by_high=span.name in called_by_high,
+            compressed=compressed,
+        )
+        render_counts[decision.format] += 1
+        logger.debug(
+            "Symbol: %s | Tier: %s -> Resolved RenderFormat: %s (reason: %s)",
+            span.name,
+            tier,
+            decision.format,
+            decision.reason,
+        )
+        if decision.format == "SKIP":
             cursor = max(cursor, span.end_line)
             continue
-        if span.name in high:
+        if decision.format == "FULL":
             engine.append(span.body.strip() or span.signature)
-        else:
+        else:  # HEADER_ONLY
             engine.append(_medium_stub(span, high, lang))
         emitted.add(span.name)
         cursor = max(cursor, span.end_line)
@@ -650,6 +852,14 @@ def assemble_tiered_context(
     if not emitted and not graph.target_functions:
         engine.append((raw_code or "").strip())
 
+    from knowledge_engine.ui.run_log import trace
+
+    trace(
+        f"[Pipeline Audit] Phase: TieredCodePrune assemble | "
+        f"Render FULL={render_counts['FULL']} "
+        f"HEADER_ONLY={render_counts['HEADER_ONLY']} "
+        f"SKIP={render_counts['SKIP']}"
+    )
     return "\n\n".join(p for p in [*ext_lines, *engine] if p).strip() + "\n"
 
 
@@ -692,10 +902,9 @@ def maybe_prune_code_for_map(text: str, page_url: str = "") -> str:
     graph = extract_ast_signatures_and_calls_from_text(
         target, target_path=page_url, dep_files=deps
     )
-    catalog = _unique_names([fn.name for fn in graph.target_functions])
-    if not catalog:
+    if not graph.target_functions:
         return text
-    classification = classify_code_tiers_flash_lite(target, function_names=catalog)
+    classification = classify_code_tiers_flash_lite(graph.target_functions)
     if not classification.high_functions and classification.low_functions:
         return text
     assembled = assemble_tiered_context(
@@ -703,11 +912,14 @@ def maybe_prune_code_for_map(text: str, page_url: str = "") -> str:
     )
     from knowledge_engine.ui.run_log import trace
 
+    # Render FULL/HEADER_ONLY/SKIP counts are logged by assemble_tiered_context
+    # itself (assembly-time policy decisions, not a static function of tier) —
+    # this trace covers only the Flash Lite importance verdict.
     trace(
         f"[Pipeline Audit] Phase: TieredCodePrune | Target: {page_url or 'code'} | "
-        f"High: {len(classification.high_functions)} | "
-        f"Medium: {len(classification.medium_functions)} | "
-        f"Low: {len(classification.low_functions)} (pruned) | "
+        f"Importance HIGH={len(classification.high_functions)} "
+        f"MEDIUM={len(classification.medium_functions)} "
+        f"LOW={len(classification.low_functions)} | "
         f"Final Chars: {len(assembled)}"
     )
     return assembled

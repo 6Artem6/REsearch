@@ -142,6 +142,7 @@ def apply_clear(
     store = VectorStore()
     rag_removed = store.delete_rag_chunks_for_urls(urls)
     summary_removed = store.delete_summaries_for_urls(urls)
+    atoms_removed = store.delete_knowledge_atoms_for_urls(urls)
 
     graph = get_curriculum_graph(curriculum_id) or {}
     registry_scrubbed = 0
@@ -190,6 +191,7 @@ def apply_clear(
         "applied": True,
         "lance_rag_chunks_removed": rag_removed,
         "lance_summaries_removed": summary_removed,
+        "lance_knowledge_atoms_removed": atoms_removed,
         "registry_entries_scrubbed": registry_scrubbed,
         "graph_node_patched": patched,
         "session_reset": session_reset,
@@ -254,7 +256,8 @@ def main() -> int:
         if report.get("applied"):
             print(
                 f"Lance rag_chunks removed={report.get('lance_rag_chunks_removed')} "
-                f"summaries={report.get('lance_summaries_removed')}"
+                f"summaries={report.get('lance_summaries_removed')} "
+                f"knowledge_atoms={report.get('lance_knowledge_atoms_removed')}"
             )
             print(
                 f"registry scrubbed={report.get('registry_entries_scrubbed')} "

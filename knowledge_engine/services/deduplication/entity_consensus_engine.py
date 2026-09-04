@@ -49,7 +49,7 @@ def apply_anti_bloat_anchors(
     return _unique_anchors(list(anchors))[:cap]
 
 
-def _exact_merge_group(facts: list[RawFact]) -> list[RawFact]:
+def _exact_merge_group_with_sizes(facts: list[RawFact]) -> list[tuple[RawFact, int]]:
     buckets: dict[str, list[RawFact]] = {}
     order: list[str] = []
     for fact in facts:
@@ -57,20 +57,27 @@ def _exact_merge_group(facts: list[RawFact]) -> list[RawFact]:
         if key not in buckets:
             order.append(key)
         buckets.setdefault(key, []).append(fact)
-    merged: list[RawFact] = []
+    merged: list[tuple[RawFact, int]] = []
     for key in order:
         cluster = buckets[key]
         head = cluster[0]
         anchors = _unique_anchors([a for f in cluster for a in f.merged_anchors()])
         merged.append(
-            head.model_copy(
-                update={
-                    "anchor": anchors[0] if anchors else head.anchor,
-                    "all_anchors": anchors,
-                }
+            (
+                head.model_copy(
+                    update={
+                        "anchor": anchors[0] if anchors else head.anchor,
+                        "all_anchors": anchors,
+                    }
+                ),
+                len(cluster),
             )
         )
     return merged
+
+
+def _exact_merge_group(facts: list[RawFact]) -> list[RawFact]:
+    return [fact for fact, _size in _exact_merge_group_with_sizes(facts)]
 
 
 class LocalFactDeduplicator:
@@ -113,16 +120,21 @@ class LocalFactDeduplicator:
 
         return score_relevance_pairs(query, docs)
 
-    def deduplicate_entity_group(self, facts: list[RawFact]) -> list[RawFact]:
+    def deduplicate_entity_group_with_sizes(
+        self, facts: list[RawFact]
+    ) -> list[tuple[RawFact, int]]:
+        """Same clustering as deduplicate_entity_group, plus each cluster's
+        original member count — lets the caller route singleton (size==1,
+        i.e. no real duplicate found) clusters around the LLM synthesis call."""
         if len(facts) <= 1:
-            return list(facts)
+            return [(f, 1) for f in facts]
         texts = [f.canonical_text for f in facts]
         try:
             vecs = self._embed(texts)
         except Exception:
-            return list(facts)
+            return [(f, 1) for f in facts]
         if len(vecs) != len(facts):
-            return list(facts)
+            return [(f, 1) for f in facts]
 
         n = len(facts)
         parent = list(range(n))
@@ -160,20 +172,26 @@ class LocalFactDeduplicator:
         clusters: dict[int, list[int]] = {}
         for idx in range(n):
             clusters.setdefault(find(idx), []).append(idx)
-        out: list[RawFact] = []
+        out: list[tuple[RawFact, int]] = []
         for root in sorted(clusters):
             members = [facts[i] for i in clusters[root]]
             head = members[0]
             anchors = _unique_anchors([a for f in members for a in f.merged_anchors()])
             out.append(
-                head.model_copy(
-                    update={
-                        "anchor": anchors[0] if anchors else head.anchor,
-                        "all_anchors": anchors,
-                    }
+                (
+                    head.model_copy(
+                        update={
+                            "anchor": anchors[0] if anchors else head.anchor,
+                            "all_anchors": anchors,
+                        }
+                    ),
+                    len(members),
                 )
             )
         return out
+
+    def deduplicate_entity_group(self, facts: list[RawFact]) -> list[RawFact]:
+        return [fact for fact, _size in self.deduplicate_entity_group_with_sizes(facts)]
 
 
 def _count_gemma_tokens(text: str) -> int:
@@ -314,11 +332,17 @@ def raw_facts_from_atoms(
             anchor = str(atom.source_chunk_ids[0])
         if not anchor:
             anchor = f"A{i + 1}"
+        cluster_key = (atom.cluster_key or "general").strip().lower() or "general"
         facts.append(
             RawFact(
                 fact_id=f"f{i + 1}",
-                subject=statement[:200],
-                entity_type="general",
+                # RU: subject=entity_type=cluster_key (не statement) — иначе
+                # entity_group_key() склеивает "{cluster_key}|{subject}" и при
+                # subject=полный statement каждый атом попадал бы в свою
+                # уникальную группу, сводя pre-партиционирование на нет.
+                # Сам statement по-прежнему полностью уходит в obj.
+                subject=cluster_key,
+                entity_type=cluster_key,
                 predicate="states",
                 obj=obj[:800],
                 anchor=anchor,
@@ -343,9 +367,7 @@ def consensus_nodes_to_atoms(
             else:
                 chunk_ids.append(tag)
         scope = (
-            ScopeType.PRINCIPLE
-            if node.status == "consensus"
-            else ScopeType.INSTANCE
+            ScopeType.PRINCIPLE if node.status == "consensus" else ScopeType.INSTANCE
         )
         statement = (node.summary_text or "").strip()
         if len(statement) < 8:
@@ -360,23 +382,39 @@ def consensus_nodes_to_atoms(
     return atoms
 
 
-def collapse_facts_locally(
+def collapse_facts_locally_with_sizes(
     facts: list[RawFact],
     *,
     mode: str | None = None,
     deduplicator: LocalFactDeduplicator | None = None,
-) -> dict[str, list[RawFact]]:
+) -> dict[str, list[tuple[RawFact, int]]]:
+    """Same as collapse_facts_locally, plus each cluster's original size."""
     from knowledge_engine import config as ke_config
 
     resolved = (mode if mode is not None else ke_config.CLAIM_DEDUP_MODE) or "none"
     resolved = resolved.strip().lower()
     grouped = group_facts_by_entity(facts)
     if resolved not in ("exact", "entity_consensus"):
-        return grouped
+        return {key: [(f, 1) for f in grp] for key, grp in grouped.items()}
     if resolved == "exact":
-        return {key: _exact_merge_group(grp) for key, grp in grouped.items()}
+        return {key: _exact_merge_group_with_sizes(grp) for key, grp in grouped.items()}
     engine = deduplicator or LocalFactDeduplicator()
-    return {key: engine.deduplicate_entity_group(grp) for key, grp in grouped.items()}
+    return {
+        key: engine.deduplicate_entity_group_with_sizes(grp)
+        for key, grp in grouped.items()
+    }
+
+
+def collapse_facts_locally(
+    facts: list[RawFact],
+    *,
+    mode: str | None = None,
+    deduplicator: LocalFactDeduplicator | None = None,
+) -> dict[str, list[RawFact]]:
+    sized = collapse_facts_locally_with_sizes(
+        facts, mode=mode, deduplicator=deduplicator
+    )
+    return {key: [fact for fact, _size in grp] for key, grp in sized.items()}
 
 
 async def apply_entity_consensus_to_atoms(
@@ -390,6 +428,7 @@ async def apply_entity_consensus_to_atoms(
     """None when CLAIM_DEDUP_MODE skips consensus (legacy REDUCE)."""
     from knowledge_engine import config as ke_config
     from knowledge_engine.services.deduplication.consensus_synthesizer import (
+        nodes_from_facts,
         synthesize_consensus_batches,
     )
 
@@ -398,18 +437,34 @@ async def apply_entity_consensus_to_atoms(
     facts = raw_facts_from_atoms(atoms, index_map=index_map)
     if not facts:
         return None
-    collapsed = collapse_facts_locally(facts, deduplicator=deduplicator)
-    batches = build_token_bounded_batches(collapsed)
-    nodes = await synthesize_consensus_batches(
+    collapsed = collapse_facts_locally_with_sizes(facts, deduplicator=deduplicator)
+    # Singleton Shortcut: a cluster of size 1 means BGE-M3/CE found no real
+    # duplicate — there is nothing to merge/rewrite, so it skips the LLM
+    # entirely and converts straight to a ConsensusNode. Only clusters that
+    # actually merged (size > 1) still need Gemma to write the canonical text.
+    singleton_facts: list[RawFact] = []
+    merged_groups: dict[str, list[RawFact]] = {}
+    for key, sized_facts in collapsed.items():
+        for fact, size in sized_facts:
+            if size <= 1:
+                singleton_facts.append(fact)
+            else:
+                merged_groups.setdefault(key, []).append(fact)
+    passthrough_nodes = nodes_from_facts(singleton_facts)
+    batches = build_token_bounded_batches(merged_groups)
+    llm_nodes = await synthesize_consensus_batches(
         batches,
         http_client=http_client,
         gemma_rl=gemma_rl,
         allow_cloud=ke_config.CLAIM_DEDUP_MODE.strip().lower() == "entity_consensus",
     )
+    nodes = passthrough_nodes + llm_nodes
     clipped = [
         node.model_copy(
             update={
-                "all_anchors": _unique_anchors(node.all_anchors or node.primary_anchors),
+                "all_anchors": _unique_anchors(
+                    node.all_anchors or node.primary_anchors
+                ),
                 "primary_anchors": apply_anti_bloat_anchors(
                     node.primary_anchors or node.all_anchors
                 ),

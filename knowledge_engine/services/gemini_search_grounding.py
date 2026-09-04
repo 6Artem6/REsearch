@@ -11,7 +11,6 @@ from knowledge_engine.config import (
     CURRICULUM_GEMINI_GROUNDING_MAX_URLS,
     GEMINI_GROUNDING_ENABLED,
     GEMINI_RETRY_BACKOFF_SEC,
-    GEMINI_RPM_PAUSE_SEC,
 )
 from knowledge_engine.services.gemini_stateless import (
     GeminiUnavailableError,
@@ -22,12 +21,13 @@ from knowledge_engine.services.gemini_stateless import (
     _is_daily_per_model_quota,
     _is_hard_quota_exhausted,
     _is_retryable,
-    _rpm_pause_for_model,
     _sleep_with_jitter,
     curriculum_grounding_model_chain,
+    estimate_llm_tokens,
     gemini_api_key_pool,
     is_gemini_available,
 )
+from knowledge_engine.services.token_rate_governor import get_governor
 from knowledge_engine.src.curriculum.curriculum_search_sites import (
     CURRICULUM_PRIORITY_ENGINEERING_SITES,
 )
@@ -287,9 +287,15 @@ def search_grounded_whitelist_blogs_detailed(
     )
 
     saw_rate_limit = False
+    est_tokens = estimate_llm_tokens(user_prompt)
     for model in models:
-        if GEMINI_RPM_PAUSE_SEC > 0:
-            _rpm_pause_for_model(model)
+        governor = get_governor(model)
+        waited = governor.acquire(est_tokens)
+        if waited > 0.1:
+            trace(
+                f"GEMINI governor wait {waited:.1f}s | grounding | model={model} "
+                f"(лимит {governor.max_rpm} RPM / {governor.max_tpm} TPM)"
+            )
         for key_idx, api_key in enumerate(keys):
             client = _client_for_api_key(api_key)
             allow_switch = key_idx + 1 < len(keys)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from knowledge_engine.db.rag_chunks_schema import map_window_chunk_id
 from knowledge_engine.schemas import DocumentSummary
 from knowledge_engine.services.article_ingestion.blog_spatial_schemas import (
@@ -89,10 +91,10 @@ def test_ingest_raw_c_file_writes_map_windows_without_ollama(monkeypatch):
         lambda *_a, **_k: 0,
     )
 
-    def _map(md: str, **kwargs):
+    async def _map(*, annotated_markdown: str, **kwargs):
         assert kwargs.get("source_kind") == "source_code"
-        assert "take_gil" in md
-        windows = [TokenWindowChunk(window_index=0, body=md[:1200])]
+        assert "take_gil" in annotated_markdown
+        windows = [TokenWindowChunk(window_index=0, body=annotated_markdown[:1200])]
         final = FinalArticleSummaryResponse(
             executive_summary="GIL take/drop loop on mutex and condvar.",
             key_takeaways=["[SCOPE: MECHANIC] take_gil waits while gil->locked"],
@@ -103,16 +105,19 @@ def test_ingest_raw_c_file_writes_map_windows_without_ollama(monkeypatch):
         )
         return MapReduceJobOutcome(final=final, map_results=[mapped]), windows
 
-    monkeypatch.setattr(pipe, "map_reduce_summarize_blog_outcome", _map)
+    monkeypatch.setattr(
+        "knowledge_engine.services.article_ingestion.blog_spatial_summarizer.map_reduce_summarize_blog_outcome_async",
+        _map,
+    )
 
     saved: dict[str, object] = {}
 
     class _FakeStore:
-        def save_summary(self, summary, skip_rag_ingest=False, **_k):
+        async def save_summary(self, summary, skip_rag_ingest=False, **_k):
             saved["skip_rag_ingest"] = skip_rag_ingest
             saved["summary"] = summary
 
-        def upsert_rag_academic_map_windows(
+        async def upsert_rag_academic_map_windows(
             self, url, title, texts, summary, window_summaries=None
         ):
             saved["map_texts"] = list(texts)
@@ -123,7 +128,7 @@ def test_ingest_raw_c_file_writes_map_windows_without_ollama(monkeypatch):
             ]
             return len(texts)
 
-        def upsert_knowledge_atoms(self, url, atoms, **_k):
+        async def upsert_knowledge_atoms(self, url, atoms, **_k):
             saved["atoms"] = list(atoms)
             return len(atoms)
 
@@ -140,11 +145,13 @@ def test_ingest_raw_c_file_writes_map_windows_without_ollama(monkeypatch):
         _boom_ollama,
     )
 
-    _ann, summary, _saved_vlm = pipe.ingest_blog_with_spatial_mapping(
-        "ceval_gil.c",
-        _CEVAL_URL,
-        raw_html=_CEVAL_BODY,
-        save_lancedb=True,
+    _ann, summary, _saved_vlm = asyncio.run(
+        pipe.ingest_blog_with_spatial_mapping(
+            "ceval_gil.c",
+            _CEVAL_URL,
+            raw_html=_CEVAL_BODY,
+            save_lancedb=True,
+        )
     )
     assert gate_calls == []
     assert ollama_calls == []
@@ -166,13 +173,16 @@ def test_spatial_fallback_calls_gemma_map_not_naive_passport(monkeypatch):
         snippet="GIL",
         source_tier="exa",
     )
+    async def _fake_spatial_mapping(*_a, **_k):
+        return (None, None, 0)
+
     monkeypatch.setattr(
         "knowledge_engine.services.article_ingestion.blog_spatial_pipeline.ingest_blog_with_spatial_mapping",
-        lambda *_a, **_k: (None, None, 0),
+        _fake_spatial_mapping,
     )
     persist_calls: list[str] = []
 
-    def _persist(title: str, url: str, text: str) -> DocumentSummary:
+    async def _persist(title: str, url: str, text: str) -> DocumentSummary:
         persist_calls.append(url)
         assert "take_gil" in text or "GIL" in text or len(text) > 50
         return DocumentSummary(
@@ -198,8 +208,8 @@ def test_spatial_fallback_calls_gemma_map_not_naive_passport(monkeypatch):
 
     monkeypatch.setattr(smp.VectorStore, "save_summary", _naive_save)
 
-    extracts, title = smp._ingest_url_with_spatial_map_reduce(
-        hit, _CEVAL_BODY, tier_label="blog"
+    extracts, title = asyncio.run(
+        smp._ingest_url_with_spatial_map_reduce(hit, _CEVAL_BODY, tier_label="blog")
     )
     assert persist_calls == [_CEVAL_URL]
     assert naive == []

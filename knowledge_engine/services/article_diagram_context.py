@@ -69,24 +69,36 @@ def resolve_article_ids_for_node(
     if ref is not None:
         add(ref.source_id or "", ref.url or "")
 
-    if (node.primary_source_id or "").strip():
-        add(node.primary_source_id.strip(), "")
-
     cid = (curriculum_id or "").strip()
-    mapped = [str(x).strip() for x in (node.mapped_source_ids or []) if str(x).strip()]
-    if cid and mapped:
+    by_id: dict[str, dict[str, Any]] = {}
+    if cid:
         from knowledge_engine.services.skill_tree_store import get_curriculum_graph
 
         raw = get_curriculum_graph(cid) or {}
         entries = list(raw.get("curriculum_sources_registry") or [])
-        by_id: dict[str, dict[str, Any]] = {}
         for e in entries:
             key = str(e.get("source_id") or "").strip()
             if key:
                 by_id[key] = e
-        for mid in mapped:
-            ent = by_id.get(mid) or {}
-            add(mid, str(ent.get("url") or ""))
+
+    primary = (node.primary_source_id or "").strip()
+    if primary:
+        # source_id в одиночку, БЕЗ url, схлопывает canonical_article_id в
+        # голый "src:{sid}" — а sid ("src_1", "src_2"…) это короткий
+        # per-curriculum слот, переиспользуемый почти во ВСЕХ курсах. Без
+        # реального URL из registry это коллизирует с диаграммами/
+        # figure_registry чужой ноды в другом curriculum, у которой
+        # primary_source_id тоже "src_1" (подтверждено на
+        # python_internals_and_memory/gil_internals — тянуло диаграммы
+        # совершенно другого курса про RAG/vector DB). Резолвим URL так же,
+        # как и для mapped_source_ids ниже.
+        ent = by_id.get(primary) or {}
+        add(primary, str(ent.get("url") or ""))
+
+    mapped = [str(x).strip() for x in (node.mapped_source_ids or []) if str(x).strip()]
+    for mid in mapped:
+        ent = by_id.get(mid) or {}
+        add(mid, str(ent.get("url") or ""))
 
     return ids
 

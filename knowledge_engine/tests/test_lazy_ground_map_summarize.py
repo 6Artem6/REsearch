@@ -63,7 +63,16 @@ def _graph(deep: CurriculumNode) -> CurriculumGraph:
     )
 
 
-def test_lazy_ground_calls_summarizer_for_exa_long_highlights(monkeypatch):
+def test_lazy_ground_does_not_re_summarize_hits_from_search(monkeypatch):
+    """Regression (perf_debug.log audit, DOUBLE-PASS INGESTION fix):
+    search_sources_for_deep_node_async already runs every returned hit
+    through summarize_whitelist_blog_hits_async internally (its own
+    "post-replenish" step) before returning — a full fetch+annotate+
+    triage+MAP+REDUCE pass per hit. lazy_ground_deep_node_on_demand must
+    NOT call it again on the same hits: doing so silently doubled the
+    Gemma ingest cost for every deep-dive grounding call (confirmed via
+    perf_debug.log: 8 MAP+REDUCE passes for 4 documents, ~805s wall time
+    instead of 4 passes)."""
     hit = _exa_pep_hit()
     node = _node()
     summarized_urls: list[str] = []
@@ -80,19 +89,26 @@ def test_lazy_ground_calls_summarizer_for_exa_long_highlights(monkeypatch):
         _search,
     )
     monkeypatch.setattr(
-        "knowledge_engine.src.curriculum.targeted_node_grounding.summarize_whitelist_blog_hits_async",
+        "knowledge_engine.src.curriculum.source_material_pipeline.summarize_whitelist_blog_hits_async",
         _summarize,
     )
+
+    async def _enrich(hits, _goal=""):
+        return hits
+
+    async def _persist(*_a, **_k):
+        return 0
+
     monkeypatch.setattr(
-        "knowledge_engine.src.curriculum.targeted_node_grounding.enrich_search_hits_with_extracts",
-        lambda hits, _goal="": hits,
+        "knowledge_engine.src.curriculum.targeted_node_grounding.enrich_search_hits_with_extracts_async",
+        _enrich,
     )
     monkeypatch.setattr(
-        "knowledge_engine.src.curriculum.targeted_node_grounding.persist_approved_curriculum_hits_to_lancedb",
-        lambda *_a, **_k: 0,
+        "knowledge_engine.src.curriculum.targeted_node_grounding.persist_approved_curriculum_hits_to_lancedb_async",
+        _persist,
     )
 
-    asyncio.run(
+    graph, updated_node = asyncio.run(
         lazy_ground_deep_node_on_demand(
             _graph(node),
             node,
@@ -101,25 +117,31 @@ def test_lazy_ground_calls_summarizer_for_exa_long_highlights(monkeypatch):
             anchor="test",
         )
     )
-    assert summarized_urls == [hit.url]
+    # Never re-invoked from grounding — search already did it.
+    assert summarized_urls == []
+    # The hit search returned (already "summarized" upstream, in the real
+    # pipeline) is still used to ground the node.
+    assert updated_node.grounding_status == "grounded"
 
 
 def test_post_replenish_summarizes_practical_exa_hits(monkeypatch):
     hit = _exa_pep_hit()
     node = _node()
     summarized_urls: list[str] = []
+    summarize_kwargs: dict = {}
 
     async def _stream(*_a, **_k):
         return [hit]
 
-    async def _replenish(merged, _cap, node=None):  # noqa: ARG001
+    async def _replenish(merged, _cap, node=None, **_kw):  # noqa: ARG001
         return merged
 
     async def _academic(hits, *, label="", defer_missing=False):  # noqa: ARG001
         return hits
 
-    async def _summarize(hits, _goal=""):
+    async def _summarize(hits, _goal="", **_kw):
         summarized_urls.extend(h.url for h in hits)
+        summarize_kwargs.update(_kw)
         return hits
 
     monkeypatch.setattr(
@@ -151,15 +173,20 @@ def test_post_replenish_summarizes_practical_exa_hits(monkeypatch):
     )
     assert [h.url for h in out] == [hit.url]
     assert summarized_urls == [hit.url]
+    # Regression: the real quota cap must reach _ingest_blog_hits_batch_async
+    # as an explicit target, not be re-derived from len(blog_hits) - margin.
+    assert summarize_kwargs.get("desired_count") is not None
 
 
 def test_blog_ingest_skips_passport_reuse_without_map_windows(monkeypatch):
     from knowledge_engine.src.curriculum import source_material_pipeline as smp
 
     hit = _exa_pep_hit()
-    monkeypatch.setattr(
-        smp, "_extracts_from_lancedb_url", lambda _u: (["passport takeaway"], "PEP 703")
-    )
+
+    async def _cached(_u):
+        return ["passport takeaway"], "PEP 703"
+
+    monkeypatch.setattr(smp, "_extracts_from_lancedb_url", _cached)
     monkeypatch.setattr(smp, "_lancedb_has_map_windows", lambda _u: False)
     fetched: list[str] = []
 
@@ -169,14 +196,18 @@ def test_blog_ingest_skips_passport_reuse_without_map_windows(monkeypatch):
 
     monkeypatch.setattr(smp, "smart_fetch_page_html", _fetch)
     monkeypatch.setattr(smp, "is_anti_bot_fetch_result", lambda *_a, **_k: False)
+
+    async def _spatial_map_reduce(_h, _html, tier_label=""):
+        return ["map extract"], "PEP 703"
+
     monkeypatch.setattr(
         smp,
         "_ingest_url_with_spatial_map_reduce",
-        lambda _h, _html, tier_label="": (["map extract"], "PEP 703"),
+        _spatial_map_reduce,
     )
     monkeypatch.setattr(smp, "_try_blog_spatial_diagrams", lambda _h: None)
 
-    extracts, title = smp._ingest_blog_url(hit)
+    extracts, title = asyncio.run(smp._ingest_blog_url(hit))
     assert fetched == [hit.url]
     assert extracts == ["map extract"]
     assert title == "PEP 703"

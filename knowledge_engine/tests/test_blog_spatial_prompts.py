@@ -26,6 +26,7 @@ from knowledge_engine.services.article_ingestion.blog_spatial_summarizer import 
     _build_reduce_user_prompt,
     _format_reduce_summaries_block,
     _prompt_for_window,
+    dynamic_target_facts,
 )
 from knowledge_engine.services.article_ingestion.paragraph_token_splitter import (
     TokenWindowChunk,
@@ -319,3 +320,63 @@ def test_map_code_prompt_forbids_bare_string_diagrams():
     assert "never a bare string" in _MAP_SYSTEM
     assert "never a bare string" in _MAP_SYSTEM_CODE
     assert "Do not select figures for VLM" in _MAP_SYSTEM_CODE
+
+
+def test_map_system_prompt_is_static_and_references_user_target_facts():
+    """System prefix must stay byte-stable across windows (vLLM/provider
+    KV-cache) — the per-window number belongs in the user message, not here."""
+    from knowledge_engine.services.article_ingestion.blog_spatial_summarizer import (
+        _MAP_SYSTEM_CODE,
+    )
+
+    assert "TARGET_FACTS" in _MAP_SYSTEM
+    assert "TARGET_FACTS" in _MAP_SYSTEM_CODE
+    # No literal fixed atom-count range baked into the static system prompt.
+    import re
+
+    assert not re.search(r"\(\d+[–-]\d+ atoms\)", _MAP_SYSTEM)
+    assert not re.search(r"\(\d+[–-]\d+ atoms\)", _MAP_SYSTEM_CODE)
+
+
+def test_dynamic_target_facts_scales_with_window_size():
+    small_in, small_target, small_out = dynamic_target_facts("word " * 10)
+    large_in, large_target, large_out = dynamic_target_facts("word " * 2000)
+    assert small_target < large_target
+    assert small_in < large_in
+    assert small_out < large_out
+
+
+def test_dynamic_target_facts_clamped_to_configured_range():
+    from knowledge_engine.config import MAP_FACT_BUDGET_MAX, MAP_FACT_BUDGET_MIN
+
+    tiny_in, tiny_target, _ = dynamic_target_facts("")
+    assert tiny_target == MAP_FACT_BUDGET_MIN
+    huge_in, huge_target, _ = dynamic_target_facts("word " * 10000)
+    assert huge_target <= MAP_FACT_BUDGET_MAX
+
+
+def test_dynamic_target_facts_never_projects_past_output_cap():
+    from knowledge_engine.services.llm.gemma_client import (
+        resolve_gemma_map_max_output_tokens,
+    )
+
+    _in, target, projected_out = dynamic_target_facts("word " * 10000)
+    assert projected_out <= resolve_gemma_map_max_output_tokens()
+
+
+def test_prompt_for_window_includes_target_facts_line():
+    job = MapReduceArticleJob(
+        job_id="https://example.com/post",
+        title="Transformer Attention",
+        url="https://example.com/post",
+        windows=[],
+    )
+    w = TokenWindowChunk(
+        window_index=0,
+        body="[P_1] Some window body text about attention heads.",
+        section_heading="Architecture",
+    )
+    prompt = _prompt_for_window(job, w)
+    assert "TARGET_FACTS:" in prompt
+    ctx = prompt.split("<article_context>")[1].split("</article_context>")[0]
+    assert "TARGET_FACTS:" in ctx

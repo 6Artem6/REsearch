@@ -97,6 +97,29 @@ def test_build_kwargs_empty_include_omits_include_domains():
     assert "include_domains" not in kwargs
 
 
+def test_build_kwargs_exclude_domains_reaches_api_payload(monkeypatch):
+    """exclude_domains ДОЛЖЕН попадать в реальный API-параметр, а не срезаться
+    вручную в Python постфактум — сюда же подмешивается статический blacklist
+    и SQLite anti-bot blocklist (проверяем изолированно от реальной БД)."""
+    monkeypatch.setattr(
+        "knowledge_engine.db.domain_blocklist.get_blocked_domains",
+        lambda: ["dynamically-blocked.example.com"],
+    )
+    kwargs = build_exa_search_kwargs(
+        "gil",
+        include_domains=["docs.python.org"],
+        exclude_domains=["evil.example.com"],
+        exclude_text=[],
+    )
+    exc = kwargs["exclude_domains"]
+    assert "evil.example.com" in exc
+    assert "dynamically-blocked.example.com" in exc
+    assert "medium.com" in exc  # статический EXCLUDED_SOURCES_BLACKLIST default
+    # exclude_domains всегда присутствует в payload (даже без явного параметра).
+    kwargs_no_explicit = build_exa_search_kwargs("gil", exclude_text=[])
+    assert "medium.com" in kwargs_no_explicit["exclude_domains"]
+
+
 def test_official_docs_hosts_and_practical_filter():
     assert is_official_docs_host("https://docs.python.org/3/c-api/")
     assert is_official_docs_host("https://developer.mozilla.org/en-US/docs/Web")

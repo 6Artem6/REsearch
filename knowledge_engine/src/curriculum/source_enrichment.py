@@ -46,18 +46,24 @@ from knowledge_engine.ui.run_log import trace
 
 _SOURCES_SYSTEM = (
     f"{RUSSIAN_OUTPUT_RULE}\n\n"
-    "Ты составляешь библиотеку источников курса и точечную адресацию к нодам DAG.\n\n"
+    "You are compiling the course's source library and mapping it to specific DAG nodes.\n\n"
     "{whitelist_block}\n"
-    "СТРУКТУРА ОТВЕТА (ОБЯЗАТЕЛЬНО ДВА БЛОКА):\n"
-    "1) curriculum_sources_registry — 8–15 ресурсов из Whitelist по ВСЕЙ теме курса.\n"
-    "   source_id: src_1, src_2, … (уникальные). title, whitelist_domain, source_type, url, why_read.\n"
-    "2) nodes[] — для КАЖДОЙ ноды из nodes_outline:\n"
-    "   - mapped_source_ids: 1–3 source_id ИЗ registry (не пустой)\n"
-    "   - learning_goal: цель ноды в 1–2 предложения\n"
+    "RESPONSE STRUCTURE (TWO BLOCKS REQUIRED):\n"
+    "1) curriculum_sources_registry — 8-15 resources from the Whitelist covering the "
+    "ENTIRE course topic.\n"
+    "   source_id: src_1, src_2, ... (unique). title, whitelist_domain, source_type, url, why_read.\n"
+    "2) nodes[] — for EVERY node from nodes_outline:\n"
+    "   - mapped_source_ids: 1-3 source_id FROM the registry (not empty)\n"
+    "   - learning_goal: the node's goal in 1-2 sentences\n"
     "   - primary_whitelist_source: source_name, chapter_or_article, core_concepts\n"
-    "   - learning_resources / resource_urls — URL только из registry\n"
-    "ЗАПРЕЩЕНО: 3–4 общие ссылки на все ноды; каждая нода — свои 1–3 src_id.\n"
+    "   - learning_resources / resource_urls — URLs from the registry only\n"
+    "FORBIDDEN: 3-4 generic links reused for all nodes; each node gets its own 1-3 src_id.\n"
 )
+"""
+RU (пояснение): второй этап — реестр источников + точечная адресация к
+нодам DAG; whitelist_block форматируется на каждый вызов (живой архив,
+см. curriculum_whitelist_prompt_block), не per-request данные пользователя.
+"""
 
 
 def _norm_src_id(raw: str, index: int) -> str:

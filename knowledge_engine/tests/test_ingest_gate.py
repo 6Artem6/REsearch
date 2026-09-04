@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from knowledge_engine.src.parsers.ingest_gate import (
@@ -435,19 +437,21 @@ def test_blog_pipeline_skips_map_reduce_on_gate_reject(monkeypatch):
     )
     map_calls: list[str] = []
 
-    def _boom(*_a, **_k):
+    async def _boom(*_a, **_k):
         map_calls.append("map")
         raise AssertionError("Map-Reduce must not run after ingest gate reject")
 
     monkeypatch.setattr(
-        "knowledge_engine.services.article_ingestion.blog_spatial_pipeline.map_reduce_summarize_blog_outcome",
+        "knowledge_engine.services.article_ingestion.blog_spatial_summarizer.map_reduce_summarize_blog_outcome_async",
         _boom,
     )
-    _ann, summary, saved = ingest_blog_with_spatial_mapping(
-        "Как работает GIL и как от него избавиться",
-        "https://habr.com/ru/articles/938980/",
-        raw_html=html,
-        save_lancedb=False,
+    _ann, summary, saved = asyncio.run(
+        ingest_blog_with_spatial_mapping(
+            "Как работает GIL и как от него избавиться",
+            "https://habr.com/ru/articles/938980/",
+            raw_html=html,
+            save_lancedb=False,
+        )
     )
     assert summary is None
     assert saved == 0

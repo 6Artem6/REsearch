@@ -376,7 +376,7 @@ async def _process_paper_to_hit(
     title = (paper.title or url)[:400]
     snippet = (paper.abstract or paper.tldr or "")[:1200]
 
-    existing = store.fetch_summaries_by_urls([url], limit=1)
+    existing = await store.fetch_summaries_by_urls([url], limit=1)
     if existing:
         hit = _hits_from_summary_and_chunks(
             title, url, existing[0], [], snippet_fallback=snippet
@@ -511,7 +511,7 @@ async def harvest_curriculum_sources_v08(
             hits_from_lancedb_goal,
         )
 
-        reused = hits_from_lancedb_goal(
+        reused = await hits_from_lancedb_goal(
             goal,
             cap=max_papers,
             exclude_url_keys=set(),
