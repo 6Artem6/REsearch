@@ -100,6 +100,106 @@
 | CE load | `src/rag_gateway/cross_encoder.py` |
 | SSE worker→API | `services/job_stream.py` |
 
+## Pre-MAP Dedup: дедупликация источников до MAP+REDUCE
+
+Точка входа: `src/deduplication/pre_map_deduplicator.py::deduplicate_before_map_reduce()`.
+Отличается от `services/deduplication/entity_consensus_engine.py` (тот дедупит
+уже извлечённые ФАКТЫ внутри одного REDUCE-батча) — этот модуль дедупит целые
+ИСТОЧНИКИ (URL/файл), до того как MAP вообще запустился, чтобы не тратить
+дорогой MAP+REDUCE на источник, который уже является дублем другого.
+
+Работает **строго внутри одного батча кандидатов**, переданного в один вызов —
+кросс-ранового сравнения с уже сохранёнными узлами (LanceDB / graph index) на
+сегодня **нет** (см. «Известное ограничение» ниже).
+
+| Что | Модуль |
+|-----|--------|
+| Оркестрация 4 шагов, Union-Find, TPM-guard батчинг | `src/deduplication/pre_map_deduplicator.py` |
+| Изолированная дедупликация кода (README/дерево/AST) | `src/deduplication/code_deduplicator.py` |
+| Схема Bulk Gate contract (Array of Pairs, не dict) | `schemas/llm_contracts/pre_map_dedup.py` |
+| Интеграция в инджест блогов | `src/curriculum/source_material_pipeline.py` (`_pre_map_dedup_batch_items`) |
+| `alias_of` на исходящем хите | `src/curriculum/schemas.py::CurriculumSearchHit` |
+
+### Пайплайн (per batch)
+
+1. **Context Extraction** — по каждому кандидату: TEXT → абзацы
+   (`_extract_paragraphs`); CODE → AST-сигнатуры (`_ast_semantic_extracts`).
+   Затем **Triage одним Group Batching вызовом** на весь батч
+   (`_flash_lite_triage_core_units_batch` — все кандидаты сворачиваются в ОДИН
+   `InputPaperJson`, один Flash Lite вызов вместо N; откат на поштучные вызовы
+   при переразмеренном payload/ошибке) классифицирует юниты CORE/CONTEXT/DROP
+   через существующий `paper_structure_analyzer.PaperStructureAnalyzer`
+   (не локальная эвристика). TEXT CORE-юниты идут через MMR
+   (`_mmr_top_by_centroid` → `greedy_mmr_select`); CODE CORE-юниты — через
+   Head-3/Tail-3 (см. ниже).
+2. **BGE-кластеризация** (только TEXT, 0 LLM-вызовов) — Union-Find по
+   косинусу пуловых отпечатков ≥ `PRE_MAP_DEDUP_COSINE_THRESHOLD` →
+   suspect groups. Код никогда не кластеризуется по BGE — косинус по
+   AST-сигнатурам не надёжный сигнал «тот же алгоритм, другой язык».
+3. **Step 3a — Bulk Gate (TEXT)**: suspect-группы, TPM-guard
+   (`PRE_MAP_DEDUP_BULK_GATE_MAX_TPM`) с жадным разбиением на суб-батчи
+   (`_pack_bulk_gate_sub_batches`), общий системный промпт-компаратор.
+   **Step 3b — изолированная дедупликация кода**: все код-кандидаты идут
+   ОТДЕЛЬНЫМ, выделенным вызовом через `code_deduplicator.py` вместо Bulk
+   Gate — см. ниже, почему это отдельный модуль.
+4. **Canonical Pooling** — `_sanitize_canonical_map` чистит галлюцинированные
+   id/self-alias/циклы; кандидат либо CANONICAL, либо `ALIAS -> canonical_id`.
+
+Fail-open на каждой границе (BGE/Flash Lite/GitHub): ошибка не роняет батч —
+худший случай, все кандидаты остаются CANONICAL, как если бы модуля не было.
+
+### code_deduplicator.py: почему код обособлен от Bulk Gate
+
+Плоский AST-only payload (только сигнатуры) не даёт Flash Lite достаточно
+сигнала, чтобы уверенно распознать межъязыковой дубль (например, Union-Find/
+DSU на C++ и Python) — а обогащение контекстом проекта помогает. Обогащение
+per candidate:
+
+- **Two-level README Extraction**: module README (соседняя папка файла) +
+  root README репозитория. Источник — GitHub Git Trees API (один рекурсивный
+  вызов на репозиторий, `GitHubTreeLoader` из
+  `services/article_ingestion/github_tree_loader.py`, токен
+  `GITHUB_TOKEN` подставляется автоматически) либо локальный диск
+  (`file://`/существующий путь) — что подходит candidate.url. README режется
+  на блоки по markdown-заголовкам (`_split_markdown_by_headers`), предварительно
+  очищенные `_sanitize_readme_md` (HTML-шапки/бейджи shields.io срезаются до
+  нарезки — bs4 как аналог markdownify/html2text/selectolax, ни одна из
+  которых не установлена в проекте).
+- **In-RAM BGE Concept Anchors**: `ANCHOR_PURPOSE` / `ANCHOR_ALGORITHMS` —
+  захардкоженные текстовые якоря (не конфиг), Top-K блоков README на каждый
+  якорь отдельно по косинусу (`_top_readme_chunks_by_anchor`), без сети.
+- **Сбалансированный tree snippet**: родительская папка файла (файлы + имена
+  соседних каталогов первого уровня, без рекурсии внутрь них), width ≤
+  `CODE_DEDUP_TREE_WIDTH`, фильтрация `.git/node_modules/build/dist/
+  __pycache__/.venv`.
+- **Tree-Sitter AST Head-3/Tail-3**: самодостаточный экстрактор
+  (`_head_tail_core_with_calltree`, не зависит от Triage-прохода выше) —
+  находит ВСЕ функции/методы файла (рекурсивно внутрь классов — CORE-класс
+  разворачивается в отдельные методы, а не остаётся одной свёрнутой
+  сигнатурой), если их > 6 — берёт первые 3 + последние 3 по порядку в
+  файле, с ПОЛНЫМИ телами (все комментарии/docstrings/аннотации типов
+  сохранены). Плюс call-tree строкой на каждую CORE-функцию/метод (в т.ч. не
+  попавшие в отобранные 6) — компенсирует пропуск средних утилит.
+- Всё собирается в один промпт (`=== CODE MODULE {id} ===` блоки), который
+  просит Flash Lite сравнивать по **Behavioral Intent & Data Structure
+  State**, а не по синтаксису.
+- Fail-open на КАЖДОМ шаге отдельно: GitHub недоступен/403/timeout → пустой
+  README/дерево, но AST Head-3/Tail-3 всё равно строится и уходит в
+  промпт — деградация до сравнения по коду, а не отказ целиком.
+
+### Известное ограничение: Downstream Merge & Re-linking не реализован
+
+`alias_map`/`alias_of` действуют **только внутри одного вызова**
+`deduplicate_before_map_reduce()` — `_pre_map_dedup_batch_items` строит
+кандидатов исключительно из текущего батча, ничего не сравнивает с уже
+persisted узлами. `CurriculumSearchHit.alias_of` — поле только на этой
+Pydantic-модели, в LanceDB (`services/vector_store.py`) **не персистится** и
+никак не участвует в pre-insert проверках (там только identity-guard по URL,
+`doc_id_for_url`). Промоушен/демоушен canonical-статуса и re-link рёбер
+графа при повторном инджесте узла из другого батча — **не спроектировано и
+не реализовано** ни частично, ни заглушкой; это отдельная будущая задача, а
+не текущее поведение.
+
 ---
 
 При новой фиче: сначала найти строку в этой таблице; если нет — расширить **один** модуль и обновить этот файл.

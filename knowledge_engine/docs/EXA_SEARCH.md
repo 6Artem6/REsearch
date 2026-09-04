@@ -68,7 +68,7 @@ Lite строит до **6** поисковых векторов (`ExaQuerySpec`
 |--------|-------------|-----------|
 | **DEEP Targeted** | `targeted_node_search` → `fetch_exa_curriculum_hits_for_node` | Полный multi-vector plan → merge → recall RR → URL rank → practical filter → Lite rerank при `len > EXA_RERANK_LITE_THRESHOLD`; затем SearXNG добирает |
 | **Bulk Practical** | `practical_source_fetch` → `fetch_exa_curriculum_hits_simple` | Один query, без dual/multi-vector; domain cap через `apply_exa_domain_cap` |
-| **Lecture Stage 2** | `lecture_search_orchestrator` → `ExaSearchClient` + `postprocess_exa_hits_for_external_recall` | Внешние verified sources для dense; composite rank + practical filter |
+| **Lecture Stage 2** | `lecture_search_orchestrator` → `_exa_sources_multi_vector` | Fast & High-Quality: Domain Discovery (Pass 1 validated / Pass 2 broader, как в DEEP) → multi-vector Exa → recall RR → composite rank + practical filter → Async Fetch (httpx+Trafilatura, `lecture_passage_fetch.py`) → Passage Extraction (BGE-M3+MMR) → Flash Lite Content Gate (по извлечённым абзацам) при `len > EXA_RERANK_LITE_THRESHOLD` → финальный RR + cap. Без Map-Reduce (никаких LLM-проходов по документам) |
 | **Provider Registry** | `ExaSearchProvider` в `SearchRegistry` (`resolved_search_active_providers`) | Общий async provider `name=exa`; в начало списка при `EXA_API_KEY` + `EXA_SEARCH_ENABLED` |
 
 Условие включения: `EXA_API_KEY` непустой и `EXA_SEARCH_ENABLED=true`.
@@ -207,6 +207,12 @@ Exa `include_domains` принимает только хосты → path-зап
 | `DOMAIN_REGISTRY_EMBED_MODEL` | `BAAI/bge-m3` | Bi-Encoder для gist доменов (не reranker) |
 | `DOMAIN_REGISTRY_COSINE_MIN` | `0.82` | Жёсткий порог cosine Pre-Discovery lookup |
 | `DOMAIN_REGISTRY_SEARCH_LIMIT` | `8` | Max `OFFICIAL_DOCS` хостов из LanceDB |
+| `LECTURE_EXTERNAL_SEARCH_HTTP_TIMEOUT_SEC` | `25` | Бюджет на Exa-вектор/Discovery-шаг лекционного добора |
+| `LECTURE_PASSAGE_FETCH_TIMEOUT_SEC` | `1.8` | Таймаут одного async fetch (httpx GET) на URL, `lecture_passage_fetch.py` |
+| `LECTURE_PASSAGE_FETCH_CONCURRENCY` | `6` | Параллельные fetch'и passage extraction |
+| `LECTURE_PASSAGE_MIN_CHARS` | `60` | Мин. длина абзаца после Trafilatura (короче — UI-мусор) |
+| `LECTURE_PASSAGE_MMR_TOP_K` | `3` | Абзацев на источник после greedy MMR |
+| `LECTURE_PASSAGE_MMR_LAMBDA` | `0.65` | MMR relevance/diversity баланс |
 
 Связанные curriculum-лимиты (не `EXA_*`, но влияют на контур):
 
