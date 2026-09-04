@@ -305,7 +305,10 @@ def compose_system_prompt(
         topic_already_covered=ctx.topic_already_covered,
     )
     ctx.last_recency_len = len(recency)
-    sections.append(recency)
+    ctx.recency_tail = recency
+    # Recency/explained-terms/topic-covered stay out of system_instruction so it is a
+    # byte-stable prefix for Gemini context caching; caller injects ctx.recency_tail
+    # into the per-turn user payload instead (see build_dynamic_suffix / recency_rules).
     text = "\n\n".join(s for s in sections if (s or "").strip())
     total_len = len(text)
     if mode == InteractionPromptMode.DIALOGUE_FEEDBACK:

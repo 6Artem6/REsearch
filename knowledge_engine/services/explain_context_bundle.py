@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -180,12 +181,17 @@ def retrieve_explain_invariants(
     floor = min_score if min_score is not None else EXPLAIN_ATOMS_MIN_SCORE
     prefer = {d for d in (prefer_doc_ids or []) if d}
 
+    # Runs from a LangGraph sync-node thread dispatch (no event loop of its
+    # own) — a local asyncio.run() per Qdrant call is the legitimate
+    # sync/async boundary here, not a nested-loop bridge.
     try:
-        rows = vs.search_knowledge_atoms(
-            q,
-            limit=max(cap * 3, cap + 4),
-            allowed_doc_ids=allowed,
-            min_score=float(floor),
+        rows = asyncio.run(
+            vs.search_knowledge_atoms(
+                q,
+                limit=max(cap * 3, cap + 4),
+                allowed_doc_ids=allowed,
+                min_score=float(floor),
+            )
         )
     except Exception as exc:
         trace(f"EXPLAIN_ATOMS search skip | {exc}")
@@ -202,11 +208,13 @@ def retrieve_explain_invariants(
                 VectorStore.doc_id_for_url(u) for u in urls if u.startswith("http")
             ]
             if lib_ids:
-                rows = vs.search_knowledge_atoms(
-                    q,
-                    limit=max(cap * 3, cap + 4),
-                    allowed_doc_ids=lib_ids,
-                    min_score=float(floor),
+                rows = asyncio.run(
+                    vs.search_knowledge_atoms(
+                        q,
+                        limit=max(cap * 3, cap + 4),
+                        allowed_doc_ids=lib_ids,
+                        min_score=float(floor),
+                    )
                 )
         except Exception as exc:
             trace(f"EXPLAIN_ATOMS library fallback skip | {exc}")
@@ -282,10 +290,12 @@ def retrieve_anchor_fallback_chunks(
 
     cap = top_k if top_k is not None else EXPLAIN_ANCHOR_FALLBACK_TOP_K
     try:
-        rows = vs.search_rag_chunk_rows(
-            q,
-            limit=max(cap * 3, 8),
-            allowed_doc_ids=allowed,
+        rows = asyncio.run(
+            vs.search_rag_chunk_rows(
+                q,
+                limit=max(cap * 3, 8),
+                allowed_doc_ids=allowed,
+            )
         )
     except Exception as exc:
         trace(f"EXPLAIN_ANCHOR search skip | {exc}")

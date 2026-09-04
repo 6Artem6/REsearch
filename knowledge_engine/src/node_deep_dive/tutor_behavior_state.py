@@ -61,30 +61,6 @@ def is_layer_completion_turn(memory: SessionMemory | None) -> bool:
     return directive in ("PASSED_CLEAN", "PASSED_WITH_GLOSS")
 
 
-def _wants_lecture(
-    intent: UserIntent,
-    learning_mode: str,
-    user_message: str,
-) -> bool:
-    msg = (user_message or "").strip().lower()
-    if intent == "INTENT_EXPLAIN":
-        return True
-    if learning_mode != "lecture":
-        return False
-    return any(
-        k in msg
-        for k in (
-            "дай лекцию",
-            "плотный материал",
-            "dense material",
-            "[mode:lecture]",
-            "mode:lecture",
-            "объясни подроб",
-            "дай плотн",
-        )
-    )
-
-
 def resolve_tutor_mode(
     intent: UserIntent,
     action: str,
@@ -98,8 +74,15 @@ def resolve_tutor_mode(
         return "socratic"
     if intent == "INTENT_FINALIZE":
         return "finalize"
-    if _wants_lecture(intent, learning_mode, user_message):
+    if intent == "INTENT_EXPLAIN":
         return "lecture_dense"
+    if learning_mode == "lecture":
+        from knowledge_engine.src.node_deep_dive.control_intent import (
+            is_short_lecture_request,
+        )
+
+        if is_short_lecture_request(user_message):
+            return "lecture_dense"
     if intent == "INTENT_SHIFT_FOCUS":
         return "dialogue_feedback"
     return "dialogue_feedback"
@@ -199,7 +182,10 @@ def _layer_drill_teaching_action(memory: SessionMemory) -> tuple[str, PathwayFla
             f" DRILL_ACTIVE Progress={progress} current=`{title}`. "
             "DO NOT declare the node or layer complete."
         )
-        return (f"{invariants}\n\n{text}{extra}" if invariants else f"{text}{extra}", pathway)
+        return (
+            f"{invariants}\n\n{text}{extra}" if invariants else f"{text}{extra}",
+            pathway,
+        )
     extra = (
         f"DRILL_ACTIVE overlay layer={layer} Progress={progress} "
         f"current=`{title}` id=`{cid}`. node_completed=false. "
@@ -208,7 +194,9 @@ def _layer_drill_teaching_action(memory: SessionMemory) -> tuple[str, PathwayFla
     return ((f"{invariants}\n\n{extra}" if invariants else extra), "")
 
 
-def _optional_layer_teaching_action(layer_name: str, cid: str) -> tuple[str, PathwayFlag]:
+def _optional_layer_teaching_action(
+    layer_name: str, cid: str
+) -> tuple[str, PathwayFlag]:
     name = (layer_name or "").strip().upper()
     if name == "MECHANIC":
         return (
@@ -519,9 +507,7 @@ def _next_action_and_pathway_for_mode(
             if hint:
                 part2 += f"focus_hint: «{hint[:240]}». "
             if evidence:
-                part2 += (
-                    f"already credited (context only): «{evidence[:160]}». "
-                )
+                part2 += f"already credited (context only): «{evidence[:160]}». "
             if pending_q:
                 part2 += (
                     f"Pending question «{pending_q[:160]}» may be refined ONLY "
@@ -539,7 +525,10 @@ def _next_action_and_pathway_for_mode(
         )
         return (part1 + part2, "")
     if mode == "verify":
-        return ("Финальная проверка по матрице концептов; без бесконечного допроса.", "")
+        return (
+            "Финальная проверка по матрице концептов; без бесконечного допроса.",
+            "",
+        )
     if mode == "socratic":
         return ("Один контрвопрос или edge-case; без лекции.", "")
     if mode == "finalize":
@@ -639,10 +628,10 @@ def overlay_offer_host_chips(
     clean history → DEEP_ASTERISK chip; always include next-node fallback.
     Requires 100% core mastery before any overlay chip is offered.
     """
-    from knowledge_engine.src.resilience_manager import core_ready_for_overlay
     from knowledge_engine.src.node_deep_dive.star_task_fsm import (
         overlay_offer_quick_replies,
     )
+    from knowledge_engine.src.resilience_manager import core_ready_for_overlay
 
     if memory is not None and not core_ready_for_overlay(memory):
         return []

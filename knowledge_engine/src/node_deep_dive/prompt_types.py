@@ -21,6 +21,8 @@ class PromptComposeContext:
     targeted: bool = False
     topic_already_covered: bool = False
     last_recency_len: int = field(default=0, repr=False)
+    recency_tail: str = field(default="", repr=False)
+    """Set by compose_system_prompt(); caller injects into the user payload, not system_instruction."""
 
 
 # Dialogue system prompt (English in dialogue_prompt_en.py).

@@ -106,6 +106,13 @@ def coverage_router_node(state: TutorGraphState) -> TutorGraphState:
     chip = classify_control_chip(raw_user, memory=memory)
     if chip in ("practice", "check", "skip"):
         apply_mode_selection_intent(memory, chip)
+    elif chip == "blitz":
+        # Free-text/vector-matched blitz request (tag case already handled
+        # by _apply_learning_mode_prefixes above) — persistent mode switch,
+        # same as the intro "проверка" chip -> express_blitz.
+        set_learning_mode(memory, "express_blitz")
+    elif chip == "socratic":
+        set_learning_mode(memory, "socratic_point")
     choice = classify_gloss_fork_choice(raw_user)
     if choice in ("how", "mech") and chip not in ("practice", "check"):
         from knowledge_engine.src.node_deep_dive.star_task_fsm import start_layer_drill
@@ -128,11 +135,10 @@ def coverage_router_node(state: TutorGraphState) -> TutorGraphState:
 
         clear_layer_drill(memory)
         focus = select_next_sub_concept(memory)
-    elif (
-        (getattr(memory, "active_optional_layer", "") or "").strip().upper()
-        in ("HOW", "MECHANIC")
-        and focus is None
-    ):
+    elif (getattr(memory, "active_optional_layer", "") or "").strip().upper() in (
+        "HOW",
+        "MECHANIC",
+    ) and focus is None:
         memory.active_optional_layer = ""
         focus = select_next_sub_concept(memory)
     focus_id = (focus.id if focus else "").strip()
@@ -203,10 +209,14 @@ def coverage_router_node(state: TutorGraphState) -> TutorGraphState:
             llm_out = deep_dive_llm_output_from_chat_text(tutor_message)
             if action in ("chat", "verify") and raw_user:
                 append_to_active_window(memory, "user", raw_user)
-                rotate_window_after_message(memory, anchor)
+                rotate_window_after_message(
+                    memory, anchor, req.curriculum_id, node.node_id
+                )
             if tutor_message:
                 append_to_active_window(memory, "tutor", tutor_message)
-                rotate_window_after_message(memory, anchor)
+                rotate_window_after_message(
+                    memory, anchor, req.curriculum_id, node.node_id
+                )
                 set_pending_evaluation_for_tutor_turn(memory, focus_id)
     else:
         advance_phase_after_chat(memory, intent, action)

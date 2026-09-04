@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
+from knowledge_engine.schemas.fsm import TutorStage
 from knowledge_engine.src.node_deep_dive.concept_map import (
     process_sub_concept_user_answer,
     stored_pending_evaluation_id,
 )
+from knowledge_engine.src.node_deep_dive.graph.stage_events import stage_scope
 from knowledge_engine.src.node_deep_dive.graph.state import TutorGraphState
 from knowledge_engine.ui.run_log import trace
 
@@ -24,7 +27,22 @@ def _with_memory(state: TutorGraphState, memory) -> TutorGraphState:
     }
 
 
-def sub_concept_eval_node(state: TutorGraphState) -> TutorGraphState:
+def sub_concept_eval_node(
+    state: TutorGraphState,
+    config: dict[str, Any] | None = None,
+) -> TutorGraphState:
+    """FSM stage wrapper — см. graph/stage_events.py. "Оценка ответа" эмитится
+    только вокруг реального вызова process_sub_concept_user_answer (см.
+    _sub_concept_eval_node_impl), не вокруг всего узла: если оценивать
+    нечего (пустое сообщение / нет pending / lecture request / quick-reply),
+    узел молча пропускает шаг, и первым видимым статусом хода становится
+    LLM_GENERATE ("Генерация нового сообщения…") на tutor_generate_node."""
+    return _sub_concept_eval_node_impl(state, config)
+
+
+def _sub_concept_eval_node_impl(
+    state: TutorGraphState, config: dict[str, Any] | None = None
+) -> TutorGraphState:
     """Gap eval for ``pending_evaluation_concept_id`` only; skip if no pending."""
     req = state["request"]
     memory = state["memory"]
@@ -51,9 +69,7 @@ def sub_concept_eval_node(state: TutorGraphState) -> TutorGraphState:
             mark_evaluator_skipped,
         )
 
-        mark_evaluator_skipped(
-            memory, "no pending (silent credit loss risk)"
-        )
+        mark_evaluator_skipped(memory, "no pending (silent credit loss risk)")
         return _with_memory(state, memory)
 
     from knowledge_engine.src.node_deep_dive.lecture_scope import (
@@ -66,9 +82,7 @@ def sub_concept_eval_node(state: TutorGraphState) -> TutorGraphState:
             mark_evaluator_skipped,
         )
 
-        mark_evaluator_skipped(
-            memory, "lecture request (not a user answer)"
-        )
+        mark_evaluator_skipped(memory, "lecture request (not a user answer)")
         return _with_memory(state, memory)
 
     from knowledge_engine.src.node_deep_dive.concept_map import (
@@ -90,12 +104,18 @@ def sub_concept_eval_node(state: TutorGraphState) -> TutorGraphState:
         return _with_memory(state, memory)
 
     try:
-        process_sub_concept_user_answer(
-            user_message,
-            memory,
-            req.node_data,
-            state["anchor"],
-        )
+        with stage_scope(
+            state,
+            config,
+            TutorStage.INTENT_ANALYSIS,
+            running_message="Оценка ответа…",
+        ):
+            process_sub_concept_user_answer(
+                user_message,
+                memory,
+                req.node_data,
+                state["anchor"],
+            )
     except Exception as exc:
         logger.exception("sub_concept_eval_node FAILED pending=%s", pending)
         trace(f"EVALUATOR_ERROR | pipeline | {type(exc).__name__}: {exc}")

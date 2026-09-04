@@ -133,9 +133,15 @@ def diversify_lecture_candidates_sync(
             trace(f"LECTURE_RAG ce_drop | … +{len(dropped_ce) - 8} more")
 
     if not passed:
-        trace("LECTURE_RAG ce_filter ⊘ | all below threshold — keep top by CE score")
-        ranked = sorted(valid, key=lambda gi: scores[valid.index(gi)], reverse=True)
-        passed = ranked[: max(LECTURE_RAG_MMR_TOP_K, 3)]
+        # ЖЁСТКАЯ граница: раньше здесь всё равно брались top-N по CE score
+        # ("keep top by CE score"), даже если ВСЕ были ниже порога — именно
+        # так в RAG-инспектор попадали дубли с cos≈0.000 (см. баг: 3
+        # identичных R1/R2/R3 из названия темы). Пусто — значит пусто.
+        trace(
+            f"LECTURE_RAG ce_filter ⊘ | all {len(valid)} candidates below "
+            f"threshold={LECTURE_RAG_CE_MIN_SCORE:.2f} → reject all"
+        )
+        return []
 
     passed_plains = [plains[i] for i in passed]
     relevance = [scores[valid.index(i)] if i in valid else 0.0 for i in passed]

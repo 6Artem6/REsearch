@@ -114,6 +114,16 @@ def open_optional_layers(memory: SessionMemory, node_layer: str) -> list[str]:
     )
 
     why, how, mech = aggregate_depth_flags(memory)
+    # RU: HOW/MECHANIC — это ДОЖИМ поверх уже закрытого предыдущего слоя
+    # (WHY→HOW→MECHANIC) для ВСЕХ подтем ноды, не только для одной строки,
+    # опередившей остальные. Реальный баг: нода с 4 подтемами, why_passed=True
+    # только у 2 — фолбэк-цикл ниже (per-row) находил, что у ОДНОЙ из этих
+    # двух уже пройден HOW, и предлагал «Дожать MECH» по одной этой строке,
+    # хотя у двух других подтем why_passed ещё False (WHY не закрыт по ноде
+    # в целом). Без этого раннего выхода фолбэк проверяет только
+    # why_passed/how_passed ТЕКУЩЕЙ строки, игнорируя остальные подтемы.
+    if not why:
+        return []
     open_layers: list[str] = []
     for name in optional_depth_layers(node_layer):
         if name == "HOW" and not how:

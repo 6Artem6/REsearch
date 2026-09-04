@@ -58,6 +58,47 @@ def test_open_optional_by_layer() -> None:
     assert open_optional_layers(mem2, "sota") == []
 
 
+def test_no_optional_chip_before_why_closed() -> None:
+    """Реальный баг: «Дожать HOW» появлялся на Foundation-ноде ДО закрытия
+    всех WHY-вопросов — open_optional_layers предлагал HOW/MECHANIC, как
+    только совокупный how/mech был False, не проверяя why вообще."""
+    mem = _complete_memory(why=False, how=False, mech=False)
+    layers = open_optional_layers(mem, "foundation")
+    assert layers == []
+    assert gloss_fork_quick_replies(layers) == []
+
+
+def test_no_optional_chip_when_only_some_rows_ahead() -> None:
+    """Реальный баг (curriculum=indexes_and_data_structures,
+    node=b_tree_indexes): у ноды 4 подтемы, why_passed=True только у 2 —
+    per-row fallback-цикл видел, что ОДНА из этих двух уже прошла HOW, и
+    предлагал «Дожать MECH» по ней одной, хотя у двух других подтем WHY ещё
+    не закрыт (WHY не закрыт по ноде в целом)."""
+    mem = SessionMemory(
+        sub_concepts=[
+            SubConceptRecord(
+                id="b_tree", label="b_tree", status="verified",
+                why_passed=True, how_passed=True, mechanic_passed=True,
+            ),
+            SubConceptRecord(
+                id="balanced_tree", label="balanced_tree", status="verified",
+                why_passed=True, how_passed=True, mechanic_passed=False,
+            ),
+            SubConceptRecord(
+                id="range_queries", label="range_queries", status="unchecked",
+                why_passed=False, how_passed=False, mechanic_passed=False,
+            ),
+            SubConceptRecord(
+                id="leaf_pages", label="leaf_pages", status="unchecked",
+                why_passed=False, how_passed=False, mechanic_passed=False,
+            ),
+        ],
+    )
+    layers = open_optional_layers(mem, "foundation")
+    assert layers == []
+    assert gloss_fork_quick_replies(layers) == []
+
+
 def test_behavior_optional_fork_advanced() -> None:
     mem = _complete_memory(why=True, how=True, mech=False)
     text = _next_action_for_mode(

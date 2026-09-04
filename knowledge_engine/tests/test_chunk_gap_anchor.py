@@ -42,6 +42,16 @@ def test_knee_cutoff_dense_cluster_keeps_all():
     assert len(kept) == 4
 
 
+def test_knee_cutoff_below_floor_rejects_all_no_keep_anyway():
+    """Раньше при top_score < min_floor всё равно возвращался лучший
+    кандидат ("keep best only") — именно так cos=0.000 чанки попадали в
+    RAG-инспектор (см. баг: 3 identичных R1/R2/R3 из названия темы). Порог
+    жёсткий: ничего не проходит — пустой список, а не "хоть что-нибудь"."""
+    entries = [_entry(0.0, "a"), _entry(0.0, "b"), _entry(0.0, "c")]
+    kept = filter_pool_by_knee_cutoff(entries, min_floor=0.30, knee_drop_ratio=0.12)
+    assert kept == []
+
+
 def test_effective_gamma_rises_on_dense_scores():
     entries = [_entry(r) for r in (0.82, 0.81, 0.80, 0.79)]
     v0 = np.array([1.0, 0.0])
@@ -127,3 +137,41 @@ def test_multi_source_mode_when_top_below_anchor():
     )
     assert len(picked) >= 1
     assert picked[0].source_index == 1
+
+
+def test_select_diverse_chunks_returns_empty_when_all_below_floor():
+    """Все кандидаты ортогональны теме (rel≈0) — должен вернуться пустой
+    список без падения на max() пустой последовательности (см. фикс
+    filter_pool_by_knee_cutoff: 'keep best only' убран)."""
+    topic = np.array([1.0, 0.0])
+    candidates = [
+        ChunkCandidate(
+            text="Completely unrelated chunk about the topic name only.",
+            source_id="d1",
+            source_title="A",
+            chunk_vector=np.array([0.0, 1.0]),
+            doc_meta_vector=np.array([0.0, 1.0]),
+            meta={"origin_i": "0", "doc_id": "d1"},
+        ),
+        ChunkCandidate(
+            text="Another unrelated duplicate chunk about the topic name only.",
+            source_id="d2",
+            source_title="B",
+            chunk_vector=np.array([0.0, 1.0]),
+            doc_meta_vector=np.array([0.0, 1.0]),
+            meta={"origin_i": "1", "doc_id": "d2"},
+        ),
+    ]
+    picked = select_diverse_chunks_with_cross_attention(
+        topic,
+        candidates,
+        top_k=2,
+        alpha=1.0,
+        beta=0.0,
+        gamma=0.0,
+        doc_gate_threshold=0.0,
+        anchor_threshold=1.01,
+        min_floor=0.30,
+        knee_drop_ratio=0.12,
+    )
+    assert picked == []

@@ -12,11 +12,9 @@ from knowledge_engine.schemas.drill_schemas import (
     audit_feedback_text,
     validate_grade_matches_errors,
 )
-
 from knowledge_engine.src.node_deep_dive.memory_schemas import (
     ConceptMasteryStatus,
     LectureExtractedConcept,
-    UserIntent,
 )
 from knowledge_engine.src.node_deep_dive.schemas import (
     DenseMaterialOutput,
@@ -379,6 +377,7 @@ class DeepDiveExplainContract(BaseModel):
     @property
     def feedback_on_answer(self) -> str:
         return ""
+
     # RU: оценка пропущена — вердикта нет.
 
 
@@ -422,10 +421,13 @@ class ConceptUpdateContract(BaseModel):
 
 
 class StepAnalysisContract(BaseModel):
-    intent: UserIntent = Field(
-        default="ANSWER",
-        description="INTENT_EXPLAIN только при явной лекции; ANSWER для диалога",
-    )
+    """
+    RU (пояснение): intent сюда больше не входит — тип сообщения (lecture /
+    finalize / shift_focus / control chips) резолвится детерминированно через
+    VectorIntentRouter выше по пайплайну (см. step_analysis_node), LLM отвечает
+    только за concept_updates/critical_gap.
+    """
+
     concept_updates: list[ConceptUpdateContract] = Field(
         default_factory=list,
         max_length=12,
@@ -514,9 +516,7 @@ class SubConceptStatusUpdate(BaseModel):
             for e in (self.detected_errors_or_misconceptions or [])
             if (e or "").strip()
         ]
-        claims = [
-            c.strip() for c in (self.correct_claims or []) if (c or "").strip()
-        ]
+        claims = [c.strip() for c in (self.correct_claims or []) if (c or "").strip()]
         if self.accuracy_grade == AnswerAccuracyGrade.EXACT_AND_CORRECT:
             if errors:
                 raise ValueError(

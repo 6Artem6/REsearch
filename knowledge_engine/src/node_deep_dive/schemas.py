@@ -328,6 +328,14 @@ class NodeDeepDiveResponse(BaseModel):
     learning_phase: str = "intro_assessment"
     learning_mode: str = "lecture"
     source_registry: list[dict[str, Any]] = Field(default_factory=list)
+    mapped_source_ids: list[str] = Field(
+        default_factory=list,
+        max_length=32,
+        description="Node's mapped_source_ids after this turn (source addressing).",
+    )
+    # RU: без этого поля фронт видит обновлённую привязку источников
+    # только после полного рефетча графа (reload) — см. mapped_source_ids
+    # staleness в NodeDrawer «Адресация ноды».
     lecture_rag_inspector: list[dict[str, Any]] = Field(
         default_factory=list,
         max_length=16,

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from knowledge_engine.schemas.fsm import TutorStage
 from knowledge_engine.services.chat_session_manager import ChatSessionManager
+from knowledge_engine.src.node_deep_dive.graph.stage_events import stage_scope
 from knowledge_engine.src.node_deep_dive.graph.state import TutorGraphState
 from knowledge_engine.src.node_deep_dive.tiered_memory import build_handoff_summary
 from knowledge_engine.src.node_deep_dive.tutor_dialogue import (
@@ -23,7 +25,21 @@ def tutor_generate_node(
     state: TutorGraphState,
     config: dict[str, Any] | None = None,
 ) -> TutorGraphState:
-    """Compose system prompt and call Gemini (``_invoke_tutor``)."""
+    """Compose system prompt and call Gemini (``_invoke_tutor``) — FSM stage
+    wrapper, см. graph/stage_events.py."""
+    with stage_scope(
+        state,
+        config,
+        TutorStage.LLM_GENERATE,
+        running_message="Генерация нового сообщения…",
+    ):
+        return _tutor_generate_node_impl(state, config)
+
+
+def _tutor_generate_node_impl(
+    state: TutorGraphState,
+    config: dict[str, Any] | None = None,
+) -> TutorGraphState:
     from knowledge_engine.src.node_deep_dive.engine import _invoke_tutor, _merge_content
 
     req = state["request"]
@@ -62,7 +78,9 @@ def tutor_generate_node(
 
         llm_out, drifted = enforce_question_sub_concept_invariant(memory, llm_out)
         if drifted:
-            trace("STATE_DRIFT retry | regenerating tutor turn with stripped chat_history")
+            trace(
+                "STATE_DRIFT retry | regenerating tutor turn with stripped chat_history"
+            )
             llm_out = _invoke_tutor(
                 memory,
                 node,
@@ -87,20 +105,18 @@ def tutor_generate_node(
                     f"{llm_out.question_sub_concept_id}"
                 )
     except Exception as exc:
+        from knowledge_engine.src.node_deep_dive.schemas import DeepDiveLLMOutput
         from knowledge_engine.src.resilience_manager import (
             degraded_student_message,
             is_llm_resilience_error,
             is_tutor_contract_validation_error,
         )
-        from knowledge_engine.src.node_deep_dive.schemas import DeepDiveLLMOutput
 
         if not (
             is_llm_resilience_error(exc) or is_tutor_contract_validation_error(exc)
         ):
             raise
-        trace(
-            f"TUTOR_GENERATE degrade | {type(exc).__name__}: {exc} | FSM preserved"
-        )
+        trace(f"TUTOR_GENERATE degrade | {type(exc).__name__}: {exc} | FSM preserved")
         qid = (
             (memory.next_question_concept_id or "").strip()
             or (memory.pending_evaluation_concept_id or "").strip()
