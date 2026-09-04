@@ -68,6 +68,12 @@ class GemmaTokenBudgetManager:
         self._overflow_wait_sec = float(overflow_wait_sec)
         self._history: deque[tuple[float, int]] = deque()
         self._lock = asyncio.Lock()
+        # Сколько вызовов прямо сейчас ждут этот же общий бюджет (не заняли
+        # лок, а спят в acquire_budget). Используется для queue-aware overflow
+        # ниже — без этого несколько параллельных MAP/consensus/reduce
+        # запросов складывались в очередь строго последовательно на Gemma,
+        # хотя каждый по отдельности укладывался в overflow_wait_sec.
+        self._waiting = 0
 
     @property
     def max_tpm(self) -> int:
@@ -91,13 +97,23 @@ class GemmaTokenBudgetManager:
 
     def _required_wait(self, tokens: int, now: float) -> float:
         self._evict(now)
+        if tokens > self._max_tpm:
+            # A single request whose own estimate exceeds the entire per-window
+            # budget can never fit no matter how long we wait for it — nothing
+            # is ever admitted to _history in this case, so waiting here would
+            # just keep re-triggering this same branch forever (confirmed: a
+            # 17781-token MAP call against max_tpm=14400 hung a live process
+            # for 5+ minutes in a tight 0.25s poll loop). Report a wait past
+            # the overflow cap so acquire_budget routes it to the Flash-Lite
+            # fallback instead of retrying an unsatisfiable budget.
+            return self._overflow_wait_sec + 1.0
         if len(self._history) >= self._max_rpm:
             oldest = self._history[0][0]
             return max(0.05, oldest + self._window - now)
         tpm = sum(t for _, t in self._history)
         if tpm + tokens > self._max_tpm:
-            if not self._history:
-                return 0.25
+            # tokens <= max_tpm (checked above) and tpm + tokens > max_tpm
+            # together imply tpm > 0, so _history is guaranteed non-empty here.
             oldest = self._history[0][0]
             return max(0.05, oldest + self._window - now)
         return 0.0
@@ -111,31 +127,52 @@ class GemmaTokenBudgetManager:
         *,
         max_wait_for_overflow: float | None = None,
     ) -> BudgetAcquireResult:
-        """Reserve TPM/RPM slot; overflow to Flash if wait would exceed threshold."""
+        """Reserve TPM/RPM slot; overflow to Flash if wait would exceed threshold
+        — или если бюджет уже занят другим ожидающим вызовом (queue-aware
+        overflow: складывать несколько ожиданий подряд на одну и ту же Gemma
+        квоту невыгодно, если Gemini Flash Overflow может забрать лишнее)."""
         est = max(1, int(tokens))
         overflow_cap = (
             max_wait_for_overflow
             if max_wait_for_overflow is not None
             else self._overflow_wait_sec
         )
-        while True:
-            async with self._lock:
-                now = time.time()
-                wait = self._required_wait(est, now)
-                if wait > overflow_cap:
+        registered_wait = False
+        try:
+            while True:
+                async with self._lock:
+                    now = time.time()
+                    wait = self._required_wait(est, now)
+                    queue_pressure = wait > 0 and self._waiting > 0
+                    if wait > overflow_cap or queue_pressure:
+                        trace(
+                            f"GEMMA budget overflow ▶ Flash-Lite | wait={wait:.1f}s "
+                            f"tpm={self.tpm_used}/{self._max_tpm} rpm={self.rpm_used}/{self._max_rpm}"
+                            + (
+                                f" | queue_pressure waiting={self._waiting}"
+                                if queue_pressure and wait <= overflow_cap
+                                else ""
+                            )
+                        )
+                        return BudgetAcquireResult(
+                            acquired=False,
+                            overflow_to_flash=True,
+                            projected_wait_sec=wait,
+                        )
+                    if wait <= 0:
+                        self._history.append((now, est))
+                        return BudgetAcquireResult(acquired=True)
                     trace(
-                        f"GEMMA budget overflow ▶ Flash-Lite | wait={wait:.1f}s "
+                        f"GEMMA budget wait ▶ {wait:.1f}s | "
                         f"tpm={self.tpm_used}/{self._max_tpm} rpm={self.rpm_used}/{self._max_rpm}"
                     )
-                    return BudgetAcquireResult(
-                        acquired=False,
-                        overflow_to_flash=True,
-                        projected_wait_sec=wait,
-                    )
-                if wait <= 0:
-                    self._history.append((now, est))
-                    return BudgetAcquireResult(acquired=True)
-            await asyncio.sleep(min(wait, overflow_cap))
+                if not registered_wait:
+                    self._waiting += 1
+                    registered_wait = True
+                await asyncio.sleep(min(wait, overflow_cap))
+        finally:
+            if registered_wait:
+                self._waiting -= 1
 
     async def acquire_budget_blocking(
         self,

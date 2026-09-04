@@ -41,6 +41,12 @@ def run_work_job(job: WorkJob) -> dict[str, Any]:
         return _run_node_deep_dive(job.payload)
     if job.kind == WorkJobKind.RAG_GATEWAY:
         return _run_rag_gateway(job.payload)
+    if job.kind == WorkJobKind.DIALOG_SUMMARIZE:
+        from knowledge_engine.services.context_compressor_worker import (
+            run_dialog_summarize_job,
+        )
+
+        return run_dialog_summarize_job(job.payload)
     if job.kind == WorkJobKind.NODE_EXPLAIN:
         if job.payload.get("stream"):
             from knowledge_engine.services.node_explain_job import (

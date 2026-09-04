@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -605,10 +606,36 @@ class ChatSessionManager:
             temperature=temperature,
             explicit_cache=cache,
         )
+        lab = label or "gemini_chat"
+
+        def _send_once(msg_text: str) -> Any:
+            """GEMINI HTTP ▶/✓ в формате, который log_profiler.py's
+            --llm-audit уже умеет парсить (см. _HTTP_START_RE/_HTTP_END_RE) —
+            раньше chat-managed вызовы были невидимы в реестре профилировщика
+            (FIX STEP 4)."""
+            from knowledge_engine.services.gemini_stateless import (
+                _record_actual_usage,
+            )
+
+            trace(
+                f"GEMINI HTTP ▶ {lab} | model={model} | "
+                f"chat session (без HTTP-таймаута SDK) | payload≈{len(msg_text)} sym"
+            )
+            t0 = time.perf_counter()
+            resp = chat.send_message(msg_text)
+            elapsed = time.perf_counter() - t0
+            _record_actual_usage(resp)
+            resp_text = (resp.text or "").strip()
+            trace(
+                f"GEMINI HTTP ✓ {lab} | model={model} | {elapsed:.1f}s | "
+                f"ответ {len(resp_text)} sym"
+            )
+            return resp
+
         try:
             if stream:
                 return self._stream_from_chat(chat, msg), stored, chat, msg, out_meta
-            response = chat.send_message(msg)
+            response = _send_once(msg)
             return (response.text or "").strip(), stored, chat, msg, out_meta
         except Exception as exc:
             if not explicit_cache_is_active(cache) or not is_cache_resource_error(exc):
@@ -662,7 +689,7 @@ class ChatSessionManager:
                     msg,
                     fb_meta,
                 )
-            response = chat.send_message(msg)
+            response = _send_once(msg)
             return (response.text or "").strip(), stored, chat, msg, fb_meta
 
     def _stream_from_chat(
@@ -705,6 +732,9 @@ class ChatSessionManager:
         layer2_context: str = "",
         payload_meta: UserPayloadBuildMeta | None = None,
     ) -> str:
+        from knowledge_engine.services.gemini_stateless import reset_actual_usage
+
+        reset_actual_usage()
         stored = self.resolve_for_model(label, model, summary_for_handoff)
         dialog_user = (record_user_text or message or "").strip()
         text, stored, _chat, sent_msg, sent_meta = (
@@ -793,6 +823,9 @@ class ChatSessionManager:
         layer2_context: str = "",
         payload_meta: UserPayloadBuildMeta | None = None,
     ) -> str:
+        from knowledge_engine.services.gemini_stateless import reset_actual_usage
+
+        reset_actual_usage()
         from knowledge_engine.services.gemini_cache_manager import (
             ExplicitCacheResult,
             explicit_cache_is_active,
@@ -839,7 +872,15 @@ class ChatSessionManager:
             explicit_cache if isinstance(explicit_cache, ExplicitCacheResult) else None
         )
 
+        lab = label or "gemini_chat_stream"
+
         def _run_stream(chat: Any, stream_msg: str) -> tuple[str, Any]:
+            trace(
+                f"GEMINI HTTP ▶ {lab} | model={model} | "
+                f"chat session stream (без HTTP-таймаута SDK) | "
+                f"payload≈{len((stream_msg or '').strip())} sym | stream"
+            )
+            t0 = time.perf_counter()
             parts: list[str] = []
             cum_text = ""
             last_chunk: Any = None
@@ -864,7 +905,18 @@ class ChatSessionManager:
                     stream_callback(delta_raw)
             if field_filter is not None:
                 field_filter.flush()
-            return (cum_text or "".join(parts)).strip(), last_chunk
+            elapsed = time.perf_counter() - t0
+            from knowledge_engine.services.gemini_stateless import (
+                _record_actual_usage,
+            )
+
+            _record_actual_usage(last_chunk)
+            out_text = (cum_text or "".join(parts)).strip()
+            trace(
+                f"GEMINI HTTP ✓ {lab} | model={model} | {elapsed:.1f}s | "
+                f"ответ {len(out_text)} sym"
+            )
+            return out_text, last_chunk
 
         sent_msg = msg
         sent_meta = meta

@@ -32,18 +32,26 @@ _TOP_K_FULL_DOCS = 3
 _MAX_FULL_DOC_CHARS = 12_000
 
 _RESEARCH_PRIORITY = (
-    "ГЛАВНЫЙ ПРИОРИТЕТ: исследовательский синтез и сравнение источников. "
-    "Сопоставь подходы из разных статей/документов: механики, алгоритмы, структуры данных, "
-    "архитектурные допущения. Выдели неочевидные инженерные нюансы и «подводные камни» авторов. "
-    "Связывай теорию (papers/arXiv) с практическими импликациями задачи. "
-    "ЗАПРЕЩЕНО: верхнеуровневые abstract-сводки без технических деталей; "
-    "сжимать описания до одной короткой строки где поле позволяет развернутый текст."
+    "MAIN PRIORITY: research synthesis and comparison of sources. "
+    "Compare approaches across different articles/documents: mechanics, algorithms, data "
+    "structures, architectural assumptions. Surface non-obvious engineering nuances and "
+    "authors' pitfalls. Connect theory (papers/arXiv) to the task's practical implications. "
+    "FORBIDDEN: high-level abstract summaries with no technical detail; "
+    "compressing a description into one short line where the field allows extended text."
 )
+"""
+RU (пояснение): L2a ConceptGraph — приоритет сравнению источников и
+техническим нюансам, запрет на abstract-сводки без деталей.
+"""
 
 _CONTEXT_SECONDARY = (
-    "ВТОРИЧНЫЙ ПРИОРИТЕТ: профиль пользователя и железо (UMA/Mac и т.д.) — "
-    "только как один из context_flags / условий, НЕ как жесткий фильтр и НЕ для отсечения решений."
+    "SECONDARY PRIORITY: user profile and hardware (UMA/Mac, etc.) — "
+    "only as one of the context_flags/conditions, NOT as a hard filter and NOT to rule out solutions."
 )
+"""
+RU (пояснение): L2b ProfileGapMap — личный профиль/железо вторичны, не
+жёсткий фильтр и не повод отбрасывать решения.
+"""
 
 
 def _source_anchor_block(source_registry: List[Dict[str, Any]] | None) -> str:

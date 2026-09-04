@@ -86,8 +86,26 @@ def _subscribe_pubsub():
     return pubsub
 
 
+_REDIS_BACKOFF_MIN_SEC = 10.0
+_REDIS_BACKOFF_MAX_SEC = 60.0
+_redis_backoff_until: dict[str, float] = {}
+_redis_backoff_sec: dict[str, float] = {}
+
+
 def _safe_redis_command(label: str, fn, default=None):
-    """Redis command failures must not terminate the long-running worker."""
+    """Redis command failures must not terminate the long-running worker.
+
+    Per-label exponential backoff (10s → 20s → 40s → capped 60s, reset on
+    the next success) on top of the fast retry-once-then-reconnect below —
+    the socket-level timeout stays short (fast failure detection fixed the
+    multi-minute worker stalls this replaced), but a SUSTAINED outage no
+    longer re-attempts (and re-logs) on every single scheduled heartbeat/
+    drain tick. During backoff the call is skipped silently — the
+    reconnect/failed traces already fired when the backoff was set."""
+    now = time.monotonic()
+    if now < _redis_backoff_until.get(label, 0.0):
+        return default
+
     import redis
 
     errors = (
@@ -97,15 +115,27 @@ def _safe_redis_command(label: str, fn, default=None):
         OSError,
     )
     try:
-        return fn()
+        result = fn()
+        _redis_backoff_until.pop(label, None)
+        _redis_backoff_sec.pop(label, None)
+        return result
     except errors as exc:
         trace(f"WORKER redis command {label} — reconnect | {exc}")
         reset_redis_command_client()
         try:
-            return fn()
+            result = fn()
+            _redis_backoff_until.pop(label, None)
+            _redis_backoff_sec.pop(label, None)
+            return result
         except errors as exc2:
             trace(f"WORKER redis command {label} — failed after reconnect | {exc2}")
             reset_redis_command_client()
+            backoff = min(
+                _REDIS_BACKOFF_MAX_SEC,
+                _redis_backoff_sec.get(label, _REDIS_BACKOFF_MIN_SEC / 2) * 2,
+            )
+            _redis_backoff_sec[label] = backoff
+            _redis_backoff_until[label] = time.monotonic() + backoff
             return default
 
 
