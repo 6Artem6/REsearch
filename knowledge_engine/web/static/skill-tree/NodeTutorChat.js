@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { sortDialogMessages, dialogMsgId, tutorHtmlMatchesContentForMessage } from "./api.js";
 import { LlmHtmlBlock } from "./LlmHtmlBlock.js";
 import {
+  linkifySourceAnchorsHtml,
   postprocessTutorHtml,
   structuredAnalysisToHtml,
   tutorMarkdownToHtml,
@@ -26,11 +27,11 @@ const QUICK = [
   },
   {
     label: "Самопроверка",
-    text: "Один короткий вопрос самопроверки по материалу справа.",
+    text: "[mode:self_check] Один короткий вопрос самопроверки по материалу справа.",
   },
   {
     label: "Следующий модуль",
-    text: "INTENT_FINALIZE: что я усовоил и куда логично перейти дальше?",
+    text: "[mode:next_module] Что я усвоил и куда логично перейти дальше?",
   },
 ];
 
@@ -52,6 +53,7 @@ export function NodeTutorChat({
   onSend,
   disabled,
   generating,
+  stageMessage,
   curriculumId,
   nodeData,
   curriculum,
@@ -134,7 +136,11 @@ export function NodeTutorChat({
       React.createElement(
         "div",
         { className: "tutor-busy-hint", "aria-live": "polite" },
-        "Генерация ответа… можно читать историю выше; новые сообщения временно недоступны.",
+        // stageMessage — последнее FSM stage-событие (см. schemas/fsm.py,
+        // api.js::nodeChatStream) с бэкенда; статичный текст — fallback,
+        // пока событий ещё не пришло или backend их не шлёт (non-stream путь).
+        stageMessage ||
+          "Генерация ответа… можно читать историю выше; новые сообщения временно недоступны.",
       ),
     React.createElement(
       "div",
@@ -158,7 +164,12 @@ export function NodeTutorChat({
             tutorHtml &&
             tutorHtmlMatchesContentForMessage(m.content || "", tutorHtml);
           const tutorMarkdownHtml =
-            m.role === "tutor" ? tutorMarkdownToHtml(m.content || "") : "";
+            m.role === "tutor"
+              ? linkifySourceAnchorsHtml(
+                  tutorMarkdownToHtml(m.content || ""),
+                  session?.sourceRegistry,
+                )
+              : "";
           const isLastTutor = m.role === "tutor" && msgKey === tutorTurnKey;
           return React.createElement(
             "div",

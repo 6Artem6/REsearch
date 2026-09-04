@@ -177,9 +177,15 @@ function tutorHtmlMatchesContent(content, html) {
   const c = (content || "").trim();
   const h = postprocessTutorHtml(String(html || "").trim());
   if (!c || !h) return Boolean(h);
+  // Сравниваем с HTML без тегов: backend оборачивает [Sn] в <a href=...>,
+  // из-за чего сырой tail ("...[S2] вопрос?") никогда не встречался в h
+  // дословно — весь корректный backend HTML браковался, и цитаты падали
+  // в клиентский tutorMarkdownToHtml (не знает про source registry, [Sn]
+  // рендерится голым текстом без <a href>).
+  const hText = h.replace(/<[^>]+>/g, "");
   const tail = c.slice(-120);
-  if (tail.includes("?") && !h.includes(tail.slice(-60))) return false;
-  return h.replace(/<[^>]+>/g, "").length + 40 >= c.length;
+  if (tail.includes("?") && !hText.includes(tail.slice(-60))) return false;
+  return hText.length + 40 >= c.length;
 }
 
 export function tutorHtmlMatchesContentForMessage(content, contentHtml) {
@@ -544,6 +550,17 @@ export async function nodeChatStream(
       node_data: nodeData,
       user_message: userMessage,
     },
+    onEvent,
+  );
+}
+
+/** SSE POST /node/init-stream — onEvent({type, stage?, status?, message?, result?, detail?}).
+ * Тот же паттерн, что nodeChatStream, но для подготовки ноды (action=init) —
+ * FSM stage-события идут в том же потоке (см. schemas/fsm.py). */
+export async function nodeInitStream(curriculumId, nodeData, onEvent) {
+  return readNodeSsePost(
+    `${API}/node/init-stream`,
+    { curriculum_id: curriculumId, node_data: nodeData },
     onEvent,
   );
 }

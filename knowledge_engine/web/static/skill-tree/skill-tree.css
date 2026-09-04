@@ -1746,11 +1746,20 @@ body.skill-col-resizing .tutor-selectable {
   padding-left: 1.1rem;
 }
 
+.mastery-modes-label {
+  margin: 0.85rem 0 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ke-muted, #94a3b8);
+}
+
 .mastery-modes {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  margin-top: 0.6rem;
+  margin-top: 0.3rem;
 }
 
 .mastery-mode-btn {
