@@ -50,6 +50,8 @@ Thumbs.db
 
 # Логи и локальные данные runtime
 *.log
+*.log.*
+*.txt
 **/.runs/
 **/.lancedb/
 **/.lancedb.bak*/

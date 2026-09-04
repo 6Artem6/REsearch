@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from knowledge_engine.config import LOCAL_HEAVY_MODEL, OLLAMA_STRUCTURE_NUM_PREDICT
+from knowledge_engine.config import LOCAL_HEAVY_MODEL
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.schemas import EngineGraphState, PreSynthesisDraft
 from knowledge_engine.services.gemini_stateless import global_anchor_from_state
@@ -53,7 +53,6 @@ def pre_synthesis_clusterizer_node(state: EngineGraphState) -> dict[str, Any]:
         user,
         anchor,
         "pre_synthesis / PreSynthesisDraft",
-        num_predict=OLLAMA_STRUCTURE_NUM_PREDICT,
     )
 
     matrix_input = draft.matrix_input or draft.deduplicated_summary

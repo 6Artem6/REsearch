@@ -11,7 +11,6 @@ from knowledge_engine.config import (
     GEMINI_RPM_PAUSE_SEC,
     LOCAL_L2_MODEL,
     MAIN_MODEL,
-    OLLAMA_STRUCTURE_NUM_PREDICT,
     REACT_EVAL_MODEL,
 )
 from knowledge_engine.services.gemini_stateless import (
@@ -139,7 +138,6 @@ def run_l2_extraction_hybrid(
         prefer_gemini=True,
         rpm_pause_sec=GEMINI_RPM_PAUSE_SEC,
         local_model=LOCAL_L2_MODEL,
-        local_num_predict=OLLAMA_STRUCTURE_NUM_PREDICT,
     )
 
 
@@ -159,5 +157,4 @@ def run_matrix_hybrid(
         prefer_gemini=True,
         rpm_pause_sec=0,
         local_model=MAIN_MODEL,
-        local_num_predict=OLLAMA_STRUCTURE_NUM_PREDICT,
     )

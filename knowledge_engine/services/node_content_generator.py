@@ -11,7 +11,6 @@ from knowledge_engine.config import (
     LECTURE_GENERATION_TIMEOUT_SEC,
     LECTURE_MAX_OUTPUT_TOKENS,
     MAIN_MODEL,
-    OLLAMA_STRUCTURE_NUM_PREDICT,
 )
 from knowledge_engine.schemas.llm_contracts.tutor import (
     StructuredLectureResponse,
@@ -36,6 +35,7 @@ from knowledge_engine.src.node_deep_dive.code_snippet_heuristic import (
     filter_code_snippets,
 )
 from knowledge_engine.src.node_deep_dive.memory_schemas import SessionMemory
+from knowledge_engine.src.node_deep_dive.prompt_types import InteractionPromptMode
 from knowledge_engine.src.node_deep_dive.schemas import (
     DenseMaterialOutput,
     NodeContentBlock,
@@ -45,7 +45,10 @@ from knowledge_engine.src.node_deep_dive.tiered_memory import (
     build_handoff_summary,
     format_matrix_for_llm,
 )
-from knowledge_engine.src.node_deep_dive.tutor_prompt_builder import build_dense_system
+from knowledge_engine.src.node_deep_dive.tutor_prompt_builder import (
+    build_critical_rules_recency_tail,
+    build_dense_system,
+)
 
 
 def _dense_system_instruction(
@@ -109,6 +112,11 @@ def generate_dense_material(
     scope = (lecture_scope or "full_node_lecture").strip()
     focus = (focus_text or "").strip()
     rag_query = focus if scope == "targeted_lecture" and focus else user_query
+    recency_rules = build_critical_rules_recency_tail(
+        mode=InteractionPromptMode.LECTURE_DENSE,
+        memory=memory,
+        topic_already_covered=topic_already_covered,
+    )
     payload = build_lecture_generation_payload(
         node,
         rag_profile,
@@ -125,6 +133,7 @@ def generate_dense_material(
         coverage_payload=coverage_payload,
         lecture_scope=scope,
         focus_text=focus,
+        recency_rules=recency_rules,
     )
     from knowledge_engine.src.node_deep_dive.subconcept_invariants import (
         format_subconcept_hard_anchor,
@@ -169,7 +178,7 @@ def generate_dense_material(
         )
     except Exception as exc:
         trace(
-            f"NODE_DIVE dense_material fallback Ollama json_schema | "
+            f"NODE_DIVE dense_material fallback Cloud LLM json_schema | "
             f"StructuredLectureResponse | {exc}"
         )
         structured = run_local_structured(
@@ -180,7 +189,6 @@ def generate_dense_material(
             anchor,
             "node_deep_dive/dense_material",
             temperature=LECTURE_GENERATION_TEMPERATURE,
-            num_predict=OLLAMA_STRUCTURE_NUM_PREDICT,
         )
         try:
             from knowledge_engine.services.session_prompt_trace import (
