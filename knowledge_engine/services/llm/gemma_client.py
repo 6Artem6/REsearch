@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Callable, TypeVar, get_origin
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -77,10 +78,45 @@ class GemmaModelSlot:
     failover_max_wait_sec: float = 0.0
 
 
-def resolve_gemma_map_max_output_tokens(input_tokens: int | None = None) -> int:
-    """MAP completion cap — always 4096 (no input-size / model branching)."""
+def resolve_gemma_map_max_output_tokens(
+    input_tokens: int | None = None, *, projected_out: int | None = None
+) -> int:
+    """MAP completion cap — from config.GEMMA_MAP_MAX_OUTPUT_TOKENS by
+    default (``input_tokens`` kept for call-site compatibility; no
+    input-size branching on its own — see BUG FIXED note below).
+
+    ``projected_out``: an ALREADY content-aware output estimate from the
+    caller (e.g. ``dynamic_target_facts()`` in blog_spatial_summarizer.py —
+    proportional to how many knowledge_atoms a window can realistically
+    need, not just its input size). When given, the cap becomes
+    ``min(GEMMA_MAP_MAX_OUTPUT_TOKENS, projected_out + margin)`` instead of
+    the flat ceiling — this is Step 1 of the "почему MAP-вызовы 35-93s+"
+    audit: `dynamic_target_facts()` already computed this number and logged
+    it, but nothing fed it back into the actual API `max_tokens`, so every
+    window — regardless of how little it had to say — was allowed to
+    generate up to the full flat cap, and a model that used a good chunk of
+    that budget took proportionally longer with no benefit (window content
+    doesn't need more than its own fact budget). Callers that don't have a
+    per-window estimate (e.g. dynamic_target_facts()'s own internal call to
+    get ITS ceiling) keep getting the flat, static cap — unchanged.
+
+    BUG FIXED (pre-existing, kept for history): this used to hardcode 4096
+    unconditionally, silently ignoring GEMMA_MAP_MAX_OUTPUT_TOKENS from
+    config/.env entirely. Every MAP call in this codebase's whole session
+    history ran with max_tokens=4096 regardless of what config said — the
+    config layer itself was wired correctly (config.py already does
+    int(os.getenv("GEMMA_MAP_MAX_OUTPUT_TOKENS", ...))), the disconnect was
+    only here.
+    """
+    from knowledge_engine.config import GEMMA_MAP_MAX_OUTPUT_TOKENS
+
     _ = input_tokens
-    return 4096
+    if projected_out is not None and projected_out > 0:
+        # Margin covers window_role + JSON structure overhead beyond the
+        # raw knowledge_atoms text that projected_out itself estimates.
+        margin = max(200, int(projected_out * 0.3))
+        return max(256, min(GEMMA_MAP_MAX_OUTPUT_TOKENS, projected_out + margin))
+    return GEMMA_MAP_MAX_OUTPUT_TOKENS
 
 
 def _strip_gemma_thought_wrapper(text: str) -> str:
@@ -114,6 +150,20 @@ def _strip_markdown_fences(text: str) -> str:
     return t.strip()
 
 
+def _is_thought_only_empty_response(content: str) -> bool:
+    """True when the model emitted nothing but a <thought> block (or empty
+    text) — no JSON at all, open or closed. Retrying the identical prompt
+    against the identical model reproduces this same non-answer far more
+    often than it fixes it (it's a model behavior pattern, not a truncation
+    or escaping glitch); observed repeatedly for ConsensusBatchResponse in
+    production (perf_debug.log: json_error=empty JSON payload after
+    thought/fence cleanup). Skipping the same-prompt retry for this specific
+    case avoids paying for a doomed extra ~20-60s HTTP round-trip before
+    falling through to the Gemini Flash-Lite fallback."""
+    stripped = _strip_markdown_fences(_strip_gemma_thought_wrapper((content or "").strip()))
+    return not stripped
+
+
 def loads_json_lenient(raw: str) -> object:
     """``json.loads`` then ``json_repair.loads`` for truncated / bad escapes."""
     text = _strip_markdown_fences(_strip_gemma_thought_wrapper((raw or "").strip()))
@@ -129,6 +179,57 @@ def loads_json_lenient(raw: str) -> object:
         return json_repair.loads(text)
     except Exception as exc:
         raise ValueError(f"json_repair failed: {exc}") from exc
+
+
+def _wrap_bare_list_for_schema(data: object, schema: type[T]) -> object:
+    """Gemma sometimes emits a bare JSON array instead of the wrapper object the
+    schema expects; if the schema has exactly one list-typed field, wrap into it."""
+    if not isinstance(data, list):
+        return data
+    list_fields = [
+        name
+        for name, info in schema.model_fields.items()
+        if get_origin(info.annotation) is list
+    ]
+    if len(list_fields) == 1:
+        return {list_fields[0]: data}
+    return data
+
+
+def _drop_truncated_list_tail(
+    data: object, errors: list[dict]
+) -> tuple[dict, int] | None:
+    """Gemma's max_tokens cutoff often lands mid-object inside a trailing
+    list item (e.g. knowledge_atoms[5] missing its 'statement' field) —
+    the rest of the response is valid JSON, only the tail item is broken.
+    Truncating the offending list(s) at the first bad index and re-validating
+    salvages the response without paying for a full extra HTTP round-trip
+    (schema parse retry costs another 20-70s Gemma call). Returns
+    (repaired_data, dropped_count) or None if no error matches this shape."""
+    if not isinstance(data, dict):
+        return None
+    truncate_at: dict[str, int] = {}
+    for err in errors:
+        loc = err.get("loc") or ()
+        if len(loc) < 2:
+            continue
+        field, idx = loc[0], loc[1]
+        if not isinstance(field, str) or not isinstance(idx, int):
+            continue
+        if not isinstance(data.get(field), list):
+            continue
+        truncate_at[field] = min(truncate_at.get(field, idx), idx)
+    if not truncate_at:
+        return None
+    repaired = dict(data)
+    dropped = 0
+    for field, idx in truncate_at.items():
+        original = data[field]
+        repaired[field] = original[:idx]
+        dropped += len(original) - idx
+    if dropped <= 0:
+        return None
+    return repaired, dropped
 
 
 def _parse_structured(raw: str, schema: type[T]) -> T | None:
@@ -160,6 +261,25 @@ def _parse_structured(raw: str, schema: type[T]) -> T | None:
     try:
         return schema.model_validate(data)
     except ValidationError as exc:
+        wrapped = _wrap_bare_list_for_schema(data, schema)
+        if wrapped is not data:
+            try:
+                return schema.model_validate(wrapped)
+            except ValidationError:
+                pass
+        repair = _drop_truncated_list_tail(data, exc.errors())
+        if repair is not None:
+            repaired_data, dropped = repair
+            try:
+                result = schema.model_validate(repaired_data)
+                trace(
+                    f"BLOG_SPATIAL parse ⚠ | schema={schema_name} "
+                    f"repaired truncated tail — dropped {dropped} malformed "
+                    "trailing item(s), kept the rest"
+                )
+                return result
+            except ValidationError:
+                pass
         logger.error(
             "Gemma schema parse failed | schema=%s | validation_errors=%s | raw_response=%s",
             schema_name,
@@ -273,7 +393,15 @@ class GemmaCloudClient:
         reconcile_tpm: bool = True,
         max_tokens: int | None = None,
         use_token_budget: bool = True,
+        on_usage: Callable[[int], None] | None = None,
     ) -> T | None:
+        """``on_usage`` — вызывается с РЕАЛЬНЫМ ``usage_total`` из ответа API
+        (не оценкой) прямо перед возвратом, если он есть. Нужен вызывающим,
+        которые не передают ``limiter`` (preacquired-путь — реконсиляция
+        нескольких элементов волны на один слот должна суммировать их
+        реальные usage, а не полагаться на одно значение через
+        ``reconcile_batch_total``, которое просто заменяет последнюю запись
+        и не подходит, когда k>1 элементов делят одну резервацию слота)."""
         if not self._api_key:
             trace(f"BLOG_SPATIAL {label} ✗ | GEMINI_API_KEY empty (Gemma cloud)")
             return None
@@ -336,6 +464,8 @@ class GemmaCloudClient:
             reraise=True,
         )
         async def _post_once() -> httpx.Response:
+            t0 = time.monotonic()
+            trace(f"GEMMA HTTP ▶ {label} | model={self._model}")
             try:
                 if client is not None:
                     resp = await client.post(url, json=payload, headers=headers)
@@ -344,8 +474,14 @@ class GemmaCloudClient:
                     async with httpx.AsyncClient(timeout=timeout) as ephemeral:
                         resp = await ephemeral.post(url, json=payload, headers=headers)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
+                trace(
+                    f"GEMMA HTTP ✗ {label} | {time.monotonic() - t0:.2f}s | "
+                    f"{type(exc).__name__}: {exc}"
+                )
                 raise GemmaTransientError(str(exc)) from exc
+            elapsed = time.monotonic() - t0
             if resp.status_code == 429:
+                trace(f"GEMMA HTTP ✗ {label} | {elapsed:.2f}s | HTTP 429")
                 retry_after: float | None = None
                 ra = resp.headers.get("Retry-After")
                 if ra:
@@ -355,13 +491,23 @@ class GemmaCloudClient:
                         retry_after = None
                 raise GemmaRateLimitError(retry_after)
             if resp.status_code in (500, 502, 503, 504):
+                trace(f"GEMMA HTTP ✗ {label} | {elapsed:.2f}s | HTTP {resp.status_code}")
                 raise GemmaTransientError(f"HTTP {resp.status_code}")
             resp.raise_for_status()
+            trace(f"GEMMA HTTP ✓ {label} | {elapsed:.2f}s")
             return resp
 
         try:
             resp = await _post_once()
         except GemmaRateLimitError:
+            if limiter is not None:
+                # Возвращаем реальный 429 в admission-лимитер ЭТОЙ модели —
+                # budget.record_429_spike ниже обновляет только отдельный,
+                # теперь обходимый (use_token_budget=False для MAP/REDUCE)
+                # глобальный GemmaTokenBudgetManager; без этого следующий
+                # _pick_slot/try_acquire на той же модели видит устаревшее
+                # "ok" и не переключается на fallback.
+                await limiter.record_429_spike(est_total or None, model=self._model)
             if budget is not None:
                 await budget.record_429_spike(est_total)
                 from knowledge_engine.services.gemma_rate_limiter import (
@@ -392,6 +538,8 @@ class GemmaCloudClient:
                 try:
                     resp = await _post_once()
                 except GemmaRateLimitError:
+                    if limiter is not None:
+                        await limiter.record_429_spike(est_total or None, model=self._model)
                     from knowledge_engine.services.gemma_rate_limiter import (
                         complete_structured_gemini_flash_async,
                     )
@@ -434,6 +582,12 @@ class GemmaCloudClient:
             if parsed is not None:
                 break
             trace(f"BLOG_SPATIAL {label} ✗ | schema parse failed")
+            if parse_try == 0 and _is_thought_only_empty_response(str(content)):
+                trace(
+                    f"BLOG_SPATIAL {label} ⊘ | empty thought-only response — "
+                    "skip same-prompt retry, go straight to fallback"
+                )
+                break
 
         if parsed is None:
             from knowledge_engine.services.gemma_rate_limiter import (
@@ -457,6 +611,8 @@ class GemmaCloudClient:
             await budget.reconcile_actual(usage_total)
         if limiter is not None and reconcile_tpm and usage_total > 0:
             await limiter.reconcile_batch_total(usage_total)
+        if on_usage is not None and usage_total > 0:
+            on_usage(usage_total)
         return parsed
 
 
@@ -599,43 +755,66 @@ class RateLimitedLLMClient:
         token_estimates: list[int],
         *,
         max_parallel: int,
-    ) -> tuple[GemmaModelSlot | None, int, int]:
+    ) -> list[tuple[GemmaModelSlot, int, int, list | None]]:
         """
-        Зарезервировать до max_parallel запросов на общем/первом доступном лимитере.
-        Возвращает (slot, k, reserved_tpm).
+        Dual-basket: распределить волну между слотами пропорционально их
+        ТЕКУЩЕЙ свободной TPM/RPM-емкости в скользящем окне. Часть волны,
+        помещающаяся на первом слоте (обычно 31B primary), резервируется
+        там; остаток, не поместившийся из-за исчерпания лимита первого
+        слота, мгновенно (без ожидания) пробуется на следующем слоте пула
+        (обычно 26B fallback), и так далее.
+
+        Возвращает план [(slot, k, reserved_tpm, event), ...]: первые k
+        записей исходного token_estimates (в порядке появления) уходят на
+        первый slot плана, следующие k — на второй, и т.д. ``event`` —
+        ссылка на резервацию этой группы в лимитере слота; вызывающий код
+        обязан передать её обратно в reconcile (см. reconcile_batch_usage) —
+        под конкурентным диспетчером несколько групп могут одновременно
+        висеть на одном лимитере. Пустой список — ничего не поместилось ни
+        на одном слоте (вызывающий код должен подождать и повторить попытку).
         """
         if not self._slots or not token_estimates:
-            return None, 0, 0
-        ests = [max(1, int(e)) for e in token_estimates[: max(1, max_parallel)]]
+            return []
+        remaining = [max(1, int(e)) for e in token_estimates[: max(1, max_parallel)]]
+        budget = max(1, max_parallel)
+        plan: list[tuple[GemmaModelSlot, int, int, list | None]] = []
         seen_limiters: set[int] = set()
         for slot in self._slots:
+            if not remaining or budget <= 0:
+                break
             lid = id(slot.limiter)
             if lid in seen_limiters:
                 continue
             seen_limiters.add(lid)
-            k = await slot.limiter.try_acquire_parallel(
-                ests,
-                max_parallel=max_parallel,
+            k, event = await slot.limiter.try_acquire_parallel(
+                remaining,
+                max_parallel=budget,
                 model=slot.model,
             )
-            if k > 0:
-                reserved = sum(ests[:k])
-                snap = slot.limiter.snapshot(model=slot.model)
+            if k <= 0:
                 trace(
-                    f"BLOG_SPATIAL gemma wave reserve ✓ | {slot.model} ×{k} "
-                    f"est_tpm={reserved} rpm {snap.rpm_used}/{snap.max_rpm} "
-                    f"tpm {snap.tpm_used}/{snap.max_tpm}"
+                    f"BLOG_SPATIAL gemma limits ⊘ | {slot.label} {slot.model} "
+                    "wave full — try next slot"
                 )
-                return slot, k, reserved
+                continue
+            reserved = sum(remaining[:k])
+            snap = slot.limiter.snapshot(model=slot.model)
             trace(
-                f"BLOG_SPATIAL gemma limits ⊘ | {slot.label} {slot.model} "
-                "wave full — try next slot or wait"
+                f"BLOG_SPATIAL gemma wave reserve ✓ | {slot.model} ×{k} "
+                f"est_tpm={reserved} rpm {snap.rpm_used}/{snap.max_rpm} "
+                f"tpm {snap.tpm_used}/{snap.max_tpm}"
             )
-        lim = self._slots[0].limiter
-        await lim.wait_for_room(ests[0])
-        return await self.acquire_parallel_wave(
-            token_estimates, max_parallel=max_parallel
-        )
+            plan.append((slot, k, reserved, event))
+            remaining = remaining[k:]
+            budget -= k
+
+        if not plan:
+            lim = self._slots[0].limiter
+            await lim.wait_for_room(max(1, int(token_estimates[0])))
+            return await self.acquire_parallel_wave(
+                token_estimates, max_parallel=max_parallel
+            )
+        return plan
 
     async def post_structured_preacquired(
         self,
@@ -648,7 +827,25 @@ class RateLimitedLLMClient:
         client: httpx.AsyncClient | None = None,
         max_tokens: int | None = None,
     ) -> tuple[T | None, int]:
-        """HTTP без повторного acquire (после acquire_parallel_wave). usage_total для reconcile."""
+        """HTTP без повторного acquire (после acquire_parallel_wave). usage_total для reconcile.
+
+        BUG FIXED: ``complete_structured()`` defaults to ``use_token_budget=
+        True`` — without an explicit override here it ran a SECOND admission
+        check, ``GemmaTokenBudgetManager.acquire_budget()``, on top of the
+        one ``acquire_parallel_wave`` already did. That manager is a single
+        GLOBAL, per-process budget (``GEMMA_BUDGET_MAX_TPM/RPM``, default =
+        ``GEMMA_GOVERNOR_TARGET_TPM/RPM`` = 15200/27 — sized for ONE model)
+        shared across BOTH primary and fallback slots, so once their
+        COMBINED usage crossed ~15200 TPM it started diverting MAP calls to
+        Gemini Flash-Lite (``flash_overflow``) even while each individual
+        Gemma model still had its own independent headroom free — this is
+        exactly why the AI Studio dashboard showed both models stuck at
+        roughly 40-50% of their own 16K TPM ceiling instead of each filling
+        up close to it. This call already went through the dual-basket
+        per-model wave admission — it must not re-acquire against a
+        differently-scoped budget on top of that.
+        """
+        real_usage: list[int] = []
         try:
             out = await slot.client.complete_structured(
                 system,
@@ -659,12 +856,27 @@ class RateLimitedLLMClient:
                 limiter=None,
                 reconcile_tpm=False,
                 max_tokens=max_tokens,
+                use_token_budget=False,
+                on_usage=real_usage.append,
             )
         except GemmaRateLimitError:
             trace(f"BLOG_SPATIAL gemma 429 | {slot.model} (preacquired wave)")
             return None, 0
         if out is None:
             return None, 0
+        if real_usage:
+            # Реальный usage_total из ответа API — не оценка. Не зовём
+            # limiter.reconcile_batch_total() напрямую здесь (limiter=None
+            # выше): когда k>1 элементов волны делят ОДНУ резервацию слота
+            # (см. try_acquire_parallel — один общий token_event на всю
+            # волну), несколько параллельных вызовов reconcile_batch_total
+            # затёрли бы друг друга (replace, не sum). Вызывающий
+            # (acquire_parallel_wave-волна) суммирует real_usage всех k
+            # элементов слота и реконсилирует ОДНИМ вызовом — см.
+            # reconcile_batch_usage в blog_spatial_summarizer.py.
+            return out, real_usage[0]
+        # Без usage в ответе (не должно случаться в норме) — деградируем на
+        # оценку, чтобы вызывающий всё равно получил разумное число.
         est = self.estimate_request_tokens(
             system,
             prompt,
@@ -683,8 +895,12 @@ class RateLimitedLLMClient:
         client: httpx.AsyncClient | None = None,
         max_tokens: int | None = None,
         prefer_slot: GemmaModelSlot | None = None,
+        priority: bool = True,
     ) -> T | None:
-        """Одиночный запрос (REDUCE): primary → fallback, с acquire."""
+        """Одиночный запрос (REDUCE): primary → fallback, с acquire.
+        priority=True (default) — REDUCE sees each slot's full TPM/RPM
+        ceiling, ignoring the headroom reserved away from MAP callers, so
+        document completion doesn't queue behind MAP's own usage."""
         if prefer_slot is not None:
             out, _ = await self.post_structured_preacquired(
                 prefer_slot,
@@ -705,6 +921,7 @@ class RateLimitedLLMClient:
             client=client,
             slot=prefer_slot,
             max_tokens=max_tokens,
+            priority=priority,
         )
 
     async def reconcile_batch_usage(
@@ -712,19 +929,24 @@ class RateLimitedLLMClient:
         slot: GemmaModelSlot,
         actual_totals: list[int],
         reserved_tpm: int,
+        *,
+        event: list | None = None,
     ) -> None:
         total = sum(int(x) for x in actual_totals if x)
         if total > 0:
-            await slot.limiter.reconcile_batch_total(total)
+            await slot.limiter.reconcile_batch_total(total, event=event)
         elif reserved_tpm > 0:
-            await slot.limiter.reconcile_batch_total(reserved_tpm)
+            await slot.limiter.reconcile_batch_total(reserved_tpm, event=event)
 
-    async def _pick_slot(self, estimated_tokens: int) -> GemmaModelSlot | None:
+    async def _pick_slot(
+        self, estimated_tokens: int, *, priority: bool = False
+    ) -> GemmaModelSlot | None:
         for slot in self._slots:
             ok = await slot.limiter.try_acquire(
                 estimated_tokens,
                 max_wait=slot.failover_max_wait_sec,
                 model=slot.model,
+                priority=priority,
             )
             if ok:
                 if slot.label == "fallback":
@@ -750,6 +972,7 @@ class RateLimitedLLMClient:
         slot: GemmaModelSlot | None = None,
         reconcile_tpm: bool = True,
         max_tokens: int | None = None,
+        priority: bool = False,
     ) -> T | None:
         if slot is not None:
             try:
@@ -762,6 +985,16 @@ class RateLimitedLLMClient:
                     limiter=slot.limiter if reconcile_tpm else None,
                     reconcile_tpm=reconcile_tpm,
                     max_tokens=max_tokens,
+                    # BUG FIXED: same double-gate as post_structured_preacquired
+                    # (see its docstring) — this slot was already acquired via
+                    # a real per-model check (prefer_slot's own admission, or
+                    # the fallback-loop's _pick_slot below); the GLOBAL,
+                    # single-process GemmaTokenBudgetManager check inside
+                    # complete_structured() must not run a second time on top
+                    # of that, or it caps combined primary+fallback usage at
+                    # ~15200 TPM (one model's worth) instead of each model's
+                    # own independent ~16K ceiling.
+                    use_token_budget=False,
                 )
                 if out is not None:
                     return out
@@ -778,7 +1011,7 @@ class RateLimitedLLMClient:
         for s in self._slots:
             if slot is not None and s.model == slot.model:
                 continue
-            picked = await self._pick_slot(est)
+            picked = await self._pick_slot(est, priority=priority)
             if picked is None:
                 continue
             s = picked
@@ -791,6 +1024,12 @@ class RateLimitedLLMClient:
                     client=client,
                     limiter=s.limiter,
                     max_tokens=max_tokens,
+                    # BUG FIXED: _pick_slot() above already ran the real
+                    # per-model admission check (slot.limiter.try_acquire) —
+                    # see the note on the prefer_slot branch above for why a
+                    # second, globally-shared GemmaTokenBudgetManager gate
+                    # here silently halved combined Gemma throughput.
+                    use_token_budget=False,
                 )
                 if out is not None:
                     return out

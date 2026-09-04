@@ -17,6 +17,48 @@ def test_redis_clients_disable_library_health_ping():
     ] == 0
 
 
+def test_redis_clients_disable_internal_retry_on_timeout():
+    """Regression: worker/__main__.py уже переигрывает команды сам
+    (_safe_redis_command / _reconnect_pubsub) — включённый redis-py-шный
+    retry_on_timeout молча удваивал время одной залипшей попытки до нашего
+    собственного reconnect (см. CRITICAL BUGFIX: COOLDOWN... reconnect-цикл
+    на минуты при недоступном Redis)."""
+    assert redis_client._redis_client_kwargs(for_pubsub=False)[
+        "retry_on_timeout"
+    ] is False
+    assert redis_client._redis_client_kwargs(for_pubsub=True)[
+        "retry_on_timeout"
+    ] is False
+
+
+def test_tcp_keepalive_options_only_uses_constants_present_on_this_platform(
+    monkeypatch,
+):
+    """macOS не имеет TCP_KEEPIDLE — опции должны собираться из того, что
+    реально есть в модуле socket, а не падать с AttributeError."""
+    import socket as socket_mod
+
+    monkeypatch.delattr(socket_mod, "TCP_KEEPIDLE", raising=False)
+    monkeypatch.setattr(socket_mod, "TCP_KEEPINTVL", 257, raising=False)
+    monkeypatch.setattr(socket_mod, "TCP_KEEPCNT", 258, raising=False)
+
+    opts = redis_client._tcp_keepalive_options()
+
+    assert opts == {257: 10, 258: 3}
+
+
+def test_tcp_keepalive_options_include_keepidle_when_available(monkeypatch):
+    import socket as socket_mod
+
+    monkeypatch.setattr(socket_mod, "TCP_KEEPIDLE", 4, raising=False)
+    monkeypatch.setattr(socket_mod, "TCP_KEEPINTVL", 5, raising=False)
+    monkeypatch.setattr(socket_mod, "TCP_KEEPCNT", 6, raising=False)
+
+    opts = redis_client._tcp_keepalive_options()
+
+    assert opts == {4: 30, 5: 10, 6: 3}
+
+
 def test_failed_initial_ping_does_not_cache_client(monkeypatch):
     class BrokenClient:
         def ping(self):

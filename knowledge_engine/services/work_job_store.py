@@ -25,6 +25,7 @@ class WorkJobKind(str, Enum):
     NODE_DEEP_DIVE = "node_deep_dive"
     RAG_GATEWAY = "rag_gateway"
     NODE_EXPLAIN = "node_explain"
+    DIALOG_SUMMARIZE = "dialog_summarize"
 
 
 class WorkJobStatus(str, Enum):
@@ -204,18 +205,22 @@ class WorkJobStore:
             return pc == cid and pn == nid
 
         if redis_enabled():
+            # Same connection-vs-data-error split as list_pending_work_job_ids()
+            # / recover_stale_running_work_jobs() — a broken connection must
+            # propagate, not get treated as "skip this one key" and retried
+            # against the same dead socket for every remaining key.
             r = get_redis()
             candidates: list[WorkJob] = []
             for key in r.scan_iter(match=f"{_RKEY_JOB}*"):
+                raw = r.get(key)
+                if not raw:
+                    continue
                 try:
-                    raw = r.get(key)
-                    if not raw:
-                        continue
                     job = _from_dict(json.loads(raw))
                     if _matches(job):
                         candidates.append(job)
-                except Exception:
-                    continue
+                except (ValueError, TypeError, AttributeError, KeyError):
+                    continue  # this one record is malformed — not a connection problem
             if not candidates:
                 return None
             return min(candidates, key=lambda j: j.created_at)
@@ -259,15 +264,15 @@ class WorkJobStore:
             r = get_redis()
             candidates: list[WorkJob] = []
             for key in r.scan_iter(match=f"{_RKEY_JOB}*"):
+                raw = r.get(key)
+                if not raw:
+                    continue
                 try:
-                    raw = r.get(key)
-                    if not raw:
-                        continue
                     job = _from_dict(json.loads(raw))
                     if _matches(job):
                         candidates.append(job)
-                except Exception:
-                    continue
+                except (ValueError, TypeError, AttributeError, KeyError):
+                    continue  # this one record is malformed — not a connection problem
             if not candidates:
                 return None
             return max(candidates, key=lambda j: j.updated_at)
@@ -406,10 +411,10 @@ def count_running_work_jobs(max_age_sec: float | None = None) -> int:
     if redis_enabled():
         r = get_redis()
         for key in r.scan_iter(match=f"{_RKEY_JOB}*"):
+            raw = r.get(key)
+            if not raw:
+                continue
             try:
-                raw = r.get(key)
-                if not raw:
-                    continue
                 data = json.loads(raw)
                 if data.get("status") != WorkJobStatus.RUNNING.value:
                     continue
@@ -419,8 +424,8 @@ def count_running_work_jobs(max_age_sec: float | None = None) -> int:
                     if (now - dt).total_seconds() > stale_sec:
                         continue
                 n += 1
-            except Exception:
-                continue
+            except (ValueError, TypeError, AttributeError):
+                continue  # this one record is malformed — not a connection problem
         return n
     work_job_store._reload_from_disk()
     with work_job_store._lock:
@@ -434,24 +439,40 @@ def count_running_work_jobs(max_age_sec: float | None = None) -> int:
 
 
 def list_pending_work_job_ids() -> list[str]:
-    """All PENDING work job ids (Redis). Empty when Redis is off."""
+    """All PENDING work job ids (Redis). Empty when Redis is off.
+
+    BUG FIXED: the per-key ``except Exception: continue`` used to swallow
+    Redis CONNECTION errors (TimeoutError/ConnectionError) exactly like a
+    single malformed record — so once the connection went bad mid-scan,
+    every REMAINING key silently re-hit the same broken connection and its
+    own full ``socket_timeout``, one at a time, instead of the failure
+    surfacing once. Confirmed live: with the connection down, a single
+    ``republish pending`` call (this function, called from
+    ``_safe_redis_command``) took ~16 minutes to return — N pending-job
+    keys × ~10s socket_timeout each, all silently eaten here — while
+    ``heartbeat`` (a single GET, no per-key loop) still failed in ~10s as
+    designed. Only a per-KEY data problem (bad JSON, missing fields) should
+    be skipped; a broken connection must propagate so the caller's existing
+    reconnect-once-then-backoff logic actually runs instead of being
+    bypassed by this loop retrying the same dead socket N times.
+    """
     if not redis_enabled():
         return []
     r = get_redis()
     out: list[str] = []
     for key in r.scan_iter(match=f"{_RKEY_JOB}*"):
+        raw = r.get(key)
+        if not raw:
+            continue
         try:
-            raw = r.get(key)
-            if not raw:
-                continue
             data = json.loads(raw)
             if data.get("status") != WorkJobStatus.PENDING.value:
                 continue
             jid = str(data.get("id") or "").strip()
             if jid:
                 out.append(jid)
-        except Exception:
-            continue
+        except (ValueError, TypeError, AttributeError):
+            continue  # this one record is malformed — not a connection problem
     return out
 
 
@@ -469,7 +490,13 @@ def republish_pending_work_jobs() -> int:
 
 
 def recover_stale_running_work_jobs() -> int:
-    """Пометить зависшие running jobs как failed (после краша/kill worker)."""
+    """Пометить зависшие running jobs как failed (после краша/kill worker).
+
+    Same connection-vs-data-error split as list_pending_work_job_ids() —
+    a broken Redis connection mid-scan must propagate, not get treated as
+    "skip this one key" and retried N more times against the same dead
+    socket.
+    """
     if not redis_enabled():
         return 0
     stale_sec = KE_WORKER_STALE_RUNNING_SEC
@@ -477,10 +504,10 @@ def recover_stale_running_work_jobs() -> int:
     recovered = 0
     r = get_redis()
     for key in r.scan_iter(match=f"{_RKEY_JOB}*"):
+        raw = r.get(key)
+        if not raw:
+            continue
         try:
-            raw = r.get(key)
-            if not raw:
-                continue
             data = json.loads(raw)
             if data.get("status") != WorkJobStatus.RUNNING.value:
                 continue
@@ -503,8 +530,8 @@ def recover_stale_running_work_jobs() -> int:
             data["updated_at"] = now.isoformat()
             r.set(key, json.dumps(data, ensure_ascii=False))
             recovered += 1
-        except Exception:
-            continue
+        except (ValueError, TypeError, AttributeError):
+            continue  # this one record is malformed — not a connection problem
     return recovered
 
 
@@ -521,10 +548,10 @@ def requeue_running_work_jobs_on_startup() -> int:
     r = get_redis()
     requeued: list[dict] = []
     for key in r.scan_iter(match=f"{_RKEY_JOB}*"):
+        raw = r.get(key)
+        if not raw:
+            continue
         try:
-            raw = r.get(key)
-            if not raw:
-                continue
             data = json.loads(raw)
             if data.get("status") != WorkJobStatus.RUNNING.value:
                 continue
@@ -533,8 +560,8 @@ def requeue_running_work_jobs_on_startup() -> int:
             data["updated_at"] = now.isoformat()
             r.set(key, json.dumps(data, ensure_ascii=False))
             requeued.append(data)
-        except Exception:
-            continue
+        except (ValueError, TypeError, AttributeError):
+            continue  # this one record is malformed — not a connection problem
 
     if not requeued:
         return 0

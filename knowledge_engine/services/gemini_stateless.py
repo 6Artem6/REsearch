@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import random
 import re
+import threading
 import time
 import warnings
 from typing import Any, Callable, Type, TypeVar, Union
@@ -27,7 +28,6 @@ from knowledge_engine.config import (
     GEMINI_REASONER_FALLBACK_MODELS,
     GEMINI_RETRY_BACKOFF_SEC,
     GEMINI_RPM_JITTER_SEC,
-    GEMINI_RPM_PAUSE_SEC,
     GEMINI_TUTOR_MODEL,
     SKIP_GEMINI,
     _normalize_grounding_model_id,
@@ -36,9 +36,19 @@ from knowledge_engine.services.gemini_json_stream import (
     extract_clean_json,
     structured_stream_text_field,
 )
+from knowledge_engine.services.token_rate_governor import get_governor
 from knowledge_engine.ui.run_log import trace
 
 T = TypeVar("T", bound=BaseModel)
+
+# Реальный usage_metadata.total_token_count последнего HTTP-ответа _generate_once
+# в ЭТОМ потоке — мост между _generate_once (не хочет менять сигнатуру-контракт
+# generate_for_model: Callable[[str], str] всех 4 call sites) и
+# _call_with_model_fallback (нужен actual usage для governor.confirm()).
+# thread-local: _call_with_model_fallback синхронен и выполняется в отдельном
+# worker-потоке через asyncio.to_thread, так что утечки между параллельными
+# вызовами не будет.
+_last_usage_tokens = threading.local()
 
 
 def estimate_llm_tokens(text: str, model_name: str = "") -> int:
@@ -437,27 +447,8 @@ def gemini_tutor_model_chain(primary: str | None = None) -> list[str]:
     return gemini_lite_model_chain(primary or GEMINI_TUTOR_MODEL)
 
 
-def gemini_min_interval_sec(model: str) -> float:
-    rpm = max(1, default_rpm_limit_for_model(model))
-    return max(60.0 / rpm, 4.0)
-
-
 def _sleep_with_jitter(seconds: float) -> None:
     time.sleep(max(0.0, seconds) + random.uniform(0, GEMINI_RPM_JITTER_SEC))
-
-
-def _rpm_pause_for_model(model: str) -> None:
-    m = (model or "").strip()
-    if not m:
-        return
-    base = max(GEMINI_RPM_PAUSE_SEC, gemini_min_interval_sec(m))
-    wait = base + random.uniform(0, GEMINI_RPM_JITTER_SEC)
-    if wait > GEMINI_RPM_PAUSE_SEC + 0.1:
-        trace(
-            f"GEMINI RPM spacing {wait:.1f}s | model={m} "
-            f"(ориентир {default_rpm_limit_for_model(m)} RPM)"
-        )
-    time.sleep(wait)
 
 
 def _extract_status_code(exc: BaseException) -> int | None:
@@ -506,6 +497,57 @@ def _is_retryable(exc: BaseException) -> bool:
         return True
     msg = str(exc).upper()
     return any(marker in msg for marker in _RETRYABLE_MARKERS)
+
+
+def _record_actual_usage(response_or_chunk: Any) -> None:
+    """Реальный usage_metadata из ответа Gemini (SDK-объект
+    google.genai.types.GenerateContentResponseUsageMetadata) — раньше нигде в
+    кодовой базе не читался (аудит STEP 1). Кладём в thread-local, чтобы
+    _call_with_model_fallback мог передать его в governor.reconcile_tokens()
+    (ADAPTIVE DUAL-BUCKET: prompt/cached/completion читаются отдельно, не
+    только total, — cache_content_token_count нужен для EMA-коррекции
+    effective_cache_factor, см. token_rate_governor.AdaptiveTokenRateLimiter)."""
+    meta = getattr(response_or_chunk, "usage_metadata", None)
+    total = getattr(meta, "total_token_count", None) if meta is not None else None
+    prompt = getattr(meta, "prompt_token_count", None) if meta is not None else None
+    cached = getattr(meta, "cached_content_token_count", None) if meta is not None else None
+    completion = (
+        getattr(meta, "candidates_token_count", None) if meta is not None else None
+    )
+    if isinstance(total, int) and total > 0:
+        _last_usage_tokens.value = total
+        _last_usage_tokens.prompt_tokens = prompt if isinstance(prompt, int) else None
+        _last_usage_tokens.cached_tokens = cached if isinstance(cached, int) else 0
+        _last_usage_tokens.completion_tokens = (
+            completion if isinstance(completion, int) else None
+        )
+        trace(
+            f"[GOVERNOR FEEDBACK] usage_metadata ✓ | actual_total_tokens={total} "
+            f"prompt={prompt} cached={cached} completion={completion}"
+        )
+    else:
+        _last_usage_tokens.value = None
+        _last_usage_tokens.prompt_tokens = None
+        _last_usage_tokens.cached_tokens = None
+        _last_usage_tokens.completion_tokens = None
+        trace(
+            "[GOVERNOR FEEDBACK] usage_metadata отсутствует в ответе — "
+            "governor.confirm() пропущен (останется estimated_tokens в окне)"
+        )
+
+
+def reset_actual_usage() -> None:
+    """Явно сбросить thread-local usage ПЕРЕД новым LLM-вызовом.
+
+    Защита от протухшего значения: если caller не дойдёт до
+    _record_actual_usage() (например, chat-managed вызов через
+    chat_session_manager.py, который раньше вообще не знал об этом мосте —
+    см. FIX STEP 4), governor.confirm() не должен подхватить actual_tokens
+    от СОВСЕМ ДРУГОГО, более раннего вызова в этом потоке."""
+    _last_usage_tokens.value = None
+    _last_usage_tokens.prompt_tokens = None
+    _last_usage_tokens.cached_tokens = None
+    _last_usage_tokens.completion_tokens = None
 
 
 def _generate_once(
@@ -581,6 +623,7 @@ def _generate_once(
                 stream_callback(delta_raw)
         text = cum_text.strip()
         finish_reason = finish_reason_from_gemini_response(last_chunk)
+        _record_actual_usage(last_chunk)
     else:
         response = client.models.generate_content(
             model=model,
@@ -589,6 +632,7 @@ def _generate_once(
         )
         text = (response.text or "").strip()
         finish_reason = finish_reason_from_gemini_response(response)
+        _record_actual_usage(response)
     elapsed = time.perf_counter() - t0
     if not text:
         raise RuntimeError("Gemini stateless: пустой ответ")
@@ -608,10 +652,6 @@ def _generate_once(
         f"GEMINI HTTP ✓ {lab} | model={model} | {elapsed:.1f}s | ответ {len(text)} sym"
     )
     return text
-
-
-def _rpm_pause() -> None:
-    _rpm_pause_for_model(GEMINI_LITE_MODEL)
 
 
 def _generate_multimodal_once(
@@ -748,6 +788,8 @@ def _call_with_model_fallback(
     chat_label: str = "",
     handoff_summary: str = "",
     session_registry: ChatSessionManagerType | None = None,
+    estimated_tokens: int = 800,
+    is_warmup: bool = False,
 ) -> str:
     trace(f"GEMINI ▶ chain start | {label}")
 
@@ -829,25 +871,19 @@ def _call_with_model_fallback(
                 "Summary",
             )
         trace(f"GEMINI stateless ▶ {label} | model={model}")
-        if rpm_pause or GEMINI_RPM_PAUSE_SEC > 0:
-            _rpm_pause_for_model(model)
+        # rpm_pause больше не ветвит поведение: Governor сам решает — 0 задержки,
+        # если бюджет свободен (аудит STEP 1: безусловный time.sleep() убран).
+        governor = get_governor(model)
+        waited = governor.reserve_tokens(estimated_tokens, 0, is_warmup=is_warmup)
+        if waited > 0.1:
+            trace(
+                f"GEMINI governor wait {waited:.1f}s | {label} | model={model} "
+                f"(лимит {governor.max_rpm} RPM / {governor.max_tpm} TPM, "
+                f"est≈{estimated_tokens} tok)"
+            )
         attempt = 0
         rpm_waits = 0
         while True:
-            reserved_minute = False
-            if track_quota:
-                from knowledge_engine.services.gemini_quota_store import (
-                    reserve_gemini_minute_slot,
-                )
-
-                if not reserve_gemini_minute_slot(model, 800):
-                    quota_models.append(model)
-                    trace(
-                        f"GEMINI RPM hard_cap skip | {label} | model={model} "
-                        f"— next in chain (≤{default_rpm_limit_for_model(model)}/min)"
-                    )
-                    break
-                reserved_minute = True
             try:
                 text = generate_for_model(model)
                 if model_index > 0:
@@ -856,9 +892,33 @@ def _call_with_model_fallback(
                         f"(after {model_list[0]})"
                     )
                 trace(f"GEMINI stateless ✓ {label} | model={model} | {len(text)} sym")
+                actual_tokens = getattr(_last_usage_tokens, "value", None)
+                actual_prompt = getattr(_last_usage_tokens, "prompt_tokens", None)
+                if actual_prompt is not None:
+                    governor.reconcile_tokens(
+                        estimated_prompt_tokens=estimated_tokens,
+                        actual_prompt_tokens=actual_prompt,
+                        cached_content_tokens=getattr(
+                            _last_usage_tokens, "cached_tokens", 0
+                        )
+                        or 0,
+                        actual_completion_tokens=getattr(
+                            _last_usage_tokens, "completion_tokens", None
+                        )
+                        or 0,
+                        is_warmup=is_warmup,
+                    )
+                else:
+                    # usage_metadata не дал prompt/cached-разбивку (например,
+                    # ответ без usage_metadata вообще) — деградируем на
+                    # старое поведение TokenRateGovernor.confirm(), без
+                    # cache-EMA коррекции.
+                    governor.confirm(actual_tokens or estimated_tokens)
                 if track_quota:
                     record_gemini_success(
-                        model, minute_already_reserved=reserved_minute
+                        model,
+                        total_tokens=actual_tokens,
+                        minute_already_reserved=False,
                     )
                 return text
             except Exception as exc:
@@ -987,7 +1047,10 @@ def run_stateless_gemini(
             model, combined_user, system_instruction, response_schema, label
         )
 
-    text = _call_with_model_fallback(label, _gen, rpm_pause=rpm_pause)
+    est_tokens = estimate_llm_tokens(system_instruction + combined_user)
+    text = _call_with_model_fallback(
+        label, _gen, rpm_pause=rpm_pause, estimated_tokens=est_tokens
+    )
     return _parse_structured(text, response_schema, label)
 
 
@@ -1125,6 +1188,14 @@ def run_gemini_structured_with_chain(
             field_filter.flush()
         return text
 
+    est_tokens = estimate_llm_tokens(
+        system_instruction
+        + movable
+        + pinned_context
+        + delta_user_message
+        + layer1_context
+        + layer2_context
+    )
     text = _call_with_model_fallback(
         label,
         _gen,
@@ -1134,6 +1205,7 @@ def run_gemini_structured_with_chain(
         chat_label=lab,
         handoff_summary=handoff_summary,
         session_registry=session_registry,
+        estimated_tokens=est_tokens,
     )
     return _parse_structured(text, response_schema, label)
 
@@ -1175,8 +1247,9 @@ def run_gemini_text_with_chain(
             stream_callback=stream_callback,
         )
 
+    est_tokens = estimate_llm_tokens(system_instruction + combined_user)
     text = _call_with_model_fallback(
-        label, _gen, rpm_pause=rpm_pause, models=model_list
+        label, _gen, rpm_pause=rpm_pause, models=model_list, estimated_tokens=est_tokens
     )
     return text.strip()
 
@@ -1206,8 +1279,17 @@ def run_stateless_gemini_multimodal(
         )
 
     trace_prefix = f"{label} | images={len(image_parts)}"
+    # +≈260 tok/картинка — грубая оценка по низкоразрешённой Gemini image-tile
+    # стоимости (точного оффлайн-токенайзера для изображений нет).
+    est_tokens = estimate_llm_tokens(
+        system_instruction + combined_user
+    ) + 260 * len(image_parts)
     text = _call_with_model_fallback(
-        trace_prefix, _gen, rpm_pause=rpm_pause, models=models
+        trace_prefix,
+        _gen,
+        rpm_pause=rpm_pause,
+        models=models,
+        estimated_tokens=est_tokens,
     )
     return _parse_structured(text, response_schema, label)
 
