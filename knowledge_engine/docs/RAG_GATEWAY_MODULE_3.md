@@ -1,6 +1,6 @@
 # Модуль 3 — Directional RAG Gateway (Background Memory Engine)
 
-Детерминированный брокер памяти: LanceDB + Ollama embeddings + локальный Cross-Encoder. **Без LLM.**
+Детерминированный брокер памяти: LanceDB + BGE-M3 embeddings + локальный Cross-Encoder. **Без LLM.** Выполняется **только в KE worker**; HTTP API ставит `WorkJobKind.RAG_GATEWAY` и ждёт результат (API не загружает веса моделей).
 
 ## Пайплайн
 
@@ -11,6 +11,8 @@
 5. Top `max_facts`
 
 ## API
+
+Эндпоинты остаются синхронными для клиента; исполнение — worker.
 
 ```http
 POST /api/v1/rag-gateway/query
@@ -48,6 +50,7 @@ POST /api/v1/rag-gateway/facts
 
 | Переменная | По умолчанию |
 |------------|----------------|
+| `EMBED_MODEL` | `BAAI/bge-m3` |
 | `RAG_CROSS_ENCODER_MODEL` | `BAAI/bge-reranker-v2-m3` |
 | `RAG_CE_TORCH_DTYPE` | `auto` → fp16 на MPS/CUDA |
 | `RAG_CE_AUTO_UNLOAD` | `false` — выгрузка CE после idle |
@@ -64,6 +67,8 @@ POST /api/v1/rag-gateway/facts
 - `knowledge_engine/src/rag_gateway/cross_encoder.py`
 - `knowledge_engine/src/memory/light_rag.py` — `vector_search`, `save_user_fact`
 
-Модуль 2 вызывает `query_directional_rag` на `init` и `save_user_fact` при пробелах.
+Модуль 2 вызывает `query_directional_rag` на `init` и `save_user_fact` при пробелах (**в процессе worker**, не API).
+
+Отладка через HTTP: `POST /rag-gateway/query` и `/facts` → очередь `rag_gateway`. `GET /memory-status` считает строки LanceDB без эмбеддера.
 
 Установка: `pip install -r knowledge_engine/requirements.txt` (добавлен `sentence-transformers`).

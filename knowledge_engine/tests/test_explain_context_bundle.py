@@ -61,7 +61,7 @@ def test_retrieve_invariants_skips_without_curriculum():
 
 def test_retrieve_invariants_uses_mock_store(monkeypatch):
     class _FakeStore:
-        def search_knowledge_atoms(
+        async def search_knowledge_atoms(
             self, query, *, limit=8, allowed_doc_ids=None, min_score=0.0
         ):
             return [

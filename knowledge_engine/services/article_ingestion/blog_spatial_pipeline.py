@@ -15,8 +15,8 @@ from knowledge_engine.services.article_ingestion.blog_spatial_schemas import (
 )
 from knowledge_engine.services.article_ingestion.blog_spatial_summarizer import (
     MapReduceArticleJob,
+    build_article_map_reduce_job,
     map_reduce_jobs_pooled_async,
-    map_reduce_summarize_blog,
     summarize_blog_article_spatial,
 )
 from knowledge_engine.services.article_ingestion.document_triage_engine import (
@@ -26,6 +26,10 @@ from knowledge_engine.services.article_ingestion.document_triage_engine import (
 from knowledge_engine.services.article_ingestion.paragraph_token_splitter import (
     TokenWindowChunk,
     split_annotated_text_by_tokens,
+)
+from knowledge_engine.services.article_ingestion.raw_source import (
+    is_code_or_raw_source,
+    wrap_raw_source_as_annotated,
 )
 from knowledge_engine.services.article_ingestion.section_context import (
     infer_article_title,
@@ -85,6 +89,8 @@ def build_annotated_from_content(
         ann = build_annotated_markdown(html)
         ann.page_url = url
         return ann
+    if is_code_or_raw_source(url, html):
+        return wrap_raw_source_as_annotated(html, url)
     return build_annotated_article(html, url)
 
 
@@ -145,6 +151,7 @@ def _document_summary_from_final(
     return DocumentSummary(
         title=(title or final.executive_summary[:120] or url)[:300],
         url=url,
+        executive_summary=(final.executive_summary or "").strip(),
         key_takeaways=list(final.key_takeaways or [])[:12],
         failure_modes=[],
         cs_concepts=[],
@@ -165,6 +172,7 @@ def _document_summary_from_spatial(
     return DocumentSummary(
         title=(title or spatial.summary[:120] or url)[:300],
         url=url,
+        executive_summary=(spatial.summary or "").strip(),
         key_takeaways=list(spatial.key_takeaways or [])[:12],
         failure_modes=[],
         cs_concepts=[],
@@ -262,39 +270,61 @@ class SpatialDiagramIngestJob:
     article_title: str = ""
     toc_nodes: list[TOCNode] = field(default_factory=list)
     trust_score: float = 1.0
+    gate_rejected: bool = False
+    gate_reject_reason: str | None = None
+    gate_quality: float | None = None
 
 
-def _maybe_filter_annotated_academic_pdf(
+def _apply_inbound_ingest_gate(
     annotated: AnnotatedArticle,
     page_url: str,
     title: str,
     content_raw: bytes | str | None,
-) -> AnnotatedArticle:
+) -> tuple[AnnotatedArticle, object | None]:
+    from knowledge_engine.config import INGEST_GATE_ENABLED
     from knowledge_engine.src.parsers.paper_structure_analyzer import (
         get_cached_prepared_paper_body,
         is_academic_pdf_url,
         prepare_paper_body_for_gemma,
+        run_inbound_ingest_gate,
         try_fetch_pdf_bytes_for_url,
     )
 
-    if not is_academic_pdf_url(page_url):
-        return annotated
-    cached_filtered = get_cached_prepared_paper_body(page_url)
-    if cached_filtered and len(cached_filtered.strip()) >= 80:
-        trace(f"PAPER_STRUCTURE spatial cache ✓ | skip analyze | {page_url[:55]}")
-        annotated.annotated_markdown = cached_filtered
-        return annotated
     pdf_b: bytes | None = None
     if isinstance(content_raw, bytes) and content_raw[:5] == b"%PDF-":
         pdf_b = content_raw
-    else:
+    elif is_academic_pdf_url(page_url):
         pdf_b = try_fetch_pdf_bytes_for_url(page_url)
+
     plain = (
         "\n\n".join(annotated.paragraph_map.values())
         if annotated.paragraph_map
         else (annotated.annotated_markdown or "")
     )
-    topic = (title or page_url).strip() or "scientific paper"
+    topic = (title or page_url).strip() or "technical article"
+
+    if INGEST_GATE_ENABLED:
+        result = run_inbound_ingest_gate(
+            plain,
+            topic,
+            pdf_bytes=pdf_b,
+            label=page_url[:48],
+            page_url=page_url,
+        )
+        if not result.accepted:
+            annotated.annotated_markdown = ""
+            return annotated, result
+        if result.body and len(result.body.strip()) >= 80:
+            annotated.annotated_markdown = result.body
+        return annotated, result
+
+    if not is_academic_pdf_url(page_url):
+        return annotated, None
+    cached_filtered = get_cached_prepared_paper_body(page_url)
+    if cached_filtered and len(cached_filtered.strip()) >= 80:
+        trace(f"PAPER_STRUCTURE spatial cache ✓ | skip analyze | {page_url[:55]}")
+        annotated.annotated_markdown = cached_filtered
+        return annotated, None
     filtered = prepare_paper_body_for_gemma(
         plain,
         topic,
@@ -305,7 +335,7 @@ def _maybe_filter_annotated_academic_pdf(
     if filtered and len(filtered.strip()) >= 80:
         trace(f"PAPER_STRUCTURE spatial ✓ | annotated body filtered | {page_url[:55]}")
         annotated.annotated_markdown = filtered
-    return annotated
+    return annotated, None
 
 
 def prepare_spatial_diagram_job(
@@ -429,18 +459,32 @@ def prepare_spatial_diagram_job(
         source_id=sid,
         page_url=page_url,
     )
-    annotated = _maybe_filter_annotated_academic_pdf(
+    annotated, gate_result = _apply_inbound_ingest_gate(
         annotated,
         page_url,
         article_title,
         content_raw,
     )
+    gate_rejected = False
+    gate_reason: str | None = None
+    gate_quality: float | None = None
+    if gate_result is not None and not getattr(gate_result, "accepted", True):
+        gate_rejected = True
+        gate_reason = getattr(gate_result, "reject_reason", None)
+        gate_quality = getattr(gate_result, "quality", None)
+        trace(
+            f"INGEST_GATE spatial ⊘ | {gate_reason} | Q={gate_quality} | "
+            f"{page_url[:55]}"
+        )
     return SpatialDiagramIngestJob(
         source_id=sid,
         page_url=fetch_url,
         annotated=annotated,
         article_title=article_title,
         toc_nodes=toc_nodes,
+        gate_rejected=gate_rejected,
+        gate_reject_reason=gate_reason,
+        gate_quality=gate_quality,
     )
 
 
@@ -476,7 +520,69 @@ def _map_job_from_ingest(
         all_figure_ids=fig_ids,
         figure_registry=figure_registry,
         trust_score=float(getattr(job, "trust_score", 1.0) or 1.0),
+        source_kind=(
+            "source_code" if is_code_or_raw_source(job.page_url, body) else "article"
+        ),
     )
+
+
+async def _upsert_spatial_map_windows(
+    store: VectorStore,
+    url: str,
+    title: str,
+    summary: DocumentSummary,
+    window_texts: list[str],
+    map_results: list,
+) -> None:
+    window_summaries: list[str | None] = []
+    for i, _body in enumerate(window_texts):
+        m = map_results[i] if i < len(map_results) else None
+        if m is None:
+            window_summaries.append(None)
+        else:
+            window_summaries.append((m.window_summary or "").strip() or None)
+    while len(window_summaries) < len(window_texts):
+        window_summaries.append(None)
+    if any(window_texts):
+        await store.upsert_rag_academic_map_windows(
+            url,
+            title,
+            window_texts,
+            summary,
+            window_summaries=window_summaries[: len(window_texts)],
+        )
+
+
+async def _persist_spatial_lancedb(
+    store: VectorStore,
+    *,
+    url: str,
+    title: str,
+    summary: DocumentSummary,
+    window_texts: list[str],
+    map_results: list,
+    knowledge_atoms: list | None = None,
+) -> int:
+    """Passport + MAP windows + knowledge_atoms (single-article and pooled ingest)."""
+    from knowledge_engine.services.article_ingestion.blog_spatial_summarizer import (
+        _collect_raw_knowledge_atoms,
+    )
+
+    await store.save_summary(summary, skip_rag_ingest=True)
+    await _upsert_spatial_map_windows(
+        store,
+        url,
+        title,
+        summary,
+        window_texts,
+        map_results,
+    )
+    atoms = list(knowledge_atoms or [])
+    if not atoms:
+        atoms = _collect_raw_knowledge_atoms(map_results)
+    n_atoms = await store.upsert_knowledge_atoms(url, atoms)
+    trace(f"BLOG_SPATIAL Qdrant ✓ | atoms={n_atoms} | {url[:55]}")
+    return n_atoms
 
 
 async def run_spatial_diagram_ingest_jobs_async(
@@ -499,7 +605,15 @@ async def run_spatial_diagram_ingest_jobs_async(
 
     registries: dict[str, object] = {}
     map_jobs: list[MapReduceArticleJob] = []
+    saved: dict[str, int] = {}
     for j in jobs:
+        if j.gate_rejected:
+            trace(
+                f"BLOG_SPATIAL map-reduce ⊘ | {j.gate_reject_reason} | "
+                f"Q={j.gate_quality} | {j.page_url[:55]}"
+            )
+            saved[j.page_url] = 0
+            continue
         aid = canonical_article_id(j.source_id, j.page_url)
         reg = persist_figure_registry(aid, j.annotated)
         run_vlm_on_registry(
@@ -512,6 +626,9 @@ async def run_spatial_diagram_ingest_jobs_async(
         registries[j.page_url] = reg
         map_jobs.append(_map_job_from_ingest(j, figure_registry=reg))
 
+    if not map_jobs:
+        return saved
+
     # Prefer high-trust articles earlier in the shared MAP pool ordering
     map_jobs.sort(key=lambda m: float(m.trust_score or 1.0), reverse=True)
 
@@ -520,7 +637,6 @@ async def run_spatial_diagram_ingest_jobs_async(
         f"chunks={sum(len(m.windows) for m in map_jobs)} | VLM→MAP order"
     )
     finals = await map_reduce_jobs_pooled_async(map_jobs)
-    saved: dict[str, int] = {}
     by_url = {j.page_url: j for j in jobs}
     store = VectorStore()
     for url, outcome in finals.items():
@@ -536,28 +652,20 @@ async def run_spatial_diagram_ingest_jobs_async(
             url=url,
             registry=reg,
         )
-        store.save_summary(summary)
         map_job = next((m for m in map_jobs if m.job_id == url or m.url == url), None)
-        if map_job is not None and outcome is not None:
-            window_texts = [(w.body or "").strip() for w in map_job.windows]
-            window_summaries: list[str | None] = []
-            for m in outcome.map_results:
-                if m is None:
-                    window_summaries.append(None)
-                else:
-                    window_summaries.append((m.window_summary or "").strip() or None)
-            while len(window_summaries) < len(window_texts):
-                window_summaries.append(None)
-            if any(window_texts):
-                store.upsert_rag_academic_map_windows(
-                    url,
-                    ingest_job.article_title or url,
-                    window_texts,
-                    summary,
-                    window_summaries=window_summaries[: len(window_texts)],
-                )
-        n_atoms = store.upsert_knowledge_atoms(url, list(final.knowledge_atoms or []))
-        trace(f"BLOG_SPATIAL LanceDB ✓ | atoms={n_atoms} | {url[:55]}")
+        await _persist_spatial_lancedb(
+            store,
+            url=url,
+            title=ingest_job.article_title or url,
+            summary=summary,
+            window_texts=(
+                [(w.body or "").strip() for w in map_job.windows]
+                if map_job is not None
+                else []
+            ),
+            map_results=list(outcome.map_results) if outcome is not None else [],
+            knowledge_atoms=list(final.knowledge_atoms or []),
+        )
         saved[url] = len(getattr(reg, "entries", {}) or {})
         trace(f"ARTICLE_AUTO_INGEST spatial ✓ | registry={saved[url]} | {url[:60]}")
     return saved
@@ -624,40 +732,88 @@ def run_blog_spatial_diagram_ingest_batch(
     return run_spatial_diagram_ingest_jobs(jobs)
 
 
-def ingest_blog_with_spatial_mapping(
+@dataclass
+class _BlogSpatialContext:
+    """Everything ingest_blog_with_spatial_mapping needs to run/finalize a
+    MAP+REDUCE job — fetch/annotate/gate/triage/figure-registry/VLM already
+    done, no LLM MAP+REDUCE call made yet. Factored out so a batch of
+    documents can each be prepared independently and then submitted to
+    map_reduce_jobs_pooled_async together in ONE pooled call (BATCH POOLING
+    AGGREGATION task) instead of one map_reduce_jobs_pooled_async([job])
+    call per document."""
+
+    title: str
+    page_url: str
+    annotated: AnnotatedArticle
+    fig_ids: list[str]
+    registry: object
+    vlm_saved: int
+    source_kind: str
+
+
+def _prepare_blog_spatial_context(
     title: str,
     url: str,
     source_id: str = "",
     *,
     raw_html: str | None = None,
     raw_bytes: bytes | None = None,
-    save_lancedb: bool = True,
-) -> tuple[AnnotatedArticle | None, DocumentSummary | None, int]:
+) -> tuple[AnnotatedArticle | None, _BlogSpatialContext | None]:
+    """Stage A (fetch) -> B (annotate/gate/triage) -> C (figure registry/VLM).
+    Returns (annotated, None) for every early-reject path that
+    ingest_blog_with_spatial_mapping used to return (annotated, None, 0) for
+    directly — callers should mirror that by returning (annotated, None, 0)
+    themselves when context is None."""
     page_url = (url or "").strip()
     raw: bytes | str | None = raw_bytes
+    fetch_method = ""
     if raw is None:
         if raw_html is not None:
             raw = raw_html
         else:
-            html, _method = smart_fetch_page_html(page_url)
+            html, fetch_method = smart_fetch_page_html(page_url)
             raw = html
     if isinstance(raw, bytes) and len(raw) < 40:
-        return None, None, 0
+        return None, None
     if isinstance(raw, str) and len(raw.strip()) < 200:
         trace(f"BLOG_SPATIAL pipeline ⊘ | thin content | {page_url[:60]}")
-        return None, None, 0
+        return None, None
 
-    annotated = build_annotated_from_content(raw, page_url)
-    annotated, _triage_outcome = _triage_for_pipeline(annotated, raw)
+    preview = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+    github_corpus = fetch_method in ("github_trees", "github_zip", "github_blob")
+    code_raw = github_corpus or is_code_or_raw_source(page_url, preview)
+    if code_raw:
+        annotated = wrap_raw_source_as_annotated(preview, page_url)
+        why = f"github {fetch_method}" if github_corpus else "code/raw"
+        trace(
+            f"BLOG_SPATIAL pipeline | {why} skip HTML annotator+gate | {page_url[:60]}"
+        )
+    else:
+        annotated = build_annotated_from_content(raw, page_url)
+        annotated, _triage_outcome = _triage_for_pipeline(annotated, raw)
+    if (
+        not annotated.annotated_markdown
+        and isinstance(preview, str)
+        and len(preview.strip()) >= 200
+    ):
+        annotated = wrap_raw_source_as_annotated(preview, page_url)
+        code_raw = True
     if not annotated.annotated_markdown:
-        return annotated, None, 0
+        return annotated, None
 
-    annotated = _maybe_filter_annotated_academic_pdf(
-        annotated,
-        page_url,
-        title or page_url,
-        raw,
-    )
+    if not code_raw:
+        annotated, gate_result = _apply_inbound_ingest_gate(
+            annotated,
+            page_url,
+            title or page_url,
+            raw,
+        )
+        if gate_result is not None and not getattr(gate_result, "accepted", True):
+            trace(
+                f"BLOG_SPATIAL pipeline ⊘ | {getattr(gate_result, 'reject_reason', '')} "
+                f"| Q={getattr(gate_result, 'quality', None)} | {page_url[:60]}"
+            )
+            return annotated, None
 
     fig_ids = _figure_ids(annotated)
     aid = canonical_article_id(source_id, page_url)
@@ -675,35 +831,268 @@ def ingest_blog_with_spatial_mapping(
         page_url=page_url,
     )
 
-    final = map_reduce_summarize_blog(
-        annotated.annotated_markdown,
+    ctx = _BlogSpatialContext(
         title=title or page_url,
-        url=page_url,
-        all_figure_ids=fig_ids,
-        figure_registry=registry,
+        page_url=page_url,
+        annotated=annotated,
+        fig_ids=fig_ids,
+        registry=registry,
+        vlm_saved=vlm_saved,
+        source_kind="source_code" if code_raw else "article",
     )
+    return annotated, ctx
+
+
+async def _finalize_blog_spatial_result(
+    ctx: _BlogSpatialContext,
+    outcome: object | None,
+    map_windows: list[TokenWindowChunk],
+    *,
+    save_lancedb: bool,
+) -> tuple[AnnotatedArticle | None, DocumentSummary | None, int]:
+    final = getattr(outcome, "final", None) if outcome else None
     if final is None:
         legacy = summarize_blog_article_spatial(
-            annotated.annotated_markdown,
-            title=title or page_url,
-            url=page_url,
-            all_figure_ids=fig_ids,
+            ctx.annotated.annotated_markdown,
+            title=ctx.title,
+            url=ctx.page_url,
+            all_figure_ids=ctx.fig_ids,
         )
         if legacy is None:
-            return annotated, None, 0
-        summary = _document_summary_from_spatial(legacy, title=title, url=page_url)
-        saved = vlm_saved
+            return ctx.annotated, None, 0
+        summary = _document_summary_from_spatial(
+            legacy, title=ctx.title, url=ctx.page_url
+        )
+        saved = ctx.vlm_saved
     else:
         summary = _document_summary_from_final(
             final,
-            title=title,
-            url=page_url,
-            registry=registry,
+            title=ctx.title,
+            url=ctx.page_url,
+            registry=ctx.registry,
         )
-        saved = vlm_saved
+        saved = ctx.vlm_saved
 
     if save_lancedb:
-        VectorStore().save_summary(summary)
-        trace(f"BLOG_SPATIAL pipeline ✓ | LanceDB saved | {page_url[:60]}")
+        store = VectorStore()
+        if outcome is not None and final is not None:
+            await _persist_spatial_lancedb(
+                store,
+                url=ctx.page_url,
+                title=ctx.title,
+                summary=summary,
+                window_texts=[(w.body or "").strip() for w in map_windows],
+                map_results=list(outcome.map_results),
+                knowledge_atoms=list(final.knowledge_atoms or []),
+            )
+        else:
+            await _persist_spatial_lancedb(
+                store,
+                url=ctx.page_url,
+                title=ctx.title,
+                summary=summary,
+                window_texts=(
+                    [(w.body or "").strip() for w in map_windows]
+                    or [ctx.annotated.annotated_markdown]
+                ),
+                map_results=[None] * max(1, len(map_windows)),
+            )
+        trace(f"BLOG_SPATIAL pipeline ✓ | LanceDB saved | {ctx.page_url[:60]}")
 
-    return annotated, summary, saved
+    return ctx.annotated, summary, saved
+
+
+async def ingest_blog_with_spatial_mapping(
+    title: str,
+    url: str,
+    source_id: str = "",
+    *,
+    raw_html: str | None = None,
+    raw_bytes: bytes | None = None,
+    save_lancedb: bool = True,
+) -> tuple[AnnotatedArticle | None, DocumentSummary | None, int]:
+    import asyncio
+
+    annotated, ctx = await asyncio.to_thread(
+        _prepare_blog_spatial_context,
+        title,
+        url,
+        source_id,
+        raw_html=raw_html,
+        raw_bytes=raw_bytes,
+    )
+    if ctx is None:
+        return annotated, None, 0
+
+    from knowledge_engine.services.article_ingestion.blog_spatial_summarizer import (
+        map_reduce_summarize_blog_outcome_async,
+    )
+
+    outcome, map_windows = await map_reduce_summarize_blog_outcome_async(
+        annotated_markdown=ctx.annotated.annotated_markdown,
+        title=ctx.title,
+        url=ctx.page_url,
+        all_figure_ids=ctx.fig_ids,
+        figure_registry=ctx.registry,
+        source_kind=ctx.source_kind,
+    )
+    return await _finalize_blog_spatial_result(
+        ctx, outcome, map_windows, save_lancedb=save_lancedb
+    )
+
+
+async def ingest_blog_spatial_mapping_batch_async(
+    items: list[tuple[str, str, str, str | None]],
+    *,
+    save_lancedb: bool = True,
+) -> dict[str, tuple[AnnotatedArticle | None, DocumentSummary | None, int]]:
+    """Batched sibling of ingest_blog_with_spatial_mapping: prepares every
+    (title, url, source_id, raw_html) request independently (annotate/gate —
+    each on its own thread, same concurrency as before; pass raw_html when
+    the caller already fetched the page, else it's fetched here) but submits
+    ALL of their MAP+REDUCE jobs in a SINGLE
+    map_reduce_jobs_pooled_async(articles=N) call, instead of N separate
+    single-article calls. A single pooled job lets the dual-basket
+    dispatcher and shared REDUCE queue coordinate GEMMA_BUDGET_MAX_TPM
+    across the whole batch instead of N independent, competing pools
+    (BATCH POOLING AGGREGATION task).
+
+    Returns a dict keyed by url — same 3-tuple shape as
+    ingest_blog_with_spatial_mapping's return value, one entry per input url.
+    """
+    import asyncio
+
+    if not items:
+        return {}
+
+    async def _prepare(title: str, url: str, source_id: str, raw_html: str | None):
+        return await asyncio.to_thread(
+            _prepare_blog_spatial_context,
+            title,
+            url,
+            source_id,
+            raw_html=raw_html,
+        )
+
+    prepared = await asyncio.gather(*[_prepare(t, u, s, h) for t, u, s, h in items])
+
+    jobs: list[MapReduceArticleJob] = []
+    ctx_by_job_id: dict[str, _BlogSpatialContext] = {}
+    windows_by_job_id: dict[str, list[TokenWindowChunk]] = {}
+    results: dict[str, tuple[AnnotatedArticle | None, DocumentSummary | None, int]] = {}
+
+    for (_title, url, _source_id, _raw_html), (annotated, ctx) in zip(items, prepared):
+        if ctx is None:
+            results[url] = (annotated, None, 0)
+            continue
+        built = build_article_map_reduce_job(
+            ctx.annotated.annotated_markdown,
+            title=ctx.title,
+            url=ctx.page_url,
+            all_figure_ids=ctx.fig_ids,
+            figure_registry=ctx.registry,
+            source_kind=ctx.source_kind,
+        )
+        if built is None:
+            results[url] = await _finalize_blog_spatial_result(
+                ctx, None, [], save_lancedb=save_lancedb
+            )
+            continue
+        job, windows = built
+        jobs.append(job)
+        ctx_by_job_id[job.job_id] = ctx
+        windows_by_job_id[job.job_id] = windows
+
+    if jobs:
+        trace(
+            f"BLOG_SPATIAL pool ▶ | curriculum batch articles={len(jobs)} "
+            f"chunks={sum(len(j.windows) for j in jobs)}"
+        )
+        finals = await map_reduce_jobs_pooled_async(jobs)
+
+        # STREAMING AUDIT FIX (barrier #2): this used to persist articles
+        # one at a time in a plain for-loop, so article N's embed+Qdrant
+        # write couldn't even overlap article N+1's — pure added tail
+        # latency on top of REDUCE, with zero benefit (each call builds its
+        # own fresh VectorStore()/ctx, nothing shared to serialize on).
+        async def _finalize_one(
+            job: MapReduceArticleJob,
+        ) -> tuple[str, tuple[AnnotatedArticle | None, DocumentSummary | None, int]]:
+            ctx = ctx_by_job_id[job.job_id]
+            outcome = finals.get(job.job_id)
+            result = await _finalize_blog_spatial_result(
+                ctx, outcome, windows_by_job_id[job.job_id], save_lancedb=save_lancedb
+            )
+            return ctx.page_url, result
+
+        finalized = await asyncio.gather(*[_finalize_one(job) for job in jobs])
+        for url, result in finalized:
+            results[url] = result
+
+    return results
+
+
+async def persist_gemma_cloud_map_fallback(
+    title: str,
+    url: str,
+    raw_text: str,
+) -> DocumentSummary | None:
+    """Gemma Cloud MAP (or structured passport) with obligatory *_map_* RAG windows."""
+    import asyncio
+
+    body = (raw_text or "").strip()
+    if len(body) < 200:
+        return None
+    page_url = (url or "").strip()
+    kind = "source_code" if is_code_or_raw_source(page_url, body) else "article"
+    annotated = wrap_raw_source_as_annotated(body, page_url)
+    md = (annotated.annotated_markdown or "").strip()
+    if len(md) < 80:
+        return None
+
+    from knowledge_engine.services.article_ingestion.blog_spatial_summarizer import (
+        map_reduce_summarize_blog_outcome_async,
+    )
+
+    outcome, windows = await map_reduce_summarize_blog_outcome_async(
+        annotated_markdown=md,
+        title=title or page_url,
+        url=page_url,
+        source_kind=kind,
+    )
+    store = VectorStore()
+    if outcome is not None and outcome.final is not None:
+        summary = _document_summary_from_final(outcome.final, title=title, url=page_url)
+        await _persist_spatial_lancedb(
+            store,
+            url=page_url,
+            title=title or page_url,
+            summary=summary,
+            window_texts=[(w.body or "").strip() for w in windows],
+            map_results=list(outcome.map_results),
+            knowledge_atoms=list(outcome.final.knowledge_atoms or []),
+        )
+        trace(f"BLOG_SPATIAL fallback MAP ✓ | {page_url[:60]}")
+        return summary
+
+    from knowledge_engine.services.summarizer import summarize_article
+
+    try:
+        summary = await asyncio.to_thread(
+            summarize_article, title or page_url, page_url, body
+        )
+    except Exception as exc:
+        trace(f"BLOG_SPATIAL fallback Gemma summarizer ✗ | {exc}")
+        return None
+    if not windows:
+        windows = [TokenWindowChunk(window_index=0, body=md)]
+    await _persist_spatial_lancedb(
+        store,
+        url=page_url,
+        title=title or page_url,
+        summary=summary,
+        window_texts=[(w.body or "").strip() for w in windows],
+        map_results=[None] * len(windows),
+    )
+    trace(f"BLOG_SPATIAL fallback structured+MAP windows ✓ | {page_url[:60]}")
+    return summary

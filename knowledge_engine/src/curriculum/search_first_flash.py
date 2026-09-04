@@ -50,35 +50,39 @@ from knowledge_engine.ui.run_log import trace
 
 _METHODIST_SYSTEM = (
     f"{RUSSIAN_OUTPUT_RULE}\n\n"
-    "Ты — Senior IT-Методист и Главный Архитектор Обучения.\n\n"
-    "ТЕМА МАРШРУТА: {target_goal}\n\n"
-    "ВХОДНЫЕ МАТЕРИАЛЫ И ВЫДЕРЖКИ (Собранный пайплайн Consensus / Playwright):\n"
-    "=== НАЧАЛО МАТЕРИАЛОВ ===\n"
-    "{parsed_sources_with_extracts_json}\n"
-    "=== КОНЕЦ МАТЕРИАЛОВ ===\n\n"
-    "ИНСТРУКЦИЯ ПО ПРОЕКТИРОВАНИЮ МАРШРУТА:\n"
-    "1. Построй ВЗАИМОСВЯЗАННЫЙ логический маршрут (ветвящийся DAG, не линейная цепочка "
-    "A→B→C), взяв за ОСНОВУ материалы выше. Foundation: 2+ параллельные ветки; advanced/sota: "
-    "merge с 2+ prerequisites где уместно.\n"
-    "2. Каждая нода — конкретный шаг обучения, опирающийся на выдержки из источников.\n"
-    "3. Разбей материалы на этапы: foundation → advanced → sota.\n"
-    "4. Для каждой ноды заполни source_ref (source_id, url из входа, relevant_extracts — цитаты "
-    "из key_extracts) и node_curriculum_breakdown (key_concepts, architectural_focus).\n"
-    "5. Источники с source_tier=consensus — академические статьи (приоритет); "
-    "gemini_grounding / gemini_web / whitelist_blog / archive — инженерные блоги.\n"
-    "6. curriculum_id (slug), title, description — русский; node_id — snake_case латиница.\n"
-    "7. Если в реестре ≥5 источников — проектируй **8–15 нод** (foundation + advanced + sota), "
-    "раскрывая обширную цель по шагам; не схлопывай маршрут в 2–3 ноды.\n"
-    "ЗАПРЕЩЕНО: абстрактные темы без выдержек; сторонние URL; при богатом пуле — "
-    "искусственно мало нод.\n"
-    "8. **Опорные темы пользователя:** если в цели (target_goal) указаны конкретные темы "
-    "в скобках, через запятую или списком (например, «Архитектура хранилищ (WAL, Ring Buffer, P99)»):\n"
-    "   - Обязательно вплети каждую из этих тем в граф в виде отдельных нод или ключевых concepts.\n"
-    "   - Выстрой вокруг них логичные зависимости (prerequisites): базовые темы размещай раньше, "
-    "продвинутые — в глубоких слоях графа.\n"
-    "   - Сохраняй суть и терминологию предложенных тем, органично адаптируя их названия "
-    "под инженерный стиль курса.\n"
+    "You are a Senior IT Methodologist and Chief Learning Architect. The route topic "
+    "(target_goal) and the harvested source materials (parsed_sources_with_extracts_json, "
+    "between === START OF MATERIALS === / === END OF MATERIALS === markers) are given in "
+    "the user payload below.\n\n"
+    "ROUTE DESIGN INSTRUCTIONS:\n"
+    "1. Build an INTERCONNECTED logical route (a branching DAG, not a linear A→B→C chain), "
+    "taking the materials as your BASIS. Foundation: 2+ parallel branches; advanced/sota: "
+    "merge with 2+ prerequisites where appropriate.\n"
+    "2. Each node is a concrete learning step grounded in excerpts from the sources.\n"
+    "3. Split the materials into stages: foundation → advanced → sota.\n"
+    "4. For each node fill source_ref (source_id, url from the input, relevant_extracts — "
+    "quotes from key_extracts) and node_curriculum_breakdown (key_concepts, architectural_focus).\n"
+    "5. Sources with source_tier=consensus are academic papers (priority); "
+    "gemini_grounding / gemini_web / whitelist_blog / archive are engineering blogs.\n"
+    "6. curriculum_id (slug), title, description — Russian; node_id — Latin snake_case.\n"
+    "7. If the registry has ≥5 sources — design **8-15 nodes** (foundation + advanced + sota), "
+    "unfolding the broad goal step by step; do not collapse the route into 2-3 nodes.\n"
+    "FORBIDDEN: abstract topics with no excerpts; third-party URLs; artificially few nodes "
+    "when the source pool is rich.\n"
+    "8. **User anchor topics:** if target_goal lists specific topics in parentheses, "
+    'comma-separated, or as a list (e.g. "Storage architecture (WAL, Ring Buffer, P99)"):\n'
+    "   - You MUST weave each of these topics into the graph as separate nodes or key concepts.\n"
+    "   - Build logical dependencies (prerequisites) around them: place basic topics earlier, "
+    "advanced ones — in deeper layers of the graph.\n"
+    "   - Preserve the substance and terminology of the suggested topics, adapting their names "
+    "naturally to the course's engineering style.\n"
 )
+"""
+RU (пояснение): маршрут ВОКРУГ собранных источников (Consensus/Playwright) —
+target_goal и материалы передаются в user payload (_build_user_payload), не
+форматируются в system — кэш-friendly, system переиспользуется и на repair-
+retry.
+"""
 
 
 def coerce_expansion_patch_from_flash(
@@ -140,12 +144,25 @@ def _layer_kind(raw: str) -> str:
     return "foundation"
 
 
-def _build_user_payload(inp: CurriculumGenerateInput, repair_hint: str = "") -> str:
+def _build_user_payload(
+    inp: CurriculumGenerateInput,
+    repair_hint: str = "",
+    *,
+    parsed_sources_json: str = "",
+) -> str:
     parts = [
+        f"### target_goal\n{inp.target_goal.strip()}",
         f"### user_level\n{inp.user_level.strip()}",
         f"### depth_level\n{inp.depth_level}",
         "Покрой все значимые выдержки из входных материалов; не оставляй источник без ноды.",
     ]
+    if parsed_sources_json:
+        parts.append(
+            "### parsed_sources_with_extracts_json\n"
+            "=== START OF MATERIALS ===\n"
+            f"{parsed_sources_json}\n"
+            "=== END OF MATERIALS ==="
+        )
     if repair_hint:
         parts.append(f"### repair_feedback\n{repair_hint}")
     return "\n\n".join(parts)
@@ -318,11 +335,11 @@ def generate_curriculum_search_first(
     parsed_sources_json: str,
     anchor: str,
 ) -> CurriculumGraph:
-    system = _METHODIST_SYSTEM.format(
-        target_goal=inp.target_goal.strip(),
-        parsed_sources_with_extracts_json=parsed_sources_json,
-    )
-    user = _build_user_payload(inp)
+    # Static system prompt (cache-friendly) — target_goal and the harvested
+    # materials live in the user payload, not interpolated into system, so
+    # system_instruction is byte-identical across every call/topic/retry.
+    system = _METHODIST_SYSTEM
+    user = _build_user_payload(inp, parsed_sources_json=parsed_sources_json)
 
     payload = run_gemini_structured_with_chain(
         GEMINI_FLASH_MODEL,
@@ -346,7 +363,9 @@ def generate_curriculum_search_first(
         payload = run_gemini_structured_with_chain(
             GEMINI_FLASH_MODEL,
             system,
-            _build_user_payload(inp, repair_hint=hint),
+            _build_user_payload(
+                inp, repair_hint=hint, parsed_sources_json=parsed_sources_json
+            ),
             anchor,
             _FlashCurriculumPayload,
             "curriculum_generator / search_first_repair",

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from knowledge_engine.schemas.fsm import TutorStage
+from knowledge_engine.src.node_deep_dive.graph.stage_events import stage_scope
 from knowledge_engine.src.node_deep_dive.graph.state import TutorGraphState
 
 
@@ -20,4 +22,10 @@ async def dense_lecture_node(
     """RAG + dense LLM; updates content, memory phase, tutor_message → commit_turn."""
     from knowledge_engine.src.node_deep_dive.engine import run_dense_lecture_turn
 
-    return await run_dense_lecture_turn(state, _stream_from_config(config))
+    with stage_scope(
+        state,
+        config,
+        TutorStage.LLM_GENERATE,
+        running_message="Готовим плотный материал по теме…",
+    ):
+        return await run_dense_lecture_turn(state, _stream_from_config(config))

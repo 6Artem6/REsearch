@@ -68,5 +68,25 @@ def test_format_dialog_atoms_block() -> None:
     assert "[ФАКТ (MECHANIC)]: Validate schema before tool dispatch always" in block
 
 
+def test_format_dialog_atoms_block_r_index() -> None:
+    block = format_dialog_atoms_block(
+        [
+            KnowledgeAtom(
+                scope=ScopeType.PRINCIPLE,
+                statement="Isolation reduces blast radius",
+            ),
+            KnowledgeAtom(
+                scope=ScopeType.MECHANIC,
+                statement="Hooks run before tool dispatch",
+            ),
+        ],
+        cite_r_index=True,
+    )
+    assert "### RAG MATERIAL" in block
+    assert "[R1] (PRINCIPLE): Isolation reduces blast radius" in block
+    assert "[R2] (MECHANIC): Hooks run before tool dispatch" in block
+    assert "[ФАКТ" not in block
+
+
 def test_format_empty() -> None:
     assert format_dialog_atoms_block([]) == ""

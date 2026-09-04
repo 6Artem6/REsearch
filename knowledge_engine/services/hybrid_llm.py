@@ -1,4 +1,4 @@
-"""Гибрид: Gemini API (тяжёлые задачи) + локальный Ollama (Re-Act / fallback)."""
+"""Гибрид: Gemini API (тяжёлые задачи) + Gemma Cloud (Re-Act / fallback)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from knowledge_engine.config import (
     GEMINI_RPM_PAUSE_SEC,
     LOCAL_L2_MODEL,
     MAIN_MODEL,
-    OLLAMA_STRUCTURE_NUM_PREDICT,
     REACT_EVAL_MODEL,
 )
 from knowledge_engine.services.gemini_stateless import (
@@ -40,7 +39,7 @@ def run_structured_hybrid(
     local_num_predict: int | None = None,
 ) -> T:
     """
-    Stateless structured JSON: Gemini при доступности, иначе / при ошибке — Ollama.
+    Stateless structured JSON: Gemini when available, else / on error — Gemma Cloud.
     rpm_pause_sec — пауза перед облачным вызовом (лимит RPM).
     """
     model = local_model or MAIN_MODEL
@@ -110,7 +109,7 @@ def run_react_evaluation(
     response_schema: type[T],
     label: str,
 ) -> T:
-    """Re-Act evaluator: только локальная быстрая модель."""
+    """Re-Act evaluator: Gemma Cloud (structured)."""
     return run_local_structured(
         REACT_EVAL_MODEL,
         response_schema,
@@ -139,7 +138,6 @@ def run_l2_extraction_hybrid(
         prefer_gemini=True,
         rpm_pause_sec=GEMINI_RPM_PAUSE_SEC,
         local_model=LOCAL_L2_MODEL,
-        local_num_predict=OLLAMA_STRUCTURE_NUM_PREDICT,
     )
 
 
@@ -159,5 +157,4 @@ def run_matrix_hybrid(
         prefer_gemini=True,
         rpm_pause_sec=0,
         local_model=MAIN_MODEL,
-        local_num_predict=OLLAMA_STRUCTURE_NUM_PREDICT,
     )

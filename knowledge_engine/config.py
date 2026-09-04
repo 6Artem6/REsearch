@@ -1,4 +1,4 @@
-"""Ollama, пути данных, Gemini и поисковые провайдеры.
+"""Cloud LLM Pipeline, пути данных, Gemini и поисковые провайдеры.
 
 Все переменные окружения читаются здесь (после `_load_dotenv()`).
 Остальной код импортирует константы из этого модуля, не `os.getenv`.
@@ -13,41 +13,13 @@ from typing import Any
 
 PACKAGE_ROOT: Path = Path(__file__).resolve().parent
 
-# Ключи из .env всегда перекрывают export в shell (типичный случай: GRAPH_VERSION=0.8)
-_DOTENV_FORCE_OVERRIDE_KEYS = frozenset(
-    {
-        "GRAPH_VERSION",
-        "SEMANTIC_SCHOLAR_ENABLED",
-    }
+# Реализация вынесена в dotenv_loader.py (лист-модуль без зависимостей) — нужна
+# db/pg_settings.py, которому нельзя импортировать config.py напрямую (цикл:
+# config.py сам импортирует pg_settings.py ниже). _load_dotenv — тонкая обёртка
+# для обратной совместимости остального кода этого файла (get_graph_version()).
+from knowledge_engine.dotenv_loader import (  # noqa: E402
+    load_dotenv_once as _load_dotenv,
 )
-
-
-def _load_dotenv() -> None:
-    """Подхват .env из корня репо и knowledge_engine/."""
-    candidates = [
-        PACKAGE_ROOT.parent / ".env",
-        PACKAGE_ROOT / ".env",
-    ]
-    for path in candidates:
-        if not path.is_file():
-            continue
-        for raw_line in path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if line.startswith("export "):
-                line = line[7:].strip()
-            if "=" not in line:
-                continue
-            key, _, val = line.partition("=")
-            key = key.strip()
-            val = val.strip().strip('"').strip("'")
-            if not key:
-                continue
-            if key in _DOTENV_FORCE_OVERRIDE_KEYS:
-                os.environ[key] = val
-            else:
-                os.environ.setdefault(key, val)
 
 
 def get_graph_version() -> str:
@@ -66,15 +38,17 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw.lower() in ("1", "true", "yes")
 
 
-OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_AUTO_START: bool = _env_bool("OLLAMA_AUTO_START", False)
-ROUTER_MODEL: str = "qwen2.5-coder:1.5b"
-MAIN_MODEL: str = "qwen2.5-coder:7b"
+ROUTER_MODEL: str = os.getenv(
+    "ROUTER_MODEL", os.getenv("GEMMA_FALLBACK_MODEL", "gemma-4-26b-a4b-it")
+)
+MAIN_MODEL: str = os.getenv(
+    "MAIN_MODEL", os.getenv("GEMMA_PRIMARY_MODEL", "gemma-4-31b-it")
+)
 LOCAL_ROUTER_MODEL: str = os.getenv("LOCAL_ROUTER_MODEL", ROUTER_MODEL)
 LOCAL_HEAVY_MODEL: str = os.getenv("LOCAL_HEAVY_MODEL", MAIN_MODEL)
 # Smart Selection Prompts (v0.8) — быстрые подсказки при выделении текста
-SELECTION_PROMPTS_OLLAMA_MODEL: str = os.getenv(
-    "SELECTION_PROMPTS_OLLAMA_MODEL",
+SELECTION_PROMPTS_MODEL: str = os.getenv(
+    "SELECTION_PROMPTS_MODEL",
     os.getenv("LOCAL_ROUTER_MODEL", ROUTER_MODEL),
 )
 SELECTION_PROMPTS_TIMEOUT_SEC: float = float(
@@ -83,14 +57,11 @@ SELECTION_PROMPTS_TIMEOUT_SEC: float = float(
 SELECTION_PROMPTS_NUM_PREDICT: int = int(
     os.getenv("SELECTION_PROMPTS_NUM_PREDICT", "256")
 )
-SELECTION_PROMPTS_KEEP_ALIVE: str = os.getenv(
-    "SELECTION_PROMPTS_KEEP_ALIVE",
-    os.getenv("OLLAMA_ROUTER_KEEP_ALIVE", "5m"),
-)
+SELECTION_PROMPTS_KEEP_ALIVE: str = os.getenv("SELECTION_PROMPTS_KEEP_ALIVE", "5m")
 # Pre-filter картинок перед VLM (article ingest)
-ARTICLE_DIAGRAM_FILTER_OLLAMA_MODEL: str = os.getenv(
-    "ARTICLE_DIAGRAM_FILTER_OLLAMA_MODEL",
-    os.getenv("MAIN_MODEL", "qwen2.5-coder:7b"),
+ARTICLE_DIAGRAM_FILTER_MODEL: str = os.getenv(
+    "ARTICLE_DIAGRAM_FILTER_MODEL",
+    os.getenv("MAIN_MODEL", "gemma-4-31b-it"),
 )
 ARTICLE_DIAGRAM_FILTER_TIMEOUT_SEC: float = float(
     os.getenv("ARTICLE_DIAGRAM_FILTER_TIMEOUT_SEC", "45")
@@ -106,7 +77,7 @@ ARTICLE_MAX_DIAGRAMS_PER_ARTICLE: int = int(
 )
 BLOG_SPATIAL_SUMMARIZER_MODEL: str = os.getenv(
     "BLOG_SPATIAL_SUMMARIZER_MODEL",
-    os.getenv("MAIN_MODEL", "qwen2.5-coder:7b"),
+    os.getenv("MAIN_MODEL", "gemma-4-31b-it"),
 )
 BLOG_SPATIAL_NUM_CTX: int = int(os.getenv("BLOG_SPATIAL_NUM_CTX", "16384"))
 BLOG_SPATIAL_NUM_PREDICT: int = int(os.getenv("BLOG_SPATIAL_NUM_PREDICT", "4096"))
@@ -276,6 +247,12 @@ GEMMA_FALLBACK_MODEL: str = os.getenv(
 GEMMA_MAX_RPM: int = int(os.getenv("GEMMA_MAX_RPM", "30"))
 GEMMA_MAX_TPM: int = int(os.getenv("GEMMA_MAX_TPM", "16000"))
 GEMMA_MAX_RPD: int = int(os.getenv("GEMMA_MAX_RPD", "14400"))
+# Fraction of each AsyncRateLimiter slot's TPM/RPM held back from non-priority
+# (MAP) callers so REDUCE calls on the same slot always find room instead of
+# queueing behind MAP's own usage of that slot.
+GEMMA_REDUCE_TPM_RESERVE_RATIO: float = float(
+    os.getenv("GEMMA_REDUCE_TPM_RESERVE_RATIO", "0.08")
+)
 GEMMA_QUOTA_SHARED: bool = os.getenv("GEMMA_QUOTA_SHARED", "true").strip().lower() in (
     "1",
     "true",
@@ -296,11 +273,32 @@ GEMMA_FALLBACK_MAX_RPD: int = int(
 # Оценка in+out на один MAP-запрос (документация / legacy budget tooling).
 GEMMA_EST_REQUEST_TOKENS: int = int(os.getenv("GEMMA_EST_REQUEST_TOKENS", "4000"))
 
-# Fixed MAP parallelism for all providers/models (16k TPM budget).
-# 4 × ~2.8–3k input ≈ 11–12k TPM, ~4k headroom for completion tokens.
-MAX_CONCURRENT_MAP_REQUESTS: int = 4
-# Keep Ollama/env alias in lockstep with the unified MAP semaphore.
+# MAP parallelism for all providers/models. This is a candidate-batch/wave
+# size, NOT a hard token throughput promise — dual-basket acquire_parallel_wave
+# still gates actual admission per wave by each slot's real sliding-window
+# TPM headroom (GEMMA_PRIMARY_MAX_TPM / GEMMA_FALLBACK_MAX_TPM), so raising
+# this only lets a wave draw from a bigger candidate pool; it cannot exceed
+# the real TPM ceiling and risk 429s.
+MAX_CONCURRENT_MAP_REQUESTS: int = int(os.getenv("MAX_CONCURRENT_MAP_REQUESTS", "8"))
+# Keep the BLOG_SPATIAL env alias in lockstep with the unified MAP semaphore.
 BLOG_SPATIAL_MAP_CONCURRENCY = MAX_CONCURRENT_MAP_REQUESTS
+
+# Dynamic fact budgeting (MAP window knowledge_atoms target — scales with
+# input_tokens instead of a fixed range for every window regardless of size).
+# LATENCY AUDIT: 16 (vs the old effective ceiling of ~9, back when
+# GEMMA_MAP_MAX_OUTPUT_TOKENS was 1024) let each MAP call generate ~80% more
+# real output — LLM generation is sequential, so wall-time per call grew
+# roughly in proportion (avg 26.1s -> 47.0s, confirmed live). 10 is a
+# deliberate middle ground: closer to the old latency profile than 16, but
+# still above the old hard-1024-token ceiling's ~9.
+MAP_FACT_BUDGET_MIN: int = int(os.getenv("MAP_FACT_BUDGET_MIN", "4"))
+MAP_FACT_BUDGET_MAX: int = int(os.getenv("MAP_FACT_BUDGET_MAX", "10"))
+
+# Paced dispatcher: smear one minute-batch's requests across this many seconds
+# instead of firing them all at once via asyncio.gather (which causes TPM
+# spikes / 429-503 at the provider). 30–45s keeps them inside the same
+# 60s rate-limit window with headroom for response latency.
+MAP_DISPATCH_WINDOW_SEC: float = float(os.getenv("MAP_DISPATCH_WINDOW_SEC", "35"))
 
 
 def gemma_map_concurrency_live() -> int:
@@ -309,13 +307,13 @@ def gemma_map_concurrency_live() -> int:
 
 
 def map_pipeline_concurrency() -> int:
-    """Unified MAP in-flight cap for Gemma cloud, Ollama, and any MAP backend."""
+    """Unified MAP in-flight cap for the Gemma Cloud MAP backend."""
     return MAX_CONCURRENT_MAP_REQUESTS
 
 
 GEMMA_CONCURRENCY: int = MAX_CONCURRENT_MAP_REQUESTS
 # MAP completion cap (fixed for every model / window size).
-GEMMA_MAP_MAX_OUTPUT_TOKENS: int = 4096
+GEMMA_MAP_MAX_OUTPUT_TOKENS: int = int(os.getenv("GEMMA_MAP_MAX_OUTPUT_TOKENS", "4096"))
 GEMMA_REDUCE_MAX_OUTPUT_TOKENS: int = int(
     os.getenv("GEMMA_REDUCE_MAX_OUTPUT_TOKENS", "4096")
 )
@@ -328,6 +326,50 @@ REDUCE_STRATEGY: str = (
     if _REDUCE_STRATEGY_RAW in ("two_phase", "legacy")
     else "two_phase"
 )
+# Phase 1 migration toggles — defaults preserve the current (legacy) pipeline.
+_CODE_PARSER_MODE_RAW = (
+    (os.getenv("CODE_PARSER_MODE", "linear") or "linear").strip().lower()
+)
+CODE_PARSER_MODE: str = (
+    _CODE_PARSER_MODE_RAW if _CODE_PARSER_MODE_RAW in ("linear", "ast") else "linear"
+)
+CHUNK_ANCHOR_INJECTION: bool = _env_bool("CHUNK_ANCHOR_INJECTION", False)
+ANCHOR_REGEX_VALIDATE: bool = _env_bool("ANCHOR_REGEX_VALIDATE", False)
+_CLAIM_DEDUP_MODE_RAW = (
+    (os.getenv("CLAIM_DEDUP_MODE", "none") or "none").strip().lower()
+)
+_CLAIM_DEDUP_ALLOWED = ("none", "exact", "entity_consensus", "llm", "claim_mmr")
+CLAIM_DEDUP_MODE: str = (
+    _CLAIM_DEDUP_MODE_RAW if _CLAIM_DEDUP_MODE_RAW in _CLAIM_DEDUP_ALLOWED else "none"
+)
+CLAIM_MMR_LAMBDA: float = float(os.getenv("CLAIM_MMR_LAMBDA", "0.7"))
+SPO_CLUSTER_THRESHOLD: float = float(os.getenv("SPO_CLUSTER_THRESHOLD", "0.85"))
+SPO_RERANKER_DUPLICATE_THRESHOLD: float = float(
+    os.getenv("SPO_RERANKER_DUPLICATE_THRESHOLD", "0.88")
+)
+MAX_CONSENSUS_BATCH_TOKENS: int = int(os.getenv("MAX_CONSENSUS_BATCH_TOKENS", "3072"))
+# LATENCY AUDIT (follow-up to the 20 raise above): 20-fact batches fixed
+# input-window underpacking but roughly DOUBLED real per-call output
+# (~2900 tokens vs the old ~990-1500) — consensus_batch avg call latency
+# went 17.0s -> 39.1s, live-confirmed. LLM generation is sequential, so
+# bigger batches don't parallelize; they just serialize more real work per
+# call. 10 keeps the earlier fix (no more artificial 2048-token output
+# clamp) while pulling batch SIZE back toward the old latency profile —
+# input-window utilization drops from ~85-99% back to ~55-65%, a deliberate
+# trade for wall-time over raw window packing efficiency.
+MAX_CONSENSUS_NODES_PER_BATCH: int = int(
+    os.getenv("MAX_CONSENSUS_NODES_PER_BATCH", "10")
+)
+MAX_PRIMARY_ANCHORS: int = int(os.getenv("MAX_PRIMARY_ANCHORS", "3"))
+MIGRATION_USE_CONTEXT_CACHING: bool = _env_bool("MIGRATION_USE_CONTEXT_CACHING", False)
+INGEST_CACHE_TTL_SECONDS: int = int(os.getenv("INGEST_CACHE_TTL_SECONDS", "86400"))
+# Phase 3A: GitHub Git Trees API (no full .zip). Default off → existing HTML/raw fetch.
+USE_GITHUB_TREES_API: bool = _env_bool("USE_GITHUB_TREES_API", False)
+_GITHUB_TOKEN_RAW = (os.getenv("GITHUB_TOKEN") or "").strip()
+GITHUB_TOKEN: str | None = _GITHUB_TOKEN_RAW or None
+MAX_GITHUB_FILE_SIZE_BYTES: int = int(
+    os.getenv("MAX_GITHUB_FILE_SIZE_BYTES", str(100 * 1024))
+)
 GEMMA_EST_OUTPUT_TOKENS: int = int(
     os.getenv("GEMMA_EST_OUTPUT_TOKENS", str(GEMMA_MAP_MAX_OUTPUT_TOKENS))
 )
@@ -336,8 +378,11 @@ GEMMA_FALLBACK_MAX_WAIT_SEC: float = float(
     os.getenv("GEMMA_FALLBACK_MAX_WAIT_SEC", "180")
 )
 # MAP: выравнивание по UTC :00 и greedy-пакет до safety cap (AI Studio TPM reset).
+# Default OFF — sliding-window dispatcher (_run_gemma_map_waves) reacts to
+# real-time TPM/RPM headroom instead of blocking every batch on a hard
+# time.sleep() to the next UTC minute boundary (align_sleep).
 GEMMA_MAP_FIXED_MINUTE_PACING: bool = os.getenv(
-    "GEMMA_MAP_FIXED_MINUTE_PACING", "true"
+    "GEMMA_MAP_FIXED_MINUTE_PACING", "false"
 ).strip().lower() in ("1", "true", "yes", "on")
 GEMMA_TARGET_TPM_SAFETY_CAP: int = int(
     os.getenv("GEMMA_TARGET_TPM_SAFETY_CAP", "15200")
@@ -346,11 +391,10 @@ GEMMA_TARGET_TPM_SAFETY_CAP: int = int(
 GEMMA_MAP_FORCE_PER_MODEL_LIMITS: bool = os.getenv(
     "GEMMA_MAP_FORCE_PER_MODEL_LIMITS", "true"
 ).strip().lower() in ("1", "true", "yes", "on")
-# Параллельный MAP: на сервере Ollama задайте OLLAMA_NUM_PARALLEL >= concurrency.
-# Фоновая экстракция компетенций (Node Deep-Dive, router 1.5B)
-COMPETENCY_EXTRACT_OLLAMA_MODEL: str = os.getenv(
-    "COMPETENCY_EXTRACT_OLLAMA_MODEL",
-    SELECTION_PROMPTS_OLLAMA_MODEL,
+# Фоновая экстракция компетенций (Node Deep-Dive, router-роль)
+COMPETENCY_EXTRACT_MODEL: str = os.getenv(
+    "COMPETENCY_EXTRACT_MODEL",
+    SELECTION_PROMPTS_MODEL,
 )
 COMPETENCY_EXTRACT_TIMEOUT_SEC: float = float(
     os.getenv("COMPETENCY_EXTRACT_TIMEOUT_SEC", "45")
@@ -358,34 +402,37 @@ COMPETENCY_EXTRACT_TIMEOUT_SEC: float = float(
 COMPETENCY_EXTRACT_NUM_PREDICT: int = int(
     os.getenv("COMPETENCY_EXTRACT_NUM_PREDICT", "320")
 )
-# v0.7 guardrails (Stage 0/1) — structured JSON через Ollama 7B
-GUARDRAILS_OLLAMA_MODEL: str = os.getenv(
-    "GUARDRAILS_OLLAMA_MODEL",
-    os.getenv("GUARDRAILS_MODEL", "qwen2.5-coder:7b"),
-)
+# v0.7 guardrails (Stage 0/1) — structured JSON via Gemma Cloud
+GUARDRAILS_MODEL: str = os.getenv("GUARDRAILS_MODEL", "gemma-4-31b-it")
 # Модель для галочек контекста (1.5B — меньше UMA; 7B через CONTEXT_EVAL_MODEL)
 CONTEXT_EVAL_MODEL: str = os.getenv("CONTEXT_EVAL_MODEL", ROUTER_MODEL)
 CONTEXT_EVAL_NUM_PREDICT: int = int(os.getenv("CONTEXT_EVAL_NUM_PREDICT", "2048"))
-EMBED_MODEL: str = "nomic-embed-text"
-# Контекст KV: router (1.5B) vs heavy (7B). OLLAMA_NUM_CTX — legacy alias для heavy.
-OLLAMA_ROUTER_NUM_CTX: int = int(os.getenv("OLLAMA_ROUTER_NUM_CTX", "2048"))
-OLLAMA_HEAVY_NUM_CTX: int = int(
-    os.getenv(
-        "OLLAMA_HEAVY_NUM_CTX",
-        os.getenv("OLLAMA_NUM_CTX", "4096"),
-    )
+# System-wide Bi-Encoder (LanceDB). Cross-Encoder is RAG_CROSS_ENCODER_MODEL only.
+EMBED_MODEL: str = os.getenv("EMBED_MODEL", "BAAI/bge-m3").strip() or "BAAI/bge-m3"
+# Pinned Hub commit: reuse cached pytorch_model.bin; do not follow floating main.
+EMBED_MODEL_REVISION: str = os.getenv(
+    "EMBED_MODEL_REVISION",
+    "5617a9f61b028005a4858fdac845db406aefb181",
+).strip()
+# Semantic control-chip routing (BGE-M3 cosine vs reference phrases)
+VECTOR_INTENT_THRESHOLD: float = float(os.getenv("VECTOR_INTENT_THRESHOLD", "0.82"))
+VECTOR_INTENT_ENABLED: bool = os.getenv("VECTOR_INTENT_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
 )
-OLLAMA_NUM_CTX: int = OLLAMA_HEAVY_NUM_CTX
-OLLAMA_ROUTER_KEEP_ALIVE: str = os.getenv("OLLAMA_ROUTER_KEEP_ALIVE", "5m")
-OLLAMA_HEAVY_KEEP_ALIVE: str = os.getenv("OLLAMA_HEAVY_KEEP_ALIVE", "5m")
-OLLAMA_NUM_PREDICT: int = int(os.getenv("OLLAMA_NUM_PREDICT", "1024"))
-# Guardrails JSON (короткий ValidatedQuerySpec / PersonalContext)
-OLLAMA_GUARDRAILS_NUM_PREDICT: int = int(
-    os.getenv("OLLAMA_GUARDRAILS_NUM_PREDICT", "1536")
+# deep_analysis digest ranking: edge/bottleneck/trade-off thesis via embeddings
+EDGE_CASE_VECTOR_THRESHOLD: float = float(
+    os.getenv("EDGE_CASE_VECTOR_THRESHOLD", "0.48")
 )
-# AnalysisReport (3 options + abstractions) — при 1024 JSON обрезается на 3-м варианте
-OLLAMA_STRUCTURE_NUM_PREDICT: int = int(
-    os.getenv("OLLAMA_STRUCTURE_NUM_PREDICT", "3072")
+EDGE_CASE_VECTOR_ENABLED: bool = os.getenv(
+    "EDGE_CASE_VECTOR_ENABLED", "true"
+).lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
 )
 GRAPH_VERSION: str = get_graph_version()
 
@@ -487,6 +534,15 @@ GEMINI_RPM_BLOCK_SEC: float = float(os.getenv("GEMINI_RPM_BLOCK_SEC", "45"))
 # Локальный guard: переключать chain до HTTP 429 (доля от hard RPM/TPM)
 # Для Flash Lite hard=14 → soft≈12 при 0.9
 GEMINI_QUOTA_SAFETY_RATIO: float = float(os.getenv("GEMINI_QUOTA_SAFETY_RATIO", "0.9"))
+# TokenRateGovernor (services/token_rate_governor.py) — целевые рабочие лимиты
+# per-model, С НЕБОЛЬШИМ ЗАПАСОМ ниже реального API-потолка (14/15 RPM,
+# 240K/250K TPM для Gemini Flash Lite; 27/30 RPM, 15.2K/16K TPM для Gemma).
+# Заменяет безусловный time.sleep()-пейсер _rpm_pause_for_model — Governor
+# ждёт РОВНО столько, сколько нужно (0, если бюджет свободен).
+GEMINI_GOVERNOR_TARGET_RPM: int = int(os.getenv("GEMINI_GOVERNOR_TARGET_RPM", "14"))
+GEMINI_GOVERNOR_TARGET_TPM: int = int(os.getenv("GEMINI_GOVERNOR_TARGET_TPM", "240000"))
+GEMMA_GOVERNOR_TARGET_RPM: int = int(os.getenv("GEMMA_GOVERNOR_TARGET_RPM", "27"))
+GEMMA_GOVERNOR_TARGET_TPM: int = int(os.getenv("GEMMA_GOVERNOR_TARGET_TPM", "15200"))
 KE_RAG_TIMEOUT_SEC: float = float(os.getenv("KE_RAG_TIMEOUT_SEC", "60"))
 KE_INGEST_URL_CONCURRENCY: int = max(
     1, int(os.getenv("KE_INGEST_URL_CONCURRENCY", "4"))
@@ -494,8 +550,17 @@ KE_INGEST_URL_CONCURRENCY: int = max(
 ACADEMIC_INGEST_MAX_BODY_CHARS: int = int(
     os.getenv("ACADEMIC_INGEST_MAX_BODY_CHARS", "80000")
 )
-GEMMA_BUDGET_MAX_TPM: int = int(os.getenv("GEMMA_BUDGET_MAX_TPM", "14400"))
-GEMMA_BUDGET_MAX_RPM: int = int(os.getenv("GEMMA_BUDGET_MAX_RPM", "27"))
+# Two-pass inbound gate (Flash Lite structure + parametric credibility) before Gemma MAP.
+INGEST_GATE_ENABLED: bool = _env_bool("INGEST_GATE_ENABLED", True)
+INGEST_GATE_BLOG_QUALITY_MIN: float = float(
+    os.getenv("INGEST_GATE_BLOG_QUALITY_MIN", "0.65")
+)
+GEMMA_BUDGET_MAX_TPM: int = int(
+    os.getenv("GEMMA_BUDGET_MAX_TPM", str(GEMMA_GOVERNOR_TARGET_TPM))
+)
+GEMMA_BUDGET_MAX_RPM: int = int(
+    os.getenv("GEMMA_BUDGET_MAX_RPM", str(GEMMA_GOVERNOR_TARGET_RPM))
+)
 GEMMA_BUDGET_OVERFLOW_WAIT_SEC: float = float(
     os.getenv("GEMMA_BUDGET_OVERFLOW_WAIT_SEC", "10")
 )
@@ -571,6 +636,20 @@ PROMPT_TRACE_DIR: Path = (
 # Логировать все Gemini-вызовы (не только node_deep_dive)
 PROMPT_TRACE_ALL_LLM: bool = _env_bool("PROMPT_TRACE_ALL_LLM", False)
 
+# Централизованный logging (knowledge_engine/logging_setup.py) — отдельно от
+# trace()/run_log.py (тот питает Redis SSE / Rich Live / .runs, не трогаем).
+LOG_LEVEL: str = (os.getenv("LOG_LEVEL", "INFO") or "INFO").strip().upper()
+LOG_TO_FILE: bool = _env_bool("LOG_TO_FILE", False)
+_log_file_path_raw = (
+    os.getenv("LOG_FILE_PATH", "logs/app.log") or "logs/app.log"
+).strip()
+_log_file_path = Path(_log_file_path_raw)
+LOG_FILE_PATH: Path = (
+    _log_file_path
+    if _log_file_path.is_absolute()
+    else (PACKAGE_ROOT.parent / _log_file_path)
+).resolve()
+
 # Explicit Gemini context cache (layer1 + system_instruction)
 ENABLE_GEMINI_EXPLICIT_CACHE: bool = _env_bool("ENABLE_GEMINI_EXPLICIT_CACHE", True)
 GEMINI_CACHE_TTL_SECONDS: int = int(os.getenv("GEMINI_CACHE_TTL_SECONDS", "3600"))
@@ -578,12 +657,21 @@ GEMINI_CACHE_MIN_EST_TOKENS: int = int(
     os.getenv("GEMINI_CACHE_MIN_EST_TOKENS", "32000")
 )
 
+# Redis-backed hot/cold cloud cache (cloud_cache_manager.py) — отдельно от
+# локального explicit-cache реестра выше (тот на JSON-файле, этот на Redis).
+GEMINI_CLOUD_CACHE_COLD_TTL_SECONDS: int = int(
+    os.getenv("GEMINI_CLOUD_CACHE_COLD_TTL_SECONDS", str(48 * 3600))
+)
+GEMINI_CLOUD_CACHE_HOT_TTL_SECONDS: int = int(
+    os.getenv("GEMINI_CLOUD_CACHE_HOT_TTL_SECONDS", str(30 * 60))
+)
+
 REDIS_URL: str = (os.getenv("REDIS_URL") or "").strip()
 KE_USE_REDIS: bool = _env_bool("KE_USE_REDIS", bool(REDIS_URL)) and bool(REDIS_URL)
 KE_REDIS_LOGS: bool = _env_bool("KE_REDIS_LOGS", KE_USE_REDIS)
 KE_TASKS_CHANNEL: str = os.getenv("KE_TASKS_CHANNEL", "ke:tasks")
 KE_REDIS_LOG_MAX_LINES: int = int(os.getenv("KE_REDIS_LOG_MAX_LINES", "20000"))
-REDIS_SOCKET_TIMEOUT_SEC: float = float(os.getenv("REDIS_SOCKET_TIMEOUT_SEC", "120"))
+REDIS_SOCKET_TIMEOUT_SEC: float = float(os.getenv("REDIS_SOCKET_TIMEOUT_SEC", "10"))
 
 KE_API_HOST: str = os.getenv("KE_API_HOST", "127.0.0.1")
 KE_API_PORT: int = int(os.getenv("KE_API_PORT", "8765"))
@@ -637,10 +725,46 @@ _REPO_REL_BROWSER = "knowledge_engine/.browser_state"
 _REPO_REL_PROFILE = "knowledge_engine/user_profile.md"
 
 LANCE_DB_PATH: Path = (PACKAGE_ROOT / ".lancedb").resolve()
+
+# Qdrant (cloud VectorStore adapter — не заменяет LanceDB, отдельный бэкенд)
+QDRANT_URL: str = (os.getenv("QDRANT_URL") or "").strip()
+QDRANT_API_KEY: str = (os.getenv("QDRANT_API_KEY") or "").strip()
+QDRANT_CLUSTER_ID: str = (os.getenv("QDRANT_CLUSTER_ID") or "").strip()
+
 _ARTICLE_DB_FILE = (PACKAGE_ROOT / ".runs" / "article_diagrams.db").resolve()
 DATABASE_URL: str = os.getenv(
     "DATABASE_URL",
     f"sqlite:///{_ARTICLE_DB_FILE.as_posix()}",
+)
+
+# Postgres/pgvector (Phase 0/1 миграции с LanceDB/Qdrant/SQLite) — типизированная
+# конфигурация живёт в db/pg_settings.py (Pydantic Settings); здесь только
+# реэкспорт констант, чтобы остальной код мог по-прежнему делать
+# `from knowledge_engine.config import POSTGRES_DSN` (см. docstring pg_settings.py).
+from knowledge_engine.db.pg_settings import postgres_settings  # noqa: E402
+
+POSTGRES_DSN: str = postgres_settings.postgres_dsn
+POSTGRES_SQLALCHEMY_SYNC_DSN: str = postgres_settings.sqlalchemy_sync_dsn
+POSTGRES_SQLALCHEMY_ASYNC_DSN: str = postgres_settings.sqlalchemy_async_dsn
+VECTOR_EMBED_DIM: int = postgres_settings.vector_embed_dim
+VECTOR_HNSW_M: int = postgres_settings.vector_hnsw_m
+VECTOR_HNSW_EF_CONSTRUCTION: int = postgres_settings.vector_hnsw_ef_construction
+VECTOR_HNSW_EF_SEARCH: int = postgres_settings.vector_hnsw_ef_search
+
+# Phase 2 (см. prompt.txt): переключатель бэкенда vector_store.py. "postgres" —
+# новый путь через PostgresVectorRepository (дефолт); "qdrant" — старый путь,
+# оставлен как fallback (см. services/postgres_vector_store_adapter.py) —
+# ОБА пути не удаляются в этом Phase, переключаются одним флагом.
+VECTOR_STORE_BACKEND: str = (
+    os.getenv("VECTOR_STORE_BACKEND", "postgres").strip().lower()
+)
+
+# Чекпоинтер LangGraph для node_deep_dive: "postgres" — AsyncPostgresSaver через
+# TutorGraphService (открывается/закрывается НА КАЖДЫЙ ход — воркер создаёт
+# новый event loop на job, см. tutor_graph_service.py); "memory" — старый
+# MemorySaver (RAM-only, теряется при рестарте, но без внешней зависимости).
+GRAPH_CHECKPOINTER_BACKEND: str = (
+    os.getenv("GRAPH_CHECKPOINTER_BACKEND", "postgres").strip().lower()
 )
 DOMAIN_TRUST_DB_PATH: Path = (
     Path(
@@ -880,17 +1004,40 @@ SEMANTIC_SCHOLAR_ENRICH_TIMEOUT_SEC: float = float(
 SEMANTIC_SCHOLAR_ENABLED: bool = _env_bool("SEMANTIC_SCHOLAR_ENABLED", False)
 LIGHT_RAG_MIN_COSINE_SIM: float = float(os.getenv("LIGHT_RAG_MIN_COSINE_SIM", "0.42"))
 LIGHT_RAG_PROFILE_LIMIT: int = int(os.getenv("LIGHT_RAG_PROFILE_LIMIT", "5"))
-# Модуль 3 — Directional RAG Gateway (без LLM)
+# Cross-Encoder: Inbound Gate / RAG rerank ONLY (not domain_registry embeddings).
 RAG_CROSS_ENCODER_MODEL: str = os.getenv(
     "RAG_CROSS_ENCODER_MODEL", "BAAI/bge-reranker-v2-m3"
 )
+RAG_CROSS_ENCODER_REVISION: str = os.getenv(
+    "RAG_CROSS_ENCODER_REVISION",
+    "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+).strip()
 # Cross-Encoder memory: fp16 on MPS, optional idle unload (cross_encoder.py)
 RAG_CE_TORCH_DTYPE: str = os.getenv("RAG_CE_TORCH_DTYPE", "auto").strip().lower()
 RAG_CE_AUTO_UNLOAD: bool = _env_bool("RAG_CE_AUTO_UNLOAD", False)
 RAG_CE_AUTO_UNLOAD_IDLE_SEC: float = float(
     os.getenv("RAG_CE_AUTO_UNLOAD_IDLE_SEC", "300")
 )
-RAG_DEFAULT_MIN_RELEVANCE: float = float(os.getenv("RAG_DEFAULT_MIN_RELEVANCE", "0.50"))
+# Threshold-eviction (services/ml_memory_guard.py), НЕЗАВИСИМО от
+# RAG_CE_AUTO_UNLOAD и от RAG_MPS_REQUEST_COOLDOWN_SEC ниже: если footprint
+# процесса превышает порог ПРЯМО СЕЙЧАС (даже посреди активного RAG-запроса),
+# немедленно выгружаем модели, не занятые в этот самый момент (кроме той, что
+# использовалась только что этим же вызовом) — экстренная мера, не ждёт
+# истечения cooldown.
+RAG_MPS_MEMORY_THRESHOLD_GB: float = float(
+    os.getenv("RAG_MPS_MEMORY_THRESHOLD_GB", "3.5")
+)
+# Idle eviction ПО ЗАВЕРШЕНИИ ВСЕГО RAG-запроса (rag_request_finished()), а
+# не отдельного вызова embed/rerank — таймер стартует, когда счётчик активных
+# запросов доходит до нуля, и сбрасывается заново каждым новым запросом
+# (rag_request_started()). По истечении — выгружаются ВСЕ зарегистрированные
+# модели безусловно (не только "лишние" сверх порога): раз запрос
+# действительно завершился и простой подтверждён, держать веса в памяти
+# незачем.
+RAG_MPS_REQUEST_COOLDOWN_SEC: float = float(
+    os.getenv("RAG_MPS_REQUEST_COOLDOWN_SEC", "300")
+)
+RAG_DEFAULT_MIN_RELEVANCE: float = float(os.getenv("RAG_DEFAULT_MIN_RELEVANCE", "0.55"))
 RAG_DEFAULT_MAX_FACTS: int = int(os.getenv("RAG_DEFAULT_MAX_FACTS", "4"))
 RAG_RETRIEVAL_PER_DIRECTION: int = int(os.getenv("RAG_RETRIEVAL_PER_DIRECTION", "5"))
 RAG_LATENCY_WARN_MS: float = float(os.getenv("RAG_LATENCY_WARN_MS", "100"))
@@ -945,6 +1092,109 @@ EXA_PRACTICAL_HIGHLIGHT_QUERY: str = os.getenv(
     "Engineering blog deep dive: system architecture, implementation trade-offs, "
     "failure modes, benchmarks — not API parameter lists or SDK setup steps.",
 ).strip()
+# Pre-Flight Triage (targeted_node_search / exa_transform): one Exa fetch +
+# one Flash Lite query-prep call feed a two-phase LOCAL pipeline — Stage 1
+# ranks the full candidate pool (RAM priority queue, nothing dropped), Phase 2
+# draws batches off that queue through Stage 2-4 (fetch -> BGE-M3+MMR ->
+# quality gate) until CURRICULUM_PREFLIGHT_FINAL_ARTICLES survivors are found
+# or the queue is exhausted, Phase 3 is the safety-fallback backstop. No
+# repeat Exa/Flash-Lite calls during replenishment — see pre_flight_triage.py.
+CURRICULUM_PREFLIGHT_ENABLED: bool = _env_bool("CURRICULUM_PREFLIGHT_ENABLED", True)
+# Итоговый пул кандидатов после merge_multi_vector_exa_hits()+round-robin (Stage 1 input).
+CURRICULUM_PREFLIGHT_FETCH_CAP: int = int(
+    os.getenv("CURRICULUM_PREFLIGHT_FETCH_CAP", "15")
+)
+# Phase 2: сколько кандидатов из головы очереди берём в один раунд добора
+# (Stage 2-4). Если раунд не набрал FINAL_ARTICLES — берём следующий батч
+# из ТОЙ ЖЕ очереди (без повторных Exa/Flash-Lite вызовов).
+CURRICULUM_PREFLIGHT_STAGE2_TOP_K: int = int(
+    os.getenv("CURRICULUM_PREFLIGHT_STAGE2_TOP_K", "6")
+)
+CURRICULUM_PREFLIGHT_FETCH_CONCURRENCY: int = int(
+    os.getenv("CURRICULUM_PREFLIGHT_FETCH_CONCURRENCY", "8")
+)
+CURRICULUM_PREFLIGHT_FETCH_TIMEOUT_SEC: float = float(
+    os.getenv("CURRICULUM_PREFLIGHT_FETCH_TIMEOUT_SEC", "10.0")
+)
+# Абзацы короче этого — UI-мусор (хлебные крошки, подписи), режем до эмбеддинга.
+CURRICULUM_PREFLIGHT_PARAGRAPH_MIN_CHARS: int = int(
+    os.getenv("CURRICULUM_PREFLIGHT_PARAGRAPH_MIN_CHARS", "60")
+)
+# Code Preservation Policy: код короче этого — не самостоятельный фрагмент
+# (осколок строки), режем. Ниже PARAGRAPH_MIN_CHARS — код естественно
+# короткострочный, тот порог убивал бы почти весь код построчно.
+CURRICULUM_PREFLIGHT_CODE_MIN_CHARS: int = int(
+    os.getenv("CURRICULUM_PREFLIGHT_CODE_MIN_CHARS", "20")
+)
+# detect_code_content() Layer 2: bge-m3 cosine(snippet, code_anchor) must
+# clear this AND beat cosine(snippet, prose_anchor) before Layer 3 (Tree-
+# Sitter AST) is even attempted.
+CURRICULUM_PREFLIGHT_CODE_VECTOR_SIM_THRESHOLD: float = float(
+    os.getenv("CURRICULUM_PREFLIGHT_CODE_VECTOR_SIM_THRESHOLD", "0.50")
+)
+# Stage 3: MMR — сколько разнообразных релевантных абзацев на статью отбираем.
+CURRICULUM_PREFLIGHT_MMR_TOP_K: int = int(
+    os.getenv("CURRICULUM_PREFLIGHT_MMR_TOP_K", "6")
+)
+CURRICULUM_PREFLIGHT_MMR_LAMBDA: float = float(
+    os.getenv("CURRICULUM_PREFLIGHT_MMR_LAMBDA", "0.65")
+)
+# Stage 4/hard gate: Triage Score = 0.5*peak + 0.3*mean_top3 + 0.2*keyword_coverage.
+CURRICULUM_PREFLIGHT_HARD_GATE_THRESHOLD: float = float(
+    os.getenv("CURRICULUM_PREFLIGHT_HARD_GATE_THRESHOLD", "0.35")
+)
+# Phase 3a safety fallback: relaxed threshold applied ONLY to rejected
+# candidates on whitelisted (official docs / trusted) domains.
+CURRICULUM_PREFLIGHT_WHITELIST_HARD_GATE_THRESHOLD: float = float(
+    os.getenv("CURRICULUM_PREFLIGHT_WHITELIST_HARD_GATE_THRESHOLD", "0.20")
+)
+# Сколько лучших статей передаём дальше в инджест (Phase 2/3 добирают ровно до этого числа).
+CURRICULUM_PREFLIGHT_FINAL_ARTICLES: int = int(
+    os.getenv("CURRICULUM_PREFLIGHT_FINAL_ARTICLES", "4")
+)
+
+# Pre-MAP Dedup (src/deduplication/pre_map_deduplicator.py): BGE clustering +
+# Flash Lite bulk gate BEFORE the expensive Gemma MAP+REDUCE phase — collapses
+# near-duplicate sources into one CANONICAL + N ALIAS (aliases skip MAP+REDUCE
+# but keep their URL for grounding). Fail-open by design: any BGE/Lite error
+# just leaves every candidate CANONICAL — never blocks ingest.
+PRE_MAP_DEDUP_ENABLED: bool = _env_bool("PRE_MAP_DEDUP_ENABLED", True)
+# Top-N MMR-отобранных абзацев (текст) / AST-юнитов (код) — семантический
+# отпечаток кандидата для кластеризации + промпта Flash Lite.
+PRE_MAP_DEDUP_TOP_K: int = int(os.getenv("PRE_MAP_DEDUP_TOP_K", "5"))
+# Порог Union-Find по косинусу между пуловыми отпечатками двух ТЕКСТОВЫХ
+# кандидатов — >= этого попадают в одну "suspect group" для Flash Lite bulk
+# gate. Код всегда идёт в Lite независимо от порога.
+PRE_MAP_DEDUP_COSINE_THRESHOLD: float = float(
+    os.getenv("PRE_MAP_DEDUP_COSINE_THRESHOLD", "0.80")
+)
+# Group Batching TPM guard: если оценка токенов payload bulk-gate (все
+# suspect text groups + все код-файлы) превышает это значение — жадно
+# режется на последовательные суб-батчи вместо одного переразмеренного вызова.
+PRE_MAP_DEDUP_BULK_GATE_MAX_TPM: int = int(
+    os.getenv("PRE_MAP_DEDUP_BULK_GATE_MAX_TPM", "250000")
+)
+# Group Batching TPM guard для Step 1a Triage: сырые юниты ВСЕХ кандидатов
+# сворачиваются в ОДИН вызов Flash Lite (одна "страница" InputPaperJson на
+# кандидата) вместо вызова на кандидата. Если объединённый payload превысит
+# это значение — Triage откатывается на прежний поштучный вызов.
+PRE_MAP_DEDUP_TRIAGE_MAX_TPM: int = int(
+    os.getenv("PRE_MAP_DEDUP_TRIAGE_MAX_TPM", "250000")
+)
+
+# Изолированная дедупликация кода (src/deduplication/code_deduplicator.py) —
+# обогащает код-кандидатов контекстом проекта (README, дерево каталогов)
+# перед отдельным вызовом Flash Lite, вместо плоского AST-only payload,
+# который использует общий Bulk Gate для кода. Fail-open везде: любая
+# ошибка fetch/parse просто даёт пустой контекст этому кандидату, инджест
+# никогда не блокируется.
+CODE_DEDUP_README_TOP_K: int = int(os.getenv("CODE_DEDUP_README_TOP_K", "3"))
+CODE_DEDUP_TREE_WIDTH: int = int(os.getenv("CODE_DEDUP_TREE_WIDTH", "7"))
+CODE_DEDUP_GITHUB_TIMEOUT_SEC: float = float(
+    os.getenv("CODE_DEDUP_GITHUB_TIMEOUT_SEC", "12.0")
+)
+CODE_DEDUP_MAX_TPM: int = int(os.getenv("CODE_DEDUP_MAX_TPM", "250000"))
+
 EXCLUDED_SOURCES_BLACKLIST: tuple[str, ...] = tuple(
     d.strip().lower()
     for d in (
@@ -955,6 +1205,15 @@ EXCLUDED_SOURCES_BLACKLIST: tuple[str, ...] = tuple(
     ).split(",")
     if d.strip()
 )
+
+# Bi-Encoder alias (must stay BAAI/bge-m3; same space as EMBED_MODEL).
+DOMAIN_REGISTRY_EMBED_MODEL: str = (
+    os.getenv("DOMAIN_REGISTRY_EMBED_MODEL", EMBED_MODEL).strip() or EMBED_MODEL
+)
+DOMAIN_REGISTRY_COSINE_MIN: float = float(
+    os.getenv("DOMAIN_REGISTRY_COSINE_MIN", "0.82")
+)
+DOMAIN_REGISTRY_SEARCH_LIMIT: int = int(os.getenv("DOMAIN_REGISTRY_SEARCH_LIMIT", "8"))
 
 # Имена провайдеров в SearchRegistry (можно сузить список)
 SEARCH_ACTIVE_PROVIDERS: tuple[str, ...] = (
@@ -996,6 +1255,13 @@ CURRICULUM_MODEL_FIRST_MIN_NODES: int = int(
 CURRICULUM_MODEL_FIRST_TARGET_NODES: int = int(
     os.getenv("CURRICULUM_MODEL_FIRST_TARGET_NODES", "10")
 )
+# Two-Pass Model-First (Pass 1: ноды -> Pass 2: только prerequisites) —
+# устраняет изолированные ноды (см. аудит 'Хэш-индексы', 0 in + 0 out
+# связей). По умолчанию выключен: staged rollout, 7/7 живых прогонов чисты,
+# но repair-путь ещё не проверен на реальном сбойном ответе Gemini.
+CURRICULUM_TWO_PASS_MODEL_FIRST_ENABLED: bool = _env_bool(
+    "CURRICULUM_TWO_PASS_MODEL_FIRST_ENABLED", False
+)
 CURRICULUM_LITE_BATCH_STRICT: bool = _env_bool("CURRICULUM_LITE_BATCH_STRICT", True)
 CURRICULUM_DEEP_NODE_MAX_HITS: int = int(
     os.getenv("CURRICULUM_DEEP_NODE_MAX_HITS", "4")
@@ -1003,6 +1269,12 @@ CURRICULUM_DEEP_NODE_MAX_HITS: int = int(
 CURRICULUM_DEEP_NODE_REPLENISH_POOL: int = int(
     os.getenv("CURRICULUM_DEEP_NODE_REPLENISH_POOL", "15")
 )
+# Резерв поверх CURRICULUM_DEEP_NODE_MAX_HITS: replenish_valid_hits_until_cap
+# держит cap+margin валидных хитов (из уже отфетченного pool_cap-пула, без
+# новых сетевых вызовов), чтобы _ingest_blog_hits_batch_async при обнаружении
+# ALIAS (Pre-MAP Dedup) мог отбросить дубликат и добрать canonical-статью из
+# резерва вместо того, чтобы держать дублирующий контент под своим URL.
+DEEP_INGEST_BACKFILL_MARGIN: int = int(os.getenv("DEEP_INGEST_BACKFILL_MARGIN", "2"))
 CURRICULUM_ACADEMIC_MIN_VALID_REUSE_AFTER_LITE: int = int(
     os.getenv("CURRICULUM_ACADEMIC_MIN_VALID_REUSE_AFTER_LITE", "2")
 )
@@ -1020,6 +1292,15 @@ CURRICULUM_PRACTICAL_SEARXNG_CATEGORIES: str = os.getenv(
 )
 CURRICULUM_ACADEMIC_SEARXNG_LIMIT: int = int(
     os.getenv("CURRICULUM_ACADEMIC_SEARXNG_LIMIT", "8")
+)
+# Академический SearXNG: явные engines (не bing/google fallback).
+CURRICULUM_ACADEMIC_SEARXNG_ENGINES: str = os.getenv(
+    "CURRICULUM_ACADEMIC_SEARXNG_ENGINES", "arxiv,google scholar"
+)
+# HTTP: categories=["science"] (arXiv / Google Scholar). Не путать с it
+# (github/hn/stackoverflow) — те для practical/community, не academic.
+CURRICULUM_ACADEMIC_SEARXNG_CATEGORIES: str = os.getenv(
+    "CURRICULUM_ACADEMIC_SEARXNG_CATEGORIES", "science"
 )
 CURRICULUM_USE_V08_CONSENSUS: bool = _env_bool("CURRICULUM_USE_V08_CONSENSUS", True)
 CURRICULUM_CONSENSUS_MIN_APPROVED_ACADEMIC: int = int(
@@ -1228,7 +1509,7 @@ LECTURE_RAG_TOP_K: int = int(os.getenv("LECTURE_RAG_TOP_K", "3"))
 # Lecture dense: расширенный пул → CE rerank → MMR (services/lecture_context_rerank.py)
 LECTURE_RAG_CANDIDATE_LIMIT: int = int(os.getenv("LECTURE_RAG_CANDIDATE_LIMIT", "8"))
 LECTURE_RAG_MMR_TOP_K: int = int(os.getenv("LECTURE_RAG_MMR_TOP_K", "3"))
-LECTURE_RAG_CE_MIN_SCORE: float = float(os.getenv("LECTURE_RAG_CE_MIN_SCORE", "0.48"))
+LECTURE_RAG_CE_MIN_SCORE: float = float(os.getenv("LECTURE_RAG_CE_MIN_SCORE", "0.50"))
 LECTURE_RAG_CONTEXT_MAX_CHARS: int = int(
     os.getenv("LECTURE_RAG_CONTEXT_MAX_CHARS", "9000")
 )
@@ -1289,11 +1570,48 @@ NODE_DIVE_LECTURE_RAG_TIMEOUT_SEC: float = float(
 NODE_DIVE_LECTURE_SEARCH_TIMEOUT_SEC: float = float(
     os.getenv("NODE_DIVE_LECTURE_SEARCH_TIMEOUT_SEC", "10")
 )
+# RU: бюджет на один Exa-вектор/Discovery-шаг; общий добор (Discovery →
+# multi-vector Exa → async fetch → MMR → Flash Lite gate) теперь состоит из
+# нескольких таких шагов, но большинство параллельны (asyncio.gather) —
+# поднят с 12 до 25 с запасом на последовательные части (Discovery), а не
+# потому что сам добор стал последовательно медленнее.
 LECTURE_EXTERNAL_SEARCH_HTTP_TIMEOUT_SEC: float = float(
-    os.getenv("LECTURE_EXTERNAL_SEARCH_HTTP_TIMEOUT_SEC", "12")
+    os.getenv("LECTURE_EXTERNAL_SEARCH_HTTP_TIMEOUT_SEC", "25")
 )
 LECTURE_RAG_KNODE_CANDIDATE_LIMIT: int = int(
     os.getenv("LECTURE_RAG_KNODE_CANDIDATE_LIMIT", "4")
+)
+# Passage Extraction (Trafilatura + BGE-M3 + MMR) для лекционного добора —
+# лёгкая версия CURRICULUM_PREFLIGHT_* (без Code Preservation Policy/AST,
+# TOC-триажа и Zero-Waste Handover — это ingest-специфика, не нужна лекции).
+LECTURE_PASSAGE_FETCH_TIMEOUT_SEC: float = float(
+    os.getenv("LECTURE_PASSAGE_FETCH_TIMEOUT_SEC", "1.8")
+)
+LECTURE_PASSAGE_FETCH_CONCURRENCY: int = int(
+    os.getenv("LECTURE_PASSAGE_FETCH_CONCURRENCY", "6")
+)
+LECTURE_PASSAGE_MIN_CHARS: int = int(os.getenv("LECTURE_PASSAGE_MIN_CHARS", "60"))
+# Сколько разнообразных релевантных абзацев на источник отбирает MMR —
+# меньше, чем CURRICULUM_PREFLIGHT_MMR_TOP_K=6 (тот пишет в полноценный
+# ingest-документ; здесь — короткий snippet в лекционный промпт).
+LECTURE_PASSAGE_MMR_TOP_K: int = int(os.getenv("LECTURE_PASSAGE_MMR_TOP_K", "3"))
+LECTURE_PASSAGE_MMR_LAMBDA: float = float(
+    os.getenv("LECTURE_PASSAGE_MMR_LAMBDA", "0.65")
+)
+# Near-Duplicate Detection (BGE-M3 Union-Find + Flash Lite Bulk Gate,
+# переиспользует src/deduplication/pre_map_deduplicator.py) — та же
+# кластеризация, что DEEP гоняет ПЕРЕД MAP+REDUCE, здесь применяется ДО
+# финального cap'а лекционного добора: дубликат не просто помечается
+# (как в DEEP — слот теряется), а ЗАМЕНЯЕТСЯ следующим по счёту источником
+# из резерва (см. LECTURE_PASSAGE_BACKFILL_MARGIN).
+LECTURE_DEDUP_COSINE_THRESHOLD: float = float(
+    os.getenv("LECTURE_DEDUP_COSINE_THRESHOLD", "0.80")
+)
+# Сколько лишних кандидатов держать в резерве (сверх wide_cap) специально на
+# случай, если near-dup дропнет один из основных — добор без нового
+# сетевого Exa-запроса, из уже полученного (но ещё не фетченного) пула.
+LECTURE_PASSAGE_BACKFILL_MARGIN: int = int(
+    os.getenv("LECTURE_PASSAGE_BACKFILL_MARGIN", "3")
 )
 LECTURE_EXTERNAL_SEARCH_ENABLED: bool = os.getenv(
     "LECTURE_EXTERNAL_SEARCH_ENABLED", "true"
@@ -1341,6 +1659,9 @@ EXPLAIN_ANCHOR_FALLBACK_TOP_K: int = int(
 LECTURE_MAX_OUTPUT_TOKENS: int = int(os.getenv("LECTURE_MAX_OUTPUT_TOKENS", "8192"))
 GEMINI_TUTOR_MAX_OUTPUT_TOKENS: int = int(
     os.getenv("GEMINI_TUTOR_MAX_OUTPUT_TOKENS", "8192")
+)
+GEMINI_DEEP_ANALYSIS_MAX_OUTPUT_TOKENS: int = int(
+    os.getenv("GEMINI_DEEP_ANALYSIS_MAX_OUTPUT_TOKENS", "4096")
 )
 GEMINI_INTRO_MAX_OUTPUT_TOKENS: int = int(
     os.getenv("GEMINI_INTRO_MAX_OUTPUT_TOKENS", "2048")

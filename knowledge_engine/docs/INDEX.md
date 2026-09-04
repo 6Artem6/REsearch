@@ -1,6 +1,6 @@
 # Каталог документации Knowledge Engine
 
-Индекс `knowledge_engine/docs/` + аудит **код ↔ docs** (2026-08-14).  
+Индекс `knowledge_engine/docs/` + аудит **код ↔ docs** (2026-08-18).
 Корневой обзор продукта: [README.md](../../README.md).
 
 **Когда обновлять этот файл:** новый подсистемный модуль без своего `.md`, смена канонического DAG тьютора, новый LLM-контракт.
@@ -15,21 +15,25 @@
 | [NODE_DEEP_DIVE_MODULE_2.md](NODE_DEEP_DIVE_MODULE_2.md) | Модуль 2: DAG, MemorySaver, single-writer | Актуальна для оркестрации |
 | [TUTOR_PROMPT_AND_UI_TEXT.md](TUTOR_PROMPT_AND_UI_TEXT.md) | Контракт тьютора, режимы, BLOCK 1–3 | Актуальна для dialogue/lecture |
 | [TUTOR_LANGGRAPH_MIGRATION.md](TUTOR_LANGGRAPH_MIGRATION.md) | ADR миграции | **Устарела как «Phase 0/1»** — граф уже полный |
-| [LLM_CONTRACTS.md](LLM_CONTRACTS.md) | Реестр Pydantic Gemini | Частично: нет `EvaluatorCritiqueContract`, `ArxivQueryParamsContract` |
+| [LLM_CONTRACTS.md](LLM_CONTRACTS.md) | Реестр Pydantic Gemini + регламент prompt/contract | Частично: нет `EvaluatorCritiqueContract`, `ArxivQueryParamsContract` |
+| [PROMPT_SYSTEM_REFERENCE.md](PROMPT_SYSTEM_REFERENCE.md) | Матрица моделей/контуров, режимы `prompt_factory.py`, реестр prompt-переменных, DEEP MAP/REDUCE/Dedup контракты, Evaluator Bypass guardrails, чек-лист расширения | Актуальна (2026-09-01) |
 | [EXA_SEARCH.md](EXA_SEARCH.md) | Exa: plan, rank, domains, `EXA_*` | Актуальна |
+| [RAG_PIPELNES.md](RAG_PIPELNES.md) | Lecture vs DEEP: сквозное сравнение обоих RAG-контуров, Mermaid, backfill_margin dedup | Актуальна (2026-08-31) |
 | [ACADEMIC_AND_CONSENSUS.md](ACADEMIC_AND_CONSENSUS.md) | Papers: query sanitize, SS/arXiv, Consensus harvest | Актуальна |
 | [SOURCE_POOL.md](SOURCE_POOL.md) | Провайдеры discovery | Актуальна |
 | [ENV_VARIABLES.md](ENV_VARIABLES.md) | Env-каталог | Краткий; детали Exa → EXA_SEARCH |
+| [SCRIPTS.md](SCRIPTS.md) | Все 52 setup / diagnostic / maintenance / legacy CLI из `scripts/` | Актуальна; ключи сверены с кодом |
 | [CURRICULUM_MODULE_1.md](CURRICULUM_MODULE_1.md) | Модуль 1 curriculum | Актуальна |
 | [RAG_GATEWAY_MODULE_3.md](RAG_GATEWAY_MODULE_3.md) | Directional RAG | Актуальна |
 | [LECTURE_RAG_CONTEXT.md](LECTURE_RAG_CONTEXT.md) | Dense: LanceDB → CE → MMR | Актуальна |
 | [SKILL_TREE_UI.md](SKILL_TREE_UI.md) | UI / worker / explain SSE | Частично: нет ActionChips / overlay / Gloss |
 | [ARTICLE_DIAGRAMS.md](ARTICLE_DIAGRAMS.md) | Mermaid / VLM у ноды | Актуальна |
 | [ARTICLE_ETL_AND_FIGURE_EXTRACTION.md](ARTICLE_ETL_AND_FIGURE_EXTRACTION.md) | ETL фигур | Актуальна |
+| [CODE_TRIAGE_AND_PRUNING.md](CODE_TRIAGE_AND_PRUNING.md) | Tiered Code Pruner & Code Ingestion: 3 независимых механизма (tiered prune / AST chunker / DOC_TRIAGE) | Актуальна |
 | [SEARCH_HORIZONS.md](SEARCH_HORIZONS.md) | SOTA / Infra / Prod | Research-граф |
 | [V0_8_CONSENSUS_AGENT.md](V0_8_CONSENSUS_AGENT.md) / [V0_8_SNAPSHOT.md](V0_8_SNAPSHOT.md) | Consensus **research-агент** `/app` | Актуальна; curriculum harvest → ACADEMIC_AND_CONSENSUS |
 | [CONSENSUS_API_DIRECT.md](CONSENSUS_API_DIRECT.md) | Direct `paper_search` API | Актуальна (транспорт, не семантика запросов) |
-| [ARCHITECTURE_DEDUP.md](ARCHITECTURE_DEDUP.md) | Единые точки сбора | Актуальна |
+| [ARCHITECTURE_DEDUP.md](ARCHITECTURE_DEDUP.md) | Единые точки сбора + Pre-MAP Dedup (source-level, code_deduplicator.py) | Актуальна |
 | [DEV_RUNBOOK.md](DEV_RUNBOOK.md) / [DOCKER_LAYOUT.md](DOCKER_LAYOUT.md) | Запуск | Актуальна |
 | [PERFORMANCE.md](PERFORMANCE.md) | Perf | Узкая |
 | [FRUGAL_ROUTING.md](FRUGAL_ROUTING.md) | SLM + Gemini research | **Legacy research**, не Skill Tree |
@@ -67,12 +71,16 @@ Host-слой тьютора (чипы, overlay, векторы) **не** опи
 | Задача | Документ |
 |--------|----------|
 | Поднять dev | [DEV_RUNBOOK.md](DEV_RUNBOOK.md) |
+| Найти CLI / maintenance-скрипт | [SCRIPTS.md](SCRIPTS.md) |
 | Понять продукт Skill Tree | [TUTOR_PIPELINES.md](TUTOR_PIPELINES.md) |
 | Curriculum DAG | [CURRICULUM_MODULE_1.md](CURRICULUM_MODULE_1.md) |
 | Чат тьютора (граф) | [NODE_DEEP_DIVE_MODULE_2.md](NODE_DEEP_DIVE_MODULE_2.md) |
 | Промпты / JSON тьютора | [TUTOR_PROMPT_AND_UI_TEXT.md](TUTOR_PROMPT_AND_UI_TEXT.md) |
+| Модели/контракты/переменные по всем LLM-контурам целиком | [PROMPT_SYSTEM_REFERENCE.md](PROMPT_SYSTEM_REFERENCE.md) |
 | Поиск практики | [EXA_SEARCH.md](EXA_SEARCH.md), [SOURCE_POOL.md](SOURCE_POOL.md) |
+| Lecture vs DEEP пайплайны целиком (сравнение, Mermaid) | [RAG_PIPELNES.md](RAG_PIPELNES.md) |
 | Papers / Consensus / sanitize | [ACADEMIC_AND_CONSENSUS.md](ACADEMIC_AND_CONSENSUS.md) |
 | Лекция RAG | [LECTURE_RAG_CONTEXT.md](LECTURE_RAG_CONTEXT.md) |
+| Триаж/prune кода перед MAP (tree-sitter, tiered pruner) | [CODE_TRIAGE_AND_PRUNING.md](CODE_TRIAGE_AND_PRUNING.md) |
 | Env | [ENV_VARIABLES.md](ENV_VARIABLES.md), `.env.example` |
 | Research v0.8 (не курс) | [V0_8_CONSENSUS_AGENT.md](V0_8_CONSENSUS_AGENT.md) |

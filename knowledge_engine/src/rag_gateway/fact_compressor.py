@@ -12,6 +12,7 @@ from knowledge_engine.config import (
     RAG_FACT_COMPRESS_GEMMA_TIMEOUT_SEC,
     gemma_cloud_api_key_available,
 )
+from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.llm.gemma_client import RateLimitedLLMClient
 from knowledge_engine.src.rag_gateway.fact_text import (
     FACT_MAX_CHARS,
@@ -24,9 +25,14 @@ _GEMMA_INPUT_MAX_CHARS = 8_000
 _COMPRESS_MAX_OUTPUT_TOKENS = 640
 
 _SUMMARY_SYSTEM = (
-    "Ты сжимаешь инженерные фрагменты из памяти обучающей системы. "
-    "Сохраняй факты, термины, ограничения и фрагменты кода. Без вводных фраз."
+    "You compress engineering fragments from a tutoring system's memory. "
+    "Preserve facts, terminology, constraints, and code snippets. No preamble.\n"
+    f"{RUSSIAN_OUTPUT_RULE}"
 )
+"""
+RU (пояснение): сжатие RAG-фактов Gemma при превышении FACT_MAX_CHARS —
+сохранять термины/ограничения/код, без вводных фраз.
+"""
 
 
 class _FactSummaryContract(BaseModel):

@@ -39,7 +39,22 @@ def _next_id(prefix: str, items: list) -> str:
 
 
 def _norm_mermaid(code: str) -> str:
-    return normalize_stored_mermaid(code)
+    raw = (code or "").strip()
+    if not raw:
+        return ""
+    from knowledge_engine.services.mermaid_validate import (
+        strip_mermaid_fences,
+        validate_mermaid_syntax,
+    )
+    from knowledge_engine.utils.mermaid_sanitizer import sanitize_mermaid_raw_text
+
+    # Light regex cleanup always (spaced brackets etc.). Skip the heavy
+    # deterministic rewrite when the diagram already compiles — it can
+    # mangle valid xychart into flowchart noise.
+    light = sanitize_mermaid_raw_text(raw)
+    if validate_mermaid_syntax(strip_mermaid_fences(light or raw)):
+        return light or raw
+    return normalize_stored_mermaid(raw)
 
 
 def normalize_node_content_diagrams(content: NodeContentBlock) -> NodeContentBlock:

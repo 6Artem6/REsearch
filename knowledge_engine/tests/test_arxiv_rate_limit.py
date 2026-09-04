@@ -1,4 +1,4 @@
-"""Cross-process arXiv rate lock (≥ MIN_INTERVAL between acquires)."""
+"""Cross-process arXiv rate lock: sequential exclusive requests, ≥ MIN_INTERVAL."""
 
 from __future__ import annotations
 
@@ -51,6 +51,34 @@ def test_async_acquires_respect_min_interval(isolated_arxiv_lock, monkeypatch):
     stamps = sorted(asyncio.run(_run()))
     gaps = [stamps[i] - stamps[i - 1] for i in range(1, len(stamps))]
     assert all(g >= 0.14 for g in gaps), gaps
+
+
+def test_exclusive_async_never_overlaps(isolated_arxiv_lock, monkeypatch):
+    """Hold lock for whole 'HTTP' — concurrent coroutines must serialize."""
+    monkeypatch.setattr(arxiv_rl, "ARXIV_MIN_INTERVAL_SEC", 0.05)
+    concurrent = 0
+    max_concurrent = 0
+    ends: list[float] = []
+
+    async def _run() -> None:
+        nonlocal concurrent, max_concurrent
+
+        async def _one() -> None:
+            nonlocal concurrent, max_concurrent
+            async with arxiv_rl.arxiv_request_exclusive_async():
+                concurrent += 1
+                max_concurrent = max(max_concurrent, concurrent)
+                await asyncio.sleep(0.04)
+                concurrent -= 1
+            ends.append(time.time())
+
+        await asyncio.gather(*[_one() for _ in range(4)])
+
+    asyncio.run(_run())
+    assert max_concurrent == 1
+    ends.sort()
+    gaps = [ends[i] - ends[i - 1] for i in range(1, len(ends))]
+    assert all(g >= 0.04 for g in gaps), gaps
 
 
 def test_default_interval_is_at_least_three_seconds():

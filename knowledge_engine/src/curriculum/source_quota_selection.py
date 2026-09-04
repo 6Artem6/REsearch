@@ -59,9 +59,18 @@ def _hit_selection_score(hit: CurriculumSearchHit) -> float:
 def select_hits_by_quota(
     candidates: list[CurriculumSearchHit],
     quota: SourceQuota,
+    *,
+    limit: int | None = None,
 ) -> list[CurriculumSearchHit]:
     """
     TOP-N academic + TOP-M practical с fallback до total_max (без url_validate).
+
+    ``limit`` (опционально) расширяет итоговый предел сверх ``quota.total_max``
+    — нужен replenish_valid_hits_until_cap's backfill_margin, чтобы держать
+    лишних ранжированных кандидатов в резерве для добора ALIAS/пустых
+    extracts ниже по пайплайну (см. targeted_hit_replenishment.py). TOP-N/
+    TOP-M выборки по бакетам (academic_max/practical_max) не расширяются —
+    растёт только fallback-долив и финальный срез.
     """
     if not candidates:
         return []
@@ -93,7 +102,11 @@ def select_hits_by_quota(
     _add(picked_a)
     _add(picked_p)
 
-    need = max(0, quota.total_max - len(selected))
+    effective_total = (
+        max(quota.total_max, limit) if limit is not None else quota.total_max
+    )
+
+    need = max(0, effective_total - len(selected))
     if need > 0:
         fallback: list[CurriculumSearchHit] = []
         if len(picked_a) < quota.academic_max:
@@ -106,7 +119,7 @@ def select_hits_by_quota(
             fallback.extend(academic[len(picked_a) :])
             fallback.extend(practical[len(picked_p) :])
         for h in fallback:
-            if len(selected) >= quota.total_max:
+            if len(selected) >= effective_total:
                 break
             key = academic_source_dedupe_key(h.url)
             if key and key not in seen:
@@ -117,9 +130,9 @@ def select_hits_by_quota(
         f"CURRICULUM quota select | academic_pool={len(academic)} "
         f"practical_pool={len(practical)} picked={len(selected)} "
         f"want_a={quota.academic_max} want_p={quota.practical_max} "
-        f"total_max={quota.total_max}"
+        f"total_max={quota.total_max} limit={effective_total}"
     )
-    return selected[: quota.total_max]
+    return selected[:effective_total]
 
 
 def quota_for_node(node: CurriculumNode) -> SourceQuota:
@@ -129,6 +142,8 @@ def quota_for_node(node: CurriculumNode) -> SourceQuota:
 def order_candidates_for_node(
     candidates: list[CurriculumSearchHit],
     node: CurriculumNode,
+    *,
+    limit: int | None = None,
 ) -> list[CurriculumSearchHit]:
     quota = quota_for_node(node)
     trace(
@@ -136,4 +151,4 @@ def order_candidates_for_node(
         f"risk={node.node_risk_kind} a={quota.academic_max} p={quota.practical_max} "
         f"total={quota.total_max}"
     )
-    return select_hits_by_quota(candidates, quota)
+    return select_hits_by_quota(candidates, quota, limit=limit)

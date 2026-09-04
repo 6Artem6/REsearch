@@ -9,6 +9,7 @@ from knowledge_engine.web.linkify import (
     _normalize_unicode_math_exponents,
     heal_broken_times_markup,
     heal_tab_corrupted_times,
+    letter_marker_is_paren_continuation,
     repair_broken_latex,
 )
 
@@ -168,6 +169,13 @@ _INLINE_HEADER_RE = re.compile(r"(?<=[а-яА-ЯёЁa-zA-Z0-9\)\]»\"'№%])(\s+
 
 
 def _split_markdown_header_line(line: str) -> str:
+    """
+    Split rare glued «## Title BodyProse…» lines.
+
+    Must NOT split numbered section headings used by deep_analysis, e.g.
+    ``## 3. Точки отказа и узкие места`` — the old Cyrillic-prose heuristic
+    matched «Точки от…» and emitted ``## 3.`` + a separate title paragraph.
+    """
     s = line.strip()
     if not s.startswith("#"):
         return line
@@ -175,6 +183,9 @@ def _split_markdown_header_line(line: str) -> str:
     if not m:
         return line
     rest = s[m.end() :]
+    # Keep numbered ATX headings intact (``## 1. …``, ``### 5. …``).
+    if re.match(r"^\d{1,2}\.\s+\S", rest):
+        return line
     pm = re.search(r"\s+(При\s+[а-яё])", rest)
     if not pm:
         pm = re.search(r"\s+([А-ЯЁ][а-яё]{2,}\s+[а-яё])", rest)
@@ -185,6 +196,45 @@ def _split_markdown_header_line(line: str) -> str:
     return line
 
 
+_SPLIT_NUMBERED_HEADING_RE = re.compile(
+    r"^(#{1,6})\s*(\d{1,2})\.\s*$",
+)
+
+
+def _rejoin_split_numbered_headings(t: str) -> str:
+    """
+    Re-join ``## 3.\\n\\nТочки отказа…`` → ``## 3. Точки отказа…``.
+
+    Heals content already broken by older ``_split_markdown_header_line``.
+    """
+    lines = (t or "").split("\n")
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        stripped = lines[i].strip()
+        hm = _SPLIT_NUMBERED_HEADING_RE.match(stripped)
+        if hm:
+            j = i + 1
+            while j < n and not lines[j].strip():
+                j += 1
+            if j < n:
+                nxt = lines[j].strip()
+                if (
+                    nxt
+                    and not nxt.startswith("#")
+                    and not re.match(r"^\d{1,2}\.\s+", nxt)
+                    and not nxt.startswith("```")
+                    and not nxt.startswith("|")
+                ):
+                    out.append(f"{hm.group(1)} {hm.group(2)}. {nxt}")
+                    i = j + 1
+                    continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
 _TABLE_ROW_GLUE_RE = re.compile(r"\|\s+\|")
 _NUMBERED_LIST_GLUE_RE = re.compile(r"([:;])\s+(\d+\.\s+)")
 _GLUE_ORDERED_AFTER_PERIOD_RE = re.compile(
@@ -193,14 +243,6 @@ _GLUE_ORDERED_AFTER_PERIOD_RE = re.compile(
 _LETTER_SUB_LABEL = r"(?:\*\*[а-яёa-z][)]\*\*|[а-яёa-z][)])"
 _GLUE_LETTER_BOLD_SUB_RE = re.compile(
     r"([а-яёa-zA-Z0-9\)\]»\"'№%])(\s+)(\*\*[а-яёa-z]\)\*\*)",
-    re.IGNORECASE,
-)
-_GLUE_LETTER_PLAIN_AFTER_CLOSE_RE = re.compile(
-    r"(\))\s+([а-яёa-z]\)\s)",
-    re.IGNORECASE,
-)
-_GLUE_LETTER_PLAIN_AFTER_PUNCT_RE = re.compile(
-    r"([.!?…:;])(\s+)([а-яёa-z]\)\s)",
     re.IGNORECASE,
 )
 _GLUE_BOLD_SUB_AFTER_PUNCT_RE = re.compile(
@@ -311,8 +353,6 @@ def _repair_glued_numbered_lists_on_line(line: str) -> str:
         s = s2
     s = _GLUE_LETTER_BOLD_SUB_RE.sub(r"\1\n\3", s)
     s = _GLUE_BOLD_SUB_AFTER_PUNCT_RE.sub(r"\1\n\3", s)
-    s = _GLUE_LETTER_PLAIN_AFTER_CLOSE_RE.sub(r"\1\n\2", s)
-    s = _GLUE_LETTER_PLAIN_AFTER_PUNCT_RE.sub(r"\1\n\3", s)
     s = _INLINE_WRONG_NUMBERED_LETTER_RE.sub(r"\n- \2 ", s)
     return s
 
@@ -371,11 +411,23 @@ def _normalize_list_blocks_for_markdown(t: str) -> str:
         if _ORDERED_LIST_LINE_RE.match(stripped):
             buf.append(stripped)
             continue
-        if sub_re.match(stripped) or stripped.startswith("- "):
+        if sub_re.match(stripped):
+            prev_line = buf[-1] if buf else (out[-1] if out else "")
+            if letter_marker_is_paren_continuation(prev_line):
+                joined = f"{prev_line.rstrip()} {stripped}"
+                if buf:
+                    buf[-1] = joined
+                elif out:
+                    out[-1] = joined
+                else:
+                    out.append(stripped)
+                continue
             flush_buf()
-            append_bullet(
-                stripped.lstrip("-").strip() if stripped.startswith("-") else stripped
-            )
+            append_bullet(stripped)
+            continue
+        if stripped.startswith("- "):
+            flush_buf()
+            append_bullet(stripped.lstrip("-").strip())
             continue
         flush_buf()
         out.append(line)
@@ -422,8 +474,14 @@ def _apply_outside_code_fences(text: str, fn) -> str:
     last = 0
     for m in _CODE_FENCE_RE.finditer(text):
         if m.start() > last:
-            parts.append(fn(text[last : m.start()]))
-        parts.append(m.group(0))
+            prefix = text[last : m.start()]
+            if prefix and not prefix.endswith("\n"):
+                prefix = prefix.rstrip() + "\n\n"
+            parts.append(fn(prefix))
+        fence = m.group(0)
+        if m.end() < len(text) and text[m.end()] not in "\n":
+            fence = fence.rstrip() + "\n\n"
+        parts.append(fence)
         last = m.end()
     if last < len(text):
         parts.append(fn(text[last:]))
@@ -576,11 +634,32 @@ def _wrap_bare_python_regions(text: str) -> str:
     return "\n".join(out)
 
 
+def _detach_glued_code_fences(text: str) -> str:
+    """Fences glued to prose (`[R4].```python`) → fence on its own line."""
+    raw = text or ""
+    if "```" not in raw:
+        return raw
+    out: list[str] = []
+    last = 0
+    for m in _CODE_FENCE_RE.finditer(raw):
+        prefix = raw[last : m.start()]
+        if prefix and not prefix.endswith("\n"):
+            prefix = prefix.rstrip() + "\n\n"
+        fence = m.group(0)
+        if m.end() < len(raw) and raw[m.end()] not in "\n":
+            fence = fence.rstrip() + "\n\n"
+        out.append(prefix)
+        out.append(fence)
+        last = m.end()
+    out.append(raw[last:])
+    return "".join(out)
+
+
 def repair_lecture_code_blocks(text: str) -> str:
     """Склеенный Python в lecture_body → переносы + ```python fences."""
-    raw = (text or "").strip()
+    raw = _detach_glued_code_fences((text or "").strip())
     if not raw or ("def " not in raw and "class " not in raw):
-        return text or ""
+        return raw or (text or "")
     parts: list[str] = []
     last = 0
     for m in _CODE_FENCE_RE.finditer(raw):
@@ -615,7 +694,7 @@ def repair_lecture_markdown_layout(text: str) -> str:
         or "≈" in raw
     ):
         raw = repair_broken_latex(heal_broken_times_markup(raw))
-    t = raw
+    t = repair_lecture_code_blocks(raw)
 
     def _layout_chunk(chunk: str) -> str:
         c = re.sub(r"([.!?…])\s+(#{1,6}\s+)", r"\1\n\n\2", chunk)
@@ -629,9 +708,11 @@ def repair_lecture_markdown_layout(text: str) -> str:
         c = _repair_glued_numbered_lists(c)
         c = _collapse_blank_lines_in_list_runs(c)
         c = _normalize_list_blocks_for_markdown(c)
+        c = _rejoin_split_numbered_headings(c)
         return c
 
     t = _apply_outside_code_fences(t, _layout_chunk)
+    t = _rejoin_split_numbered_headings(t)
     t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
 

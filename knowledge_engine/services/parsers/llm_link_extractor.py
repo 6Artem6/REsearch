@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from bs4 import BeautifulSoup
 
+from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.parsers.article_manifest import PDFLinkValidationResponse
 from knowledge_engine.services.parsers.html_attr import coerce_html_attr
 from knowledge_engine.ui.run_log import trace
@@ -53,13 +54,19 @@ class LLMShortlinkResolver:
     """Gemini Lite: best PDF / reader URL из урезанного DOM."""
 
     _SYSTEM = (
-        "Ты анализируешь HTML-фрагмент научной страницы (meta, ссылки, iframe, кнопки).\n"
-        "Найди URL для скачивания полного PDF или открытия веб-просмотрщика статей.\n"
-        "direct_pdf — прямая ссылка на .pdf или binary PDF endpoint.\n"
-        "html_reader — страница просмотрщика (epdf, viewer, reader, ReadCube и т.п.).\n"
-        "Если ничего надёжного — best_pdf_url=null, confidence=0.\n"
-        "Ответ строго по схеме JSON."
+        "You are analyzing an HTML fragment of an academic paper page (meta, links, "
+        "iframe, buttons).\n"
+        "Find a URL to download the full PDF or open a web article reader.\n"
+        "direct_pdf — a direct link to .pdf or a binary PDF endpoint.\n"
+        "html_reader — a viewer page (epdf, viewer, reader, ReadCube, etc.).\n"
+        "If nothing reliable is found — best_pdf_url=null, confidence=0.\n"
+        "Respond strictly per the JSON schema.\n"
+        f"{RUSSIAN_OUTPUT_RULE}"
     )
+    """
+    RU (пояснение): fallback-поиск прямой ссылки на PDF/reader в урезанном
+    DOM, когда обычный парсинг ссылок не сработал.
+    """
 
     def resolve(
         self,

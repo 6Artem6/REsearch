@@ -157,3 +157,51 @@ def build_session_source_registry(
 
 def registry_for_prompt(registry: list[dict[str, Any]]) -> str:
     return format_registry_for_prompt(registry)
+
+
+def fresh_mapped_source_ids_for_node(
+    curriculum_id: str,
+    node_id: str,
+    fallback: list[str] | None = None,
+) -> list[str]:
+    """
+    fallback как есть, если непустой (явный снимок этого хода — приоритет,
+    как и раньше: см. test_finalize_falls_back_to_request_node_without_dense_lecture).
+    Граф (skill_tree_store) перечитывается ТОЛЬКО когда fallback пуст —
+    именно это и есть баг-сценарий: поиск (init lazy grounding, лекция с
+    внешним поиском, любой будущий сценарий) успел дописать источники в
+    граф, но объект node для ЭТОГО хода был захвачен раньше, ДО того как
+    что-либо появилось (mapped_source_ids=[]), и по цепочке вызовов текущего
+    хода это "пусто" никто не освежил. Единая safety-net точка вместо
+    точечного протаскивания свежего node через каждый новый сценарий
+    отдельно (см. существующий прецедент — node_for_lecture в
+    run_dense_lecture_turn/finalize_graph_chat_response).
+    """
+    have = [str(x).strip() for x in (fallback or []) if str(x).strip()]
+    if have:
+        return have
+    cid = (curriculum_id or "").strip()
+    nid = (node_id or "").strip()
+    if not cid or not nid:
+        return have
+    from knowledge_engine.services.skill_tree_store import get_curriculum_graph
+
+    graph = get_curriculum_graph(cid) or {}
+    for n in graph.get("nodes") or []:
+        if not isinstance(n, dict):
+            continue
+        if str(n.get("node_id") or n.get("id") or "").strip() == nid:
+            return [
+                str(x).strip()
+                for x in (n.get("mapped_source_ids") or [])
+                if str(x).strip()
+            ]
+    return have
+
+
+def registry_for_curriculum_node(
+    curriculum_id: str, node_id: str
+) -> list[dict[str, Any]]:
+    """Mapped [Sx] registry for a node from the saved curriculum graph."""
+    mapped = fresh_mapped_source_ids_for_node(curriculum_id, node_id)
+    return build_session_source_registry(curriculum_id, mapped)

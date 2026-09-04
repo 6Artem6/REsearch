@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from knowledge_engine.schemas.fsm import TutorStage
+from knowledge_engine.src.node_deep_dive.graph.stage_events import stage_scope
 from knowledge_engine.src.node_deep_dive.graph.state import TutorGraphState
 
 
@@ -13,5 +15,7 @@ async def lazy_intro_node(
 ) -> TutorGraphState:
     from knowledge_engine.src.node_deep_dive.engine import run_lazy_intro_turn
 
-    _ = config
-    return await run_lazy_intro_turn(state)
+    with stage_scope(
+        state, config, TutorStage.INIT, running_message="Готовим вводный вопрос…"
+    ):
+        return await run_lazy_intro_turn(state)

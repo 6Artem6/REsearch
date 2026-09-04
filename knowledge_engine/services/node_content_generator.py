@@ -11,7 +11,6 @@ from knowledge_engine.config import (
     LECTURE_GENERATION_TIMEOUT_SEC,
     LECTURE_MAX_OUTPUT_TOKENS,
     MAIN_MODEL,
-    OLLAMA_STRUCTURE_NUM_PREDICT,
 )
 from knowledge_engine.schemas.llm_contracts.tutor import (
     StructuredLectureResponse,
@@ -23,9 +22,10 @@ from knowledge_engine.services.gemini_stateless import (
     run_gemini_structured_with_chain,
 )
 from knowledge_engine.services.lecture_body_format import (
-    append_checkpoint_to_lecture_body,
+    format_self_check_block,
     sanitize_lecture_body_markdown,
     strip_lecture_credit_scoreboard,
+    strip_trailing_checkpoint_from_lecture_body,
 )
 from knowledge_engine.services.lecture_rag_context import (
     build_lecture_generation_payload,
@@ -35,6 +35,7 @@ from knowledge_engine.src.node_deep_dive.code_snippet_heuristic import (
     filter_code_snippets,
 )
 from knowledge_engine.src.node_deep_dive.memory_schemas import SessionMemory
+from knowledge_engine.src.node_deep_dive.prompt_types import InteractionPromptMode
 from knowledge_engine.src.node_deep_dive.schemas import (
     DenseMaterialOutput,
     NodeContentBlock,
@@ -44,7 +45,10 @@ from knowledge_engine.src.node_deep_dive.tiered_memory import (
     build_handoff_summary,
     format_matrix_for_llm,
 )
-from knowledge_engine.src.node_deep_dive.tutor_prompt_builder import build_dense_system
+from knowledge_engine.src.node_deep_dive.tutor_prompt_builder import (
+    build_critical_rules_recency_tail,
+    build_dense_system,
+)
 
 
 def _dense_system_instruction(
@@ -69,7 +73,7 @@ def _sanitize_dense_output(
     body = sanitize_lecture_body_markdown(dense.lecture_body or "")
     body = strip_lecture_credit_scoreboard(body)
     checkpoint = (dense.checkpoint_prompt or "").strip()
-    body = append_checkpoint_to_lecture_body(body, checkpoint)
+    body = strip_trailing_checkpoint_from_lecture_body(body, checkpoint)
     snippets = [
         sanitize_lecture_body_markdown(s) if "```" in (s or "") else (s or "")
         for s in (dense.code_snippets or [])
@@ -108,6 +112,11 @@ def generate_dense_material(
     scope = (lecture_scope or "full_node_lecture").strip()
     focus = (focus_text or "").strip()
     rag_query = focus if scope == "targeted_lecture" and focus else user_query
+    recency_rules = build_critical_rules_recency_tail(
+        mode=InteractionPromptMode.LECTURE_DENSE,
+        memory=memory,
+        topic_already_covered=topic_already_covered,
+    )
     payload = build_lecture_generation_payload(
         node,
         rag_profile,
@@ -124,6 +133,7 @@ def generate_dense_material(
         coverage_payload=coverage_payload,
         lecture_scope=scope,
         focus_text=focus,
+        recency_rules=recency_rules,
     )
     from knowledge_engine.src.node_deep_dive.subconcept_invariants import (
         format_subconcept_hard_anchor,
@@ -168,7 +178,7 @@ def generate_dense_material(
         )
     except Exception as exc:
         trace(
-            f"NODE_DIVE dense_material fallback Ollama json_schema | "
+            f"NODE_DIVE dense_material fallback Cloud LLM json_schema | "
             f"StructuredLectureResponse | {exc}"
         )
         structured = run_local_structured(
@@ -179,7 +189,6 @@ def generate_dense_material(
             anchor,
             "node_deep_dive/dense_material",
             temperature=LECTURE_GENERATION_TEMPERATURE,
-            num_predict=OLLAMA_STRUCTURE_NUM_PREDICT,
         )
         try:
             from knowledge_engine.services.session_prompt_trace import (
@@ -198,21 +207,17 @@ def generate_dense_material(
     memory.chat_sessions = mgr.to_memory_blob()
     result = structured_lecture_to_dense(structured, allowed_urls=allowed_urls or set())
     result = _sanitize_dense_output(result, allowed_urls or set())
-    # Stream may have finished on raw lecture_body before sanitize/checkpoint merge.
+    # Stream may have finished on raw lecture_body before host strips PART 2.
     if stream_callback is not None:
-        final_body = (result.lecture_body or "").strip()
-        raw_body = sanitize_lecture_body_markdown(
-            getattr(structured, "lecture_body", None) or ""
-        )
-        raw_body = strip_lecture_credit_scoreboard(raw_body)
-        if final_body and final_body != raw_body:
-            # Emit only the missing tail (usually checkpoint_prompt).
-            if raw_body and final_body.startswith(raw_body):
-                tail = final_body[len(raw_body) :].lstrip()
-                if tail:
-                    stream_callback("\n\n" + tail)
-            elif not raw_body:
-                stream_callback(final_body)
+        checkpoint = (result.checkpoint_prompt or "").strip()
+        marker_block = format_self_check_block(checkpoint)
+        if marker_block:
+            raw_body = sanitize_lecture_body_markdown(
+                getattr(structured, "lecture_body", None) or ""
+            )
+            raw_body = strip_lecture_credit_scoreboard(raw_body)
+            if "**Самопроверка:**" not in raw_body and marker_block not in raw_body:
+                stream_callback("\n\n" + marker_block)
     trace("NODE_DIVE dense_material ✓ | лекция в чат + панель (summary/diagram/refs)")
     return result
 

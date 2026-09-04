@@ -173,23 +173,19 @@ def test_client_retries_on_503(monkeypatch):
 </feed>"""
             return _FakeResp(200, atom)
 
-    async def _noop_acquire():
-        return None
+    from contextlib import asynccontextmanager
 
-    async def _noop_pause(_wait):
-        return None
+    @asynccontextmanager
+    async def _noop_exclusive(*, min_wait_sec: float = 0.0):
+        yield
 
     monkeypatch.setattr(
         "knowledge_engine.services.search.arxiv_client.httpx.AsyncClient",
         _FakeAsyncClient,
     )
     monkeypatch.setattr(
-        "knowledge_engine.services.search.arxiv_client.acquire_arxiv_slot_async",
-        _noop_acquire,
-    )
-    monkeypatch.setattr(
-        "knowledge_engine.services.search.arxiv_client.arxiv_pause_before_retry_async",
-        _noop_pause,
+        "knowledge_engine.services.search.arxiv_client.arxiv_request_exclusive_async",
+        _noop_exclusive,
     )
     monkeypatch.setattr(
         "knowledge_engine.services.search.arxiv_client.random.uniform",

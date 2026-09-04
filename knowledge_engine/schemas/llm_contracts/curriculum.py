@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from knowledge_engine.src.curriculum.schemas import CurriculumNode
 
@@ -66,6 +66,130 @@ class ModelFirstPayloadContract(BaseModel):
     title: str = Field(default="")
     description: str = Field(default="")
     nodes: list[ModelFirstNodeContract] = Field(default_factory=list)
+
+
+class NodeListNodeContract(BaseModel):
+    """Pass 1 (Two-Pass Model-First): содержание ноды без топологии —
+    prerequisites сюда намеренно не входит, генерируется отдельным Pass 2."""
+
+    node_id: str = Field(..., description="snake_case id, unique within this list.")
+    title: str = Field(..., description="Node title.")
+    layer: str = Field(default="foundation", description="foundation | advanced | sota")
+    category: str = Field(default="", description="DAG category label.")
+    brief_summary: str = Field(default="", description="Short node summary.")
+    core_concepts: list[str] = Field(
+        default_factory=list, description="Key concepts covered by this node."
+    )
+
+
+class NodeListContract(BaseModel):
+    """Pass 1 payload: декомпозиция темы на ноды, без рёбер."""
+
+    curriculum_id: str = Field(default="")
+    title: str = Field(default="")
+    description: str = Field(default="")
+    nodes: list[NodeListNodeContract] = Field(
+        default_factory=list,
+        description="8-12 decomposed topic nodes, no prerequisites yet.",
+    )
+
+
+class CurriculumDAGNodeContract(BaseModel):
+    """Pass 2 (Two-Pass Model-First): рёбра одной ноды (её prerequisites) —
+    node_id должен совпадать с одним из уже зафиксированных в Pass 1."""
+
+    node_id: str = Field(..., description="Must match a node_id from Pass 1's node list.")
+    prerequisites: list[str] = Field(
+        default_factory=list,
+        max_length=24,
+        description=(
+            "node_id of direct prerequisites (parents) for this node. Every node "
+            "in the graph MUST have in_degree + out_degree >= 1 — a node with an "
+            "empty prerequisites list here MUST be referenced as a prerequisite by "
+            "at least one OTHER node in this same list, or it becomes an isolated "
+            "orphan and the whole payload is rejected."
+        ),
+    )
+    # RU: связность по всему графу (referential integrity / orphan /
+    # weak connectivity) проверяет model_validator ниже, не это поле само по
+    # себе — Pydantic не может выразить межобъектный инвариант в Field(...).
+
+
+class CurriculumDAGContract(BaseModel):
+    """Pass 2 payload: полный набор рёбер для зафиксированного в Pass 1
+    списка нод. model_validator кидает ValueError на любое нарушение
+    связности — тот же путь, что и обычная Pydantic ValidationError, уходит
+    в существующий Repair Feedback Loop (см. _parse_structured в
+    gemini_stateless.py: ValidationError оборачивается в RuntimeError,
+    вызывающий код ловит его и повторяет запрос с текстом ошибки)."""
+
+    nodes: list[CurriculumDAGNodeContract] = Field(
+        default_factory=list,
+        description="One entry per Pass-1 node_id, each carrying its prerequisites.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_topology(self) -> "CurriculumDAGContract":
+        ids: list[str] = [n.node_id for n in self.nodes]
+        id_set = set(ids)
+        if len(id_set) != len(ids):
+            seen: set[str] = set()
+            for nid in ids:
+                if nid in seen:
+                    raise ValueError(f"Duplicate node_id in Pass 2 payload: '{nid}'.")
+                seen.add(nid)
+
+        for n in self.nodes:
+            for p in n.prerequisites:
+                if p == n.node_id:
+                    raise ValueError(
+                        f"Node '{n.node_id}': self-reference in prerequisites."
+                    )
+                if p not in id_set:
+                    raise ValueError(
+                        f"Node '{n.node_id}': prerequisite '{p}' does not match "
+                        "any node_id from the Pass 1 node list."
+                    )
+
+        out_degree: dict[str, int] = {nid: 0 for nid in id_set}
+        for n in self.nodes:
+            for p in n.prerequisites:
+                out_degree[p] = out_degree.get(p, 0) + 1
+
+        for n in self.nodes:
+            if not n.prerequisites and out_degree.get(n.node_id, 0) == 0:
+                raise ValueError(
+                    f"Node '{n.node_id}' is isolated (orphan node with 0 edges). "
+                    "Connect it as a prerequisite to advanced nodes or assign a "
+                    "parent."
+                )
+
+        # RU: слабая связность — Union-Find по неориентированным рёбрам.
+        parent: dict[str, str] = {nid: nid for nid in id_set}
+
+        def _find(x: str) -> str:
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def _union(a: str, b: str) -> None:
+            ra, rb = _find(a), _find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+        for n in self.nodes:
+            for p in n.prerequisites:
+                _union(n.node_id, p)
+
+        roots = {_find(nid) for nid in id_set}
+        if len(roots) > 1:
+            raise ValueError(
+                "Graph is not weakly connected: found "
+                f"{len(roots)} disconnected component(s) across {len(id_set)} "
+                "nodes. Every node must belong to a single connected graph."
+            )
+        return self
 
 
 class CurriculumReasonerContract(BaseModel):

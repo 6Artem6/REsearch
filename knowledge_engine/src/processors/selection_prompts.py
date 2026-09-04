@@ -1,4 +1,4 @@
-"""Smart Selection Prompts — быстрые контекстные вопросы через локальную Ollama."""
+"""Smart Selection Prompts — быстрые контекстные вопросы через Gemma Cloud."""
 
 from __future__ import annotations
 
@@ -6,44 +6,38 @@ import json
 import re
 from typing import Literal
 
-import httpx
 from pydantic import BaseModel, Field, field_validator
 
-from knowledge_engine.config import (
-    OLLAMA_BASE_URL,
-    OLLAMA_ROUTER_NUM_CTX,
-    SELECTION_PROMPTS_KEEP_ALIVE,
-    SELECTION_PROMPTS_NUM_PREDICT,
-    SELECTION_PROMPTS_OLLAMA_MODEL,
-    SELECTION_PROMPTS_TIMEOUT_SEC,
-)
-from knowledge_engine.services.ollama_runtime import ensure_ollama_server
+from knowledge_engine.llm import complete_structured_async
+from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.src.processors.question_formation_rules import (
     QUESTION_FORMATION_RULES,
 )
 from knowledge_engine.ui.run_log import trace
 
 SELECTION_PROMPT_SYSTEM = (
-    """Ты — ассистент исследовательского движка. Твоя задача — сгенерировать 3 коротких, точных и глубоких инженерных вопроса к выделенному пользователем фрагменту текста.
+    f"{RUSSIAN_OUTPUT_RULE}\n"
+    """You are a research-engine assistant. Generate exactly 3 short, precise
+engineering questions about the fragment the user selected.
 
-КОНТЕКСТ:
-- Главная тема: {topic}
-- Абзац: {paragraph_context}
-- Выделенный фрагмент: {selected_text}
+CONTEXT:
+- Main topic: {topic}
+- Paragraph: {paragraph_context}
+- Selected fragment: {selected_text}
 
-ПРАВИЛА:
-1. Сгенерируй ровно 3 вопроса строго на русском языке.
-2. Вопросы должны быть разного характера:
-   - Вопрос 1 (Причина/Детали): Почему или как именно работает этот механизм под капотом?
-   - Вопрос 2 (Альтернатива/Сравнение): Какая есть альтернатива или в чем отличие от смежного решения?
-   - Вопрос 3 (Практика/Следствие): К чему это приводит на практике или как этого избежать?
-3. Вопросы должны быть короткими (до 10 слов), емкими и звучащими профессионально.
-4. Верни результат строго в формате JSON:
+RULES:
+1. Questions MUST be in Russian.
+2. Cover three angles:
+   - (1) Cause/details: why or how this mechanism works under the hood
+   - (2) Alternative/comparison: what else exists or how it differs
+   - (3) Practice/consequence: what it leads to or how to avoid it
+3. Each question is short (up to 10 words), dense, professional.
+4. Return JSON only:
 {{
   "questions": [
-    "Текст вопроса 1?",
-    "Текст вопроса 2?",
-    "Текст вопроса 3?"
+    "Question 1?",
+    "Question 2?",
+    "Question 3?"
   ]
 }}
 """
@@ -78,7 +72,7 @@ class SelectionQuestionsJson(BaseModel):
 
 class SelectionPromptsResult(BaseModel):
     questions: list[str] = Field(min_length=3, max_length=3)
-    source: Literal["ollama", "default"] = "default"
+    source: Literal["gemma_cloud", "default"] = "default"
 
 
 def _clip(text: str, limit: int) -> str:
@@ -134,40 +128,16 @@ def _parse_questions_payload(text: str) -> list[str]:
     return []
 
 
-async def _ollama_chat_questions(system: str, user: str) -> list[str]:
-    url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/chat"
-    payload = {
-        "model": SELECTION_PROMPTS_OLLAMA_MODEL,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "stream": False,
-        "format": SelectionQuestionsJson.model_json_schema(),
-        "options": {
-            "temperature": 0.25,
-            "num_predict": SELECTION_PROMPTS_NUM_PREDICT,
-            "num_ctx": OLLAMA_ROUTER_NUM_CTX,
-        },
-        "keep_alive": SELECTION_PROMPTS_KEEP_ALIVE,
-    }
-    timeout = httpx.Timeout(SELECTION_PROMPTS_TIMEOUT_SEC)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(url, json=payload)
-        response.raise_for_status()
-        data = response.json()
-    message = data.get("message") or {}
-    content = message.get("content") if isinstance(message, dict) else ""
-    if not isinstance(content, str):
-        content = str(content or "")
-    parsed = _parse_questions_payload(content)
-    if len(parsed) >= 3:
-        return parsed
-    try:
-        model = SelectionQuestionsJson.model_validate_json(content)
-        return model.questions
-    except Exception:
-        return parsed
+async def _gemma_chat_questions(system: str, user: str) -> list[str]:
+    parsed = await complete_structured_async(
+        SelectionQuestionsJson,
+        system,
+        user,
+        label="selection_prompts",
+    )
+    if parsed is None:
+        return []
+    return list(parsed.questions or [])
 
 
 async def suggest_selection_questions(
@@ -175,7 +145,7 @@ async def suggest_selection_questions(
     paragraph_context: str,
     topic: str,
 ) -> SelectionPromptsResult:
-    """Асинхронный вызов Ollama с жёстким таймаутом; fallback на дефолтные вопросы."""
+    """Async Gemma Cloud call with fallback to default questions."""
     selected = (selected_text or "").strip()
     if len(selected) < 2:
         return SelectionPromptsResult(
@@ -184,20 +154,14 @@ async def suggest_selection_questions(
         )
 
     system = _build_system_prompt(selected, paragraph_context, topic)
-    user = "Сгенерируй JSON с тремя вопросами к выделенному фрагменту."
+    user = "Return JSON with three questions about the selected fragment."
 
-    trace(
-        f"SELECTION_PROMPTS ▶ Ollama {SELECTION_PROMPTS_OLLAMA_MODEL} "
-        f"timeout={SELECTION_PROMPTS_TIMEOUT_SEC}s "
-        f"keep_alive={SELECTION_PROMPTS_KEEP_ALIVE}"
-    )
+    trace("SELECTION_PROMPTS ▶ Gemma Cloud")
     try:
-        if not await ensure_ollama_server():
-            raise RuntimeError("Ollama не отвечает на /api/tags")
-        raw_questions = await _ollama_chat_questions(system, user)
+        raw_questions = await _gemma_chat_questions(system, user)
         questions = _normalize_questions(raw_questions)
         trace(f"SELECTION_PROMPTS ✓ {questions[0][:48]}…")
-        return SelectionPromptsResult(questions=questions, source="ollama")
+        return SelectionPromptsResult(questions=questions, source="gemma_cloud")
     except Exception as exc:
         trace(f"SELECTION_PROMPTS ✗ fallback | {exc}")
         return SelectionPromptsResult(

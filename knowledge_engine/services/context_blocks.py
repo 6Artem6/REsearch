@@ -63,6 +63,8 @@ def _url_block_id(url: str) -> str:
 
 
 def _is_empty_source(summary: DocumentSummary) -> bool:
+    if (summary.executive_summary or "").strip():
+        return False
     takeaways = [t.strip() for t in summary.key_takeaways if t and t.strip()]
     failures = [f.strip() for f in summary.failure_modes if f and f.strip()]
     concepts = [c.strip() for c in summary.cs_concepts if c and c.strip()]
@@ -200,14 +202,17 @@ def load_profile_blocks() -> list[ContextBlock]:
 def _format_source_content(summary: DocumentSummary) -> str:
     from knowledge_engine.schemas.extraction import format_takeaways_for_tutor
 
+    exec_sum = (summary.executive_summary or "").strip()
     takeaways = [t.strip() for t in summary.key_takeaways if t and t.strip()]
     takeaway_block = (
         format_takeaways_for_tutor(takeaways[:12], max_per_bucket=5)
         if takeaways
         else "  Takeaways: (нет)"
     )
+    exec_block = f"  {exec_sum}\n" if exec_sum else ""
     return (
         f"- [{summary.title}] {summary.url}\n"
+        f"{exec_block}"
         f"  CS: {', '.join(summary.cs_concepts[:6])}\n"
         f"{takeaway_block}\n"
         f"  Failure modes: {'; '.join(summary.failure_modes[:4])}"

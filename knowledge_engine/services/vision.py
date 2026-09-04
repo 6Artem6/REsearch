@@ -12,14 +12,20 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from knowledge_engine.config import MAIN_MODEL
 from knowledge_engine.llm import stream_chat
+from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.search.browser_search import fetch_page_html, human_delay
 from knowledge_engine.ui.errors import format_error_location
 from knowledge_engine.ui.logger import set_status
 
 VISION_PROMPT = (
-    "Опиши эту архитектурную схему/график: ключевые узлы, топология, "
-    "потоки данных и узкие места. Ответ на русском, структурированно."
+    "Describe this architecture diagram/chart: key nodes, topology, data "
+    "flows, and bottlenecks. Structure the answer.\n"
+    f"{RUSSIAN_OUTPUT_RULE}"
 )
+"""
+RU (пояснение): Vision-промпт для описания схем/графиков со страниц
+(legacy analyze CLI) — структурированный технический разбор диаграммы.
+"""
 
 
 class _ImgCollector(HTMLParser):

@@ -21,6 +21,7 @@ import {
   isPendingMsgId,
   mergeNodeStatuses,
   nodeInit,
+  nodeInitStream,
   nodeRestart,
   nodeChat,
   nodeChatStream,
@@ -55,6 +56,9 @@ export function RoadmapDashboard() {
   const [genBusyAction, setGenBusyAction] = useState(null);
   /** Нода, для которой сейчас ждём init/chat/verify; null — нет активной генерации. */
   const [tutorBusyNodeId, setTutorBusyNodeId] = useState(null);
+  /** Текст последнего FSM stage-события (см. schemas/fsm.py) — живой статус
+   * в баннере NodeTutorChat вместо статичного "Генерация ответа…". */
+  const [tutorStageMessage, setTutorStageMessage] = useState("");
   const [selectedMaterialId, setSelectedMaterialId] = useState(null);
   const [materialViewMode, setMaterialViewMode] = useState(() => {
     const v = localStorage.getItem(MATERIAL_VIEW_LS);
@@ -283,6 +287,26 @@ export function RoadmapDashboard() {
       return;
     }
     setStatuses((prev) => ({ ...prev, [nodeId]: res.node_status }));
+    if (Array.isArray(res.mapped_source_ids)) {
+      // Без этого патча selectedNode/curriculum.nodes хранят
+      // mapped_source_ids на момент открытия ноды — панель "Адресация
+      // ноды" в NodeDrawer остаётся пустой сразу после лекции, пока не
+      // перезагрузить страницу (backend уже отдаёт свежие id в ответе хода).
+      const freshMapped = res.mapped_source_ids;
+      setSelectedNode((prev) =>
+        prev && prev.node_id === nodeId
+          ? { ...prev, mapped_source_ids: freshMapped }
+          : prev,
+      );
+      setCurriculum((prev) => {
+        if (!prev || !Array.isArray(prev.nodes)) return prev;
+        const idx = prev.nodes.findIndex((n) => n.node_id === nodeId);
+        if (idx === -1) return prev;
+        const nodes = prev.nodes.slice();
+        nodes[idx] = { ...nodes[idx], mapped_source_ids: freshMapped };
+        return { ...prev, nodes };
+      });
+    }
     setSessions((prev) => {
       const old = prev[nodeId] || { messages: [] };
       const streamId = `stream-${nodeId}`;
@@ -330,7 +354,7 @@ export function RoadmapDashboard() {
 
   const openNode = useCallback(
     async (node) => {
-      if (!curriculum) return;
+      if (!curriculum || !node?.node_id) return;
       const sid = node.node_id;
       const initialized = Boolean(sessions[sid]?.initialized);
 
@@ -340,15 +364,6 @@ export function RoadmapDashboard() {
       setSelectedMaterialId(null);
       replaceSkillTreeSearchParams({ node: sid, material: "" });
       setError("");
-      const grounding = String(node.grounding_status || "").trim();
-      if (
-        !initialized &&
-        (grounding === "unverified_deep" ||
-          grounding === "grounded" ||
-          grounding === "model_only")
-      ) {
-        return;
-      }
       if (initialized) {
         try {
           const regRes = await fetchNodeSourceRegistry(
@@ -370,12 +385,28 @@ export function RoadmapDashboard() {
       }
 
       setTutorBusyNodeId(sid);
+      setTutorStageMessage("");
       try {
-        const res = await nodeInit(
+        // nodeInitStream (не nodeInit) — та же SSE-инфраструктура, что чат
+        // (job_stream.py relay), даёт FSM stage-события (см. schemas/fsm.py)
+        // на "подготовку ноды", а не только на ответ тьютора.
+        let finalRes = null;
+        await nodeInitStream(
           curriculum.curriculum_id,
           toNodeDataInput(node),
+          (evt) => {
+            if (evt.type === "stage" && evt.message) {
+              setTutorStageMessage(evt.message);
+            }
+            if (evt.type === "complete" && evt.result) {
+              finalRes = evt.result;
+            }
+            if (evt.type === "error") {
+              throw new Error(evt.detail || "init-stream error");
+            }
+          },
         );
-        applyNodeResponse(sid, res);
+        applyNodeResponse(sid, finalRes || {});
         const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
         if (freshGraph) {
           const freshNode = freshGraph.nodes.find((n) => n.node_id === sid);
@@ -429,6 +460,7 @@ export function RoadmapDashboard() {
     if (!msg) return;
     const nid = selectedNode.node_id;
     setTutorBusyNodeId(nid);
+    setTutorStageMessage("");
     onTutorPendingUser(msg);
     try {
       let finalRes = null;
@@ -438,6 +470,9 @@ export function RoadmapDashboard() {
         toNodeDataInput(selectedNode),
         msg,
         (evt) => {
+          if (evt.type === "stage" && evt.message) {
+            setTutorStageMessage(evt.message);
+          }
           if (evt.type === "token" && evt.text) {
             streamed += evt.text;
             setSessions((prev) => {
@@ -471,8 +506,20 @@ export function RoadmapDashboard() {
       }
     } catch (err) {
       setError(String(err.message || err));
+      const streamId = `stream-${nid}`;
+      setSessions((prev) => {
+        const old = prev[nid] || { messages: [] };
+        return {
+          ...prev,
+          [nid]: {
+            ...old,
+            messages: (old.messages || []).filter((m) => m.msg_id !== streamId),
+          },
+        };
+      });
     } finally {
       setTutorBusyNodeId(null);
+      setTutorStageMessage("");
     }
   }
 
@@ -491,6 +538,7 @@ export function RoadmapDashboard() {
       onVerifyResponse({ error: String(err.message || err) });
     } finally {
       setTutorBusyNodeId(null);
+      setTutorStageMessage("");
     }
   }
 
@@ -573,6 +621,7 @@ export function RoadmapDashboard() {
       setError(String(err.message || err));
     } finally {
       setTutorBusyNodeId(null);
+      setTutorStageMessage("");
     }
   }
 
@@ -731,6 +780,7 @@ export function RoadmapDashboard() {
               onSend: sendTutorMessage,
               disabled: composeLocked,
               generating: nodeGenerating,
+              stageMessage: tutorStageMessage,
               curriculumId: curriculum.curriculum_id,
               nodeData: toNodeDataInput(selectedNode),
               curriculum,

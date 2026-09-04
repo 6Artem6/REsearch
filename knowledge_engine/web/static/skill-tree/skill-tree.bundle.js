@@ -1085,7 +1085,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher.useContext(Context);
         }
-        function useState7(initialState) {
+        function useState8(initialState) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useState(initialState);
         }
@@ -1093,11 +1093,11 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useReducer(reducer, initialArg, init2);
         }
-        function useRef9(initialValue) {
+        function useRef10(initialValue) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useRef(initialValue);
         }
-        function useEffect10(create2, deps) {
+        function useEffect11(create2, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useEffect(create2, deps);
         }
@@ -1113,7 +1113,7 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useCallback(callback, deps);
         }
-        function useMemo6(create2, deps) {
+        function useMemo7(create2, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useMemo(create2, deps);
         }
@@ -1880,15 +1880,15 @@ var require_react_development = __commonJS({
         exports.useContext = useContext2;
         exports.useDebugValue = useDebugValue2;
         exports.useDeferredValue = useDeferredValue;
-        exports.useEffect = useEffect10;
+        exports.useEffect = useEffect11;
         exports.useId = useId;
         exports.useImperativeHandle = useImperativeHandle;
         exports.useInsertionEffect = useInsertionEffect;
         exports.useLayoutEffect = useLayoutEffect2;
-        exports.useMemo = useMemo6;
+        exports.useMemo = useMemo7;
         exports.useReducer = useReducer;
-        exports.useRef = useRef9;
-        exports.useState = useState7;
+        exports.useRef = useRef10;
+        exports.useState = useState8;
         exports.useSyncExternalStore = useSyncExternalStore;
         exports.useTransition = useTransition;
         exports.version = ReactVersion;
@@ -2384,9 +2384,9 @@ var require_react_dom_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var React20 = require_react();
+        var React22 = require_react();
         var Scheduler = require_scheduler();
-        var ReactSharedInternals = React20.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React22.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         var suppressWarning = false;
         function setSuppressWarning(newSuppressWarning) {
           {
@@ -3993,7 +3993,7 @@ var require_react_dom_development = __commonJS({
           {
             if (props.value == null) {
               if (typeof props.children === "object" && props.children !== null) {
-                React20.Children.forEach(props.children, function(child) {
+                React22.Children.forEach(props.children, function(child) {
                   if (child == null) {
                     return;
                   }
@@ -23589,7 +23589,7 @@ var require_react_jsx_runtime_development = __commonJS({
     if (true) {
       (function() {
         "use strict";
-        var React20 = require_react();
+        var React22 = require_react();
         var REACT_ELEMENT_TYPE = Symbol.for("react.element");
         var REACT_PORTAL_TYPE = Symbol.for("react.portal");
         var REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
@@ -23615,7 +23615,7 @@ var require_react_jsx_runtime_development = __commonJS({
           }
           return null;
         }
-        var ReactSharedInternals = React20.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React22.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function error(format) {
           {
             {
@@ -24496,7 +24496,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
         return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
       }
       function useSyncExternalStore$2(subscribe, getSnapshot) {
-        didWarnOld18Alpha || void 0 === React20.startTransition || (didWarnOld18Alpha = true, console.error(
+        didWarnOld18Alpha || void 0 === React22.startTransition || (didWarnOld18Alpha = true, console.error(
           "You are using an outdated, pre-release alpha of React 18 that does not support useSyncExternalStore. The use-sync-external-store shim will not work correctly. Upgrade to a newer pre-release."
         ));
         var value = getSnapshot();
@@ -24506,7 +24506,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
             "The result of getSnapshot should be cached to avoid an infinite loop"
           ), didWarnUncachedGetSnapshot = true);
         }
-        cachedValue = useState7({
+        cachedValue = useState8({
           inst: { value, getSnapshot }
         });
         var inst = cachedValue[0].inst, forceUpdate = cachedValue[1];
@@ -24518,7 +24518,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
           },
           [subscribe, value, getSnapshot]
         );
-        useEffect10(
+        useEffect11(
           function() {
             checkIfSnapshotChanged(inst) && forceUpdate({ inst });
             return subscribe(function() {
@@ -24544,8 +24544,8 @@ var require_use_sync_external_store_shim_development = __commonJS({
         return getSnapshot();
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React20 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is, useState7 = React20.useState, useEffect10 = React20.useEffect, useLayoutEffect2 = React20.useLayoutEffect, useDebugValue2 = React20.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
-      exports.useSyncExternalStore = void 0 !== React20.useSyncExternalStore ? React20.useSyncExternalStore : shim;
+      var React22 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is, useState8 = React22.useState, useEffect11 = React22.useEffect, useLayoutEffect2 = React22.useLayoutEffect, useDebugValue2 = React22.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
+      exports.useSyncExternalStore = void 0 !== React22.useSyncExternalStore ? React22.useSyncExternalStore : shim;
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
     })();
   }
@@ -24572,14 +24572,14 @@ var require_with_selector_development = __commonJS({
         return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React20 = require_react(), shim = require_shim(), objectIs = "function" === typeof Object.is ? Object.is : is, useSyncExternalStore = shim.useSyncExternalStore, useRef9 = React20.useRef, useEffect10 = React20.useEffect, useMemo6 = React20.useMemo, useDebugValue2 = React20.useDebugValue;
+      var React22 = require_react(), shim = require_shim(), objectIs = "function" === typeof Object.is ? Object.is : is, useSyncExternalStore = shim.useSyncExternalStore, useRef10 = React22.useRef, useEffect11 = React22.useEffect, useMemo7 = React22.useMemo, useDebugValue2 = React22.useDebugValue;
       exports.useSyncExternalStoreWithSelector = function(subscribe, getSnapshot, getServerSnapshot, selector, isEqual) {
-        var instRef = useRef9(null);
+        var instRef = useRef10(null);
         if (null === instRef.current) {
           var inst = { hasValue: false, value: null };
           instRef.current = inst;
         } else inst = instRef.current;
-        instRef = useMemo6(
+        instRef = useMemo7(
           function() {
             function memoizedSelector(nextSnapshot) {
               if (!hasMemo) {
@@ -24615,7 +24615,7 @@ var require_with_selector_development = __commonJS({
           [getSnapshot, getServerSnapshot, selector, isEqual]
         );
         var value = useSyncExternalStore(subscribe, instRef[0], instRef[1]);
-        useEffect10(
+        useEffect11(
           function() {
             inst.hasValue = true;
             inst.value = value;
@@ -28144,7 +28144,7 @@ var require_dagre = __commonJS({
 });
 
 // main.js
-var import_react23 = __toESM(require_react(), 1);
+var import_react25 = __toESM(require_react(), 1);
 var import_client = __toESM(require_client(), 1);
 
 // mermaidRuntime.js
@@ -28243,10 +28243,10 @@ function waitForElementSize(el, minW = 32, minH = 32, maxFrames = 48) {
 }
 
 // RoadmapDashboard.js
-var import_react22 = __toESM(require_react(), 1);
+var import_react24 = __toESM(require_react(), 1);
 
 // RoadmapCanvas.js
-var import_react6 = __toESM(require_react(), 1);
+var import_react7 = __toESM(require_react(), 1);
 
 // node_modules/@xyflow/react/dist/esm/index.js
 var import_jsx_runtime = __toESM(require_jsx_runtime());
@@ -37277,113 +37277,136 @@ function SkillNode({ data }) {
 var skillNodeTypes = { skillNode: SkillNode };
 
 // NodeMasteryPanel.js
+var import_react6 = __toESM(require_react(), 1);
+
+// SubConceptsList.js
 var import_react5 = __toESM(require_react(), 1);
-var PHASE_LABELS = {
-  intro_assessment: "\u042D\u043A\u0441\u043F\u0440\u0435\u0441\u0441-\u0441\u0440\u0435\u0437",
-  dense_material: "\u041F\u043B\u043E\u0442\u043D\u044B\u0439 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B",
-  checkpoint: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430",
-  pathway_decision: "\u0412\u044B\u0431\u043E\u0440 \u043F\u0443\u0442\u0438",
-  socratic_focus: "\u0422\u043E\u0447\u0435\u0447\u043D\u044B\u0439 \u0421\u043E\u043A\u0440\u0430\u0442"
-};
-var MODE_LABELS = {
-  lecture: "\u041B\u0435\u043A\u0446\u0438\u044F",
-  express_blitz: "\u042D\u043A\u0441\u043F\u0440\u0435\u0441\u0441-\u0431\u043B\u0438\u0446",
-  socratic_point: "\u0421\u043E\u043A\u0440\u0430\u0442 (\u0442\u043E\u0447\u0435\u0447\u043D\u043E)"
-};
-var LAYER_META = [
-  { id: "why", key: "WHY", title: "WHY", subtitle: "\u0417\u0430\u0447\u0435\u043C / \u043A\u043E\u043D\u0446\u0435\u043F\u0446\u0438\u044F", flag: "why_passed" },
-  { id: "how", key: "HOW", title: "HOW", subtitle: "\u041A\u0430\u043A / \u0430\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u0430", flag: "how_passed" },
-  {
-    id: "mechanic",
-    key: "MECHANIC",
-    title: "MECHANICS",
-    subtitle: "\u041C\u0435\u0445\u0430\u043D\u0438\u043A\u0438 / \u0440\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F",
-    flag: "mechanic_passed"
-  }
-];
-var LAYER_STATUS_CLS = {
-  passed: "depth-layer-passed",
-  in_progress: "depth-layer-active",
-  locked: "depth-layer-locked",
-  failed: "depth-layer-failed",
-  gloss: "depth-layer-gloss"
-};
-var LAYER_STATUS_LABEL = {
-  passed: "\u0417\u0430\u0447\u0442\u0435\u043D\u043E",
-  in_progress: "\u0421\u0435\u0439\u0447\u0430\u0441",
-  locked: "\u0415\u0449\u0451 \u043D\u0435 \u043F\u0440\u043E\u0439\u0434\u0435\u043D",
-  failed: "\u041D\u0435 \u0437\u0430\u0447\u0442\u0435\u043D\u043E",
-  gloss: "Gloss"
-};
+
+// nodeProgressTypes.js
 function itemFlag(item, flag) {
   if (typeof item?.[flag] === "boolean") return item[flag];
-  const camel = flag.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+  const camel = String(flag).replace(/_([a-z])/g, (_, c) => c.toUpperCase());
   if (typeof item?.[camel] === "boolean") return item[camel];
   return false;
 }
-function layersFromItems(items, backendLayers, activeLayer) {
-  if (!items?.length) return null;
-  const n = items.length;
-  const frac = (flag) => items.filter((i) => itemFlag(i, flag)).length / n;
-  const active = String(activeLayer || "").trim().toUpperCase();
-  const build = (id2, flag, key) => {
-    const score = frac(flag);
-    const be = backendLayers?.[id2];
-    let status = "locked";
-    if (score >= 1) status = "passed";
-    else if (active === key || score > 0) status = "in_progress";
-    if (id2 === "mechanic" && score < 1 && (be?.status === "gloss" || frac("why_passed") >= 1 && frac("how_passed") >= 1)) {
-      status = "gloss";
-    } else if (be?.status === "passed" && score >= 1) {
-      status = "passed";
-    }
-    return { status, score };
-  };
-  return {
-    why: build("why", "why_passed", "WHY"),
-    how: build("how", "how_passed", "HOW"),
-    mechanic: build("mechanic", "mechanic_passed", "MECHANIC")
-  };
+function isExtensionSubConcept(item) {
+  return itemFlag(item, "is_extension");
 }
-function normalizeBackendLayers(coverage) {
-  const raw = coverage?.layers;
-  if (!raw || typeof raw !== "object") return null;
-  const pick = (k) => {
-    const row = raw[k] || {};
-    return {
-      status: String(row.status || "locked").toLowerCase(),
-      score: Math.min(1, Math.max(0, Number(row.score) || 0))
-    };
-  };
-  return { why: pick("why"), how: pick("how"), mechanic: pick("mechanic") };
+function coreSubConcepts(items) {
+  return (items || []).filter((row) => !isExtensionSubConcept(row));
 }
-function layerOverallScore(layers) {
-  if (!layers) return null;
-  return Math.round(
-    100 * (layers.why.score + layers.how.score + layers.mechanic.score) / 3
+function subConceptTitle(item) {
+  return String(item?.title || item?.label || item?.id || "").trim();
+}
+var LAYER_PROBE_KEYS = {
+  WHY: "WHY",
+  HOW: "HOW",
+  MECHANIC: "MECHANIC",
+  MECHANICS: "MECHANIC",
+  MECH: "MECHANIC"
+};
+function probeLayerFromDirective(directive) {
+  const raw = String(directive || "").trim().toUpperCase();
+  if (!raw.startsWith("PROBE_NEXT_LAYER:")) return null;
+  const layer = raw.split(":", 2)[1]?.trim();
+  return LAYER_PROBE_KEYS[layer] || null;
+}
+function resolveProbeLayer({ lastEvalDirective, activeLayer } = {}) {
+  return probeLayerFromDirective(lastEvalDirective) || LAYER_PROBE_KEYS[String(activeLayer || "").trim().toUpperCase()] || null;
+}
+var ACCURACY_GRADES = /* @__PURE__ */ new Set([
+  "EXACT_AND_CORRECT",
+  "PARTIAL",
+  "NEEDS_CORRECTION",
+  "MISUNDERSTANDING"
+]);
+function normalizeAccuracyGrade(raw) {
+  const grade = String(raw || "").trim().toUpperCase();
+  return ACCURACY_GRADES.has(grade) ? (
+    /** @type {AccuracyGrade} */
+    grade
+  ) : "";
+}
+function probeKeyOf(label) {
+  return LAYER_PROBE_KEYS[String(label || "").trim().toUpperCase()] || String(label || "").trim().toUpperCase();
+}
+function layerAccuracyGrade({
+  passed,
+  label,
+  probeLayer = null,
+  lastAccuracyGrade = ""
+}) {
+  if (passed) return "EXACT_AND_CORRECT";
+  if (probeLayer && probeLayer === probeKeyOf(label)) {
+    const grade = normalizeAccuracyGrade(lastAccuracyGrade);
+    if (grade === "EXACT_AND_CORRECT") return "PARTIAL";
+    return grade;
+  }
+  return "";
+}
+var GRADE_ICON = {
+  EXACT_AND_CORRECT: "\u2713",
+  PARTIAL: "?",
+  NEEDS_CORRECTION: "!",
+  MISUNDERSTANDING: "\u2717"
+};
+var GRADE_TITLE = {
+  EXACT_AND_CORRECT: "\u0442\u043E\u0447\u043D\u043E (EXACT)",
+  PARTIAL: "\u0447\u0430\u0441\u0442\u0438\u0447\u043D\u043E (PARTIAL)",
+  NEEDS_CORRECTION: "\u043D\u0443\u0436\u043D\u0430 \u043A\u043E\u0440\u0440\u0435\u043A\u0446\u0438\u044F (NEEDS_CORRECTION)",
+  MISUNDERSTANDING: "\u043D\u0435\u0432\u0435\u0440\u043D\u043E\u0435 \u043F\u043E\u043D\u0438\u043C\u0430\u043D\u0438\u0435 (MISUNDERSTANDING)"
+};
+function layerBadgeIcon(opts) {
+  const grade = layerAccuracyGrade(opts);
+  return GRADE_ICON[grade] || "\xB7";
+}
+function layerBadgeTitle(short, icon, grade = "") {
+  if (grade && GRADE_TITLE[grade]) return `${short}: ${GRADE_TITLE[grade]}`;
+  if (icon === "\u2713") return `${short}: ${GRADE_TITLE.EXACT_AND_CORRECT}`;
+  if (icon === "?") return `${short}: ${GRADE_TITLE.PARTIAL}`;
+  if (icon === "!") return `${short}: ${GRADE_TITLE.NEEDS_CORRECTION}`;
+  if (icon === "\u2717") return `${short}: ${GRADE_TITLE.MISUNDERSTANDING}`;
+  return `${short}: \u0435\u0449\u0451 \u043D\u0435 \u043E\u0446\u0435\u043D\u0438\u0432\u0430\u043B\u0441\u044F`;
+}
+
+// SubConceptsList.js
+var GRADE_CHIP_CLASS = {
+  EXACT_AND_CORRECT: "is-exact",
+  PARTIAL: "is-partial",
+  NEEDS_CORRECTION: "is-correction",
+  MISUNDERSTANDING: "is-misunderstanding"
+};
+function layerBadgeClass(label, grade) {
+  const base = `subtopic-layer-chip layer-${String(label).toLowerCase()}`;
+  if (grade === "EXACT_AND_CORRECT") return `${base} is-passed is-exact`;
+  return `${base} ${GRADE_CHIP_CLASS[grade] || "is-unevaluated"}`;
+}
+function itemAccuracyGrade(item) {
+  return String(
+    item?.last_accuracy_grade || item?.lastAccuracyGrade || ""
+  ).trim();
+}
+function LayerBadge({ passed, label, probeLayer, lastAccuracyGrade }) {
+  const short = label === "MECHANIC" || label === "MECHANICS" ? "MECH" : label;
+  const gradeOpts = { passed, label, probeLayer, lastAccuracyGrade };
+  const grade = layerAccuracyGrade(gradeOpts);
+  const icon = layerBadgeIcon(gradeOpts);
+  return import_react5.default.createElement(
+    "span",
+    {
+      className: layerBadgeClass(label, grade),
+      title: layerBadgeTitle(short, icon, grade)
+    },
+    import_react5.default.createElement(
+      "span",
+      { className: "subtopic-layer-chip-mark", "aria-hidden": true },
+      icon
+    ),
+    import_react5.default.createElement("span", { className: "subtopic-layer-chip-text" }, short)
   );
 }
-function resolveMasteryScore(masteryDashboard, topicMasteryScore) {
-  const dash = masteryDashboard || {};
-  const coverage = dash.coverage_summary || dash.coverageSummary || null;
-  const items = coverage?.items || [];
-  const active = String(
-    coverage?.active_layer || coverage?.activeLayer || ""
-  ).trim().toUpperCase();
-  const layers = items.length ? layersFromItems(items, normalizeBackendLayers(coverage), active) : null;
-  const layerScore = layerOverallScore(layers);
-  const backendOverall = coverage && coverage.overall_score != null ? Number(coverage.overall_score) : coverage && coverage.overallScore != null ? Number(coverage.overallScore) : null;
-  const score = layers ? Number.isFinite(backendOverall) && backendOverall >= 0 ? backendOverall : Number.isFinite(layerScore) ? layerScore : 0 : Math.max(
-    Number(topicMasteryScore) || 0,
-    Number(dash.topic_mastery_score) || 0
-  );
-  return {
-    score: Math.min(100, Math.max(0, score)),
-    coverage,
-    items,
-    active,
-    layers
-  };
+function subtopicState(item) {
+  return String(item?.state || item?.status || "unchecked").trim().toLowerCase();
 }
 function subtopicHint(item) {
   const fromBackend = (item.status_hint || item.statusHint || "").trim();
@@ -37398,24 +37421,27 @@ function subtopicHint(item) {
   if (!why && !how && !mech) return "\u0415\u0449\u0451 \u043D\u0435 \u0437\u0430\u0442\u0440\u043E\u043D\u0443\u0442\u0430";
   return null;
 }
-function LayerBadge({ passed, label }) {
-  const short = label === "MECHANIC" ? "MECH" : label;
-  return import_react5.default.createElement(
-    "span",
-    {
-      className: `subtopic-layer-chip layer-${label.toLowerCase()}${passed ? " is-passed" : " is-pending"}`,
-      title: passed ? `${label}: \u0437\u0430\u0447\u0442\u0435\u043D\u043E` : `${label}: \u043D\u0435 \u0437\u0430\u0447\u0442\u0435\u043D\u043E`
-    },
-    import_react5.default.createElement(
-      "span",
-      { className: "subtopic-layer-chip-mark", "aria-hidden": true },
-      passed ? "\u2713" : "\xB7"
-    ),
-    import_react5.default.createElement("span", { className: "subtopic-layer-chip-text" }, short)
-  );
-}
-function SubtopicsList({ items }) {
-  if (!items?.length) return null;
+function SubConceptsList({
+  items,
+  sub_concepts: subConceptsProp,
+  lastEvalDirective,
+  activeLayer
+}) {
+  const rows = subConceptsProp || items || [];
+  const prevIdsRef = (0, import_react5.useRef)(/* @__PURE__ */ new Set());
+  const [entering, setEntering] = (0, import_react5.useState)(() => /* @__PURE__ */ new Set());
+  const probeLayer = resolveProbeLayer({ lastEvalDirective, activeLayer });
+  (0, import_react5.useEffect)(() => {
+    const ids = rows.map((row) => String(row?.id || "").trim()).filter(Boolean);
+    const prev = prevIdsRef.current;
+    const fresh = ids.filter((id2) => prev.size > 0 && !prev.has(id2));
+    prevIdsRef.current = new Set(ids);
+    if (!fresh.length) return void 0;
+    setEntering(new Set(fresh));
+    const timer2 = window.setTimeout(() => setEntering(/* @__PURE__ */ new Set()), 400);
+    return () => window.clearTimeout(timer2);
+  }, [rows]);
+  if (!rows.length) return null;
   return import_react5.default.createElement(
     "div",
     { className: "coverage-subtopics" },
@@ -37426,23 +37452,29 @@ function SubtopicsList({ items }) {
       import_react5.default.createElement(
         "span",
         { className: "coverage-ratio muted" },
-        `${items.length}`
+        `${rows.length}`
       )
     ),
     import_react5.default.createElement(
       "ul",
       { className: "coverage-subtopic-list" },
-      items.map((item) => {
+      rows.map((item) => {
         const why = itemFlag(item, "why_passed");
         const how = itemFlag(item, "how_passed");
         const mech = itemFlag(item, "mechanic_passed");
         const hint = subtopicHint(item);
-        const st = item.state || "unchecked";
+        const st = subtopicState(item);
+        const id2 = String(item.id || subConceptTitle(item));
+        const extension = isExtensionSubConcept(item);
+        const enteringCls = entering.has(id2) ? " is-entering" : "";
+        const extCls = extension ? " is-extension" : "";
+        const lastAccuracyGrade = itemAccuracyGrade(item);
+        const badgeProps = { probeLayer, lastAccuracyGrade };
         return import_react5.default.createElement(
           "li",
           {
-            key: item.id || item.label,
-            className: `coverage-subtopic coverage-subtopic-${st}`
+            key: id2,
+            className: `coverage-subtopic coverage-subtopic-${st}${extCls}${enteringCls}`
           },
           import_react5.default.createElement(
             "div",
@@ -37450,16 +37482,30 @@ function SubtopicsList({ items }) {
             import_react5.default.createElement(
               "span",
               { className: "coverage-subtopic-label" },
-              item.label || item.id
+              subConceptTitle(item),
+              extension ? import_react5.default.createElement(
+                "span",
+                { className: "subtopic-extension-badge" },
+                "[\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u0435]"
+              ) : null
             ),
             import_react5.default.createElement(
               "span",
               { className: "coverage-subtopic-badges" },
-              import_react5.default.createElement(LayerBadge, { passed: why, label: "WHY" }),
-              import_react5.default.createElement(LayerBadge, { passed: how, label: "HOW" }),
+              import_react5.default.createElement(LayerBadge, {
+                passed: why,
+                label: "WHY",
+                ...badgeProps
+              }),
+              import_react5.default.createElement(LayerBadge, {
+                passed: how,
+                label: "HOW",
+                ...badgeProps
+              }),
               import_react5.default.createElement(LayerBadge, {
                 passed: mech,
-                label: "MECHANIC"
+                label: "MECHANIC",
+                ...badgeProps
               })
             )
           ),
@@ -37473,75 +37519,96 @@ function SubtopicsList({ items }) {
     )
   );
 }
-function DepthLayersStrip({ layers, active }) {
+
+// NodeMasteryPanel.js
+var PHASE_LABELS = {
+  intro_assessment: "\u042D\u043A\u0441\u043F\u0440\u0435\u0441\u0441-\u0441\u0440\u0435\u0437",
+  dense_material: "\u041F\u043B\u043E\u0442\u043D\u044B\u0439 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B",
+  checkpoint: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430",
+  pathway_decision: "\u0412\u044B\u0431\u043E\u0440 \u043F\u0443\u0442\u0438",
+  socratic_focus: "\u0422\u043E\u0447\u0435\u0447\u043D\u044B\u0439 \u0421\u043E\u043A\u0440\u0430\u0442"
+};
+var MODE_LABELS = {
+  lecture: "\u041B\u0435\u043A\u0446\u0438\u044F",
+  express_blitz: "\u042D\u043A\u0441\u043F\u0440\u0435\u0441\u0441-\u0431\u043B\u0438\u0446",
+  socratic_point: "\u0421\u043E\u043A\u0440\u0430\u0442 (\u0442\u043E\u0447\u0435\u0447\u043D\u043E)"
+};
+function layerOverallScore(layers) {
   if (!layers) return null;
-  return import_react5.default.createElement(
-    "div",
-    { className: "depth-layers" },
-    LAYER_META.map((meta) => {
-      const row = layers[meta.id];
-      let status = row.status;
-      if (active === meta.key && status === "locked") status = "in_progress";
-      const cls = LAYER_STATUS_CLS[status] || LAYER_STATUS_CLS.locked;
-      return import_react5.default.createElement(
-        "div",
-        {
-          key: meta.id,
-          className: `depth-layer ${cls}`,
-          title: `${meta.subtitle}: ${LAYER_STATUS_LABEL[status] || status}`
-        },
-        import_react5.default.createElement(
-          "div",
-          { className: "depth-layer-head" },
-          import_react5.default.createElement("span", { className: "depth-layer-title" }, meta.title),
-          import_react5.default.createElement(
-            "span",
-            { className: "depth-layer-badge" },
-            LAYER_STATUS_LABEL[status] || status
-          )
-        ),
-        import_react5.default.createElement("div", { className: "depth-layer-sub" }, meta.subtitle),
-        import_react5.default.createElement("div", {
-          className: "depth-layer-meter",
-          "aria-hidden": true,
-          children: import_react5.default.createElement("div", {
-            className: "depth-layer-meter-fill",
-            style: { width: `${Math.round(row.score * 100)}%` }
-          })
-        })
-      );
-    })
+  return Math.round(
+    100 * (layers.why.score + layers.how.score + layers.mechanic.score) / 3
   );
+}
+function layersFromCoreItems(items, activeLayer) {
+  const core = coreSubConcepts(items);
+  if (!core.length) return null;
+  const n = core.length;
+  const frac = (flag) => core.filter((i) => itemFlag(i, flag)).length / n;
+  const active = String(activeLayer || "").trim().toUpperCase();
+  const build = (flag, key) => {
+    const score = frac(flag);
+    let status = "pending";
+    if (score >= 1) status = "verified";
+    else if (active === key || score > 0) status = "in_progress";
+    return { status, score };
+  };
+  return {
+    why: build("why_passed", "WHY"),
+    how: build("how_passed", "HOW"),
+    mechanic: build("mechanic_passed", "MECHANICS")
+  };
+}
+function resolveMasteryScore(masteryDashboard, topicMasteryScore) {
+  const dash = masteryDashboard || {};
+  const coverage = dash.coverage_summary || dash.coverageSummary || null;
+  const items = coverage?.items || [];
+  const active = String(
+    coverage?.active_layer || coverage?.activeLayer || ""
+  ).trim().toUpperCase();
+  const layers = items.length ? layersFromCoreItems(items, active) : null;
+  const layerScore = layerOverallScore(layers);
+  const backendOverall = coverage && coverage.overall_score != null ? Number(coverage.overall_score) : coverage && coverage.overallScore != null ? Number(coverage.overallScore) : null;
+  const score = layers ? Number.isFinite(backendOverall) && backendOverall >= 0 ? backendOverall : Number.isFinite(layerScore) ? layerScore : 0 : Math.max(
+    Number(topicMasteryScore) || 0,
+    Number(dash.topic_mastery_score) || 0
+  );
+  return {
+    score: Math.min(100, Math.max(0, score)),
+    coverage,
+    items,
+    active,
+    layers
+  };
 }
 function FactsPreview({ coverage, items }) {
   const flat = coverage?.facts_breakdown || coverage?.factsBreakdown || [];
   const fromItems = (items || []).flatMap((it) => it.facts || []);
   const facts = [...flat, ...fromItems];
   if (!facts.length) return null;
-  return import_react5.default.createElement(
+  return import_react6.default.createElement(
     "div",
     { className: "coverage-facts-preview" },
-    import_react5.default.createElement(
+    import_react6.default.createElement(
       "div",
       { className: "coverage-widget-head" },
-      import_react5.default.createElement("span", { className: "coverage-label" }, "\u0424\u0430\u043A\u0442\u044B"),
-      import_react5.default.createElement(
+      import_react6.default.createElement("span", { className: "coverage-label" }, "\u0424\u0430\u043A\u0442\u044B"),
+      import_react6.default.createElement(
         "span",
         { className: "coverage-ratio muted" },
         `${facts.length}`
       )
     ),
-    import_react5.default.createElement(
+    import_react6.default.createElement(
       "ul",
       { className: "coverage-facts-list" },
       facts.slice(0, 12).map(
-        (f) => import_react5.default.createElement(
+        (f) => import_react6.default.createElement(
           "li",
           {
             key: f.fact_id || f.factId || f.statement,
             className: `coverage-fact status-${f.status || "pending"}`
           },
-          import_react5.default.createElement(
+          import_react6.default.createElement(
             "span",
             { className: "coverage-fact-layer" },
             f.layer || "WHY"
@@ -37553,48 +37620,41 @@ function FactsPreview({ coverage, items }) {
     )
   );
 }
-function CoverageWidget({ coverage }) {
+function CoverageWidget({ coverage, score, lastEvalDirective }) {
   const items = coverage?.items || [];
-  if (!items.length) return null;
-  const active = String(
+  if (!items.length && Number(score) !== 100) return null;
+  const glossHint = (coverage?.gloss_hint || coverage?.glossHint || "").trim();
+  const activeLayer = String(
     coverage?.active_layer || coverage?.activeLayer || ""
   ).trim().toUpperCase();
-  const backendLayers = normalizeBackendLayers(coverage);
-  const layers = layersFromItems(items, backendLayers, active);
-  const glossHint = (coverage?.gloss_hint || coverage?.glossHint || "").trim();
-  const showGloss = Boolean(glossHint) || layers && layers.why.status === "passed" && layers.how.status === "passed" && layers.mechanic.status !== "passed";
-  return import_react5.default.createElement(
+  const layers = layersFromCoreItems(items, activeLayer);
+  const showGloss = Boolean(glossHint) || layers && layers.why.status === "verified" && layers.how.status === "verified" && layers.mechanic.status !== "verified";
+  return import_react6.default.createElement(
     "div",
     { className: "coverage-widget coverage-widget-depth" },
-    import_react5.default.createElement(
-      "div",
-      { className: "coverage-widget-head" },
-      import_react5.default.createElement("span", { className: "coverage-label" }, "Depth"),
-      import_react5.default.createElement(
-        "span",
-        { className: "coverage-ratio muted" },
-        active ? `\u0444\u043E\u043A\u0443\u0441: ${active}` : "WHY \u2192 HOW \u2192 MECHANIC"
-      )
-    ),
-    import_react5.default.createElement(DepthLayersStrip, { layers, active }),
-    import_react5.default.createElement(SubtopicsList, { items }),
-    showGloss && import_react5.default.createElement(
+    import_react6.default.createElement(SubConceptsList, {
+      items,
+      lastEvalDirective,
+      activeLayer
+    }),
+    showGloss && import_react6.default.createElement(
       "p",
       { className: "depth-gloss-hint" },
       glossHint || "\u041A\u043E\u043D\u0446\u0435\u043F\u0446\u0438\u044F \u0437\u0430\u0447\u0442\u0435\u043D\u0430. \u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435 \u043C\u0435\u0445\u0430\u043D\u0438\u043A\u0438 \u0440\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0438 \u0438\u043B\u0438 \u0438\u0437\u0443\u0447\u0438\u0442\u0435 Gloss"
     ),
-    import_react5.default.createElement(FactsPreview, { coverage, items })
+    import_react6.default.createElement(FactsPreview, { coverage, items })
   );
 }
 function NodeMasteryPanel({
   status,
   masteryDashboard,
   topicMasteryScore,
+  lastEvalDirective,
   onModeSelect,
   disabled
 }) {
   const dash = masteryDashboard || {};
-  const { coverage, items, active, layers, score } = resolveMasteryScore(
+  const { coverage, score } = resolveMasteryScore(
     masteryDashboard,
     topicMasteryScore
   );
@@ -37603,7 +37663,7 @@ function NodeMasteryPanel({
   const mode = dash.learning_mode || "lecture";
   const st = dash.node_status || status || "unexplored";
   function modeBtn(id2, label, prefix) {
-    return import_react5.default.createElement(
+    return import_react6.default.createElement(
       "button",
       {
         type: "button",
@@ -37618,70 +37678,77 @@ function NodeMasteryPanel({
       label
     );
   }
-  return import_react5.default.createElement(
+  return import_react6.default.createElement(
     "div",
     { className: "mastery-panel" },
-    import_react5.default.createElement(
+    import_react6.default.createElement(
       "div",
       { className: "mastery-progress-row" },
-      import_react5.default.createElement("span", { className: "mastery-pct" }, `${score}%`),
-      import_react5.default.createElement(
+      import_react6.default.createElement("span", { className: "mastery-pct" }, `${score}%`),
+      import_react6.default.createElement(
         "div",
         {
           className: "mastery-bar",
-          title: layers ? "WHY \u2153 \xB7 HOW \u2153 \xB7 MECHANIC \u2153" : void 0
+          title: "Core: WHY \xB7 HOW \xB7 MECHANICS"
         },
-        import_react5.default.createElement("div", {
+        import_react6.default.createElement("div", {
           className: "mastery-bar-fill",
           style: { width: `${barPct}%` }
         })
       ),
-      import_react5.default.createElement("span", { className: "chip mastery-status" }, st)
+      import_react6.default.createElement("span", { className: "chip mastery-status" }, st)
     ),
-    import_react5.default.createElement(
+    import_react6.default.createElement(
       "p",
       { className: "mastery-phase" },
       PHASE_LABELS[phase] || phase,
       " \xB7 ",
       MODE_LABELS[mode] || mode
     ),
-    import_react5.default.createElement(CoverageWidget, { coverage }),
-    (dash.strengths || []).length > 0 && import_react5.default.createElement(
+    import_react6.default.createElement(CoverageWidget, {
+      coverage,
+      score,
+      lastEvalDirective
+    }),
+    (dash.strengths || []).length > 0 && import_react6.default.createElement(
       "div",
       { className: "mastery-zone mastery-zone-ok" },
-      import_react5.default.createElement("h4", null, "\u0421\u0438\u043B\u044C\u043D\u044B\u0435 \u0441\u0442\u043E\u0440\u043E\u043D\u044B"),
-      import_react5.default.createElement(
+      import_react6.default.createElement("h4", null, "\u0421\u0438\u043B\u044C\u043D\u044B\u0435 \u0441\u0442\u043E\u0440\u043E\u043D\u044B"),
+      import_react6.default.createElement(
         "ul",
         null,
-        dash.strengths.map((s, i) => import_react5.default.createElement("li", { key: i }, s))
+        dash.strengths.map((s, i) => import_react6.default.createElement("li", { key: i }, s))
       )
     ),
-    (dash.polish_zones || []).length > 0 && import_react5.default.createElement(
+    (dash.polish_zones || dash.weaknesses || []).length > 0 && import_react6.default.createElement(
       "div",
       { className: "mastery-zone mastery-zone-warn" },
-      import_react5.default.createElement("h4", null, "\u0428\u043B\u0438\u0444\u043E\u0432\u043A\u0430"),
-      import_react5.default.createElement(
+      import_react6.default.createElement("h4", null, "\u0421\u043B\u0430\u0431\u044B\u0435 \u0441\u0442\u043E\u0440\u043E\u043D\u044B"),
+      import_react6.default.createElement(
         "ul",
         null,
-        dash.polish_zones.map((s, i) => import_react5.default.createElement("li", { key: i }, s))
+        (dash.weaknesses || dash.polish_zones || []).map(
+          (s, i) => import_react6.default.createElement("li", { key: i }, s)
+        )
       )
     ),
-    (dash.critical_gaps || []).length > 0 && import_react5.default.createElement(
+    (dash.critical_gaps || []).length > 0 && import_react6.default.createElement(
       "div",
       { className: "mastery-zone mastery-zone-gap" },
-      import_react5.default.createElement("h4", null, "\u041A\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u043F\u0440\u043E\u0431\u0435\u043B\u044B"),
-      import_react5.default.createElement(
+      import_react6.default.createElement("h4", null, "\u041A\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u043F\u0440\u043E\u0431\u0435\u043B\u044B"),
+      import_react6.default.createElement(
         "ul",
         null,
-        dash.critical_gaps.map((s, i) => import_react5.default.createElement("li", { key: i }, s))
+        dash.critical_gaps.map((s, i) => import_react6.default.createElement("li", { key: i }, s))
       )
     ),
-    (dash.pathway_bridge || "").trim() && import_react5.default.createElement(
+    (dash.pathway_bridge || "").trim() && import_react6.default.createElement(
       "p",
       { className: "mastery-bridge muted" },
       dash.pathway_bridge
     ),
-    import_react5.default.createElement(
+    import_react6.default.createElement("h4", { className: "mastery-modes-label" }, "\u0420\u0435\u0436\u0438\u043C \u0440\u0430\u0431\u043E\u0442\u044B"),
+    import_react6.default.createElement(
       "div",
       { className: "mastery-modes" },
       modeBtn("lecture", "\u041B\u0435\u043A\u0446\u0438\u044F", "[mode:lecture] \u0414\u0430\u0439 \u043F\u043B\u043E\u0442\u043D\u044B\u0439 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B \u043F\u043E \u0442\u0435\u043C\u0435."),
@@ -37783,7 +37850,7 @@ function RoadmapFlowInner({
   layoutEpoch = 0
 }) {
   const { fitView, getNodesBounds: getNodesBounds2 } = useReactFlow();
-  const masteryByNode = (0, import_react6.useMemo)(() => {
+  const masteryByNode = (0, import_react7.useMemo)(() => {
     const out = {};
     for (const [nodeId, sess] of Object.entries(sessions || {})) {
       out[nodeId] = resolveMasteryScore(
@@ -37793,7 +37860,7 @@ function RoadmapFlowInner({
     }
     return out;
   }, [sessions]);
-  const { nodes: initialNodes, edges: initialEdges } = (0, import_react6.useMemo)(
+  const { nodes: initialNodes, edges: initialEdges } = (0, import_react7.useMemo)(
     () => curriculumToFlow(
       curriculum,
       statuses,
@@ -37802,20 +37869,20 @@ function RoadmapFlowInner({
     ),
     [curriculum, statuses, selectedNodeId, masteryByNode]
   );
-  const laidOut = (0, import_react6.useMemo)(
+  const laidOut = (0, import_react7.useMemo)(
     () => layoutFlowNodes(curriculum?.nodes || [], initialNodes, initialEdges),
     [curriculum, initialNodes, initialEdges]
   );
   const [nodes, setNodes, onNodesChange] = useNodesState(laidOut);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const translateExtent = (0, import_react6.useMemo)(
+  const translateExtent = (0, import_react7.useMemo)(
     () => translateExtentFromNodes(nodes, getNodesBounds2),
     [nodes, getNodesBounds2]
   );
-  const fitMapToView = (0, import_react6.useCallback)(() => {
+  const fitMapToView = (0, import_react7.useCallback)(() => {
     fitView({ padding: FIT_PADDING, duration: 280, maxZoom: 1.15 });
   }, [fitView]);
-  (0, import_react6.useEffect)(() => {
+  (0, import_react7.useEffect)(() => {
     const { nodes: n, edges: e } = curriculumToFlow(
       curriculum,
       statuses,
@@ -37826,17 +37893,17 @@ function RoadmapFlowInner({
     setNodes(positioned);
     setEdges(e);
   }, [curriculum, statuses, selectedNodeId, masteryByNode, setNodes, setEdges]);
-  (0, import_react6.useEffect)(() => {
+  (0, import_react7.useEffect)(() => {
     const t = window.setTimeout(() => fitMapToView(), 50);
     return () => window.clearTimeout(t);
   }, [curriculum?.curriculum_id, nodes.length, layoutEpoch, fitMapToView]);
-  return import_react6.default.createElement(
+  return import_react7.default.createElement(
     "div",
     { className: "skill-flow-root" },
-    import_react6.default.createElement(
+    import_react7.default.createElement(
       "div",
       { className: "skill-flow-toolbar" },
-      import_react6.default.createElement(
+      import_react7.default.createElement(
         "button",
         {
           type: "button",
@@ -37847,7 +37914,7 @@ function RoadmapFlowInner({
         "\u041D\u0430 \u044D\u043A\u0440\u0430\u043D"
       )
     ),
-    import_react6.default.createElement(
+    import_react7.default.createElement(
       index,
       {
         nodes,
@@ -37864,20 +37931,24 @@ function RoadmapFlowInner({
         zoomOnScroll: true,
         zoomOnPinch: true,
         preventScrolling: false,
+        nodesDraggable: false,
+        nodesConnectable: false,
+        nodeClickDistance: 5,
         onNodeClick: (_, node) => {
-          const raw = node.data.raw;
+          const raw = node?.data?.raw;
           const nid = raw?.node_id;
+          if (!nid) return;
           const initialized2 = Boolean(sessions?.[nid]?.initialized);
           if (tutorBusyNodeId !== null && !initialized2) return;
           onNodeClick(raw);
         }
       },
-      import_react6.default.createElement(Background, { gap: 16, size: 1 }),
-      import_react6.default.createElement(Controls, {
+      import_react7.default.createElement(Background, { gap: 16, size: 1 }),
+      import_react7.default.createElement(Controls, {
         showFitView: true,
         fitViewOptions: { padding: FIT_PADDING, maxZoom: 1.15 }
       }),
-      import_react6.default.createElement(MiniMap, {
+      import_react7.default.createElement(MiniMap, {
         zoomable: true,
         pannable: true,
         className: "skill-flow-minimap"
@@ -37886,19 +37957,19 @@ function RoadmapFlowInner({
   );
 }
 function RoadmapCanvas(props) {
-  return import_react6.default.createElement(
+  return import_react7.default.createElement(
     "div",
     { className: "skill-canvas-wrap" },
-    import_react6.default.createElement(
+    import_react7.default.createElement(
       ReactFlowProvider,
       null,
-      import_react6.default.createElement(RoadmapFlowInner, props)
+      import_react7.default.createElement(RoadmapFlowInner, props)
     )
   );
 }
 
 // CurriculumInputBar.js
-var import_react8 = __toESM(require_react(), 1);
+var import_react9 = __toESM(require_react(), 1);
 function CurriculumInputBar({
   goal,
   onGoalChange,
@@ -37925,13 +37996,13 @@ function CurriculumInputBar({
       onCreatePath(text);
     }
   }
-  return import_react8.default.createElement(
+  return import_react9.default.createElement(
     "div",
     { className: "skill-header-actions" },
-    import_react8.default.createElement(
+    import_react9.default.createElement(
       "form",
       { className: "skill-goal-form", onSubmit: onFormSubmit },
-      import_react8.default.createElement("input", {
+      import_react9.default.createElement("input", {
         value: goal,
         onChange: (e) => onGoalChange(e.target.value),
         placeholder: hasGraph ? "\u0412\u043F\u0438\u0448\u0438\u0442\u0435 \u0432\u0435\u043A\u0442\u043E\u0440 \u0434\u043B\u044F \u0434\u043E\u0441\u0442\u0440\u043E\u0439\u043A\u0438 (\u0438\u043B\u0438 \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u043D\u043E\u0432\u0443\u044E \u0442\u0435\u043C\u0443 \u0438 \u043D\u0430\u0436\u043C\u0438\u0442\u0435 \xAB\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043D\u043E\u0432\u044B\u0439\xBB)\u2026" : "\u0427\u0435\u043C\u0443 \u0432\u044B \u0445\u043E\u0442\u0438\u0442\u0435 \u043D\u0430\u0443\u0447\u0438\u0442\u044C\u0441\u044F?",
@@ -37939,7 +38010,7 @@ function CurriculumInputBar({
         minLength: 8,
         disabled: workspaceBusy
       }),
-      import_react8.default.createElement(
+      import_react9.default.createElement(
         "select",
         {
           className: "skill-mode-select",
@@ -37948,31 +38019,31 @@ function CurriculumInputBar({
           "aria-label": "\u0420\u0435\u0436\u0438\u043C \u0441\u0431\u043E\u0440\u0430 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432",
           disabled: workspaceBusy
         },
-        import_react8.default.createElement(
+        import_react9.default.createElement(
           "option",
           { value: "practical_only" },
           "\u26A1 \u041F\u0440\u0430\u043A\u0442\u0438\u043A\u0430 \u2014 \u0431\u043B\u043E\u0433\u0438 \u0438 \u043A\u0435\u0439\u0441\u044B"
         ),
-        import_react8.default.createElement(
+        import_react9.default.createElement(
           "option",
           { value: "academic_only" },
           "\u{1F52C} \u0410\u043A\u0430\u0434\u0435\u043C\u0438\u044F \u2014 \u0441\u0442\u0430\u0442\u044C\u0438 \u0438 Consensus"
         ),
-        import_react8.default.createElement(
+        import_react9.default.createElement(
           "option",
           { value: "hybrid" },
           "\u{1F9E0} \u041F\u043E\u043B\u043D\u044B\u0439 \u2014 \u043D\u0430\u0443\u043A\u0430 + \u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0430"
         )
       ),
-      genStatus && import_react8.default.createElement(
+      genStatus && import_react9.default.createElement(
         "p",
         { className: "muted skill-gen-status", role: "status" },
         genStatus
       ),
-      hasGraph ? import_react8.default.createElement(
+      hasGraph ? import_react9.default.createElement(
         "div",
         { className: "skill-btn-group" },
-        import_react8.default.createElement(
+        import_react9.default.createElement(
           "button",
           {
             type: "button",
@@ -37985,7 +38056,7 @@ function CurriculumInputBar({
           },
           expandBusy ? "\u0414\u043E\u0441\u0442\u0440\u043E\u0439\u043A\u0430 \u0432\u0435\u0442\u043A\u0438\u2026" : "+ \u0414\u043E\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0432\u0435\u0442\u043A\u0443"
         ),
-        import_react8.default.createElement(
+        import_react9.default.createElement(
           "button",
           {
             type: "button",
@@ -37998,7 +38069,7 @@ function CurriculumInputBar({
           },
           createBusy ? "\u0421\u0431\u043E\u0440\u043A\u0430 \u043D\u043E\u0432\u043E\u0433\u043E \u043F\u0443\u0442\u0438\u2026" : "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043D\u043E\u0432\u044B\u0439"
         )
-      ) : import_react8.default.createElement(
+      ) : import_react9.default.createElement(
         "button",
         {
           type: "submit",
@@ -38012,7 +38083,7 @@ function CurriculumInputBar({
 }
 
 // NodeDrawer.js
-var import_react17 = __toESM(require_react(), 1);
+var import_react18 = __toESM(require_react(), 1);
 
 // llmTextRepair.js
 var NL_NOT_LATEX = /\\n(?!eq|ot|u|abla|eg|mid|otin|rightarrow|leftarrow|warrow|earrow|i|pm|subset|cap|cup|warrow|exists|cong|sim|propto|fancy|atural|egative)/g;
@@ -38224,11 +38295,7 @@ var reSplitBeforeOrdered = new RegExp(
   "iu"
 );
 var reSplitBeforeSubitem = new RegExp(
-  `(?<=[.!?\u2026])\\s+(?=(?:\\*\\*[\u0430-\u044F\u0451a-z]\\)\\*\\*|[\u0430-\u044F\u0451a-z]\\)\\s))`,
-  "iu"
-);
-var reSplitBeforeSubitemPlain = new RegExp(
-  "\\s+(?=(?:\\*\\*[\u0430-\u044F\u0451a-z]\\)\\*\\*|[\u0430-\u044F\u0451a-z]\\)\\s))",
+  `\\n\\s*(?=(?:\\*\\*[\u0430-\u044F\u0451a-z]\\)\\*\\*|[\u0430-\u044F\u0451a-z]\\)\\s))`,
   "iu"
 );
 var reOlWrongLetter = new RegExp(
@@ -38244,9 +38311,19 @@ var reLiRealOrdered = new RegExp(
   "iu"
 );
 var reSubInParagraph = new RegExp(
-  "<p>((?:(?!<\\/p>).*)(?:\\*\\*[\u0430-\u044F\u0451a-z]\\)\\*\\*|[\u0430-\u044F\u0451a-z]\\)\\s)(?:(?!<\\/p>).)+)<\\/p>",
+  "<p>((?:(?!<\\/p>).)*(?:\\n|<br\\s*\\/?>)\\s*(?:\\*\\*[\u0430-\u044F\u0451a-z]\\)\\*\\*|[\u0430-\u044F\u0451a-z]\\)\\s)(?:(?!<\\/p>).)+)<\\/p>",
   "giu"
 );
+var reMathOperatorTail = new RegExp("[+*/=,]\\s*$");
+function letterSubitemIsParenContinuation(prefix) {
+  const prev = String(prefix || "").replace(/\s+$/u, "");
+  if (!prev) return false;
+  const open = (prev.match(/\(/g) || []).length;
+  const close = (prev.match(/\)/g) || []).length;
+  if (open > close) return true;
+  if (/[([{]$/u.test(prev)) return true;
+  return reMathOperatorTail.test(prev);
+}
 function stripParagraphInnerHtml(inner) {
   return inner.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").trim();
 }
@@ -38259,15 +38336,20 @@ function listHtmlFromParagraphTexts(texts) {
     curKind = null;
     curItems = [];
   }
+  let prevText = "";
   for (const raw of texts) {
     const text = raw.trim();
     if (!text) return null;
+    if (reSubLineStart.test(text) && letterSubitemIsParenContinuation(prevText)) {
+      return null;
+    }
     const wrong = reWrongNumLetter.exec(text);
     if (wrong) {
       const li = `<li>${wrong[1].trim()} ${(wrong[2] || "").trim()}</li>`.trim();
       if (curKind && curKind !== "ul") flush();
       curKind = "ul";
       curItems.push(li);
+      prevText = text;
       continue;
     }
     if (reOrderedLine.test(text)) {
@@ -38275,6 +38357,7 @@ function listHtmlFromParagraphTexts(texts) {
       if (curKind && curKind !== "ol") flush();
       curKind = "ol";
       curItems.push(`<li>${body}</li>`);
+      prevText = text;
       continue;
     }
     const bullet = /^-\s+(.*)$/s.exec(text);
@@ -38282,12 +38365,14 @@ function listHtmlFromParagraphTexts(texts) {
       if (curKind && curKind !== "ul") flush();
       curKind = "ul";
       curItems.push(`<li>${bullet[1].trim()}</li>`);
+      prevText = text;
       continue;
     }
     if (reSubLineStart.test(text)) {
       if (curKind && curKind !== "ul") flush();
       curKind = "ul";
       curItems.push(`<li>${text}</li>`);
+      prevText = text;
       continue;
     }
     return null;
@@ -38484,8 +38569,21 @@ function normalizeListBlocksForMarkdown(text) {
       continue;
     }
     if (reSubLineStart.test(stripped)) {
+      const prevLine = buf.length ? buf[buf.length - 1] : out.length ? out[out.length - 1] : "";
+      if (letterSubitemIsParenContinuation(prevLine)) {
+        const joined = `${prevLine.replace(/\s+$/u, "")} ${stripped}`;
+        if (buf.length) buf[buf.length - 1] = joined;
+        else if (out.length) out[out.length - 1] = joined;
+        else out.push(stripped);
+        continue;
+      }
       flushBuf();
       appendBullet(stripped);
+      continue;
+    }
+    if (stripped.startsWith("- ")) {
+      flushBuf();
+      appendBullet(stripped.replace(/^-/, "").trim());
       continue;
     }
     flushBuf();
@@ -38518,6 +38616,22 @@ function splitGluedOrderedParagraph(body) {
   const ul = subItems.length ? `<ul>${subItems.join("")}</ul>` : "";
   return ol || ul ? `${ol}${ul}` : null;
 }
+function splitGluedSubitemsParagraph(body) {
+  const text = String(body || "").replace(/<br\s*\/?>/gi, "\n");
+  const parts = text.split(reSplitBeforeSubitem);
+  if (parts.length < 2) return null;
+  const merged = [parts[0]];
+  for (let i = 1; i < parts.length; i += 1) {
+    const prev = merged[merged.length - 1];
+    if (letterSubitemIsParenContinuation(prev)) {
+      merged[merged.length - 1] = `${prev.replace(/\s+$/u, "")} ${parts[i].replace(/^\s+/u, "")}`;
+    } else {
+      merged.push(parts[i]);
+    }
+  }
+  const items = merged.map((part) => part.trim()).filter(Boolean);
+  return items.length >= 2 ? `<ul>${items.map((chunk) => `<li>${chunk}</li>`).join("")}</ul>` : null;
+}
 function postprocessTutorHtml(html) {
   const raw = String(html || "");
   if (!raw.includes("<p>") && !raw.includes("<ol")) return raw;
@@ -38536,6 +38650,10 @@ function postprocessTutorHtml(html) {
       return `<ol>${fixed}</ol>`;
     }
     return `<ul>${fixed}</ul>`;
+  });
+  out = out.replace(reSubInParagraph, (m, body) => {
+    const repl = splitGluedSubitemsParagraph(body);
+    return repl || m;
   });
   return out;
 }
@@ -38564,8 +38682,6 @@ function repairGluedNumberedListsOnLine(line) {
     /([.!?…:;])(\s+)(\*\*[а-яёa-z]\)\*\*)/giu,
     "$1\n$3"
   );
-  s = s.replace(/(\))\s+([а-яёa-z]\)\s)/giu, "$1\n$2");
-  s = s.replace(/([.!?…:;])(\s+)([а-яёa-z]\)\s)/giu, "$1\n$3");
   s = s.replace(reInlineWrongNumLetter, "\n- $2 ");
   return s;
 }
@@ -38578,6 +38694,7 @@ function splitMarkdownHeaderLine(line) {
   const m = /^(#{1,6}\s+)/u.exec(s);
   if (!m) return line;
   const rest = s.slice(m[0].length);
+  if (/^\d{1,2}\.\s+\S/u.test(rest)) return line;
   let pm = /\s+(При\s+[а-яё])/u.exec(rest);
   if (!pm) pm = /\s+([А-ЯЁ][а-яё]{2,}\s+[а-яё])/u.exec(rest);
   if (pm) {
@@ -38589,6 +38706,30 @@ ${body}`;
   }
   return line;
 }
+function rejoinSplitNumberedHeadings(text) {
+  const lines = String(text || "").split("\n");
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const stripped = lines[i].trim();
+    const hm = /^(#{1,6})\s*(\d{1,2})\.\s*$/u.exec(stripped);
+    if (hm) {
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j += 1;
+      if (j < lines.length) {
+        const nxt = lines[j].trim();
+        if (nxt && !nxt.startsWith("#") && !/^\d{1,2}\.\s+/u.test(nxt) && !nxt.startsWith("```") && !nxt.startsWith("|")) {
+          out.push(`${hm[1]} ${hm[2]}. ${nxt}`);
+          i = j + 1;
+          continue;
+        }
+      }
+    }
+    out.push(lines[i]);
+    i += 1;
+  }
+  return out.join("\n");
+}
 var CODE_FENCE_RE = /```[^\n`]*\n[\s\S]*?```/g;
 var PY_STMT_START = /^(?:class |def |elif |else:|return |if |for |while |self\.|# |import |from )/i;
 function applyOutsideCodeFences(text, fn) {
@@ -38597,9 +38738,22 @@ function applyOutsideCodeFences(text, fn) {
   let m;
   const re = new RegExp(CODE_FENCE_RE.source, "g");
   while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push(fn(text.slice(last, m.index)));
-    parts.push(m[0]);
-    last = m.index + m[0].length;
+    if (m.index > last) {
+      let prefix = text.slice(last, m.index);
+      if (prefix && !prefix.endsWith("\n")) prefix = `${prefix.replace(/\s+$/, "")}
+
+`;
+      parts.push(fn(prefix));
+    }
+    let fence = m[0];
+    const after = m.index + m[0].length;
+    if (after < text.length && text[after] !== "\n") {
+      fence = `${fence.replace(/\s+$/, "")}
+
+`;
+    }
+    parts.push(fence);
+    last = after;
   }
   if (last < text.length) parts.push(fn(text.slice(last)));
   return parts.join("");
@@ -38721,9 +38875,32 @@ ${body.trim()}
   }
   return out.join("\n");
 }
+function detachGluedCodeFences(text) {
+  const raw = text || "";
+  if (!raw.includes("```")) return raw;
+  const parts = [];
+  let last = 0;
+  let m;
+  const re = new RegExp(CODE_FENCE_RE.source, "g");
+  while ((m = re.exec(raw)) !== null) {
+    let prefix = raw.slice(last, m.index);
+    if (prefix && !prefix.endsWith("\n")) prefix = `${prefix.replace(/\s+$/, "")}
+
+`;
+    let fence = m[0];
+    const after = m.index + m[0].length;
+    if (after < raw.length && raw[after] !== "\n") fence = `${fence.replace(/\s+$/, "")}
+
+`;
+    parts.push(prefix, fence);
+    last = after;
+  }
+  parts.push(raw.slice(last));
+  return parts.join("");
+}
 function repairLectureCodeBlocks(text) {
-  const raw = (text || "").trim();
-  if (!raw || !raw.includes("def ") && !raw.includes("class ")) return text || "";
+  const raw = detachGluedCodeFences((text || "").trim());
+  if (!raw || !raw.includes("def ") && !raw.includes("class ")) return raw || text || "";
   const parts = [];
   let last = 0;
   let m;
@@ -38752,9 +38929,11 @@ function repairLectureMarkdownLayout(text) {
     c = repairGluedNumberedLists(c);
     c = collapseBlankLinesInListRuns(c);
     c = normalizeListBlocksForMarkdown(c);
+    c = rejoinSplitNumberedHeadings(c);
     return c;
   };
   t = applyOutsideCodeFences(t, layoutChunk);
+  t = rejoinSplitNumberedHeadings(t);
   t = t.replace(/\n{3,}/g, "\n\n");
   return t.trim();
 }
@@ -38922,6 +39101,25 @@ function tutorMarkdownToHtml(text) {
   }
   return out.join("");
 }
+var SOURCE_TAG_RE = /\[S(\d+)\]/g;
+function linkifySourceAnchorsHtml(html, registry) {
+  const raw = String(html || "");
+  if (!raw || !Array.isArray(registry) || !registry.length) return raw;
+  const byId = {};
+  for (const e of registry) {
+    const sid = String(e?.id || e?.source_id || "").trim();
+    if (sid) byId[sid] = e;
+  }
+  if (!Object.keys(byId).length) return raw;
+  return raw.replace(SOURCE_TAG_RE, (m, num) => {
+    const sid = `S${num}`;
+    const ent = byId[sid];
+    const url = String(ent?.url || "").trim();
+    if (!ent || !url) return m;
+    const title = String(ent.title || sid).replace(/"/g, "&quot;");
+    return `<a href="${escapeHtml(url)}" class="source-anchor" target="_blank" rel="noopener noreferrer" title="${title}">[${sid}]</a>`;
+  });
+}
 
 // api.js
 var API = "/api/v1";
@@ -39071,9 +39269,10 @@ function tutorHtmlMatchesContent(content, html) {
   const c = (content || "").trim();
   const h = postprocessTutorHtml(String(html || "").trim());
   if (!c || !h) return Boolean(h);
+  const hText = h.replace(/<[^>]+>/g, "");
   const tail = c.slice(-120);
-  if (tail.includes("?") && !h.includes(tail.slice(-60))) return false;
-  return h.replace(/<[^>]+>/g, "").length + 40 >= c.length;
+  if (tail.includes("?") && !hText.includes(tail.slice(-60))) return false;
+  return hText.length + 40 >= c.length;
 }
 function tutorHtmlMatchesContentForMessage(content, contentHtml) {
   return tutorHtmlMatchesContent(content, contentHtml);
@@ -39088,20 +39287,16 @@ function composeTutorDisplayFromApi(res) {
   return String(res?.tutor_message || "").trim();
 }
 function patchLastTutorMessageHtml(messages, res) {
-  const composed = composeTutorDisplayFromApi(res);
   const html = postprocessTutorHtml(String(res.tutor_message_html || "").trim());
-  const fu = String(res?.tutor_dialogue_follow_up || "").trim();
-  let text = repairLectureMarkdownLayout(composed || res.tutor_message || "");
-  if (fu && text && !text.includes(fu)) {
-    text = `${text}
-
-${fu}`.trim();
-  }
-  if (!html && !text) return messages;
+  const serverText = repairLectureMarkdownLayout(
+    composeTutorDisplayFromApi(res) || res.tutor_message || ""
+  );
+  if (!html && !serverText) return messages;
   const copy = [...messages];
   for (let i = copy.length - 1; i >= 0; i -= 1) {
     if (copy[i].role !== "tutor") continue;
-    const useText = text || copy[i].content;
+    const streamed = (copy[i].content || "").trim();
+    const useText = serverText && streamed.length < serverText.length - 20 ? serverText : streamed || serverText;
     let useHtml = html;
     if (!tutorHtmlMatchesContent(useText, useHtml)) {
       useHtml = "";
@@ -39278,18 +39473,6 @@ async function fetchNodeSourceRegistry(curriculumId, nodeId) {
   if (!r.ok) return { source_registry: [] };
   return r.json();
 }
-async function nodeInit(curriculumId, nodeData) {
-  const r = await fetch(`${API}/node/init`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ curriculum_id: curriculumId, node_data: nodeData })
-  });
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({}));
-    throw new Error(err.detail || r.statusText);
-  }
-  return resolveMaybeJobResponse(await r.json());
-}
 async function nodeRestart(curriculumId, nodeData) {
   const r = await fetch(`${API}/node/restart`, {
     method: "POST",
@@ -39341,6 +39524,13 @@ async function nodeChatStream(curriculumId, nodeData, userMessage, onEvent) {
       node_data: nodeData,
       user_message: userMessage
     },
+    onEvent
+  );
+}
+async function nodeInitStream(curriculumId, nodeData, onEvent) {
+  return readNodeSsePost(
+    `${API}/node/init-stream`,
+    { curriculum_id: curriculumId, node_data: nodeData },
     onEvent
   );
 }
@@ -39412,7 +39602,7 @@ function toNodeDataInput(node) {
 }
 
 // LlmHtmlBlock.js
-var import_react9 = __toESM(require_react(), 1);
+var import_react10 = __toESM(require_react(), 1);
 
 // katexRender.js
 function normalizeChatMathDelimiters(root3) {
@@ -39471,16 +39661,16 @@ function wrapMarkdownTables(root3) {
   });
 }
 function LlmHtmlBlock({ html, className = "md-body" }) {
-  const ref = (0, import_react9.useRef)(null);
+  const ref = (0, import_react10.useRef)(null);
   const safe = (html || "").trim();
-  (0, import_react9.useEffect)(() => {
+  (0, import_react10.useEffect)(() => {
     if (ref.current && safe) {
       wrapMarkdownTables(ref.current);
       renderMathInLlmHtml(ref.current);
       highlightCodeInRoot(ref.current);
     }
   }, [safe]);
-  (0, import_react9.useEffect)(() => {
+  (0, import_react10.useEffect)(() => {
     const el = ref.current;
     if (!el) return;
     function onClick(e) {
@@ -39498,7 +39688,7 @@ function LlmHtmlBlock({ html, className = "md-body" }) {
     return () => el.removeEventListener("click", onClick);
   }, [safe]);
   if (!safe) return null;
-  return import_react9.default.createElement("div", {
+  return import_react10.default.createElement("div", {
     ref,
     className,
     dangerouslySetInnerHTML: { __html: safe }
@@ -39506,7 +39696,7 @@ function LlmHtmlBlock({ html, className = "md-body" }) {
 }
 
 // SourceRegistryList.js
-var import_react10 = __toESM(require_react(), 1);
+var import_react11 = __toESM(require_react(), 1);
 function sessionAnchorLabel(entry, index2) {
   const sid = entry.id || (String(entry.source_id || "").match(/^S\d+$/i) ? entry.source_id : null) || `S${index2 + 1}`;
   const courseId = (entry.course_source_id || "").trim();
@@ -39518,16 +39708,16 @@ function sessionAnchorLabel(entry, index2) {
 function SourceRegistryList({ registry }) {
   const items = registry || [];
   if (!items.length) return null;
-  return import_react10.default.createElement(
+  return import_react11.default.createElement(
     "div",
     { className: "drawer-section source-registry-section" },
-    import_react10.default.createElement("h3", null, "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0432 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0435"),
-    import_react10.default.createElement(
+    import_react11.default.createElement("h3", null, "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0432 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0435"),
+    import_react11.default.createElement(
       "p",
       { className: "muted small drawer-hint" },
       "\u0420\u0435\u0435\u0441\u0442\u0440 \u0441\u0435\u0441\u0441\u0438\u0438 \u043D\u043E\u0434\u044B: [S1] \u2014 \u0441\u043D\u043E\u0441\u043A\u0430 \u0432 \u0442\u0435\u043A\u0441\u0442\u0435; src_N \u2014 id \u0432 \u0431\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0435 \u043A\u0443\u0440\u0441\u0430."
     ),
-    import_react10.default.createElement(
+    import_react11.default.createElement(
       "ul",
       { className: "source-registry-list" },
       items.map((entry, i) => {
@@ -39536,15 +39726,15 @@ function SourceRegistryList({ registry }) {
         const title = (entry.title || "source").trim();
         const url = (entry.url || "").trim();
         const snippet = (entry.snippet || "").trim().slice(0, 280);
-        return import_react10.default.createElement(
+        return import_react11.default.createElement(
           "li",
           { key: `${sid}-${entry.course_source_id || url || i}` },
-          import_react10.default.createElement(
+          import_react11.default.createElement(
             "span",
             { className: "source-anchor-tag" },
             anchorLabel
           ),
-          url ? import_react10.default.createElement(
+          url ? import_react11.default.createElement(
             "a",
             {
               className: "source-link",
@@ -39553,8 +39743,8 @@ function SourceRegistryList({ registry }) {
               rel: "noopener noreferrer"
             },
             title
-          ) : import_react10.default.createElement("span", null, title),
-          snippet && import_react10.default.createElement("p", { className: "muted snippet" }, snippet)
+          ) : import_react11.default.createElement("span", null, title),
+          snippet && import_react11.default.createElement("p", { className: "muted snippet" }, snippet)
         );
       })
     )
@@ -39562,7 +39752,7 @@ function SourceRegistryList({ registry }) {
 }
 
 // NodeSelectionExplain.js
-var import_react11 = __toESM(require_react(), 1);
+var import_react12 = __toESM(require_react(), 1);
 
 // selectionUtils.js
 function getSurroundingParagraph(node, selectedText) {
@@ -39597,23 +39787,23 @@ function NodeSelectionExplain({
   containerRef,
   enabled
 }) {
-  const [toolbarPos, setToolbarPos] = (0, import_react11.useState)(null);
-  const [open, setOpen] = (0, import_react11.useState)(false);
-  const [selectedText, setSelectedText] = (0, import_react11.useState)("");
-  const [paragraph, setParagraph] = (0, import_react11.useState)("");
-  const [suggest, setSuggest] = (0, import_react11.useState)(DEFAULT_QUESTIONS);
-  const [suggestSource, setSuggestSource] = (0, import_react11.useState)("");
-  const [loadingSuggest, setLoadingSuggest] = (0, import_react11.useState)(false);
-  const [loadingExplain, setLoadingExplain] = (0, import_react11.useState)(false);
-  const [explanationHtml, setExplanationHtml] = (0, import_react11.useState)("");
-  const [explanationMd, setExplanationMd] = (0, import_react11.useState)("");
-  const [customQ, setCustomQ] = (0, import_react11.useState)("");
-  const abortRef = (0, import_react11.useRef)(null);
-  const explainAbortRef = (0, import_react11.useRef)(null);
-  const hideToolbar = (0, import_react11.useCallback)(() => {
+  const [toolbarPos, setToolbarPos] = (0, import_react12.useState)(null);
+  const [open, setOpen] = (0, import_react12.useState)(false);
+  const [selectedText, setSelectedText] = (0, import_react12.useState)("");
+  const [paragraph, setParagraph] = (0, import_react12.useState)("");
+  const [suggest, setSuggest] = (0, import_react12.useState)(DEFAULT_QUESTIONS);
+  const [suggestSource, setSuggestSource] = (0, import_react12.useState)("");
+  const [loadingSuggest, setLoadingSuggest] = (0, import_react12.useState)(false);
+  const [loadingExplain, setLoadingExplain] = (0, import_react12.useState)(false);
+  const [explanationHtml, setExplanationHtml] = (0, import_react12.useState)("");
+  const [explanationMd, setExplanationMd] = (0, import_react12.useState)("");
+  const [customQ, setCustomQ] = (0, import_react12.useState)("");
+  const abortRef = (0, import_react12.useRef)(null);
+  const explainAbortRef = (0, import_react12.useRef)(null);
+  const hideToolbar = (0, import_react12.useCallback)(() => {
     setToolbarPos(null);
   }, []);
-  (0, import_react11.useEffect)(() => {
+  (0, import_react12.useEffect)(() => {
     if (!enabled) return;
     let debounceTimer = null;
     function syncSelection() {
@@ -39745,10 +39935,10 @@ function NodeSelectionExplain({
     }
   }
   const explainDisplayHtml = explanationHtml || (explanationMd ? structuredAnalysisToHtml(explanationMd) : "");
-  return import_react11.default.createElement(
-    import_react11.default.Fragment,
+  return import_react12.default.createElement(
+    import_react12.default.Fragment,
     null,
-    toolbarPos && import_react11.default.createElement(
+    toolbarPos && import_react12.default.createElement(
       "div",
       {
         className: "node-explain-toolbar",
@@ -39757,24 +39947,24 @@ function NodeSelectionExplain({
           top: `${toolbarPos.y}px`
         }
       },
-      import_react11.default.createElement(
+      import_react12.default.createElement(
         "button",
         { type: "button", onClick: openDialog },
         "\u041E\u0431\u044A\u044F\u0441\u043D\u0438\u0442\u044C"
       )
     ),
-    open && import_react11.default.createElement(
+    open && import_react12.default.createElement(
       "div",
       { className: "node-explain-backdrop", onClick: () => setOpen(false) }
     ),
-    open && import_react11.default.createElement(
+    open && import_react12.default.createElement(
       "aside",
       { className: "node-explain-dialog", role: "dialog" },
-      import_react11.default.createElement(
+      import_react12.default.createElement(
         "header",
         { className: "node-explain-head" },
-        import_react11.default.createElement("h3", null, "\u041F\u043E\u044F\u0441\u043D\u0435\u043D\u0438\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u0430"),
-        import_react11.default.createElement(
+        import_react12.default.createElement("h3", null, "\u041F\u043E\u044F\u0441\u043D\u0435\u043D\u0438\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u0430"),
+        import_react12.default.createElement(
           "button",
           {
             type: "button",
@@ -39784,8 +39974,8 @@ function NodeSelectionExplain({
           "\xD7"
         )
       ),
-      import_react11.default.createElement("blockquote", { className: "node-explain-quote" }, selectedText),
-      import_react11.default.createElement(
+      import_react12.default.createElement("blockquote", { className: "node-explain-quote" }, selectedText),
+      import_react12.default.createElement(
         "button",
         {
           type: "button",
@@ -39795,13 +39985,13 @@ function NodeSelectionExplain({
         },
         "\u041E\u0431\u044A\u044F\u0441\u043D\u0438, \u0447\u0442\u043E \u044D\u0442\u043E \u0437\u043D\u0430\u0447\u0438\u0442?"
       ),
-      import_react11.default.createElement("div", { className: "node-explain-label" }, "\u0421\u043B\u043E\u0436\u043D\u044B\u0435 \u0432\u043E\u043F\u0440\u043E\u0441\u044B"),
-      loadingSuggest && import_react11.default.createElement("p", { className: "muted" }, "\u041F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 (Ollama)\u2026"),
-      import_react11.default.createElement(
+      import_react12.default.createElement("div", { className: "node-explain-label" }, "\u0421\u043B\u043E\u0436\u043D\u044B\u0435 \u0432\u043E\u043F\u0440\u043E\u0441\u044B"),
+      loadingSuggest && import_react12.default.createElement("p", { className: "muted" }, "\u041F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 (Ollama)\u2026"),
+      import_react12.default.createElement(
         "div",
         { className: "node-explain-chips" },
         suggest.map(
-          (q, i) => import_react11.default.createElement(
+          (q, i) => import_react12.default.createElement(
             "button",
             {
               key: i,
@@ -39813,18 +40003,18 @@ function NodeSelectionExplain({
           )
         )
       ),
-      suggestSource === "default" && import_react11.default.createElement(
+      suggestSource === "default" && import_react12.default.createElement(
         "p",
         { className: "muted small" },
         "\u0411\u0430\u0437\u043E\u0432\u044B\u0435 \u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 (Ollama \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430)"
       ),
-      import_react11.default.createElement("textarea", {
+      import_react12.default.createElement("textarea", {
         className: "node-explain-input",
         placeholder: "\u0421\u0432\u043E\u0439 \u0432\u043E\u043F\u0440\u043E\u0441\u2026",
         value: customQ,
         onChange: (e) => setCustomQ(e.target.value)
       }),
-      import_react11.default.createElement(
+      import_react12.default.createElement(
         "button",
         {
           type: "button",
@@ -39834,7 +40024,7 @@ function NodeSelectionExplain({
         },
         loadingExplain ? "\u2026" : "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C"
       ),
-      explainDisplayHtml && import_react11.default.createElement(LlmHtmlBlock, {
+      explainDisplayHtml && import_react12.default.createElement(LlmHtmlBlock, {
         html: explainDisplayHtml,
         className: "md-body node-explain-result"
       })
@@ -39843,13 +40033,13 @@ function NodeSelectionExplain({
 }
 
 // NodeMaterialsPanel.js
-var import_react16 = __toESM(require_react(), 1);
+var import_react17 = __toESM(require_react(), 1);
 
 // NodeDrawerDiagram.js
-var import_react13 = __toESM(require_react(), 1);
+var import_react14 = __toESM(require_react(), 1);
 
 // MermaidDiagramView.js
-var import_react12 = __toESM(require_react(), 1);
+var import_react13 = __toESM(require_react(), 1);
 
 // mermaidExtract.js
 function stripOuterQuotes(s) {
@@ -40639,20 +40829,20 @@ function MermaidDiagramView({
   const rawDiagram = (diagram || "").trim();
   const text = repairDiagramMarkdown(rawDiagram);
   const sourceForDisplay = extractMermaidSource(text || rawDiagram) || text || rawDiagram;
-  const hostRef = (0, import_react12.useRef)(null);
-  const viewportRef = (0, import_react12.useRef)(null);
+  const hostRef = (0, import_react13.useRef)(null);
+  const viewportRef = (0, import_react13.useRef)(null);
   const fitMargin = compact ? FIT_MARGIN_COMPACT : FIT_MARGIN_DEFAULT;
   const maxAutoScale = compact ? MAX_AUTO_SCALE_COMPACT : MAX_AUTO_SCALE_DEFAULT;
-  const [viewMode, setViewMode] = (0, import_react12.useState)("render");
-  const [renderFailed, setRenderFailed] = (0, import_react12.useState)(false);
-  const [scale, setScale] = (0, import_react12.useState)(() => {
+  const [viewMode, setViewMode] = (0, import_react13.useState)("render");
+  const [renderFailed, setRenderFailed] = (0, import_react13.useState)(false);
+  const [scale, setScale] = (0, import_react13.useState)(() => {
     if (compact) return 1;
     const saved = Number(localStorage.getItem(LS_ZOOM));
     return saved > 0 ? clamp2(saved, MIN_SCALE, MAX_SCALE) : 1;
   });
-  const [pan, setPan] = (0, import_react12.useState)({ x: 0, y: 0 });
-  const panStart = (0, import_react12.useRef)(null);
-  const fitToViewport = (0, import_react12.useCallback)(() => {
+  const [pan, setPan] = (0, import_react13.useState)({ x: 0, y: 0 });
+  const panStart = (0, import_react13.useRef)(null);
+  const fitToViewport = (0, import_react13.useCallback)(() => {
     const viewport = viewportRef.current;
     const host = hostRef.current;
     const svg = host?.querySelector("svg");
@@ -40668,7 +40858,7 @@ function MermaidDiagramView({
     setScale(newScale);
     setPan(computeCenterPan(viewport, bb, newScale, { xychart }));
   }, [fitMargin, compact]);
-  const applyComfortableScale = (0, import_react12.useCallback)(() => {
+  const applyComfortableScale = (0, import_react13.useCallback)(() => {
     const viewport = viewportRef.current;
     const host = hostRef.current;
     const svg = host?.querySelector("svg");
@@ -40688,11 +40878,11 @@ function MermaidDiagramView({
     setScale(newScale);
     setPan(computeCenterPan(viewport, bb, newScale, { xychart }));
   }, [fitMargin, maxAutoScale, compact]);
-  (0, import_react12.useEffect)(() => {
+  (0, import_react13.useEffect)(() => {
     const svg = hostRef.current?.querySelector("svg");
     applyDiagramSvgScale(svg, scale);
   }, [scale]);
-  (0, import_react12.useEffect)(() => {
+  (0, import_react13.useEffect)(() => {
     if (viewMode === "source") return void 0;
     let cancelled = false;
     let observer = null;
@@ -40799,13 +40989,13 @@ function MermaidDiagramView({
       if (observer) observer.disconnect();
     };
   }, [text, rawDiagram, nodeId, applyComfortableScale, viewMode]);
-  (0, import_react12.useEffect)(() => {
+  (0, import_react13.useEffect)(() => {
     if (!compact) localStorage.setItem(LS_ZOOM, String(scale));
   }, [scale, compact]);
   function zoomBy(factor) {
     setScale((s) => clamp2(s * factor, MIN_SCALE, MAX_SCALE));
   }
-  (0, import_react12.useEffect)(() => {
+  (0, import_react13.useEffect)(() => {
     const el = viewportRef.current;
     if (!el) return;
     const onWheelNative = (e) => {
@@ -40838,7 +41028,7 @@ function MermaidDiagramView({
   function onPanEnd() {
     panStart.current = null;
   }
-  (0, import_react12.useEffect)(() => {
+  (0, import_react13.useEffect)(() => {
     window.addEventListener("mousemove", onPanMove);
     window.addEventListener("mouseup", onPanEnd);
     return () => {
@@ -40847,10 +41037,10 @@ function MermaidDiagramView({
     };
   }, []);
   if (!text) return null;
-  const toolbar = import_react12.default.createElement(
+  const toolbar = import_react13.default.createElement(
     "div",
     { className: "diagram-zoom-toolbar" },
-    import_react12.default.createElement(
+    import_react13.default.createElement(
       "button",
       {
         type: "button",
@@ -40860,7 +41050,7 @@ function MermaidDiagramView({
       },
       "\u0421\u0445\u0435\u043C\u0430"
     ),
-    import_react12.default.createElement(
+    import_react13.default.createElement(
       "button",
       {
         type: "button",
@@ -40870,7 +41060,7 @@ function MermaidDiagramView({
       },
       "\u041A\u043E\u0434"
     ),
-    viewMode === "render" && import_react12.default.createElement(
+    viewMode === "render" && import_react13.default.createElement(
       "button",
       {
         type: "button",
@@ -40880,12 +41070,12 @@ function MermaidDiagramView({
       },
       "\u2212"
     ),
-    viewMode === "render" && import_react12.default.createElement(
+    viewMode === "render" && import_react13.default.createElement(
       "span",
       { className: "diagram-zoom-label" },
       `${Math.round(scale * 100)}%`
     ),
-    viewMode === "render" && import_react12.default.createElement(
+    viewMode === "render" && import_react13.default.createElement(
       "button",
       {
         type: "button",
@@ -40895,7 +41085,7 @@ function MermaidDiagramView({
       },
       "+"
     ),
-    viewMode === "render" && import_react12.default.createElement(
+    viewMode === "render" && import_react13.default.createElement(
       "button",
       {
         type: "button",
@@ -40908,7 +41098,7 @@ function MermaidDiagramView({
       },
       "1:1"
     ),
-    viewMode === "render" && import_react12.default.createElement(
+    viewMode === "render" && import_react13.default.createElement(
       "button",
       {
         type: "button",
@@ -40919,30 +41109,30 @@ function MermaidDiagramView({
       "\u041F\u043E \u043E\u0431\u043B\u0430\u0441\u0442\u0438"
     )
   );
-  const renderFooter = renderFailed && viewMode === "render" ? import_react12.default.createElement(
+  const renderFooter = renderFailed && viewMode === "render" ? import_react13.default.createElement(
     "p",
     { className: "diagram-render-footer muted" },
     "\u041E\u0448\u0438\u0431\u043A\u0430 \u0440\u0435\u043D\u0434\u0435\u0440\u0430 Mermaid \u2014 \u043E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0432\u043A\u043B\u0430\u0434\u043A\u0443 \xAB\u041A\u043E\u0434\xBB \u0438\u043B\u0438 \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 xychart-beta / flowchart \u0432 \u0441\u044B\u0440\u043E\u043C \u0442\u0435\u043A\u0441\u0442\u0435."
   ) : null;
-  return import_react12.default.createElement(
+  return import_react13.default.createElement(
     "div",
     { className: "drawer-section diagram-section" },
-    !hideTitle && import_react12.default.createElement(
+    !hideTitle && import_react13.default.createElement(
       "div",
       { className: "diagram-section-head" },
-      import_react12.default.createElement("h3", null, "\u0421\u0445\u0435\u043C\u0430"),
+      import_react13.default.createElement("h3", null, "\u0421\u0445\u0435\u043C\u0430"),
       toolbar
     ),
-    hideTitle && import_react12.default.createElement(
+    hideTitle && import_react13.default.createElement(
       "div",
       { className: "diagram-section-head diagram-section-head-compact" },
       toolbar
     ),
-    viewMode === "source" ? import_react12.default.createElement(
+    viewMode === "source" ? import_react13.default.createElement(
       "pre",
       { className: "diagram-source-code" },
       sourceForDisplay
-    ) : import_react12.default.createElement(
+    ) : import_react13.default.createElement(
       "div",
       {
         className: "diagram-viewport",
@@ -40950,13 +41140,13 @@ function MermaidDiagramView({
         onMouseDown: onPanStart,
         title: "\u041A\u043E\u043B\u0451\u0441\u0438\u043A\u043E \u2014 \u0437\u0443\u043C, \u043F\u0435\u0440\u0435\u0442\u0430\u0441\u043A\u0438\u0432\u0430\u043D\u0438\u0435 \u2014 \u043F\u0430\u043D"
       },
-      import_react12.default.createElement(
+      import_react13.default.createElement(
         "div",
         {
           className: "diagram-pan-layer",
           style: { transform: `translate(${pan.x}px, ${pan.y}px)` }
         },
-        import_react12.default.createElement("div", {
+        import_react13.default.createElement("div", {
           className: "diagram-zoom-inner",
           ref: hostRef
         })
@@ -40970,10 +41160,10 @@ function MermaidDiagramView({
 function DiagramBlock({ diagram, nodeId, compact }) {
   const text = String(diagram || "").trim();
   if (!text) return null;
-  return import_react13.default.createElement(
+  return import_react14.default.createElement(
     "div",
     { className: compact ? "diagram-embed compact" : "diagram-embed" },
-    import_react13.default.createElement(MermaidDiagramView, {
+    import_react14.default.createElement(MermaidDiagramView, {
       diagram: text,
       nodeId,
       compact,
@@ -40983,20 +41173,20 @@ function DiagramBlock({ diagram, nodeId, compact }) {
 }
 
 // ResourceCard.js
-var import_react14 = __toESM(require_react(), 1);
+var import_react15 = __toESM(require_react(), 1);
 function ResourceCard2({ item }) {
   if (!item) return null;
   const title = (item.title || item.source_name || item.url || "").trim();
   const sourceName = (item.source_name || "").trim();
   const showSource = sourceName && sourceName.toLowerCase() !== title.toLowerCase() && !title.toLowerCase().includes(sourceName.toLowerCase());
   const mins = item.read_time_minutes || item.read_time_minutes === 0 ? item.read_time_minutes : null;
-  return import_react14.default.createElement(
+  return import_react15.default.createElement(
     "article",
     { className: "resource-card" },
-    import_react14.default.createElement(
+    import_react15.default.createElement(
       "header",
       { className: "resource-card-head" },
-      import_react14.default.createElement(
+      import_react15.default.createElement(
         "a",
         {
           className: "resource-card-title",
@@ -41006,38 +41196,38 @@ function ResourceCard2({ item }) {
         },
         title
       ),
-      mins != null && mins > 0 && import_react14.default.createElement("span", { className: "resource-card-time" }, `~${mins} \u043C\u0438\u043D`)
+      mins != null && mins > 0 && import_react15.default.createElement("span", { className: "resource-card-time" }, `~${mins} \u043C\u0438\u043D`)
     ),
-    showSource && import_react14.default.createElement("div", { className: "resource-card-source" }, sourceName),
-    (item.why_read || "").trim() && import_react14.default.createElement(
+    showSource && import_react15.default.createElement("div", { className: "resource-card-source" }, sourceName),
+    (item.why_read || "").trim() && import_react15.default.createElement(
       "p",
       { className: "resource-card-why" },
-      import_react14.default.createElement("strong", null, "\u0417\u0430\u0447\u0435\u043C: "),
+      import_react15.default.createElement("strong", null, "\u0417\u0430\u0447\u0435\u043C: "),
       item.why_read
     ),
-    (item.key_focus || "").trim() && import_react14.default.createElement(
+    (item.key_focus || "").trim() && import_react15.default.createElement(
       "p",
       { className: "resource-card-focus" },
-      import_react14.default.createElement("strong", null, "\u0424\u043E\u043A\u0443\u0441: "),
+      import_react15.default.createElement("strong", null, "\u0424\u043E\u043A\u0443\u0441: "),
       item.key_focus
     )
   );
 }
 
 // CodeSnippet.js
-var import_react15 = __toESM(require_react(), 1);
+var import_react16 = __toESM(require_react(), 1);
 function CodeSnippet({ code, language }) {
-  const ref = (0, import_react15.useRef)(null);
+  const ref = (0, import_react16.useRef)(null);
   const text = (code || "").trim();
   if (!text) return null;
-  (0, import_react15.useEffect)(() => {
+  (0, import_react16.useEffect)(() => {
     if (ref.current) highlightCodeInRoot(ref.current);
   }, [text, language]);
   const langClass = language && language !== "auto" ? `language-${language}` : "";
-  return import_react15.default.createElement(
+  return import_react16.default.createElement(
     "pre",
     { className: "code-snippet hljs-snippet", ref },
-    import_react15.default.createElement("code", { className: langClass }, text)
+    import_react16.default.createElement("code", { className: langClass }, text)
   );
 }
 
@@ -41060,19 +41250,19 @@ function materialHeaderLabel(item) {
 function MaterialItemBody({ item, nodeId }) {
   const { kind, payload } = item;
   if (kind === "diagram") {
-    return import_react16.default.createElement(DiagramBlock, {
+    return import_react17.default.createElement(DiagramBlock, {
       diagram: payload.mermaid,
       nodeId,
       compact: true
     });
   }
   if (kind === "code") {
-    return import_react16.default.createElement(CodeSnippet, {
+    return import_react17.default.createElement(CodeSnippet, {
       code: payload.code,
       language: payload.language || void 0
     });
   }
-  return import_react16.default.createElement(ResourceCard2, { item: payload });
+  return import_react17.default.createElement(ResourceCard2, { item: payload });
 }
 function NodeMaterialsPanel({
   items,
@@ -41081,13 +41271,13 @@ function NodeMaterialsPanel({
   selectedId,
   nodeId
 }) {
-  const listRef = (0, import_react16.useRef)(null);
-  const activeIndex = (0, import_react16.useMemo)(() => {
+  const listRef = (0, import_react17.useRef)(null);
+  const activeIndex = (0, import_react17.useMemo)(() => {
     if (!selectedId) return 0;
     const idx = items.findIndex((it) => it.id === selectedId);
     return idx >= 0 ? idx : 0;
   }, [items, selectedId]);
-  (0, import_react16.useEffect)(() => {
+  (0, import_react17.useEffect)(() => {
     if (!selectedId || viewMode !== "list" || !listRef.current) return;
     const el = listRef.current.querySelector(
       `[data-material-id="${selectedId}"]`
@@ -41097,17 +41287,17 @@ function NodeMaterialsPanel({
     }
   }, [selectedId, viewMode, items.length]);
   if (!items.length) return null;
-  return import_react16.default.createElement(
+  return import_react17.default.createElement(
     "div",
     { className: "drawer-section material-panel" },
-    import_react16.default.createElement(
+    import_react17.default.createElement(
       "div",
       { className: "material-panel-head" },
-      import_react16.default.createElement("h3", null, "\u041C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u044B"),
-      import_react16.default.createElement(
+      import_react17.default.createElement("h3", null, "\u041C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u044B"),
+      import_react17.default.createElement(
         "div",
         { className: "material-view-toggle" },
-        import_react16.default.createElement(
+        import_react17.default.createElement(
           "button",
           {
             type: "button",
@@ -41116,7 +41306,7 @@ function NodeMaterialsPanel({
           },
           "\u0421\u043F\u0438\u0441\u043E\u043A"
         ),
-        import_react16.default.createElement(
+        import_react17.default.createElement(
           "button",
           {
             type: "button",
@@ -41127,15 +41317,15 @@ function NodeMaterialsPanel({
         )
       )
     ),
-    viewMode === "carousel" ? import_react16.default.createElement(CarouselView, {
+    viewMode === "carousel" ? import_react17.default.createElement(CarouselView, {
       items,
       activeIndex,
       nodeId
-    }) : import_react16.default.createElement(
+    }) : import_react17.default.createElement(
       "div",
       { className: "material-list", ref: listRef },
       items.map(
-        (item) => import_react16.default.createElement(
+        (item) => import_react17.default.createElement(
           "article",
           {
             key: `${item.kind}-${item.id}`,
@@ -41143,24 +41333,24 @@ function NodeMaterialsPanel({
             "data-material-id": item.id,
             className: selectedId === item.id ? "material-asset material-asset-active" : "material-asset"
           },
-          import_react16.default.createElement(
+          import_react17.default.createElement(
             "header",
             { className: "material-asset-label" },
-            import_react16.default.createElement(
+            import_react17.default.createElement(
               "span",
               { className: "material-asset-heading" },
               materialHeaderLabel(item)
             )
           ),
-          import_react16.default.createElement(MaterialItemBody, { item, nodeId })
+          import_react17.default.createElement(MaterialItemBody, { item, nodeId })
         )
       )
     )
   );
 }
 function CarouselView({ items, activeIndex, nodeId }) {
-  const [index2, setIndex] = import_react16.default.useState(activeIndex);
-  (0, import_react16.useEffect)(() => {
+  const [index2, setIndex] = import_react17.default.useState(activeIndex);
+  (0, import_react17.useEffect)(() => {
     setIndex(activeIndex);
   }, [activeIndex]);
   const item = items[index2] || items[0];
@@ -41173,17 +41363,17 @@ function CarouselView({ items, activeIndex, nodeId }) {
       return next;
     });
   }
-  return import_react16.default.createElement(
+  return import_react17.default.createElement(
     "div",
     {
       className: "material-carousel",
       id: `ke-material-${item.id}`,
       "data-material-id": item.id
     },
-    import_react16.default.createElement(
+    import_react17.default.createElement(
       "div",
       { className: "material-carousel-toolbar" },
-      import_react16.default.createElement(
+      import_react17.default.createElement(
         "button",
         {
           type: "button",
@@ -41192,12 +41382,12 @@ function CarouselView({ items, activeIndex, nodeId }) {
         },
         "\u2039"
       ),
-      import_react16.default.createElement(
+      import_react17.default.createElement(
         "span",
         { className: "material-carousel-meta" },
         `${index2 + 1} / ${items.length} \xB7 ${materialHeaderLabel(item)}`
       ),
-      import_react16.default.createElement(
+      import_react17.default.createElement(
         "button",
         {
           type: "button",
@@ -41207,16 +41397,16 @@ function CarouselView({ items, activeIndex, nodeId }) {
         "\u203A"
       )
     ),
-    import_react16.default.createElement(
+    import_react17.default.createElement(
       "div",
       { className: "material-carousel-body material-asset-active" },
-      import_react16.default.createElement(MaterialItemBody, { item, nodeId })
+      import_react17.default.createElement(MaterialItemBody, { item, nodeId })
     ),
-    import_react16.default.createElement(
+    import_react17.default.createElement(
       "div",
       { className: "material-carousel-dots" },
       items.map(
-        (it, i) => import_react16.default.createElement("button", {
+        (it, i) => import_react17.default.createElement("button", {
           key: `${it.kind}-${it.id}`,
           type: "button",
           className: i === index2 ? "active" : "",
@@ -41453,21 +41643,21 @@ function resolveMappedSourceRows(selectedNode, curriculum, session) {
 function renderMappedSourceRow(row) {
   const badge = sourceTierBadge(row.source_tier);
   const label = (row.title || row.source_id).trim();
-  return import_react17.default.createElement(
+  return import_react18.default.createElement(
     "li",
     { key: row.source_id },
-    badge && import_react17.default.createElement(
+    badge && import_react18.default.createElement(
       "span",
       { className: badge.className },
       badge.label === "Consensus" ? "\u{1F7E3} " : "\u{1F7E2} ",
       `[${badge.label}]`
     ),
-    import_react17.default.createElement(
+    import_react18.default.createElement(
       "span",
       { className: "source-anchor-tag" },
       `[${row.source_id}]`
     ),
-    row.url ? import_react17.default.createElement(
+    row.url ? import_react18.default.createElement(
       "a",
       {
         className: "source-link",
@@ -41476,8 +41666,8 @@ function renderMappedSourceRow(row) {
         rel: "noopener noreferrer"
       },
       label
-    ) : import_react17.default.createElement("span", null, label),
-    !row.url && import_react17.default.createElement(
+    ) : import_react18.default.createElement("span", null, label),
+    !row.url && import_react18.default.createElement(
       "span",
       { className: "muted small" },
       " \xB7 URL \u043D\u0435 \u0432 \u0440\u0435\u0435\u0441\u0442\u0440\u0435 \u2014 \u0441\u043C. \xAB\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u043A\u0443\u0440\u0441\u0430\xBB"
@@ -41486,44 +41676,44 @@ function renderMappedSourceRow(row) {
 }
 function renderCourseKnowledgePool(selectedNode, curriculum) {
   const { library } = courseLibraryIndex(curriculum);
-  return import_react17.default.createElement(
+  return import_react18.default.createElement(
     "details",
     { className: "drawer-section knowledge-pool-panel" },
-    import_react17.default.createElement(
+    import_react18.default.createElement(
       "summary",
       { className: "knowledge-pool-summary" },
       "\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u043A\u0443\u0440\u0441\u0430 (Knowledge Pool)",
-      import_react17.default.createElement(
+      import_react18.default.createElement(
         "span",
         { className: "muted small" },
         ` \xB7 ${library.length} \u0432 \u0440\u0435\u0435\u0441\u0442\u0440\u0435, \u043D\u0435 \u0441\u0435\u0441\u0441\u0438\u044F \u043D\u043E\u0434\u044B`
       )
     ),
-    import_react17.default.createElement(
+    import_react18.default.createElement(
       "p",
       { className: "muted small drawer-hint" },
       "\u041E\u0431\u0449\u0438\u0439 \u043F\u0443\u043B \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u0430. \u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0442\u0435\u043A\u0443\u0449\u0435\u0439 \u043D\u043E\u0434\u044B \u2014 \u0442\u043E\u043B\u044C\u043A\u043E \u0432 \u0431\u043B\u043E\u043A\u0435 \xAB\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0432 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0435\xBB \u043D\u0438\u0436\u0435."
     ),
-    import_react17.default.createElement(
+    import_react18.default.createElement(
       "ul",
       { className: "source-registry-list course-library-list" },
       library.map((entry) => {
         const badge = sourceTierBadge(entry.source_tier);
-        return import_react17.default.createElement(
+        return import_react18.default.createElement(
           "li",
           { key: entry.source_id || entry.url },
-          badge && import_react17.default.createElement(
+          badge && import_react18.default.createElement(
             "span",
             { className: badge.className },
             badge.label === "Consensus" ? "\u{1F7E3} " : "\u{1F7E2} ",
             `[${badge.label}]`
           ),
-          import_react17.default.createElement(
+          import_react18.default.createElement(
             "span",
             { className: "source-anchor-tag" },
             `[${entry.source_id}]`
           ),
-          entry.url ? import_react17.default.createElement(
+          entry.url ? import_react18.default.createElement(
             "a",
             {
               className: "source-link",
@@ -41532,8 +41722,8 @@ function renderCourseKnowledgePool(selectedNode, curriculum) {
               rel: "noopener noreferrer"
             },
             entry.title || entry.url
-          ) : import_react17.default.createElement("span", null, entry.title || "source"),
-          entry.whitelist_domain && import_react17.default.createElement(
+          ) : import_react18.default.createElement("span", null, entry.title || "source"),
+          entry.whitelist_domain && import_react18.default.createElement(
             "span",
             { className: "muted small" },
             ` \xB7 ${entry.whitelist_domain}`
@@ -41552,23 +41742,23 @@ function renderRouteCurriculumMaterials(selectedNode, curriculum, session) {
   const mappedRows = resolveMappedSourceRows(selectedNode, curriculum, session);
   const learningGoal = (selectedNode?.learning_goal || "").trim();
   if (!lm && !lres.length && !mappedRows.length && !learningGoal) return null;
-  return import_react17.default.createElement(
+  return import_react18.default.createElement(
     "div",
     { className: "drawer-section route-curriculum-sources" },
-    learningGoal && import_react17.default.createElement(
+    learningGoal && import_react18.default.createElement(
       "p",
       { className: "muted small node-learning-goal" },
       `\u0426\u0435\u043B\u044C \u043D\u043E\u0434\u044B: ${learningGoal}`
     ),
-    mappedRows.length > 0 && import_react17.default.createElement(
+    mappedRows.length > 0 && import_react18.default.createElement(
       "div",
       { className: "drawer-subsection" },
-      import_react17.default.createElement(
+      import_react18.default.createElement(
         "h4",
         { className: "drawer-subtitle" },
-        "\u0410\u0434\u0440\u0435\u0441\u0430\u0446\u0438\u044F \u043D\u043E\u0434\u044B (mapped_source_ids)"
+        "\u0410\u0434\u0440\u0435\u0441\u0430\u0446\u0438\u044F \u043D\u043E\u0434\u044B"
       ),
-      import_react17.default.createElement(
+      import_react18.default.createElement(
         "ul",
         { className: "source-registry-list mapped-sources" },
         mappedRows.map((row) => {
@@ -41577,20 +41767,20 @@ function renderRouteCurriculumMaterials(selectedNode, curriculum, session) {
         })
       )
     ),
-    lm && import_react17.default.createElement(
+    lm && import_react18.default.createElement(
       "div",
       { className: "drawer-subsection" },
-      import_react17.default.createElement("h4", { className: "drawer-subtitle" }, "\u0424\u0443\u043D\u0434\u0430\u043C\u0435\u043D\u0442 \u043D\u043E\u0434\u044B"),
-      linked && import_react17.default.createElement(
+      import_react18.default.createElement("h4", { className: "drawer-subtitle" }, "\u0424\u0443\u043D\u0434\u0430\u043C\u0435\u043D\u0442 \u043D\u043E\u0434\u044B"),
+      linked && import_react18.default.createElement(
         "p",
         { className: "muted small" },
         "\u0421\u0441\u044B\u043B\u043A\u0430 \u043D\u0430 \u0440\u0435\u0435\u0441\u0442\u0440: ",
-        import_react17.default.createElement(
+        import_react18.default.createElement(
           "span",
           { className: "source-anchor-tag" },
           `[${linked.source_id}]`
         ),
-        linked.url ? import_react17.default.createElement(
+        linked.url ? import_react18.default.createElement(
           "a",
           {
             className: "source-link",
@@ -41599,24 +41789,24 @@ function renderRouteCurriculumMaterials(selectedNode, curriculum, session) {
             rel: "noopener noreferrer"
           },
           linked.title || linked.source_name || linked.url
-        ) : import_react17.default.createElement("span", null, linked.title || linked.source_id)
+        ) : import_react18.default.createElement("span", null, linked.title || linked.source_id)
       ),
-      import_react17.default.createElement("p", null, lm.source_name),
-      import_react17.default.createElement("p", { className: "muted" }, lm.chapter_or_article),
-      (lm.core_concepts || []).length > 0 && import_react17.default.createElement(
+      import_react18.default.createElement("p", null, lm.source_name),
+      import_react18.default.createElement("p", { className: "muted" }, lm.chapter_or_article),
+      (lm.core_concepts || []).length > 0 && import_react18.default.createElement(
         "ul",
         { className: "drawer-concepts" },
-        lm.core_concepts.map((c) => import_react17.default.createElement("li", { key: c }, c))
+        lm.core_concepts.map((c) => import_react18.default.createElement("li", { key: c }, c))
       )
     ),
-    lres.length > 0 && import_react17.default.createElement(
+    lres.length > 0 && import_react18.default.createElement(
       "div",
       { className: "drawer-subsection" },
-      import_react17.default.createElement("h4", { className: "drawer-subtitle" }, "\u0421\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0447\u0442\u0435\u043D\u0438\u0435"),
-      import_react17.default.createElement(
+      import_react18.default.createElement("h4", { className: "drawer-subtitle" }, "\u0421\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0447\u0442\u0435\u043D\u0438\u0435"),
+      import_react18.default.createElement(
         "div",
         { className: "resource-card-list" },
-        lres.map((r, i) => import_react17.default.createElement(ResourceCard, { key: i, item: r }))
+        lres.map((r, i) => import_react18.default.createElement(ResourceCard, { key: i, item: r }))
       )
     )
   );
@@ -41637,9 +41827,9 @@ function NodeDrawer({
   materialViewMode,
   onMaterialViewModeChange
 }) {
-  const materialRef = (0, import_react17.useRef)(null);
+  const materialRef = (0, import_react18.useRef)(null);
   if (!selectedNode) {
-    return import_react17.default.createElement(
+    return import_react18.default.createElement(
       "aside",
       { className: "node-drawer empty" },
       "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u0438\u043B\u0438 \u0441\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u0443\u0439\u0442\u0435 \u0443\u0447\u0435\u0431\u043D\u044B\u0439 \u043F\u0443\u0442\u044C."
@@ -41650,10 +41840,10 @@ function NodeDrawer({
   const registry = session?.sourceRegistry || [];
   const materialItems = flattenMaterials(normalizeNodeMaterials(content));
   const nodeData = toNodeDataInput(selectedNode);
-  return import_react17.default.createElement(
+  return import_react18.default.createElement(
     "aside",
     { className: "node-drawer" },
-    import_react17.default.createElement(NodeSelectionExplain, {
+    import_react18.default.createElement(NodeSelectionExplain, {
       curriculumId: curriculum.curriculum_id,
       nodeData,
       containerRef: materialRef,
@@ -41661,39 +41851,40 @@ function NodeDrawer({
         content.summary || content.summary_html || materialItems.length
       )
     }),
-    import_react17.default.createElement(
+    import_react18.default.createElement(
       "div",
       { className: "drawer-scroll node-selectable-material", ref: materialRef },
-      import_react17.default.createElement(
+      import_react18.default.createElement(
         "div",
         { className: "drawer-header" },
-        import_react17.default.createElement("h2", null, selectedNode.title),
-        import_react17.default.createElement(NodeMasteryPanel, {
+        import_react18.default.createElement("h2", null, selectedNode.title),
+        import_react18.default.createElement(NodeMasteryPanel, {
           status: st,
           masteryDashboard: session?.masteryDashboard,
           topicMasteryScore: session?.topicMasteryScore,
+          lastEvalDirective: session?.lastEvalDirective,
           onModeSelect,
           disabled: composeLocked
         }),
-        import_react17.default.createElement(
+        import_react18.default.createElement(
           "div",
           { className: "drawer-meta" },
-          import_react17.default.createElement("span", { className: "chip" }, selectedNode.layer),
-          import_react17.default.createElement("span", { className: "chip" }, st),
-          selectedNode.category && import_react17.default.createElement("span", { className: "chip" }, selectedNode.category)
+          import_react18.default.createElement("span", { className: "chip" }, selectedNode.layer),
+          import_react18.default.createElement("span", { className: "chip" }, st),
+          selectedNode.category && import_react18.default.createElement("span", { className: "chip" }, selectedNode.category)
         ),
         renderRouteCurriculumMaterials(selectedNode, curriculum, session),
-        (selectedNode.prerequisites || []).length > 0 && import_react17.default.createElement(
+        (selectedNode.prerequisites || []).length > 0 && import_react18.default.createElement(
           "div",
           { className: "drawer-section" },
-          import_react17.default.createElement("h3", null, "\u041F\u0440\u0435\u0434\u0448\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0435 \u0442\u0435\u043C\u044B"),
-          import_react17.default.createElement(
+          import_react18.default.createElement("h3", null, "\u041F\u0440\u0435\u0434\u0448\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0435 \u0442\u0435\u043C\u044B"),
+          import_react18.default.createElement(
             "div",
             { className: "drawer-meta" },
             selectedNode.prerequisites.map((pid) => {
               const pre = curriculum.nodes.find((n) => n.node_id === pid);
               const preInit = Boolean(sessions?.[pid]?.initialized);
-              return import_react17.default.createElement(
+              return import_react18.default.createElement(
                 "span",
                 {
                   key: pid,
@@ -41711,34 +41902,34 @@ function NodeDrawer({
           )
         )
       ),
-      nodeGenerating && import_react17.default.createElement(
+      nodeGenerating && import_react18.default.createElement(
         "p",
         { className: "muted drawer-gen-hint" },
         "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043D\u043E\u0434\u044B\u2026 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B \u043D\u0438\u0436\u0435 \u043C\u043E\u0436\u043D\u043E \u0447\u0438\u0442\u0430\u0442\u044C \u0438 \u043F\u0440\u043E\u043A\u0440\u0443\u0447\u0438\u0432\u0430\u0442\u044C."
       ),
-      content.summary && import_react17.default.createElement(
+      content.summary && import_react18.default.createElement(
         "div",
         { className: "drawer-section node-selectable-material" },
-        import_react17.default.createElement("h3", null, "\u0421\u0443\u0442\u044C \u043C\u0435\u0445\u0430\u043D\u0438\u043A\u0438"),
-        import_react17.default.createElement(
+        import_react18.default.createElement("h3", null, "\u0421\u0443\u0442\u044C \u043C\u0435\u0445\u0430\u043D\u0438\u043A\u0438"),
+        import_react18.default.createElement(
           "p",
           { className: "muted small drawer-hint" },
           "\u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u2014 \xAB\u041E\u0431\u044A\u044F\u0441\u043D\u0438\u0442\u044C\xBB \u0438 \u0441\u043B\u043E\u0436\u043D\u044B\u0435 \u0432\u043E\u043F\u0440\u043E\u0441\u044B, \u043A\u0430\u043A \u0432 \u043E\u0431\u0437\u043E\u0440\u0435 \u0430\u043D\u0430\u043B\u0438\u0437\u0430."
         ),
-        (content.summary_html || "").trim() ? import_react17.default.createElement(LlmHtmlBlock, {
+        (content.summary_html || "").trim() ? import_react18.default.createElement(LlmHtmlBlock, {
           html: content.summary_html,
           className: "drawer-summary md-body"
-        }) : structuredAnalysisToHtml(content.summary || "") ? import_react17.default.createElement(LlmHtmlBlock, {
+        }) : structuredAnalysisToHtml(content.summary || "") ? import_react18.default.createElement(LlmHtmlBlock, {
           html: structuredAnalysisToHtml(content.summary || ""),
           className: "drawer-summary md-body"
-        }) : import_react17.default.createElement(
+        }) : import_react18.default.createElement(
           "div",
           { className: "drawer-summary" },
           content.summary
         )
       ),
-      import_react17.default.createElement(SourceRegistryList, { registry }),
-      import_react17.default.createElement(NodeMaterialsPanel, {
+      import_react18.default.createElement(SourceRegistryList, { registry }),
+      import_react18.default.createElement(NodeMaterialsPanel, {
         items: materialItems,
         viewMode: materialViewMode || "list",
         onViewModeChange: onMaterialViewModeChange,
@@ -41746,10 +41937,10 @@ function NodeDrawer({
         nodeId: selectedNode.node_id
       }),
       renderCourseKnowledgePool(selectedNode, curriculum),
-      import_react17.default.createElement(
+      import_react18.default.createElement(
         "div",
         { className: "drawer-actions" },
-        import_react17.default.createElement(
+        import_react18.default.createElement(
           "button",
           {
             type: "button",
@@ -41762,15 +41953,16 @@ function NodeDrawer({
           },
           "\u041F\u0440\u043E\u0439\u0442\u0438 \u0437\u0430\u043D\u043E\u0432\u043E"
         ),
-        import_react17.default.createElement(
+        import_react18.default.createElement(
           "button",
           {
             type: "button",
             className: "verify-btn",
             onClick: () => {
-              if (!composeLocked) onVerify?.();
+              if (!composeLocked && !nodeGenerating) onVerify?.();
             },
-            disabled: composeLocked
+            disabled: Boolean(composeLocked || nodeGenerating),
+            title: composeLocked || nodeGenerating ? "\u0414\u043E\u0436\u0434\u0438\u0442\u0435\u0441\u044C \u043E\u0442\u0432\u0435\u0442\u0430 \u0442\u044C\u044E\u0442\u043E\u0440\u0430" : void 0
           },
           "\u0424\u0438\u043D\u0430\u043B\u044C\u043D\u0430\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430"
         )
@@ -41780,12 +41972,12 @@ function NodeDrawer({
 }
 
 // NodeTutorChat.js
-var import_react20 = __toESM(require_react(), 1);
+var import_react22 = __toESM(require_react(), 1);
 
 // RagInspectorPanel.js
-var import_react18 = __toESM(require_react(), 1);
+var import_react19 = __toESM(require_react(), 1);
 function RagChunkCard({ item }) {
-  const [open, setOpen] = (0, import_react18.useState)(false);
+  const [open, setOpen] = (0, import_react19.useState)(false);
   const ragId = item.rag_id || "[R?]";
   const title = (item.title || "source").trim();
   const url = (item.url || "").trim();
@@ -41793,14 +41985,14 @@ function RagChunkCard({ item }) {
   const chunkTotal = Number(item.chunks_in_doc) || 0;
   const score = typeof item.cosine_score === "number" ? item.cosine_score.toFixed(3) : String(item.cosine_score || "\u2014");
   const chunkText = (item.chunk_text || "").trim();
-  return import_react18.default.createElement(
+  return import_react19.default.createElement(
     "article",
     { className: "rag-inspector-card" },
-    import_react18.default.createElement(
+    import_react19.default.createElement(
       "header",
       { className: "rag-inspector-card-head" },
-      import_react18.default.createElement("span", { className: "rag-inspector-badge" }, ragId),
-      url ? import_react18.default.createElement(
+      import_react19.default.createElement("span", { className: "rag-inspector-badge" }, ragId),
+      url ? import_react19.default.createElement(
         "a",
         {
           className: "source-link",
@@ -41809,14 +42001,14 @@ function RagChunkCard({ item }) {
           rel: "noopener noreferrer"
         },
         title
-      ) : import_react18.default.createElement("span", { className: "rag-inspector-title" }, title),
-      import_react18.default.createElement(
+      ) : import_react19.default.createElement("span", { className: "rag-inspector-title" }, title),
+      import_react19.default.createElement(
         "span",
         { className: "muted small rag-inspector-meta" },
         chunkIdx > 0 && chunkTotal > 0 ? `Chunk ${chunkIdx}/${chunkTotal} \xB7 cos=${score}` : `cos=${score}`
       )
     ),
-    chunkText && import_react18.default.createElement(
+    chunkText && import_react19.default.createElement(
       "button",
       {
         type: "button",
@@ -41825,7 +42017,7 @@ function RagChunkCard({ item }) {
       },
       open ? "\u0421\u043A\u0440\u044B\u0442\u044C \u0442\u0435\u043A\u0441\u0442 \u0447\u0430\u043D\u043A\u0430" : "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0442\u0435\u043A\u0441\u0442 \u0447\u0430\u043D\u043A\u0430"
     ),
-    open && chunkText && import_react18.default.createElement(
+    open && chunkText && import_react19.default.createElement(
       "pre",
       { className: "rag-inspector-chunk-text" },
       chunkText
@@ -41835,29 +42027,29 @@ function RagChunkCard({ item }) {
 function RagInspectorPanel({ items }) {
   const list = Array.isArray(items) ? items : [];
   if (!list.length) return null;
-  return import_react18.default.createElement(
+  return import_react19.default.createElement(
     "details",
     { className: "drawer-section rag-inspector-panel", open: false },
-    import_react18.default.createElement(
+    import_react19.default.createElement(
       "summary",
       { className: "rag-inspector-summary" },
       "\u{1F50D} \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u043D\u044B\u0435 RAG-\u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u044B (Inspector)",
-      import_react18.default.createElement(
+      import_react19.default.createElement(
         "span",
         { className: "muted small" },
         ` \xB7 ${list.length} \u0447\u0430\u043D\u043A\u043E\u0432`
       )
     ),
-    import_react18.default.createElement(
+    import_react19.default.createElement(
       "p",
       { className: "muted small drawer-hint" },
       "\u0422\u043E\u0447\u043D\u044B\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u044B \u0438\u0437 \u0431\u043B\u043E\u043A\u0430 \u041D\u0410\u0427\u0410\u041B\u041E \u041C\u0410\u0422\u0415\u0420\u0418\u0410\u041B\u0410 \u043F\u0435\u0440\u0435\u0434 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0435\u0439 \u043B\u0435\u043A\u0446\u0438\u0438. \u0421\u0432\u0435\u0440\u044F\u0439\u0442\u0435 \u0441\u043D\u043E\u0441\u043A\u0438 [R1]\u2026 \u0432 \u0442\u0435\u043A\u0441\u0442\u0435."
     ),
-    import_react18.default.createElement(
+    import_react19.default.createElement(
       "div",
       { className: "rag-inspector-list" },
       list.map(
-        (item, i) => import_react18.default.createElement(RagChunkCard, {
+        (item, i) => import_react19.default.createElement(RagChunkCard, {
           key: `${item.rag_id || "R"}-${item.doc_id || i}-${item.chunk_index || 0}`,
           item
         })
@@ -41867,14 +42059,138 @@ function RagInspectorPanel({ items }) {
 }
 
 // QuickReplyChips.js
-var import_react19 = __toESM(require_react(), 1);
+var import_react21 = __toESM(require_react(), 1);
+
+// ActionChips.js
+var import_react20 = __toESM(require_react(), 1);
+var OVERLAY_CHIP_DISPLAY = {
+  advanced_analysis: "\u0410\u043D\u0430\u043B\u0438\u0437 \u0443\u044F\u0437\u0432\u0438\u043C\u043E\u0441\u0442\u0435\u0439",
+  deep_design: "\u0410\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u043D\u044B\u0439 \u0434\u0438\u0437\u0430\u0439\u043D"
+};
 var QUICK_REPLY_INTENTS = {
   gloss: "[mode:gloss] \u0421\u0444\u043E\u0440\u043C\u0438\u0440\u0443\u0439 \u0441\u0436\u0430\u0442\u0443\u044E \u0432\u044B\u0436\u0438\u043C\u043A\u0443 (Glossary) \u043F\u043E \u043E\u0441\u0442\u0430\u0432\u0448\u0438\u043C\u0441\u044F \u0441\u043B\u043E\u044F\u043C.",
   how: "[mode:deep_dive_how] \u0420\u0430\u0437\u0431\u0435\u0440\u0438 \u0430\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u0443 \u0442\u0435\u043C\u044B.",
   mech: "[mode:deep_dive_mech] \u0420\u0430\u0437\u0431\u0435\u0440\u0438 \u043C\u0435\u0445\u0430\u043D\u0438\u043A\u0438 \u0438 \u043A\u043E\u0434 \u0442\u0435\u043C\u044B.",
-  nextNode: "next_node_ui",
-  clarify: "clarify_focus"
+  advancedAnalysis: `[mode:advanced_analysis] ${OVERLAY_CHIP_DISPLAY.advanced_analysis}`,
+  deepDesign: `[mode:deep_design] ${OVERLAY_CHIP_DISPLAY.deep_design}`,
+  nextNode: "next_node_ui"
 };
+var HOST_CHIP_LABELS = {
+  gloss: "\u0425\u043E\u0447\u0443 Gloss",
+  how: "\u0414\u043E\u0436\u0430\u0442\u044C HOW",
+  mech: "\u0414\u043E\u0436\u0430\u0442\u044C MECH",
+  advancedAnalysis: "\u0410\u043D\u0430\u043B\u0438\u0437 \u0443\u044F\u0437\u0432\u0438\u043C\u043E\u0441\u0442\u0435\u0439 (\u0437\u0430\u0434\u0430\u0447\u043A\u0430 \u0441\u043E \u0437\u0432\u0451\u0437\u0434\u043E\u0447\u043A\u043E\u0439)",
+  deepDesign: "\u0410\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u043D\u044B\u0439 \u0434\u0438\u0437\u0430\u0439\u043D (\u0441\u043B\u043E\u0436\u043D\u0430\u044F \u0437\u0432\u0451\u0437\u0434\u043E\u0447\u043A\u0430)",
+  next: "\u0418\u0434\u0435\u043C \u0434\u0430\u043B\u044C\u0448\u0435"
+};
+var HOST_CHIP_BY_LABEL = {
+  [HOST_CHIP_LABELS.gloss]: {
+    id: "gloss",
+    intent: QUICK_REPLY_INTENTS.gloss
+  },
+  [HOST_CHIP_LABELS.how]: { id: "push", intent: QUICK_REPLY_INTENTS.how },
+  [HOST_CHIP_LABELS.mech]: { id: "push", intent: QUICK_REPLY_INTENTS.mech },
+  [HOST_CHIP_LABELS.advancedAnalysis]: {
+    id: "advanced_analysis",
+    intent: QUICK_REPLY_INTENTS.advancedAnalysis
+  },
+  [OVERLAY_CHIP_DISPLAY.advanced_analysis]: {
+    id: "advanced_analysis",
+    intent: QUICK_REPLY_INTENTS.advancedAnalysis
+  },
+  [HOST_CHIP_LABELS.deepDesign]: {
+    id: "deep_design",
+    intent: QUICK_REPLY_INTENTS.deepDesign
+  },
+  [OVERLAY_CHIP_DISPLAY.deep_design]: {
+    id: "deep_design",
+    intent: QUICK_REPLY_INTENTS.deepDesign
+  },
+  "\u0417\u0430\u0434\u0430\u0447\u043A\u0430 \u0441\u043E \u0437\u0432\u0451\u0437\u0434\u043E\u0447\u043A\u043E\u0439": {
+    id: "deep_design",
+    intent: QUICK_REPLY_INTENTS.deepDesign
+  },
+  "\u0417\u0430\u0434\u0430\u0447\u043A\u0430 \u0441\u043E \u0437\u0432\u0435\u0437\u0434\u043E\u0447\u043A\u043E\u0439": {
+    id: "deep_design",
+    intent: QUICK_REPLY_INTENTS.deepDesign
+  },
+  [HOST_CHIP_LABELS.next]: {
+    id: "next",
+    intent: QUICK_REPLY_INTENTS.nextNode
+  },
+  "\u0418\u0434\u0451\u043C \u0434\u0430\u043B\u044C\u0448\u0435": { id: "next", intent: QUICK_REPLY_INTENTS.nextNode },
+  \u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0430: { id: "practice", intent: "\u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0430" },
+  \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430: { id: "check", intent: "\u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430" },
+  \u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C: { id: "skip", intent: "\u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C" }
+};
+function chipsFromHostLabels(labels) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const raw of labels || []) {
+    const label = String(raw || "").trim();
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    const mapped = HOST_CHIP_BY_LABEL[label];
+    if (mapped) {
+      const display = OVERLAY_CHIP_DISPLAY[mapped.id] || label;
+      out.push({ ...mapped, label: display, hostLabel: label });
+      continue;
+    }
+    if (/advanced_analysis/i.test(label) || /анализ уязвимостей/i.test(label)) {
+      out.push({
+        id: "advanced_analysis",
+        label: OVERLAY_CHIP_DISPLAY.advanced_analysis,
+        intent: QUICK_REPLY_INTENTS.advancedAnalysis,
+        hostLabel: label
+      });
+      continue;
+    }
+    if (/deep_design/i.test(label) || /архитектурный дизайн/i.test(label)) {
+      out.push({
+        id: "deep_design",
+        label: OVERLAY_CHIP_DISPLAY.deep_design,
+        intent: QUICK_REPLY_INTENTS.deepDesign,
+        hostLabel: label
+      });
+      continue;
+    }
+    out.push({ id: `host-${out.length}`, label, intent: label, hostLabel: label });
+  }
+  return out;
+}
+function hostChipLabelsFromSession(session) {
+  if (!session) return [];
+  const a = session.quickReplies || session.quick_replies || [];
+  const b = session.suggestedChips || session.suggested_chips || [];
+  return [...Array.isArray(a) ? a : [], ...Array.isArray(b) ? b : []];
+}
+function ActionChips({ chips, disabled, onChip, visible = true }) {
+  const list = (0, import_react20.useMemo)(() => chips || [], [chips]);
+  if (!visible || !list.length) return null;
+  return import_react20.default.createElement(
+    "div",
+    {
+      className: "tutor-quick-replies",
+      role: "group",
+      "aria-label": "\u0414\u0430\u043B\u044C\u043D\u0435\u0439\u0448\u0438\u0435 \u0448\u0430\u0433\u0438"
+    },
+    list.map(
+      (chip) => import_react20.default.createElement(
+        "button",
+        {
+          key: chip.id + (chip.label || ""),
+          type: "button",
+          className: `tutor-quick-reply-chip tutor-quick-reply-${chip.id}`,
+          disabled: Boolean(disabled),
+          onClick: () => onChip?.(chip)
+        },
+        chip.label
+      )
+    )
+  );
+}
+
+// QuickReplyChips.js
 function listSuccessorNodes(curriculum, nodeId) {
   const nid = String(nodeId || "").trim();
   if (!nid || !curriculum?.nodes?.length) return [];
@@ -41944,40 +42260,47 @@ function isFullDepthClosure(session, nodeLayer) {
   return Boolean(why && how && mech);
 }
 function buildTransitionChips(session, nodeLayer) {
-  if (!session?.readyForTransition) return [];
+  const host = chipsFromHostLabels(hostChipLabelsFromSession(session));
+  if (!session?.readyForTransition) {
+    return host;
+  }
+  if (host.length) return host;
   const ly = normalizeNodeLayer(nodeLayer || session?.nodeLayer);
   const open = openOptionalLayers(session, ly);
   const full = isFullDepthClosure(session, ly) || ly === "sota";
+  const score = Number(session?.topicMasteryScore ?? 0);
   if (full || open.length === 0) {
+    const next = {
+      id: "next",
+      label: HOST_CHIP_LABELS.next,
+      intent: QUICK_REPLY_INTENTS.nextNode
+    };
+    if (score < 100 && ly !== "sota") return [next];
     return [
       {
-        id: "next",
-        label: "\u2794 \u0412\u044B\u0431\u0440\u0430\u0442\u044C \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0443\u044E \u043D\u043E\u0434\u0443",
-        intent: QUICK_REPLY_INTENTS.nextNode
+        id: "deep_design",
+        label: "\u0410\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u043D\u044B\u0439 \u0434\u0438\u0437\u0430\u0439\u043D",
+        intent: QUICK_REPLY_INTENTS.deepDesign
       },
-      {
-        id: "clarify",
-        label: "\u{1F50D} \u0417\u0430\u0434\u0430\u0442\u044C \u0443\u0442\u043E\u0447\u043D\u044F\u044E\u0449\u0438\u0439 \u0432\u043E\u043F\u0440\u043E\u0441",
-        intent: QUICK_REPLY_INTENTS.clarify
-      }
+      next
     ];
   }
   const pushLayer = open[0];
-  const pushIntent = pushLayer === "HOW" ? QUICK_REPLY_INTENTS.how : QUICK_REPLY_INTENTS.mech;
+  const pushHow = pushLayer === "HOW";
   return [
     {
       id: "gloss",
-      label: "\u2794 \u041F\u0435\u0440\u0435\u0434\u0430\u0442\u044C Gloss \u0438 \u0434\u0430\u043B\u0435\u0435",
+      label: HOST_CHIP_LABELS.gloss,
       intent: QUICK_REPLY_INTENTS.gloss
     },
     {
       id: "push",
-      label: `\u26A1 \u0414\u043E\u0436\u0430\u0442\u044C ${pushLayer}`,
-      intent: pushIntent
+      label: pushHow ? HOST_CHIP_LABELS.how : HOST_CHIP_LABELS.mech,
+      intent: pushHow ? QUICK_REPLY_INTENTS.how : QUICK_REPLY_INTENTS.mech
     },
     {
       id: "next",
-      label: "\u2794 \u0412\u044B\u0431\u0440\u0430\u0442\u044C \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0443\u044E \u043D\u043E\u0434\u0443",
+      label: HOST_CHIP_LABELS.next,
       intent: QUICK_REPLY_INTENTS.nextNode
     }
   ];
@@ -41989,37 +42312,21 @@ function QuickReplyChips({
   disabled,
   onChip
 }) {
-  const chips = (0, import_react19.useMemo)(
+  const chips = (0, import_react21.useMemo)(
     () => visible ? buildTransitionChips(session, nodeLayer) : [],
-    [visible, session, nodeLayer]
+    [visible, session, nodeLayer, session?.quickReplies, session?.suggestedChips, session?.topicMasteryScore]
   );
-  if (!visible || !chips.length) return null;
-  return import_react19.default.createElement(
-    "div",
-    {
-      className: "tutor-quick-replies",
-      role: "group",
-      "aria-label": "\u0414\u0430\u043B\u044C\u043D\u0435\u0439\u0448\u0438\u0435 \u0448\u0430\u0433\u0438"
-    },
-    chips.map(
-      (chip) => import_react19.default.createElement(
-        "button",
-        {
-          key: chip.id,
-          type: "button",
-          className: `tutor-quick-reply-chip tutor-quick-reply-${chip.id}`,
-          disabled: Boolean(disabled),
-          onClick: () => onChip?.(chip)
-        },
-        chip.label
-      )
-    )
-  );
+  return import_react21.default.createElement(ActionChips, {
+    visible,
+    chips,
+    disabled,
+    onChip
+  });
 }
 function NextNodeSelector({ open, nodes, onSelect, onClose }) {
   if (!open) return null;
   const list = nodes || [];
-  return import_react19.default.createElement(
+  return import_react21.default.createElement(
     "div",
     {
       className: "next-node-selector-backdrop",
@@ -42028,7 +42335,7 @@ function NextNodeSelector({ open, nodes, onSelect, onClose }) {
         if (e.target === e.currentTarget) onClose?.();
       }
     },
-    import_react19.default.createElement(
+    import_react21.default.createElement(
       "div",
       {
         className: "next-node-selector",
@@ -42036,11 +42343,11 @@ function NextNodeSelector({ open, nodes, onSelect, onClose }) {
         "aria-modal": "true",
         "aria-label": "\u0412\u044B\u0431\u043E\u0440 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0435\u0439 \u043D\u043E\u0434\u044B"
       },
-      import_react19.default.createElement(
+      import_react21.default.createElement(
         "div",
         { className: "next-node-selector-head" },
-        import_react19.default.createElement("strong", null, "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0430\u044F \u043D\u043E\u0434\u0430"),
-        import_react19.default.createElement(
+        import_react21.default.createElement("strong", null, "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0430\u044F \u043D\u043E\u0434\u0430"),
+        import_react21.default.createElement(
           "button",
           {
             type: "button",
@@ -42051,30 +42358,30 @@ function NextNodeSelector({ open, nodes, onSelect, onClose }) {
           "\xD7"
         )
       ),
-      list.length === 0 ? import_react19.default.createElement(
+      list.length === 0 ? import_react21.default.createElement(
         "p",
         { className: "muted next-node-selector-empty" },
         "\u041D\u0435\u0442 \u0441\u043C\u0435\u0436\u043D\u044B\u0445 \u043D\u043E\u0434 \u0432 \u0433\u0440\u0430\u0444\u0435. \u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0443\u044E \u0442\u0435\u043C\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u043D\u0430\u0432\u044B\u043A\u043E\u0432."
-      ) : import_react19.default.createElement(
+      ) : import_react21.default.createElement(
         "ul",
         { className: "next-node-selector-list" },
         list.map(
-          (n) => import_react19.default.createElement(
+          (n) => import_react21.default.createElement(
             "li",
             { key: n.node_id },
-            import_react19.default.createElement(
+            import_react21.default.createElement(
               "button",
               {
                 type: "button",
                 className: "next-node-selector-item",
                 onClick: () => onSelect?.(n)
               },
-              import_react19.default.createElement(
+              import_react21.default.createElement(
                 "span",
                 { className: "next-node-selector-title" },
                 n.title || n.node_id
               ),
-              n.layer ? import_react19.default.createElement(
+              n.layer ? import_react21.default.createElement(
                 "span",
                 { className: "muted next-node-selector-layer" },
                 n.layer
@@ -42099,11 +42406,11 @@ var QUICK = [
   },
   {
     label: "\u0421\u0430\u043C\u043E\u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430",
-    text: "\u041E\u0434\u0438\u043D \u043A\u043E\u0440\u043E\u0442\u043A\u0438\u0439 \u0432\u043E\u043F\u0440\u043E\u0441 \u0441\u0430\u043C\u043E\u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u043F\u043E \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0443 \u0441\u043F\u0440\u0430\u0432\u0430."
+    text: "[mode:self_check] \u041E\u0434\u0438\u043D \u043A\u043E\u0440\u043E\u0442\u043A\u0438\u0439 \u0432\u043E\u043F\u0440\u043E\u0441 \u0441\u0430\u043C\u043E\u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u043F\u043E \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0443 \u0441\u043F\u0440\u0430\u0432\u0430."
   },
   {
     label: "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u043C\u043E\u0434\u0443\u043B\u044C",
-    text: "INTENT_FINALIZE: \u0447\u0442\u043E \u044F \u0443\u0441\u043E\u0432\u043E\u0438\u043B \u0438 \u043A\u0443\u0434\u0430 \u043B\u043E\u0433\u0438\u0447\u043D\u043E \u043F\u0435\u0440\u0435\u0439\u0442\u0438 \u0434\u0430\u043B\u044C\u0448\u0435?"
+    text: "[mode:next_module] \u0427\u0442\u043E \u044F \u0443\u0441\u0432\u043E\u0438\u043B \u0438 \u043A\u0443\u0434\u0430 \u043B\u043E\u0433\u0438\u0447\u043D\u043E \u043F\u0435\u0440\u0435\u0439\u0442\u0438 \u0434\u0430\u043B\u044C\u0448\u0435?"
   }
 ];
 function lastTutorMsgId(messages) {
@@ -42120,26 +42427,28 @@ function NodeTutorChat({
   onSend,
   disabled,
   generating,
+  stageMessage,
   curriculumId,
   nodeData,
   curriculum,
   onOpenNode
 }) {
-  const [input, setInput] = (0, import_react20.useState)("");
-  const [chipsDismissed, setChipsDismissed] = (0, import_react20.useState)(false);
-  const [nodePickerOpen, setNodePickerOpen] = (0, import_react20.useState)(false);
-  const materialRef = (0, import_react20.useRef)(null);
-  const inputRef = (0, import_react20.useRef)(null);
+  const [input, setInput] = (0, import_react22.useState)("");
+  const [chipsDismissed, setChipsDismissed] = (0, import_react22.useState)(false);
+  const [nodePickerOpen, setNodePickerOpen] = (0, import_react22.useState)(false);
+  const materialRef = (0, import_react22.useRef)(null);
+  const inputRef = (0, import_react22.useRef)(null);
   const messages = sortDialogMessages(session?.messages || []);
   const composeLocked = Boolean(disabled);
   const explainEnabled = Boolean(curriculumId && nodeData);
   const tutorTurnKey = lastTutorMsgId(messages);
-  const showTransitionChips = Boolean(session?.readyForTransition) && !chipsDismissed && !generating && Boolean(tutorTurnKey);
-  (0, import_react20.useEffect)(() => {
+  const hostQuickCount = Array.isArray(session?.quickReplies) ? session.quickReplies.length : 0;
+  const showTransitionChips = (Boolean(session?.readyForTransition) || hostQuickCount > 0) && !chipsDismissed && !generating && Boolean(tutorTurnKey);
+  (0, import_react22.useEffect)(() => {
     setChipsDismissed(false);
     setNodePickerOpen(false);
-  }, [tutorTurnKey, session?.readyForTransition, session?.lastEvalDirective]);
-  const successorNodes = (0, import_react20.useMemo)(
+  }, [tutorTurnKey, session?.readyForTransition, session?.lastEvalDirective, session?.quickReplies]);
+  const successorNodes = (0, import_react22.useMemo)(
     () => listSuccessorNodes(curriculum, nodeData?.node_id),
     [curriculum, nodeData?.node_id]
   );
@@ -42165,11 +42474,6 @@ function NodeTutorChat({
       setNodePickerOpen(true);
       return;
     }
-    if (chip.intent === QUICK_REPLY_INTENTS.clarify) {
-      dismissChips();
-      inputRef.current?.focus?.();
-      return;
-    }
     dismissChips();
     send(chip.intent);
   }
@@ -42177,38 +42481,44 @@ function NodeTutorChat({
     setNodePickerOpen(false);
     if (node && onOpenNode) onOpenNode(node);
   }
-  return import_react20.default.createElement(
+  return import_react22.default.createElement(
     "div",
     { className: "tutor-panel" },
-    import_react20.default.createElement(NodeSelectionExplain, {
+    import_react22.default.createElement(NodeSelectionExplain, {
       curriculumId,
       nodeData,
       containerRef: materialRef,
       enabled: explainEnabled
     }),
-    generating && import_react20.default.createElement(
+    generating && import_react22.default.createElement(
       "div",
       { className: "tutor-busy-hint", "aria-live": "polite" },
-      "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043E\u0442\u0432\u0435\u0442\u0430\u2026 \u043C\u043E\u0436\u043D\u043E \u0447\u0438\u0442\u0430\u0442\u044C \u0438\u0441\u0442\u043E\u0440\u0438\u044E \u0432\u044B\u0448\u0435; \u043D\u043E\u0432\u044B\u0435 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B."
+      // stageMessage — последнее FSM stage-событие (см. schemas/fsm.py,
+      // api.js::nodeChatStream) с бэкенда; статичный текст — fallback,
+      // пока событий ещё не пришло или backend их не шлёт (non-stream путь).
+      stageMessage || "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043E\u0442\u0432\u0435\u0442\u0430\u2026 \u043C\u043E\u0436\u043D\u043E \u0447\u0438\u0442\u0430\u0442\u044C \u0438\u0441\u0442\u043E\u0440\u0438\u044E \u0432\u044B\u0448\u0435; \u043D\u043E\u0432\u044B\u0435 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B."
     ),
-    import_react20.default.createElement(
+    import_react22.default.createElement(
       "div",
       { className: "tutor-panel-scroll tutor-selectable", ref: materialRef },
-      messages.length > 0 && import_react20.default.createElement(
+      messages.length > 0 && import_react22.default.createElement(
         "p",
         { className: "tutor-selectable-hint muted" },
         "\u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u0432 \u043E\u0442\u0432\u0435\u0442\u0435 \u0442\u044C\u044E\u0442\u043E\u0440\u0430 \u2014 \xAB\u041E\u0431\u044A\u044F\u0441\u043D\u0438\u0442\u044C\xBB."
       ),
-      import_react20.default.createElement(
+      import_react22.default.createElement(
         "div",
         { className: "chat-log node-selectable-material" },
         messages.map((m) => {
           const msgKey = m.msg_id || `${m.role}-${dialogMsgId(m) ?? (m.content || "").slice(0, 40)}`;
           const tutorHtml = postprocessTutorHtml(m.contentHtml || "");
           const useTutorHtml = m.role === "tutor" && tutorHtml && tutorHtmlMatchesContentForMessage(m.content || "", tutorHtml);
-          const tutorMarkdownHtml = m.role === "tutor" ? tutorMarkdownToHtml(m.content || "") : "";
+          const tutorMarkdownHtml = m.role === "tutor" ? linkifySourceAnchorsHtml(
+            tutorMarkdownToHtml(m.content || ""),
+            session?.sourceRegistry
+          ) : "";
           const isLastTutor = m.role === "tutor" && msgKey === tutorTurnKey;
-          return import_react20.default.createElement(
+          return import_react22.default.createElement(
             "div",
             {
               key: msgKey,
@@ -42216,21 +42526,21 @@ function NodeTutorChat({
               "data-msg-id": m.msg_id || "",
               "data-role": m.role
             },
-            useTutorHtml ? import_react20.default.createElement(LlmHtmlBlock, {
+            useTutorHtml ? import_react22.default.createElement(LlmHtmlBlock, {
               html: tutorHtml,
               className: "md-body chat-md"
-            }) : m.role === "tutor" && structuredAnalysisToHtml(m.content || "") ? import_react20.default.createElement(LlmHtmlBlock, {
+            }) : m.role === "tutor" && structuredAnalysisToHtml(m.content || "") ? import_react22.default.createElement(LlmHtmlBlock, {
               html: structuredAnalysisToHtml(m.content || ""),
               className: "md-body chat-md"
-            }) : tutorMarkdownHtml ? import_react20.default.createElement(LlmHtmlBlock, {
+            }) : tutorMarkdownHtml ? import_react22.default.createElement(LlmHtmlBlock, {
               html: tutorMarkdownHtml,
               className: "md-body chat-md"
-            }) : import_react20.default.createElement(
+            }) : import_react22.default.createElement(
               "div",
               { className: "chat-plain lecture-plain" },
               m.content || ""
             ),
-            isLastTutor ? import_react20.default.createElement(QuickReplyChips, {
+            isLastTutor ? import_react22.default.createElement(QuickReplyChips, {
               visible: showTransitionChips,
               session,
               nodeLayer: nodeData?.layer || session?.nodeLayer || "foundation",
@@ -42240,26 +42550,26 @@ function NodeTutorChat({
           );
         })
       ),
-      import_react20.default.createElement(RagInspectorPanel, {
+      import_react22.default.createElement(RagInspectorPanel, {
         items: session?.lectureRagInspector || []
       })
     ),
-    import_react20.default.createElement(NextNodeSelector, {
+    import_react22.default.createElement(NextNodeSelector, {
       open: nodePickerOpen,
       nodes: successorNodes,
       onSelect: handleSelectNextNode,
       onClose: () => setNodePickerOpen(false)
     }),
-    import_react20.default.createElement(
+    import_react22.default.createElement(
       "div",
       {
         className: composeLocked ? "tutor-panel-compose tutor-panel-compose-locked" : "tutor-panel-compose"
       },
-      import_react20.default.createElement(
+      import_react22.default.createElement(
         "div",
         { className: "quick-chips" },
         QUICK.map(
-          (q) => import_react20.default.createElement(
+          (q) => import_react22.default.createElement(
             "button",
             {
               key: q.label,
@@ -42271,7 +42581,7 @@ function NodeTutorChat({
           )
         )
       ),
-      import_react20.default.createElement(
+      import_react22.default.createElement(
         "form",
         {
           className: "chat-form",
@@ -42280,7 +42590,7 @@ function NodeTutorChat({
             if (!composeLocked) send(input);
           }
         },
-        import_react20.default.createElement("input", {
+        import_react22.default.createElement("input", {
           ref: inputRef,
           value: input,
           onChange: (e) => {
@@ -42290,7 +42600,7 @@ function NodeTutorChat({
           placeholder: composeLocked ? "\u0416\u0434\u0451\u043C \u043E\u0442\u0432\u0435\u0442 \u0442\u044C\u044E\u0442\u043E\u0440\u0430\u2026" : "\u0412\u043E\u043F\u0440\u043E\u0441 \u0442\u044C\u044E\u0442\u043E\u0440\u0443\u2026",
           disabled: composeLocked
         }),
-        import_react20.default.createElement(
+        import_react22.default.createElement(
           "button",
           { type: "submit", disabled: composeLocked },
           composeLocked ? "\u2026" : "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C"
@@ -42301,7 +42611,7 @@ function NodeTutorChat({
 }
 
 // ColumnResizer.js
-var import_react21 = __toESM(require_react(), 1);
+var import_react23 = __toESM(require_react(), 1);
 function ColumnResizer({ onDragDelta, onDragEnd }) {
   function onMouseDown(e) {
     e.preventDefault();
@@ -42322,7 +42632,7 @@ function ColumnResizer({ onDragDelta, onDragEnd }) {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
-  return import_react21.default.createElement("div", {
+  return import_react23.default.createElement("div", {
     className: "skill-col-resizer",
     role: "separator",
     "aria-orientation": "vertical",
@@ -42341,35 +42651,36 @@ function replaceSkillTreeSearchParams(patch) {
   window.history.replaceState(null, "", url.pathname + url.search);
 }
 function RoadmapDashboard() {
-  const [goal, setGoal] = (0, import_react22.useState)("");
-  const [sourcePolicy, setSourcePolicy] = (0, import_react22.useState)("practical_only");
-  const [ragStatus, setRagStatus] = (0, import_react22.useState)(null);
-  const [curriculum, setCurriculum] = (0, import_react22.useState)(null);
-  const [curriculaList, setCurriculaList] = (0, import_react22.useState)([]);
-  const [statuses, setStatuses] = (0, import_react22.useState)({});
-  const [selectedNode, setSelectedNode] = (0, import_react22.useState)(null);
-  const [sessions, setSessions] = (0, import_react22.useState)({});
-  const [workspaceBusy, setWorkspaceBusy] = (0, import_react22.useState)(false);
-  const [genStatus, setGenStatus] = (0, import_react22.useState)("");
-  const [genBusyAction, setGenBusyAction] = (0, import_react22.useState)(null);
-  const [tutorBusyNodeId, setTutorBusyNodeId] = (0, import_react22.useState)(null);
-  const [selectedMaterialId, setSelectedMaterialId] = (0, import_react22.useState)(null);
-  const [materialViewMode, setMaterialViewMode] = (0, import_react22.useState)(() => {
+  const [goal, setGoal] = (0, import_react24.useState)("");
+  const [sourcePolicy, setSourcePolicy] = (0, import_react24.useState)("practical_only");
+  const [ragStatus, setRagStatus] = (0, import_react24.useState)(null);
+  const [curriculum, setCurriculum] = (0, import_react24.useState)(null);
+  const [curriculaList, setCurriculaList] = (0, import_react24.useState)([]);
+  const [statuses, setStatuses] = (0, import_react24.useState)({});
+  const [selectedNode, setSelectedNode] = (0, import_react24.useState)(null);
+  const [sessions, setSessions] = (0, import_react24.useState)({});
+  const [workspaceBusy, setWorkspaceBusy] = (0, import_react24.useState)(false);
+  const [genStatus, setGenStatus] = (0, import_react24.useState)("");
+  const [genBusyAction, setGenBusyAction] = (0, import_react24.useState)(null);
+  const [tutorBusyNodeId, setTutorBusyNodeId] = (0, import_react24.useState)(null);
+  const [tutorStageMessage, setTutorStageMessage] = (0, import_react24.useState)("");
+  const [selectedMaterialId, setSelectedMaterialId] = (0, import_react24.useState)(null);
+  const [materialViewMode, setMaterialViewMode] = (0, import_react24.useState)(() => {
     const v = localStorage.getItem(MATERIAL_VIEW_LS);
     return v === "carousel" ? "carousel" : "list";
   });
-  const [error, setError] = (0, import_react22.useState)("");
-  const [layoutEpoch, setLayoutEpoch] = (0, import_react22.useState)(0);
-  const [leftColWidth, setLeftColWidth] = (0, import_react22.useState)(() => {
+  const [error, setError] = (0, import_react24.useState)("");
+  const [layoutEpoch, setLayoutEpoch] = (0, import_react24.useState)(0);
+  const [leftColWidth, setLeftColWidth] = (0, import_react24.useState)(() => {
     const n = Number(localStorage.getItem("skillTreeColLeft"));
     return n >= 240 && n <= 720 ? n : 360;
   });
-  const [rightColWidth, setRightColWidth] = (0, import_react22.useState)(() => {
+  const [rightColWidth, setRightColWidth] = (0, import_react24.useState)(() => {
     const n = Number(localStorage.getItem("skillTreeColRight"));
     return n >= 280 && n <= 960 ? n : 420;
   });
-  const leftColRef = import_react22.default.useRef(leftColWidth);
-  const rightColRef = import_react22.default.useRef(rightColWidth);
+  const leftColRef = import_react24.default.useRef(leftColWidth);
+  const rightColRef = import_react24.default.useRef(rightColWidth);
   leftColRef.current = leftColWidth;
   rightColRef.current = rightColWidth;
   function maxResizableColumnWidth(oppositeWidth) {
@@ -42384,7 +42695,7 @@ function RoadmapDashboard() {
     localStorage.setItem("skillTreeColLeft", String(leftColRef.current));
     localStorage.setItem("skillTreeColRight", String(rightColRef.current));
   }
-  const loadWorkspace = (0, import_react22.useCallback)(async (curriculumId) => {
+  const loadWorkspace = (0, import_react24.useCallback)(async (curriculumId) => {
     if (!curriculumId) return;
     setError("");
     setWorkspaceBusy(true);
@@ -42410,7 +42721,7 @@ function RoadmapDashboard() {
       setWorkspaceBusy(false);
     }
   }, []);
-  const refreshCurriculumGraph = (0, import_react22.useCallback)(async (curriculumId) => {
+  const refreshCurriculumGraph = (0, import_react24.useCallback)(async (curriculumId) => {
     if (!curriculumId) return null;
     try {
       const ws = await fetchWorkspace(curriculumId);
@@ -42424,7 +42735,7 @@ function RoadmapDashboard() {
       return null;
     }
   }, []);
-  (0, import_react22.useEffect)(() => {
+  (0, import_react24.useEffect)(() => {
     fetchRagStatus().then(setRagStatus).catch(
       () => setRagStatus({
         connected: false,
@@ -42543,7 +42854,7 @@ function RoadmapDashboard() {
     clearCanvasForNewRoute();
     await runCreatePath(text);
   }
-  (0, import_react22.useEffect)(() => {
+  (0, import_react24.useEffect)(() => {
     function onPickMaterial(e) {
       const id2 = String(e.detail?.id || "").trim();
       if (!id2) return;
@@ -42553,15 +42864,29 @@ function RoadmapDashboard() {
     window.addEventListener("ke:select-material", onPickMaterial);
     return () => window.removeEventListener("ke:select-material", onPickMaterial);
   }, []);
-  (0, import_react22.useEffect)(() => {
+  (0, import_react24.useEffect)(() => {
     localStorage.setItem(MATERIAL_VIEW_LS, materialViewMode);
   }, [materialViewMode]);
-  const applyNodeResponse = (0, import_react22.useCallback)((nodeId, res, userMsg) => {
+  const applyNodeResponse = (0, import_react24.useCallback)((nodeId, res, userMsg) => {
     if (res.error) {
       setError(res.error);
       return;
     }
     setStatuses((prev) => ({ ...prev, [nodeId]: res.node_status }));
+    if (Array.isArray(res.mapped_source_ids)) {
+      const freshMapped = res.mapped_source_ids;
+      setSelectedNode(
+        (prev) => prev && prev.node_id === nodeId ? { ...prev, mapped_source_ids: freshMapped } : prev
+      );
+      setCurriculum((prev) => {
+        if (!prev || !Array.isArray(prev.nodes)) return prev;
+        const idx = prev.nodes.findIndex((n) => n.node_id === nodeId);
+        if (idx === -1) return prev;
+        const nodes = prev.nodes.slice();
+        nodes[idx] = { ...nodes[idx], mapped_source_ids: freshMapped };
+        return { ...prev, nodes };
+      });
+    }
     setSessions((prev) => {
       const old = prev[nodeId] || { messages: [] };
       const streamId = `stream-${nodeId}`;
@@ -42595,9 +42920,9 @@ function RoadmapDashboard() {
       };
     });
   }, []);
-  const openNode = (0, import_react22.useCallback)(
+  const openNode = (0, import_react24.useCallback)(
     async (node) => {
-      if (!curriculum) return;
+      if (!curriculum || !node?.node_id) return;
       const sid = node.node_id;
       const initialized2 = Boolean(sessions[sid]?.initialized);
       if (tutorBusyNodeId !== null && !initialized2) return;
@@ -42605,10 +42930,6 @@ function RoadmapDashboard() {
       setSelectedMaterialId(null);
       replaceSkillTreeSearchParams({ node: sid, material: "" });
       setError("");
-      const grounding = String(node.grounding_status || "").trim();
-      if (!initialized2 && (grounding === "unverified_deep" || grounding === "grounded" || grounding === "model_only")) {
-        return;
-      }
       if (initialized2) {
         try {
           const regRes = await fetchNodeSourceRegistry(
@@ -42628,12 +42949,25 @@ function RoadmapDashboard() {
         return;
       }
       setTutorBusyNodeId(sid);
+      setTutorStageMessage("");
       try {
-        const res = await nodeInit(
+        let finalRes = null;
+        await nodeInitStream(
           curriculum.curriculum_id,
-          toNodeDataInput(node)
+          toNodeDataInput(node),
+          (evt) => {
+            if (evt.type === "stage" && evt.message) {
+              setTutorStageMessage(evt.message);
+            }
+            if (evt.type === "complete" && evt.result) {
+              finalRes = evt.result;
+            }
+            if (evt.type === "error") {
+              throw new Error(evt.detail || "init-stream error");
+            }
+          }
         );
-        applyNodeResponse(sid, res);
+        applyNodeResponse(sid, finalRes || {});
         const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
         if (freshGraph) {
           const freshNode = freshGraph.nodes.find((n) => n.node_id === sid);
@@ -42653,7 +42987,7 @@ function RoadmapDashboard() {
       refreshCurriculumGraph
     ]
   );
-  (0, import_react22.useEffect)(() => {
+  (0, import_react24.useEffect)(() => {
     if (!curriculum?.nodes?.length || workspaceBusy) return;
     const params = new URLSearchParams(window.location.search);
     const nodeId = (params.get("node") || "").trim();
@@ -42672,7 +43006,7 @@ function RoadmapDashboard() {
     selectedNode?.node_id,
     openNode
   ]);
-  (0, import_react22.useEffect)(() => {
+  (0, import_react24.useEffect)(() => {
     if (!selectedNode || workspaceBusy) return;
     const mid = (new URLSearchParams(window.location.search).get("material") || "").trim();
     if (mid) setSelectedMaterialId(mid);
@@ -42683,6 +43017,7 @@ function RoadmapDashboard() {
     if (!msg) return;
     const nid = selectedNode.node_id;
     setTutorBusyNodeId(nid);
+    setTutorStageMessage("");
     onTutorPendingUser(msg);
     try {
       let finalRes = null;
@@ -42692,6 +43027,9 @@ function RoadmapDashboard() {
         toNodeDataInput(selectedNode),
         msg,
         (evt) => {
+          if (evt.type === "stage" && evt.message) {
+            setTutorStageMessage(evt.message);
+          }
           if (evt.type === "token" && evt.text) {
             streamed += evt.text;
             setSessions((prev) => {
@@ -42725,8 +43063,20 @@ function RoadmapDashboard() {
       }
     } catch (err) {
       setError(String(err.message || err));
+      const streamId = `stream-${nid}`;
+      setSessions((prev) => {
+        const old = prev[nid] || { messages: [] };
+        return {
+          ...prev,
+          [nid]: {
+            ...old,
+            messages: (old.messages || []).filter((m) => m.msg_id !== streamId)
+          }
+        };
+      });
     } finally {
       setTutorBusyNodeId(null);
+      setTutorStageMessage("");
     }
   }
   async function runVerify() {
@@ -42744,6 +43094,7 @@ function RoadmapDashboard() {
       onVerifyResponse({ error: String(err.message || err) });
     } finally {
       setTutorBusyNodeId(null);
+      setTutorStageMessage("");
     }
   }
   function onTutorPendingUser(userMsg) {
@@ -42815,6 +43166,7 @@ function RoadmapDashboard() {
       setError(String(err.message || err));
     } finally {
       setTutorBusyNodeId(null);
+      setTutorStageMessage("");
     }
   }
   const session = selectedNode ? sessions[selectedNode.node_id] : null;
@@ -42829,31 +43181,31 @@ function RoadmapDashboard() {
     const suffix = c.has_graph === false ? " (\u0431\u0435\u0437 \u0433\u0440\u0430\u0444\u0430)" : "";
     return `${title}${nodes}${suffix}`;
   }
-  return import_react22.default.createElement(
+  return import_react24.default.createElement(
     "div",
     { className: "skill-dashboard" },
-    import_react22.default.createElement(
+    import_react24.default.createElement(
       "header",
       { className: "skill-header" },
-      import_react22.default.createElement(
+      import_react24.default.createElement(
         "div",
         { className: "skill-header-top" },
-        import_react22.default.createElement(
+        import_react24.default.createElement(
           "div",
           null,
-          import_react22.default.createElement("h1", null, "AI Skill Tree & Tutor"),
-          import_react22.default.createElement(
+          import_react24.default.createElement("h1", null, "AI Skill Tree & Tutor"),
+          import_react24.default.createElement(
             "p",
             { className: "muted" },
             "\u041C\u0430\u0440\u0448\u0440\u0443\u0442\u044B: knowledge_engine/.runs/skill_tree_curricula.json"
           ),
-          import_react22.default.createElement(
+          import_react24.default.createElement(
             "a",
             { href: "/app", className: "nav-link-skill" },
             "\u2190 \u0418\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0439 \u0430\u043D\u0430\u043B\u0438\u0437"
           )
         ),
-        ragStatus && import_react22.default.createElement(
+        ragStatus && import_react24.default.createElement(
           "span",
           {
             className: `rag-pill${ragStatus.connected ? "" : " off"}`
@@ -42861,23 +43213,23 @@ function RoadmapDashboard() {
           ragStatus.label
         )
       ),
-      import_react22.default.createElement(
+      import_react24.default.createElement(
         "div",
         { className: "skill-saved-section" },
-        import_react22.default.createElement(
+        import_react24.default.createElement(
           "p",
           { className: "skill-saved-title" },
           `\u0421\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u044B (${curriculaList.length})`
         ),
-        curriculaList.length === 0 ? import_react22.default.createElement(
+        curriculaList.length === 0 ? import_react24.default.createElement(
           "p",
           { className: "skill-saved-empty" },
           "\u041F\u043E\u043A\u0430 \u043D\u0435\u0442 \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u043E\u0432. \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043F\u0443\u0442\u044C \u043D\u0438\u0436\u0435 \u2014 \u043E\u043D \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438."
-        ) : import_react22.default.createElement(
+        ) : import_react24.default.createElement(
           "div",
           { className: "skill-route-list" },
           curriculaList.map(
-            (c) => import_react22.default.createElement(
+            (c) => import_react24.default.createElement(
               "button",
               {
                 key: c.curriculum_id,
@@ -42902,7 +43254,7 @@ function RoadmapDashboard() {
           )
         )
       ),
-      import_react22.default.createElement(CurriculumInputBar, {
+      import_react24.default.createElement(CurriculumInputBar, {
         goal,
         onGoalChange: setGoal,
         sourcePolicy,
@@ -42916,8 +43268,8 @@ function RoadmapDashboard() {
         onCreateNew: runCreateNewWhileLoaded
       })
     ),
-    error && import_react22.default.createElement("div", { className: "skill-error" }, error),
-    import_react22.default.createElement(
+    error && import_react24.default.createElement("div", { className: "skill-error" }, error),
+    import_react24.default.createElement(
       "div",
       {
         className: "skill-split",
@@ -42925,7 +43277,7 @@ function RoadmapDashboard() {
           gridTemplateColumns: `minmax(180px, 1fr) 6px ${leftColWidth}px 6px ${rightColWidth}px`
         }
       },
-      curriculum ? import_react22.default.createElement(RoadmapCanvas, {
+      curriculum ? import_react24.default.createElement(RoadmapCanvas, {
         curriculum,
         statuses,
         selectedNodeId: selectedNode?.node_id,
@@ -42933,12 +43285,12 @@ function RoadmapDashboard() {
         tutorBusyNodeId,
         sessions,
         layoutEpoch
-      }) : import_react22.default.createElement(
+      }) : import_react24.default.createElement(
         "div",
         { className: "skill-canvas-wrap muted", style: { padding: "2rem" } },
         "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0446\u0435\u043B\u044C \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0439 \u043C\u0430\u0440\u0448\u0440\u0443\u0442."
       ),
-      import_react22.default.createElement(ColumnResizer, {
+      import_react24.default.createElement(ColumnResizer, {
         onDragDelta: (dx) => {
           setLeftColWidth((w) => {
             const maxWidth = Math.min(
@@ -42952,30 +43304,31 @@ function RoadmapDashboard() {
         },
         onDragEnd: persistColWidths
       }),
-      import_react22.default.createElement(
+      import_react24.default.createElement(
         "aside",
         { className: "skill-chat-column" },
-        curriculum && selectedNode ? import_react22.default.createElement(NodeTutorChat, {
+        curriculum && selectedNode ? import_react24.default.createElement(NodeTutorChat, {
           session,
           onSend: sendTutorMessage,
           disabled: composeLocked,
           generating: nodeGenerating,
+          stageMessage: tutorStageMessage,
           curriculumId: curriculum.curriculum_id,
           nodeData: toNodeDataInput(selectedNode),
           curriculum,
           onOpenNode: openNode
-        }) : import_react22.default.createElement(
+        }) : import_react24.default.createElement(
           "div",
           { className: "tutor-panel skill-chat-placeholder" },
-          import_react22.default.createElement("h3", null, "\u0427\u0430\u0442 \u0441 \u0442\u044C\u044E\u0442\u043E\u0440\u043E\u043C"),
-          import_react22.default.createElement(
+          import_react24.default.createElement("h3", null, "\u0427\u0430\u0442 \u0441 \u0442\u044C\u044E\u0442\u043E\u0440\u043E\u043C"),
+          import_react24.default.createElement(
             "p",
             { className: "muted" },
             curriculum ? "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u2014 \u0434\u0438\u0430\u043B\u043E\u0433 \u043E\u0442\u043A\u0440\u043E\u0435\u0442\u0441\u044F \u0437\u0434\u0435\u0441\u044C (\u043A\u0430\u043A \u0432 Cursor)." : "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442, \u0437\u0430\u0442\u0435\u043C \u043E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u0433\u0440\u0430\u0444\u0435."
           )
         )
       ),
-      import_react22.default.createElement(ColumnResizer, {
+      import_react24.default.createElement(ColumnResizer, {
         onDragDelta: (dx) => {
           setRightColWidth((w) => {
             const maxWidth = Math.min(
@@ -42989,7 +43342,7 @@ function RoadmapDashboard() {
         },
         onDragEnd: persistColWidths
       }),
-      curriculum ? import_react22.default.createElement(NodeDrawer, {
+      curriculum ? import_react24.default.createElement(NodeDrawer, {
         curriculum,
         selectedNode,
         session,
@@ -43004,14 +43357,14 @@ function RoadmapDashboard() {
         selectedMaterialId,
         materialViewMode,
         onMaterialViewModeChange: setMaterialViewMode
-      }) : import_react22.default.createElement("aside", { className: "node-drawer empty" })
+      }) : import_react24.default.createElement("aside", { className: "node-drawer empty" })
     )
   );
 }
 
 // main.js
 var root2 = (0, import_client.createRoot)(document.getElementById("skill-tree-root"));
-root2.render(import_react23.default.createElement(RoadmapDashboard));
+root2.render(import_react25.default.createElement(RoadmapDashboard));
 /*! Bundled license information:
 
 react/cjs/react.development.js:

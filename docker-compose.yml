@@ -21,6 +21,11 @@ x-ke-python-env: &ke-python-env
   OLLAMA_BASE_URL: http://host.docker.internal:11434
   GEMINI_BROWSER_HEADLESS: "true"
   PYTHONPATH: /app
+  # .env даёт POSTGRES_DSN=...@localhost:5432/... (для host-native dev,
+  # см. .env.example) — внутри контейнера localhost не резолвит сервис
+  # postgres, нужен Docker DNS hostname. Тот же паттерн, что SEARXNG_BASE_URL
+  # выше (перекрывает .env для сети контейнеров).
+  POSTGRES_DSN: postgresql://${POSTGRES_USER:-knowledge_engine}:${POSTGRES_PASSWORD:-knowledge_engine}@postgres:5432/${POSTGRES_DB:-knowledge_engine}
 
 x-ke-app-volumes: &ke-app-volumes
   - ke_python_venv:/app/.venv
@@ -29,6 +34,74 @@ x-ke-app-volumes: &ke-app-volumes
   - ./.env:/app/.env:ro
 
 services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    container_name: ke-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-knowledge_engine}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-knowledge_engine}
+      POSTGRES_DB: ${POSTGRES_DB:-knowledge_engine}
+    volumes:
+      # PG18+ образ хочет монтирование в родительский /var/lib/postgresql
+      # (версия-специфичная поддиректория внутри, см. pg_ctlcluster) — НЕ
+      # .../data напрямую, это старая (pre-18) конвенция, ловили restart-loop.
+      - ke_postgres_data:/var/lib/postgresql
+    # Лимиты, чтобы БД не утилизировала весь хост (см. prompt.txt: Phase 0).
+    # deploy.resources применяется и вне Swarm начиная с Docker Compose v2.
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+    # shared_buffers/work_mem/maintenance_work_mem подобраны под HNSW-построение
+    # (maintenance_work_mem=512MB — рекомендация pgvector для CREATE INDEX ... USING hnsw)
+    # при лимите контейнера 4GB: shared_buffers 1G + effective_cache_size 3G (host page cache estimate).
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=1GB"
+      - "-c"
+      - "work_mem=32MB"
+      - "-c"
+      - "maintenance_work_mem=512MB"
+      - "-c"
+      - "effective_cache_size=3GB"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-knowledge_engine} -d ${POSTGRES_DB:-knowledge_engine}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Ephemeral init-контейнер (Phase 3, см. prompt.txt): накатывает Alembic
+  # до head и проверяет целостность (vector extension + HNSW-индексы) при
+  # каждом `docker compose up` — без ручного вызова alembic. НЕ за profile
+  # (в отличие от knowledge-api): должен применяться при простом
+  # `docker compose up -d`, в т.ч. когда API/воркер запущены нативно
+  # (dev-native.sh), а не в контейнере — они всё равно бьют в тот же
+  # контейнерный postgres.
+  #
+  # Отдельный лёгкий Dockerfile (не x-ke-python-image/entrypoint.sh общего
+  # приложения) — без PyTorch/CUDA/sentence-transformers/exa-py, baked-at-
+  # build-time (без runtime venv-volume) — поднимается за секунды.
+  migrator:
+    build:
+      context: .
+      dockerfile: knowledge_engine/docker/migrator/Dockerfile
+    container_name: ke-migrator
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_DSN: postgresql://${POSTGRES_USER:-knowledge_engine}:${POSTGRES_PASSWORD:-knowledge_engine}@postgres:5432/${POSTGRES_DB:-knowledge_engine}
+    restart: "no"
+
   redis:
     image: redis:7-alpine
     container_name: ke-redis
@@ -67,6 +140,8 @@ services:
     depends_on:
       searxng:
         condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
     env_file:
       - path: .env
         required: false
@@ -93,3 +168,4 @@ services:
 volumes:
   ke_python_venv:
   ke_playwright_cache:
+  ke_postgres_data:

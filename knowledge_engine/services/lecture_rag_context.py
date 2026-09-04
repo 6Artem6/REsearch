@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from dataclasses import dataclass
 
 import numpy as np
@@ -47,6 +48,7 @@ from knowledge_engine.services.lecture_pipeline import (
     build_lecture_rag_stats,
 )
 from knowledge_engine.services.lecture_rag_source_scope import LectureRagSourceScope
+from knowledge_engine.services.ml_memory_guard import rag_request_scope
 from knowledge_engine.services.skill_tree_store import (
     get_curriculum_graph,
     get_curriculum_meta,
@@ -118,6 +120,9 @@ def _format_document_summary(
         f"### {tag} {index}: {ds.title}",
         f"URL: {ds.url}",
     ]
+    exec_sum = (ds.executive_summary or "").strip()
+    if exec_sum:
+        lines.append(exec_sum)
     if ds.cs_concepts:
         lines.append("Концепты: " + ", ".join(ds.cs_concepts[:16]))
     if ds.key_takeaways:
@@ -164,6 +169,7 @@ def _format_registry_stub(
 def _plain_from_document_summary(ds: DocumentSummary) -> str:
     parts = [
         ds.title,
+        (ds.executive_summary or "").strip(),
         " ".join(ds.cs_concepts or []),
         " ".join(ds.key_takeaways or []),
         " ".join(ds.failure_modes or []),
@@ -451,6 +457,77 @@ def _merge_mandatory_rag_after_rerank(
     return out
 
 
+def _dedupe_candidates_by_text_hash(
+    candidates: list[LectureContextCandidate],
+) -> list[LectureContextCandidate]:
+    """Убирает дубли по хэшу текста (chunk.plain.strip()) ДО CE/MMR и ДО
+    промпта — независимо от источника (mandatory_rag/fine_chunks/hybrid/
+    light_rag). Сохраняет первое вхождение (порядок сбора уже приоритетный:
+    mandatory_rag идёт первым). См. баг: 3 identичных R1/R2/R3-чанка из
+    названия темы, дошедших до RAG-инспектора."""
+    seen: set[str] = set()
+    out: list[LectureContextCandidate] = []
+    dropped = 0
+    for c in candidates:
+        text = (c.plain or c.formatted or "").strip()
+        if not text:
+            out.append(c)
+            continue
+        key = hashlib.sha1(text.encode("utf-8")).hexdigest()
+        if key in seen:
+            dropped += 1
+            continue
+        seen.add(key)
+        out.append(c)
+    if dropped:
+        trace(f"LECTURE_RAG dedup_text ✓ | removed={dropped} kept={len(out)}")
+    return out
+
+
+def _lecture_node_needs_retrieval(curriculum_id: str, node: NodeDataInput) -> bool:
+    """Retrieval запускается, только если у ноды ЕСТЬ хоть один привязанный
+    источник (mapped_source_ids/resource_urls/learning_resources/mapped
+    doc_ids) — иначе пул кандидатов пуст или вырожден (stub-текст без
+    реального смысла), и в промпт/RAG-инспектор уходят фальшивые чанки (см.
+    баг: 3 identичных R1/R2/R3, cos=0.000, просто название темы).
+
+    Привязанные источники проверяются ПЕРВЫМИ, до node_risk_kind: Model-First
+    нода (BASE, без веб-поиска на этапе создания курса по node_risk_
+    classification.py) может ПОЗЖЕ обзавестись материалом — например, через
+    persist_verified_external_sources_to_node после лекции с внешним
+    поиском. Если такой материал уже сохранён (resource_urls непустой),
+    retrieval должен его найти и переиспользовать, а не игнорировать
+    из-за исходной BASE-классификации — иначе каждая следующая лекция по
+    той же ноде заново гоняет весь Exa/Gemini waterfall с нуля."""
+    cid = (curriculum_id or "").strip()
+    from knowledge_engine.services.lecture_rag_source_scope import (
+        mapped_doc_ids_for_node,
+    )
+
+    has_attached = bool(
+        node.mapped_source_ids
+        or node.resource_urls
+        or node.learning_resources
+        or mapped_doc_ids_for_node(cid, node)
+    )
+    if has_attached:
+        return True
+
+    if cid:
+        graph = get_curriculum_graph(cid) or {}
+        for raw in graph.get("nodes") or []:
+            if str(raw.get("node_id") or "") != node.node_id:
+                continue
+            if str(raw.get("node_risk_kind") or "").strip().upper() == "BASE":
+                trace(
+                    f"LECTURE_RAG skip_reason | node={node.node_id} "
+                    "model-first (BASE), no attached sources yet"
+                )
+            break
+
+    return False
+
+
 def _score_rag_chunk_rows_for_query(
     query: str,
     rows: list[dict[str, object]],
@@ -480,11 +557,19 @@ def _score_rag_chunk_rows_for_query(
     for row in rows:
         cv_raw = row.get(COL_CHUNK_VECTOR)
         if cv_raw is None:
-            scored.append((0.0, row))
+            # Битый/отсутствующий вектор — раньше уходил в scored с score=0.0
+            # и это молча обходило passes_trust_hard_cutoff ниже (условие
+            # там на cos, не на "вектора нет вообще"). Именно так в
+            # RAG-инспектор попадали чанки без реального смысла (см. баг: 3
+            # identичных R1/R2/R3, cos=0.000). Игнорируем до ранжирования.
+            dropped += 1
             continue
         cv = np.asarray(list(cv_raw), dtype=np.float64)
         cn = float(np.linalg.norm(cv))
         cos = float(np.dot(qv, cv / cn)) if cn > 0 else 0.0
+        if cos <= 0.0:
+            dropped += 1
+            continue
         trust = coerce_trust_score(row.get(COL_TRUST_SCORE), default=1.0)
         if not passes_trust_hard_cutoff(cos, trust):
             dropped += 1
@@ -521,6 +606,17 @@ def _year_from_row_meta(row: dict[str, object]) -> int | None:
         if 1990 <= year <= 2100:
             return year
     return None
+
+
+def _chunk_plain_for_lecture(row: dict[str, object]) -> str:
+    """MAP window_summary + chunk_text for the lecture prompt (scoring stays on chunk_text)."""
+    from knowledge_engine.db.rag_chunks_schema import COL_CHUNK_TEXT, COL_WINDOW_SUMMARY
+
+    text = str(row.get(COL_CHUNK_TEXT) or "").strip()
+    ws = str(row.get(COL_WINDOW_SUMMARY) or "").strip()
+    if ws:
+        return f"{ws}\n\n{text}"
+    return text
 
 
 def _append_mandatory_mapped_rag_chunks(
@@ -570,7 +666,7 @@ def _append_mandatory_mapped_rag_chunks(
                 LectureContextCandidate(
                     label=_PINNED_RAG_LABEL,
                     formatted="",
-                    plain=text[:6000],
+                    plain=_chunk_plain_for_lecture(row)[:6000],
                     url_key=key,
                     source_id=doc_id,
                     source_title=str(row.get(COL_TITLE) or url or doc_id)[:200],
@@ -603,6 +699,8 @@ def _append_fine_rag_chunk_candidates(
     scope: LectureRagSourceScope | None,
     node_id: str = "",
 ) -> None:
+    import asyncio
+
     from knowledge_engine.config import (
         DOC_GATE_THRESHOLD,
         LECTURE_RAG_PREFILTER_MIN_PRIMARY_CHUNKS,
@@ -637,13 +735,43 @@ def _append_fine_rag_chunk_candidates(
         return
 
     allow_primary = primary_ids if scope is not None else None
-    rows = store.search_rag_chunk_rows(
-        query,
-        limit=RAG_CHUNK_SEARCH_LIMIT,
-        doc_gate_threshold=DOC_GATE_THRESHOLD,
-        allowed_doc_ids=allow_primary,
-        prefilter=True,
-    )
+
+    async def _fetch_rows() -> tuple[list[dict], list[dict] | None]:
+        primary_rows = await store.search_rag_chunk_rows(
+            query,
+            limit=RAG_CHUNK_SEARCH_LIMIT,
+            doc_gate_threshold=DOC_GATE_THRESHOLD,
+            allowed_doc_ids=allow_primary,
+            prefilter=True,
+        )
+        need_secondary = False
+        if scope is not None and secondary_ids:
+            max_cos = max(
+                (float(r.get("_cosine_chunk") or 0) for r in primary_rows), default=0.0
+            )
+            if len(
+                primary_rows
+            ) < LECTURE_RAG_PREFILTER_MIN_PRIMARY_CHUNKS or max_cos < (
+                LECTURE_RAG_SECONDARY_SCORE_FLOOR
+            ):
+                need_secondary = True
+        secondary_rows = None
+        if need_secondary:
+            secondary_rows = await store.search_rag_chunk_rows(
+                query,
+                limit=RAG_CHUNK_SEARCH_LIMIT,
+                doc_gate_threshold=DOC_GATE_THRESHOLD,
+                allowed_doc_ids=secondary_ids,
+                prefilter=True,
+                relevance_penalty=LECTURE_RAG_SCOPE_SECONDARY_PENALTY,
+            )
+        return primary_rows, secondary_rows
+
+    # This function only ever runs inside a dedicated ThreadPoolExecutor worker
+    # (see _collect_rerank_candidates_sync / run_blocking_timed(pool_rag_io())),
+    # never on the caller's own running event loop — a single local asyncio.run()
+    # here is the legitimate sync/async boundary, not a nested-loop bridge.
+    rows, extra = asyncio.run(_fetch_rows())
     scanned = store.count_rag_chunks_in_scope(allow_primary)
     trace(
         f"LECTURE_RAG_PREFILTER | node_id={node_id} scope=primary "
@@ -651,23 +779,7 @@ def _append_fine_rag_chunk_candidates(
         f"total_chunks_scanned={scanned} returned={len(rows)}"
     )
 
-    need_secondary = False
-    if scope is not None and secondary_ids:
-        max_cos = max((float(r.get("_cosine_chunk") or 0) for r in rows), default=0.0)
-        if len(rows) < LECTURE_RAG_PREFILTER_MIN_PRIMARY_CHUNKS or max_cos < (
-            LECTURE_RAG_SECONDARY_SCORE_FLOOR
-        ):
-            need_secondary = True
-
-    if need_secondary:
-        extra = store.search_rag_chunk_rows(
-            query,
-            limit=RAG_CHUNK_SEARCH_LIMIT,
-            doc_gate_threshold=DOC_GATE_THRESHOLD,
-            allowed_doc_ids=secondary_ids,
-            prefilter=True,
-            relevance_penalty=LECTURE_RAG_SCOPE_SECONDARY_PENALTY,
-        )
+    if extra is not None:
         seen_row: set[str] = {str(r.get(COL_CHUNK_ID) or "") for r in rows}
         for row in extra:
             cid = str(row.get(COL_CHUNK_ID) or "")
@@ -708,7 +820,7 @@ def _append_fine_rag_chunk_candidates(
             LectureContextCandidate(
                 label="rag_fine_chunk",
                 formatted="",
-                plain=text[:6000],
+                plain=_chunk_plain_for_lecture(row)[:6000],
                 url_key=key,
                 source_id=doc_id,
                 source_title=str(row.get(COL_TITLE) or url or doc_id)[:200],
@@ -1085,26 +1197,6 @@ def _hybrid_knowledge_nodes_with_vectors(
         return []
 
 
-def _hybrid_document_summaries(query: str, limit: int) -> list[DocumentSummary]:
-    store = VectorStore()
-    try:
-        return store.hybrid_search(query, limit=limit)
-    except RuntimeError:
-        return []
-    except Exception as exc:
-        trace(f"LECTURE_RAG hybrid_search skip | {exc}")
-        return []
-
-
-def _summaries_for_urls(urls: list[str], limit: int) -> list[DocumentSummary]:
-    store = VectorStore()
-    try:
-        return store.fetch_summaries_by_urls(urls, limit=limit)
-    except Exception as exc:
-        trace(f"LECTURE_RAG fetch_by_url skip | {exc}")
-        return []
-
-
 def _hybrid_knowledge_nodes(
     query: str, limit: int
 ) -> list[tuple[str, str | None, str]]:
@@ -1213,13 +1305,23 @@ async def retrieve_lecture_rag_context(
     user_query: str,
     curriculum_id: str = "",
 ) -> LectureRagContextResult:
-    try:
-        return await _retrieve_lecture_rag_context_impl(node, user_query, curriculum_id)
-    except Exception as exc:
-        from knowledge_engine.ui.errors import trace_exception
+    """Top-level entry point для ML_MEMORY_GUARD — как ``query_directional_rag``
+    в rag_gateway/gateway.py. Раньше эта функция НЕ входила в
+    ``rag_request_scope()``, хотя внутри (через lecture_context_rerank.py)
+    зовёт и bge_m3 (embed), и cross_encoder (rerank) — из-за этого
+    ``guard_after_use()`` видел ``_active_requests == 0`` и мог выгрузить
+    одну модель прямо посреди этого пайплайна (CRITICAL BUGFIX: ABSOLUTE
+    EVICTION LOCK)."""
+    async with rag_request_scope():
+        try:
+            return await _retrieve_lecture_rag_context_impl(
+                node, user_query, curriculum_id
+            )
+        except Exception as exc:
+            from knowledge_engine.ui.errors import trace_exception
 
-        trace_exception(exc, "LECTURE_RAG retrieve")
-        return empty_lecture_rag_context_result()
+            trace_exception(exc, "LECTURE_RAG retrieve")
+            return empty_lecture_rag_context_result()
 
 
 async def _retrieve_lecture_rag_context_impl(
@@ -1246,6 +1348,16 @@ async def _retrieve_lecture_rag_context_impl(
     if not query:
         return _empty_rag_result()
 
+    needs_retrieval = await run_blocking(
+        pool_light(), _lecture_node_needs_retrieval, curriculum_id, node
+    )
+    if not needs_retrieval:
+        trace(
+            f"LECTURE_RAG ⊘ skip | node={node.node_id} model-first / no attached "
+            "sources — retrieval not started"
+        )
+        return _empty_rag_result()
+
     pool_limit = max(LECTURE_RAG_CANDIDATE_LIMIT, LECTURE_RAG_MMR_TOP_K + 2)
     trace(
         f"LECTURE_RAG ▶ collect | node={node.node_id} query_len={len(query)} "
@@ -1265,6 +1377,8 @@ async def _retrieve_lecture_rag_context_impl(
         rag = LightRAG()
         hits = await _light_rag_hits_timed(rag, query, pool_limit)
         _append_light_rag_candidates(candidates, hits)
+
+        candidates = _dedupe_candidates_by_text_hash(candidates)
 
         trace(
             f"LECTURE_RAG pool ▶ | candidates={len(candidates)} pinned={len(pinned)} "
@@ -1368,6 +1482,7 @@ def build_lecture_generation_payload(
     coverage_payload: str = "",
     lecture_scope: str = "",
     focus_text: str = "",
+    recency_rules: str = "",
 ) -> str:
     """
     User payload: BLOCK 2 (semi-static node) → BLOCK 3 (dynamic session/RAG/query).
@@ -1448,7 +1563,7 @@ def build_lecture_generation_payload(
 
         cmap = format_concept_map_for_tutor(
             memory,
-            include_evaluator_transparency=False,
+            include_evaluator_transparency=True,
         )
         if cmap.strip():
             block2_parts.append(cmap.strip())
@@ -1459,6 +1574,10 @@ def build_lecture_generation_payload(
     block3_parts: list[str] = [BLOCK_DYNAMIC_HEADER]
 
     if memory is not None:
+        from knowledge_engine.src.node_deep_dive.concept_map_state import (
+            format_lecture_target_focus_and_gaps,
+        )
+
         session_block = build_shared_session_context_block(
             memory,
             user_message="",
@@ -1466,6 +1585,22 @@ def build_lecture_generation_payload(
         )
         if session_block:
             block3_parts.append(session_block)
+        target_focus = format_lecture_target_focus_and_gaps(memory)
+        if target_focus.strip():
+            block3_parts.append(target_focus.strip())
+        open_q = (memory.last_tutor_follow_up_question or "").strip()
+        if open_q:
+            block3_parts.append(
+                "[OPEN_NODE_QUESTION]\n"
+                "An unanswered node/user question was pending before this lecture:\n"
+                f"{open_q[:2000]}\n"
+                "If [TARGET_FOCUS_AND_GAPS] names an open probe_layer or "
+                "focus_hint, PART 2 checkpoint_prompt MUST test that gap — "
+                "do not blindly re-state this question when it belongs to an "
+                "already-passed layer. Otherwise RE-STATE or REFINE this "
+                "question so it tests the concepts explained in PART 1. "
+                "Do not answer it inside lecture_body."
+            )
 
     if (memory_rag_profile or "").strip():
         block3_parts.append(
@@ -1487,6 +1622,13 @@ def build_lecture_generation_payload(
     rag_parts.append(rag_body)
     rag_parts.append("=== КОНЕЦ МАТЕРИАЛА ===")
     block3_parts.append("\n".join(rag_parts))
+
+    rules = (recency_rules or "").strip()
+    if rules:
+        block3_parts.append(
+            "### CRITICAL_RULES_RECENCY (read immediately before user query)\n"
+            f"{rules}"
+        )
 
     query_lines = [BLOCK_USER_QUERY_TAG, f"### user_query\n{topic}"]
     if scope == "targeted_lecture" and focus:

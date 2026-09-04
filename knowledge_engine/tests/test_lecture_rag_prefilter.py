@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from knowledge_engine.services.lecture_rag_source_scope import (
     build_lecture_rag_source_scope,
 )
@@ -35,11 +37,13 @@ def test_scope_primary_doc_ids_from_urls():
 
 def test_search_with_empty_allowlist_returns_nothing():
     store = VectorStore()
-    out = store.search_rag_chunk_rows(
-        "test query",
-        limit=5,
-        allowed_doc_ids=[],
-        prefilter=True,
+    out = asyncio.run(
+        store.search_rag_chunk_rows(
+            "test query",
+            limit=5,
+            allowed_doc_ids=[],
+            prefilter=True,
+        )
     )
     assert out == []
 
@@ -51,7 +55,7 @@ def test_append_fine_chunks_uses_primary_doc_ids_only(monkeypatch):
     calls: list[list[str] | None] = []
 
     class FakeStore:
-        def search_rag_chunk_rows(self, *args, **kwargs):
+        async def search_rag_chunk_rows(self, *args, **kwargs):
             calls.append(kwargs.get("allowed_doc_ids"))
             return []
 

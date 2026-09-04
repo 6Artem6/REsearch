@@ -112,6 +112,41 @@ def list_diagrams_for_article(article_id: str) -> list[ArticleDiagram]:
         return list(session.scalars(stmt).all())
 
 
+def delete_diagrams_for_urls(urls: list[str]) -> int:
+    """Удалить article_diagrams-строки для URL — тем же двойным матчингом,
+    что и `list_diagrams_for_normalized_url` (canonical_article_id("", url) +
+    suffix `:{md5tag}` для строк, сохранённых с реальным source_id). Иначе
+    диаграммы переживают clear_node_data/sync_curriculum_library_sources и
+    просто повторно приклеиваются на следующем hydrate — тот же контент."""
+    from knowledge_engine.services.article_diagram_context import (
+        canonical_article_id,
+        normalize_source_url,
+    )
+
+    ensure_article_diagrams_schema()
+    removed = 0
+    with db_session() as session:
+        for raw in urls:
+            u = (raw or "").strip()
+            if not u.startswith("http"):
+                continue
+            norm = normalize_source_url(u)
+            if not norm:
+                continue
+            aid_no_source = canonical_article_id("", u)
+            tag = hashlib.md5(norm.encode("utf-8")).hexdigest()[:8]
+            suffix = f":{tag}"
+            stmt = select(ArticleDiagram).where(
+                (ArticleDiagram.article_id == aid_no_source)
+                | (ArticleDiagram.article_id.endswith(suffix))
+            )
+            rows = list(session.scalars(stmt).all())
+            for row in rows:
+                session.delete(row)
+                removed += 1
+    return removed
+
+
 def list_diagrams_for_normalized_url(url: str) -> list[ArticleDiagram]:
     """Диаграммы для URL: src:*:md5tag и url:sha256 (canonical без source_id)."""
     from knowledge_engine.services.article_diagram_context import (

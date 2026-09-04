@@ -26,7 +26,9 @@ make worker       # только worker (если API уже запущен)
 
 `make dev` поднимает API (uvicorn `--reload`) и **worker с auto-reload** (`dev_worker_watch.py`). Reload worker **откладывается**, пока выполняется задача (файл `.runs/worker_dev_busy.json` + running work jobs). Ручной `make worker` — без watcher.
 
-`GET /api/v1/health` → `worker_ok`. Без worker POST `/curriculum/generate` и `/node/*` → 503.
+`GET /api/v1/health` → `worker_ok`. Без worker POST `/curriculum/generate`, `/node/*`, `/rag-gateway/query` → 503. API **не загружает** BGE-M3 / Cross-Encoder (`KE_PROCESS_ROLE=api`); векторный поиск и RAG только в worker.
+
+Опционально: `KE_WORKER_INLINE_FALLBACK=true` больше **не** выполняет ML в процессе API.
 
 ### Redis (очередь + логи)
 
@@ -40,8 +42,6 @@ make worker       # только worker (если API уже запущен)
 `GET /api/v1/health` → `redis_ok`, `worker_ok`.
 
 Без Redis — прежний режим: JSON в `.runs/` и poll worker.
-
-Опционально: `KE_WORKER_INLINE_FALLBACK=true` — выполнять в API, если worker не отвечает (не для prod).
 
 ## Локальное сохранение (продолжить позже)
 

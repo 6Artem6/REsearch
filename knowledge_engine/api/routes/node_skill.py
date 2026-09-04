@@ -10,25 +10,19 @@ from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from knowledge_engine.api.helpers.work_enqueue import enqueue_node_deep_dive
-from knowledge_engine.services.gemini_stateless import GeminiUnavailableError
-from knowledge_engine.services.node_selection_explain import (
-    explain_result_to_api_dict,
-    iter_node_selection_explain_stream,
-    run_node_selection_explain,
+from knowledge_engine.api.helpers.work_enqueue import (
+    enqueue_node_deep_dive,
+    enqueue_node_explain,
+    wait_job_result,
 )
+from knowledge_engine.config import KE_NODE_DIVE_TIMEOUT_SEC
+from knowledge_engine.services.job_stream import iter_job_stream_events
 from knowledge_engine.services.node_session_reset import (
     reset_node_deep_dive_persistence,
 )
-from knowledge_engine.services.node_source_registry import (
-    build_session_source_registry,
-)
-from knowledge_engine.services.skill_tree_store import get_curriculum_graph
+from knowledge_engine.services.node_source_registry import registry_for_curriculum_node
 from knowledge_engine.services.work_job_store import WorkJobStatus, work_job_store
-from knowledge_engine.src.node_deep_dive.engine import (
-    complete_node_prepare_response,
-    iter_node_deep_dive_chat_stream,
-)
+from knowledge_engine.src.node_deep_dive.engine import complete_node_prepare_response
 from knowledge_engine.src.node_deep_dive.schemas import (
     NodeDataInput,
     NodeDeepDiveRequest,
@@ -167,6 +161,59 @@ def post_node_init(body: NodeSessionBody, response: Response) -> dict[str, Any]:
     return out
 
 
+@router.post("/init-stream")
+async def post_node_init_stream(body: NodeSessionBody) -> StreamingResponse:
+    """Тот же SSE-паттерн, что /chat-stream (job_stream.py relay), но для
+    подготовки ноды (action=init) — по требованию пользователя FSM-стадии
+    (см. schemas/fsm.py) должны стримиться и на "подготовку ноды", не только
+    на ответ тьютора. _run_node_deep_dive_stream в work_handlers.py уже
+    action-агностичен (просто прокидывает user_action из payload) — никаких
+    изменений в воркере не требуется, только этот роут."""
+    cid = body.curriculum_id.strip()
+    nid = body.node_data.node_id.strip()
+    # Тот же fast-path, что /node/init (_resolve_ready_init_result) — без
+    # него КАЖДОЕ повторное открытие уже проинициализированной ноды шло бы
+    # через полный enqueue+worker цикл вместо мгновенного ответа.
+    ready = _resolve_ready_init_result(cid, body.node_data)
+
+    async def event_stream():
+        if ready is not None:
+            trace(f"API ▶ POST /node/init-stream (ready) | {cid}/{nid}")
+            yield f"data: {json.dumps({'type': 'complete', 'result': ready}, ensure_ascii=False)}\n\n"
+            return
+        trace(f"API ▶ POST /node/init-stream (queue SSE) | {cid}/{nid}")
+        payload = {
+            "curriculum_id": cid,
+            "node_data": body.node_data.model_dump(),
+            "user_action": "init",
+            "user_message": "",
+            "stream": True,
+        }
+        job_id = enqueue_node_deep_dive(payload)
+        try:
+            async for evt in iter_job_stream_events(
+                job_id,
+                timeout_sec=KE_NODE_DIVE_TIMEOUT_SEC,
+            ):
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        except Exception as exc:
+            from knowledge_engine.ui.errors import trace_exception
+
+            detail = trace_exception(exc, "NODE_DIVE init-stream proxy")
+            err = {
+                "type": "error",
+                "detail": detail,
+                "error_type": type(exc).__name__,
+            }
+            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.post("/restart", status_code=status.HTTP_202_ACCEPTED)
 def post_node_restart(body: NodeSessionBody) -> dict[str, Any]:
     """
@@ -196,24 +243,29 @@ def post_node_chat(body: NodeChatBody) -> dict[str, Any]:
 @router.post("/chat-stream")
 async def post_node_chat_stream(body: NodeChatBody) -> StreamingResponse:
     trace(
-        f"API ▶ POST /node/chat-stream (SSE) | "
+        f"API ▶ POST /node/chat-stream (queue SSE) | "
         f"{body.curriculum_id}/{body.node_data.node_id}"
     )
-    req = NodeDeepDiveRequest(
-        curriculum_id=body.curriculum_id.strip(),
-        node_data=body.node_data,
-        user_action="chat",
-        user_message=body.user_message.strip(),
-    )
+    payload = {
+        "curriculum_id": body.curriculum_id.strip(),
+        "node_data": body.node_data.model_dump(),
+        "user_action": "chat",
+        "user_message": body.user_message.strip(),
+        "stream": True,
+    }
+    job_id = enqueue_node_deep_dive(payload)
 
     async def event_stream():
         try:
-            async for evt in iter_node_deep_dive_chat_stream(req):
+            async for evt in iter_job_stream_events(
+                job_id,
+                timeout_sec=KE_NODE_DIVE_TIMEOUT_SEC,
+            ):
                 yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
         except Exception as exc:
             from knowledge_engine.ui.errors import trace_exception
 
-            detail = trace_exception(exc, "NODE_DIVE chat-stream")
+            detail = trace_exception(exc, "NODE_DIVE chat-stream proxy")
             err = {
                 "type": "error",
                 "detail": detail,
@@ -259,21 +311,7 @@ def get_node_source_registry(curriculum_id: str, node_id: str) -> dict[str, Any]
 
 
 def _node_source_registry(curriculum_id: str, node_id: str) -> list[dict[str, Any]]:
-    cid = curriculum_id.strip()
-    nid = node_id.strip()
-    graph = get_curriculum_graph(cid) or {}
-    mapped: list[str] = []
-    for n in graph.get("nodes") or []:
-        if not isinstance(n, dict):
-            continue
-        if str(n.get("node_id") or n.get("id") or "").strip() == nid:
-            mapped = [
-                str(x).strip()
-                for x in (n.get("mapped_source_ids") or [])
-                if str(x).strip()
-            ]
-            break
-    return build_session_source_registry(cid, mapped)
+    return registry_for_curriculum_node(curriculum_id, node_id)
 
 
 @router.post("/suggest-questions")
@@ -294,34 +332,19 @@ async def post_node_suggest_questions(body: NodeSelectionBody) -> dict[str, Any]
 @router.post("/explain-selection")
 def post_node_explain_selection(body: NodeSelectionBody) -> dict[str, Any]:
     trace(
-        f"API ▶ POST /node/explain-selection | "
+        f"API ▶ POST /node/explain-selection (queue) | "
         f"{body.curriculum_id}/{body.node_data.node_id}"
     )
-    session = get_session(body.curriculum_id.strip(), body.node_data.node_id)
-    registry = _node_source_registry(body.curriculum_id, body.node_data.node_id)
-    memory = session.memory
-    rag_profile = (memory.rag_profile_compressed or "") if memory else ""
-    anchor = f"node_deep_dive:{body.curriculum_id}:{body.node_data.node_id}"
-    try:
-        result = run_node_selection_explain(
-            body.node_data.title,
-            body.selected_text,
-            body.user_question,
-            body.surrounding_paragraph,
-            session.content.summary,
-            rag_profile,
-            registry,
-            anchor,
-            memory=memory,
-            curriculum_id=body.curriculum_id.strip(),
-            node=body.node_data,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except GeminiUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    return explain_result_to_api_dict(result, registry)
+    payload = {
+        "curriculum_id": body.curriculum_id.strip(),
+        "node_data": body.node_data.model_dump(),
+        "selected_text": body.selected_text,
+        "surrounding_paragraph": body.surrounding_paragraph,
+        "user_question": body.user_question or "",
+        "stream": False,
+    }
+    job_id = enqueue_node_explain(payload)
+    return wait_job_result(job_id, timeout_sec=KE_NODE_DIVE_TIMEOUT_SEC)
 
 
 @router.post("/explain-selection-stream")
@@ -329,32 +352,27 @@ async def post_node_explain_selection_stream(
     body: NodeSelectionBody,
 ) -> StreamingResponse:
     trace(
-        f"API ▶ POST /node/explain-selection-stream (SSE) | "
+        f"API ▶ POST /node/explain-selection-stream (queue SSE) | "
         f"{body.curriculum_id}/{body.node_data.node_id}"
     )
-    session = get_session(body.curriculum_id.strip(), body.node_data.node_id)
-    registry = _node_source_registry(body.curriculum_id, body.node_data.node_id)
-    memory = session.memory
-    rag_profile = (memory.rag_profile_compressed or "") if memory else ""
-    anchor = f"node_deep_dive:{body.curriculum_id}:{body.node_data.node_id}"
+    payload = {
+        "curriculum_id": body.curriculum_id.strip(),
+        "node_data": body.node_data.model_dump(),
+        "selected_text": body.selected_text,
+        "surrounding_paragraph": body.surrounding_paragraph,
+        "user_question": body.user_question or "",
+        "stream": True,
+    }
+    job_id = enqueue_node_explain(payload)
 
     async def event_stream():
         try:
-            async for evt in iter_node_selection_explain_stream(
-                body.node_data.title,
-                body.selected_text,
-                body.user_question,
-                body.surrounding_paragraph,
-                session.content.summary,
-                rag_profile,
-                registry,
-                anchor,
-                memory=memory,
-                curriculum_id=body.curriculum_id.strip(),
-                node=body.node_data,
+            async for evt in iter_job_stream_events(
+                job_id,
+                timeout_sec=KE_NODE_DIVE_TIMEOUT_SEC,
             ):
                 yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
-        except GeminiUnavailableError as exc:
+        except Exception as exc:
             err = {"type": "error", "detail": str(exc)}
             yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
 
