@@ -1,5 +1,6 @@
 """Pydantic v2 контракты для Gemini structured JSON (единый реестр)."""
 
+from knowledge_engine.ingest.tiered_code_pruner import TieredClassificationResult
 from knowledge_engine.schemas.drill_schemas import (
     ActiveDrillStepResponse,
     AnswerAccuracyGrade,
@@ -46,6 +47,7 @@ from knowledge_engine.schemas.llm_contracts.lite_curriculum import (
     LiteSiteSuggestionsContract,
     LiteSourceBatchContract,
 )
+from knowledge_engine.schemas.llm_contracts.pre_map_dedup import CanonicalMapContract
 from knowledge_engine.schemas.llm_contracts.reasoner import FinalResponseContract
 from knowledge_engine.schemas.llm_contracts.source_eval import (
     SourceEvaluatorLiteContract,
@@ -70,7 +72,6 @@ from knowledge_engine.schemas.llm_contracts.v04_gemini import (
     ResearchEvaluationContract,
 )
 from knowledge_engine.schemas.llm_contracts.vlm import VlmBatchResponseContract
-from knowledge_engine.ingest.tiered_code_pruner import TieredClassificationResult
 from knowledge_engine.schemas.research_schemas import (
     ClarificationConstraintsResponse,
     HarvestedLinksResponse,
@@ -134,6 +135,7 @@ GEMINI_STRUCTURED_CONTRACTS: dict[str, type] = {
     "ingest_gate / paper_structure": PaperStructureAnalysis,
     "ingest_gate / paper_credibility": PaperCredibilityAnalysis,
     "ingest / tiered_code_prune": TieredClassificationResult,
+    "pre_map_dedup / bulk_gate": CanonicalMapContract,
 }
 
 __all__ = [
@@ -194,4 +196,5 @@ __all__ = [
     "DomainAuthorityVerdict",
     "DomainAuthorityItem",
     "BatchDomainAuthorityResponse",
+    "CanonicalMapContract",
 ]
