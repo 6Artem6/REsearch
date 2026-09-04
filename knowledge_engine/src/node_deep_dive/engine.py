@@ -48,11 +48,15 @@ from knowledge_engine.services.lecture_rag_context import retrieve_lecture_rag_c
 from knowledge_engine.services.llm_markdown_service import (
     enrich_node_deep_dive_response,
 )
+from knowledge_engine.services.ml_memory_guard import rag_request_scope
 from knowledge_engine.services.node_content_generator import (
     generate_dense_material,
     merge_dense_material_delta,
 )
-from knowledge_engine.services.node_source_registry import build_session_source_registry
+from knowledge_engine.services.node_source_registry import (
+    build_session_source_registry,
+    fresh_mapped_source_ids_for_node,
+)
 from knowledge_engine.services.session_prompt_trace import (
     PromptTraceContext,
     PromptTraceMetrics,
@@ -111,6 +115,7 @@ from knowledge_engine.src.node_deep_dive.lecture_search_orchestrator import (
     is_search_tool_only_response,
     merge_verified_sources,
     parse_search_external_materials_request,
+    persist_verified_external_sources_to_node,
 )
 from knowledge_engine.src.node_deep_dive.memory_schemas import SessionMemory, UserIntent
 from knowledge_engine.src.node_deep_dive.prompt_types import (
@@ -307,6 +312,7 @@ def _merge_node_data_from_graph(
 
 async def _apply_lazy_grounding_for_init(
     req: NodeDeepDiveRequest,
+    on_progress: Callable[[str], None] | None = None,
 ) -> NodeDeepDiveRequest:
     from knowledge_engine.config import CURRICULUM_TARGETED_NODE_GROUNDING_ENABLED
 
@@ -421,6 +427,7 @@ async def _apply_lazy_grounding_for_init(
             source_policy=source_policy,
             anchor=anchor,
             reground_academic=reground_academic,
+            on_progress=on_progress,
         )
         save_curriculum_record(
             graph,
@@ -568,6 +575,22 @@ def _invoke_tutor(
 
     node_for_tutor = enrich_node_learning_materials_from_graph(node, curriculum_id)
     node_ctx = format_node_curriculum_context_for_tutor(node_for_tutor, curriculum_id)
+    from knowledge_engine.schemas.drill_schemas import (
+        align_structured_tutor_with_host,
+    )
+    from knowledge_engine.schemas.llm_contracts.tutor import (
+        DeepDiveDeepAnalysisContract,
+        DeepDiveExplainContract,
+    )
+    from knowledge_engine.src.node_deep_dive.concept_map_state import (
+        compose_host_transparency_plaque,
+        stream_host_transparency_plaque,
+    )
+    from knowledge_engine.src.node_deep_dive.drill_orchestrator import (
+        drill_response_to_llm_output,
+        is_drill_structured_schema,
+        select_drill_response_schema,
+    )
     from knowledge_engine.src.node_deep_dive.prompt_factory import (
         deep_analysis_hard_guard_block,
         display_user_after_mode_prefix,
@@ -580,22 +603,6 @@ def _invoke_tutor(
         get_star_task_status,
         overlay_factory_mode_tag,
         star_task_blocks_transition,
-    )
-    from knowledge_engine.schemas.llm_contracts.tutor import (
-        DeepDiveDeepAnalysisContract,
-        DeepDiveExplainContract,
-    )
-    from knowledge_engine.src.node_deep_dive.drill_orchestrator import (
-        drill_response_to_llm_output,
-        is_drill_structured_schema,
-        select_drill_response_schema,
-    )
-    from knowledge_engine.schemas.drill_schemas import (
-        align_structured_tutor_with_host,
-    )
-    from knowledge_engine.src.node_deep_dive.concept_map_state import (
-        compose_host_transparency_plaque,
-        stream_host_transparency_plaque,
     )
 
     raw_user_msg = user_msg
@@ -877,6 +884,7 @@ def _invoke_tutor(
         memory,
         user_msg,
         include_window=include_sliding_window,
+        recency_rules=compose_ctx.recency_tail,
     )
     if strip_chat_history and hard_anchor:
         dynamic = f"{hard_anchor}\n\n{dynamic}".strip()
@@ -1190,7 +1198,9 @@ async def finalize_node_init_after_grounding(
     session.memory.chat_sessions = chat_mgr.to_memory_blob()
     init_registry = build_session_source_registry(
         req.curriculum_id,
-        list(node.mapped_source_ids or []),
+        fresh_mapped_source_ids_for_node(
+            req.curriculum_id, node.node_id, list(node.mapped_source_ids or [])
+        ),
     )
     from knowledge_engine.src.node_deep_dive.content_assets import (
         hydrate_content_diagrams_from_articles,
@@ -1262,10 +1272,10 @@ async def complete_node_prepare_response(
             session.history,
             memory=mem,
         )
-    source_registry = build_session_source_registry(
-        req.curriculum_id,
-        list(node.mapped_source_ids or []),
+    fresh_mapped_ids = fresh_mapped_source_ids_for_node(
+        req.curriculum_id, node.node_id, list(node.mapped_source_ids or [])
     )
+    source_registry = build_session_source_registry(req.curriculum_id, fresh_mapped_ids)
     content = scrub_content_references(content, source_registry)
     dash = build_mastery_dashboard(mem, status)
     key = _anchor(req.curriculum_id, node.node_id)
@@ -1286,6 +1296,7 @@ async def complete_node_prepare_response(
         learning_phase=mem.learning_phase if mem else "intro_assessment",
         learning_mode=mem.learning_mode if mem else "lecture",
         source_registry=source_registry,
+        mapped_source_ids=fresh_mapped_ids,
         lecture_rag_inspector=_lecture_rag_inspector_from_memory(mem),
     )
     trace(
@@ -1533,7 +1544,7 @@ async def _finalize_node_deep_dive(
             llm_out, fallback_compose_text=tutor
         )
         append_to_active_window(memory, "tutor", window_tutor or tutor)
-        rotate_window_after_message(memory, anchor)
+        rotate_window_after_message(memory, anchor, req.curriculum_id, node.node_id)
         from knowledge_engine.src.curriculum.global_tracker import infer_question_angle
         from knowledge_engine.src.node_deep_dive.concept_map import (
             list_verified_sub_concept_ids,
@@ -1594,10 +1605,10 @@ async def _finalize_node_deep_dive(
         )
         labels_for_store = list(prev_blob.get("rag_fact_labels") or [])
 
-    source_registry = build_session_source_registry(
-        req.curriculum_id,
-        list(node.mapped_source_ids or []),
+    fresh_mapped_ids = fresh_mapped_source_ids_for_node(
+        req.curriculum_id, node.node_id, list(node.mapped_source_ids or [])
     )
+    source_registry = build_session_source_registry(req.curriculum_id, fresh_mapped_ids)
     content = scrub_content_references(content, source_registry)
 
     key = save_session(
@@ -1638,6 +1649,7 @@ async def _finalize_node_deep_dive(
         learning_phase=mem.learning_phase if mem else "intro_assessment",
         learning_mode=mem.learning_mode if mem else "lecture",
         source_registry=source_registry,
+        mapped_source_ids=fresh_mapped_ids,
         lecture_rag_inspector=_lecture_rag_inspector_from_memory(mem),
     )
     return enrich_node_deep_dive_response(base, source_registry)
@@ -1647,7 +1659,12 @@ async def finalize_graph_chat_response(state: dict[str, Any]) -> NodeDeepDiveRes
     """Post-graph finalize: save session and build API response (no turn window writes)."""
     req = state["request"]
     memory = state["memory"]
-    node = req.node_data
+    # RU: node_for_lecture (если этот ход прошёл через dense_lecture) уже
+    # пере-обогащён после persist_verified_external_sources_to_node — берём
+    # его вместо req.node_data, иначе source_registry ниже строится по
+    # устаревшему mapped_source_ids этого же хода (см. комментарий в
+    # run_dense_lecture_turn).
+    node = state.get("node_for_lecture") or req.node_data
     action = (req.user_action or "").strip().lower()
     content = state.get("content") or NodeContentBlock()
     llm_out = coerce_deep_dive_llm_output(state.get("llm_out"))
@@ -1720,10 +1737,10 @@ async def finalize_graph_chat_response(state: dict[str, Any]) -> NodeDeepDiveRes
         )
         labels_for_store = list(prev_blob.get("rag_fact_labels") or [])
 
-    source_registry = build_session_source_registry(
-        req.curriculum_id,
-        list(node.mapped_source_ids or []),
+    fresh_mapped_ids = fresh_mapped_source_ids_for_node(
+        req.curriculum_id, node.node_id, list(node.mapped_source_ids or [])
     )
+    source_registry = build_session_source_registry(req.curriculum_id, fresh_mapped_ids)
     content = scrub_content_references(content, source_registry)
 
     if memory is not None and tutor:
@@ -1803,9 +1820,11 @@ async def finalize_graph_chat_response(state: dict[str, Any]) -> NodeDeepDiveRes
             mem.pending_eval_kind
         ):
             host_quick = []
-        elif ready_tr or sub_concept_coverage_complete(mem) or (
-            mem.learning_phase or ""
-        ) == "pathway_decision":
+        elif (
+            ready_tr
+            or sub_concept_coverage_complete(mem)
+            or (mem.learning_phase or "") == "pathway_decision"
+        ):
             teaching = (getattr(mem, "active_optional_layer", "") or "").strip().upper()
             if layer_drill_is_active(mem) or (
                 teaching in ("HOW", "MECHANIC")
@@ -1819,11 +1838,7 @@ async def finalize_graph_chat_response(state: dict[str, Any]) -> NodeDeepDiveRes
                 )
 
                 ly = normalize_node_layer(layer)
-                if (
-                    open_layers
-                    and not is_full_depth_closure(mem, ly)
-                    and ly != "sota"
-                ):
+                if open_layers and not is_full_depth_closure(mem, ly) and ly != "sota":
                     host_quick = gloss_fork_quick_replies(open_layers)
                 else:
                     # Core closed → overlay_offer chips (adaptive ADVANCED vs DEEP).
@@ -1857,13 +1872,33 @@ async def finalize_graph_chat_response(state: dict[str, Any]) -> NodeDeepDiveRes
         learning_phase=mem.learning_phase if mem else "intro_assessment",
         learning_mode=mem.learning_mode if mem else "lecture",
         source_registry=source_registry,
+        # RU: без этого поля фронт (RoadmapDashboard.applyNodeResponse →
+        # NodeDrawer «Адресация ноды») продолжает читать mapped_source_ids
+        # из старого selectedNode/curriculum.nodes, обновляемого только
+        # полным рефетчем графа — пусто в панели сразу после лекции, пока
+        # не перезагрузить страницу.
+        mapped_source_ids=fresh_mapped_ids,
         lecture_rag_inspector=_lecture_rag_inspector_from_memory(mem),
     )
     return enrich_node_deep_dive_response(base, source_registry)
 
 
-async def run_init_prepare_turn(state: dict[str, Any]) -> dict[str, Any]:
-    """Graph init node: grounding ∥ RAG → memory + content (lazy intro on chat)."""
+async def run_init_prepare_turn(
+    state: dict[str, Any],
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Graph init node: grounding ∥ RAG → memory + content (lazy intro on chat).
+
+    FSM stage wrapper (см. graph/stage_events.py): grounding и RAG fetch
+    эмитят COMPLETED НЕЗАВИСИМО друг от друга, как только каждый реально
+    закончился — не одним общим событием после asyncio.gather (который сам
+    по себе ждёт оба)."""
+    from knowledge_engine.schemas.fsm import FSMStatus, TutorStage
+    from knowledge_engine.src.node_deep_dive.graph.stage_events import (
+        emit_stage,
+        stage_scope,
+    )
+
     req: NodeDeepDiveRequest = state["request"]
     node = req.node_data
     trace("NODE_DIVE init parallel ▶ | lazy_grounding ∥ directional RAG (prepare only)")
@@ -1878,25 +1913,51 @@ async def run_init_prepare_turn(state: dict[str, Any]) -> dict[str, Any]:
     if CURRICULUM_TARGETED_NODE_GROUNDING_ENABLED:
         init_timeout = max(init_timeout, KE_NODE_DIVE_INIT_GROUNDING_MIN_TIMEOUT_SEC)
 
-    try:
-        grounded_req, rag_facts = await asyncio.gather(
-            asyncio.wait_for(_apply_lazy_grounding_for_init(req), timeout=init_timeout),
-            asyncio.wait_for(
-                fetch_node_init_rag_facts(req), timeout=KE_RAG_TIMEOUT_SEC
-            ),
-        )
-    except asyncio.TimeoutError:
-        from knowledge_engine.src.retrieval.consensus_session import (
-            shutdown_shared_consensus_session,
-        )
+    def _emit_grounding_progress(message: str) -> None:
+        emit_stage(state, config, TutorStage.INIT, FSMStatus.RUNNING, message)
 
-        trace(
-            f"NODE_DIVE init timeout ▶ | lazy_grounding>{init_timeout:.0f}s — "
-            "closing Consensus browser"
+    async def _grounding_with_emit() -> Any:
+        result = await asyncio.wait_for(
+            _apply_lazy_grounding_for_init(req, on_progress=_emit_grounding_progress),
+            timeout=init_timeout,
         )
-        await shutdown_shared_consensus_session()
-        raise
-    await finalize_node_init_after_grounding(grounded_req, *rag_facts)
+        emit_stage(
+            state, config, TutorStage.INIT, FSMStatus.COMPLETED, "Материалы ноды готовы"
+        )
+        return result
+
+    async def _rag_facts_with_emit() -> Any:
+        result = await asyncio.wait_for(
+            fetch_node_init_rag_facts(req), timeout=KE_RAG_TIMEOUT_SEC
+        )
+        emit_stage(
+            state,
+            config,
+            TutorStage.VECTOR_SEARCH,
+            FSMStatus.COMPLETED,
+            "Контекст из базы знаний найден",
+        )
+        return result
+
+    with stage_scope(
+        state, config, TutorStage.INIT, running_message="Готовим материалы ноды…"
+    ):
+        try:
+            grounded_req, rag_facts = await asyncio.gather(
+                _grounding_with_emit(), _rag_facts_with_emit()
+            )
+        except asyncio.TimeoutError:
+            from knowledge_engine.src.retrieval.consensus_session import (
+                shutdown_shared_consensus_session,
+            )
+
+            trace(
+                f"NODE_DIVE init timeout ▶ | lazy_grounding>{init_timeout:.0f}s — "
+                "closing Consensus browser"
+            )
+            await shutdown_shared_consensus_session()
+            raise
+        await finalize_node_init_after_grounding(grounded_req, *rag_facts)
     rag_facts_count = int(rag_facts[1])
     rag_fact_labels = list(rag_facts[2])
     session = get_session(grounded_req.curriculum_id, node.node_id)
@@ -2015,7 +2076,10 @@ async def run_equivalence_turn(state: dict[str, Any]) -> dict[str, Any]:
 async def run_node_deep_dive(
     req: NodeDeepDiveRequest,
     stream_callback: Callable[[str], None] | None = None,
+    stage_callback: Callable[[Any], None] | None = None,
 ) -> NodeDeepDiveResponse:
+    import time
+
     if not is_gemini_available():
         raise GeminiUnavailableError("Gemini недоступен для Node Deep-Dive")
 
@@ -2037,18 +2101,54 @@ async def run_node_deep_dive(
         )
         stream_was_wrapped = True
 
-    from knowledge_engine.src.node_deep_dive.graph import get_compiled_tutor_graph
+    from knowledge_engine.config import GRAPH_CHECKPOINTER_BACKEND
+    from knowledge_engine.src.node_deep_dive.control_intent import (
+        control_intent_session_scope,
+    )
 
     trace(f"NODE_DIVE ▶ LangGraph | action={action}")
-    final_state = await get_compiled_tutor_graph().ainvoke(
-        {"request": req},
-        config={
-            "configurable": {
-                "thread_id": anchor,
-                "stream_callback": stream_for_llm,
-            },
+    # Единственная настоящая top-level точка входа целого хода тьютора — граф
+    # внутри дергает vector_intent_router/socratic_poles/edge_case_lexicon
+    # (bge_m3) и retrieve_lecture_rag_context (bge_m3 + cross_encoder) на
+    # разных узлах. Без rag_request_scope() здесь host-слой (intent/poles/
+    # lexicon классификация ДО RAG-узла) оставался вне active_requests, и
+    # cooldown-таймер, взведённый по завершении ПРЕДЫДУЩЕГО хода, мог
+    # выгрузить bge_m3 прямо в начале НОВОГО хода — раньше, чем тот успевал
+    # дойти до retrieve_lecture_rag_context() и сам себя защитить (см.
+    # CRITICAL BUGFIX: COOLDOWN TIMER MUST START AFTER REQUEST EXIT).
+    # control_intent_session_scope(anchor) — TTL-кэш classify_control_chip на
+    # весь ход: без него ~20 сайтов графа гоняют BGE-M3/LanceDB заново на тот
+    # же текст (см. WORKER-лог multi_column_and_expression_indexes).
+    graph_config = {
+        "configurable": {
+            "thread_id": anchor,
+            "stream_callback": stream_for_llm,
+            # FSM stage-события (см. graph/stage_events.py) — лежат в config,
+            # не отдельный параметр вызова графа: config целиком уходит в
+            # ainvoke(None, config=config) при resume после падения
+            # (tutor_graph_service.py::run_or_resume) — отдельный параметр
+            # там бы потерялся.
+            "stage_callback": stage_callback,
+            "turn_started_at": time.monotonic(),
         },
-    )
+    }
+    if GRAPH_CHECKPOINTER_BACKEND == "memory":
+        from knowledge_engine.src.node_deep_dive.graph import get_compiled_tutor_graph
+
+        with control_intent_session_scope(anchor):
+            async with rag_request_scope():
+                final_state = await get_compiled_tutor_graph().ainvoke(
+                    {"request": req}, config=graph_config
+                )
+    else:
+        from knowledge_engine.src.node_deep_dive.graph import tutor_graph_session
+
+        with control_intent_session_scope(anchor):
+            async with rag_request_scope():
+                async with tutor_graph_session() as (svc, graph):
+                    final_state = await svc.run_or_resume(
+                        graph, graph_config, {"request": req}
+                    )
     resp = final_state.get("response")
     if resp is None:
         raise RuntimeError("NODE_DIVE graph finished without NodeDeepDiveResponse")
@@ -2140,6 +2240,23 @@ async def run_dense_lecture_turn(
             rag_query,
             req.curriculum_id,
         )
+        if verified_sources:
+            saved_n = await persist_verified_external_sources_to_node(
+                req.curriculum_id, node_for_lecture, verified_sources
+            )
+            if saved_n:
+                # RU: без этого node_for_lecture (захвачен строкой ~2103,
+                # ДО персиста) остаётся с mapped_source_ids=[] до конца
+                # хода — ЭТА лекция генерируется по устаревшему registry
+                # (SOURCE REGISTRY выглядит пустым для модели, cite-политика
+                # запрещает [Sn], модель откатывается на голый [n] из
+                # VERIFIED_EXTERNAL_SOURCES). Источники появляются только
+                # СЛЕДУЮЩИМ ходом/после reload, когда граф перечитывается
+                # заново. Пере-обогащаем в том же ходе, чтобы ЭТА лекция
+                # тоже видела свежий mapped_source_ids/resource_urls.
+                node_for_lecture = enrich_node_learning_materials_from_graph(
+                    node_for_lecture, req.curriculum_id
+                )
 
     chat_mgr = ChatSessionManager.from_memory_blob(anchor, memory.chat_sessions)
     curriculum_id = req.curriculum_id
@@ -2191,6 +2308,15 @@ async def run_dense_lecture_turn(
             query_override=tool_q or rag_query,
         )
         if extra_sources:
+            saved_extra_n = await persist_verified_external_sources_to_node(
+                curriculum_id, node_for_lecture, extra_sources
+            )
+            if saved_extra_n:
+                # RU: см. комментарий у первого persist-вызова выше — та же
+                # гонка в рамках хода, здесь для delta-догенерации.
+                node_for_lecture = enrich_node_learning_materials_from_graph(
+                    node_for_lecture, curriculum_id
+                )
             verified_sources = merge_verified_sources(
                 verified_sources,
                 extra_sources,
@@ -2309,13 +2435,21 @@ async def run_dense_lecture_turn(
         "tutor_message": tutor,
         "llm_out": llm_out,
         "focus_sub_concept_id": focus_id or (state.get("focus_sub_concept_id") or ""),
+        # RU: без этого finalize_graph_chat_response строит source_registry
+        # ответа ТЕКУЩЕГО хода из req.node_data (снимок ДО persist), а не из
+        # node_for_lecture (уже пере-обогащён выше после persist) — та же
+        # гонка в рамках хода, что и с текстом лекции, но для payload'а,
+        # который фронт кладёт в session.sourceRegistry (виден только после
+        # reload без этого фикса).
+        "node_for_lecture": node_for_lecture,
     }
 
 
 async def iter_node_deep_dive_chat_stream(
     req: NodeDeepDiveRequest,
 ):
-    """SSE: token events + complete/error (только action=chat, dialogue path со stream)."""
+    """SSE: token + stage + complete/error (action=chat/verify/init, см.
+    graph/stage_events.py для FSM-статусов)."""
     loop = asyncio.get_running_loop()
     q: asyncio.Queue = asyncio.Queue()
 
@@ -2325,9 +2459,14 @@ async def iter_node_deep_dive_chat_stream(
             {"type": "token", "text": text},
         )
 
+    def on_stage(event: Any) -> None:
+        loop.call_soon_threadsafe(q.put_nowait, event.to_sse_dict())
+
     async def worker() -> None:
         try:
-            resp = await run_node_deep_dive(req, stream_callback=on_token)
+            resp = await run_node_deep_dive(
+                req, stream_callback=on_token, stage_callback=on_stage
+            )
             enriched = enrich_node_deep_dive_response(
                 resp,
                 list(resp.source_registry),

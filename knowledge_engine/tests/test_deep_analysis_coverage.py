@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from knowledge_engine.db.knowledge_atoms_schema import COL_SCOPE, COL_STATEMENT
 from knowledge_engine.services.dialog_atoms_rag import (
@@ -193,7 +193,7 @@ def test_exclude_keys_sets_rag_exhausted_without_lowering_score() -> None:
         {COL_STATEMENT: stmt_b, COL_SCOPE: "PRINCIPLE", "_score": 0.85},
     ]
     store = MagicMock()
-    store.search_knowledge_atoms.return_value = rows
+    store.search_knowledge_atoms = AsyncMock(return_value=rows)
 
     with patch("knowledge_engine.services.dialog_atoms_rag.DIALOG_ATOMS_ENABLED", True):
         hit = retrieve_dialog_knowledge_atoms_detailed(
@@ -250,7 +250,7 @@ def test_exclude_keeps_unseen_above_threshold() -> None:
         },
     ]
     store = MagicMock()
-    store.search_knowledge_atoms.return_value = rows
+    store.search_knowledge_atoms = AsyncMock(return_value=rows)
     with patch("knowledge_engine.services.dialog_atoms_rag.DIALOG_ATOMS_ENABLED", True):
         result = retrieve_dialog_knowledge_atoms_detailed(
             "sharding",
@@ -348,7 +348,7 @@ def test_search_kwargs_pass_exclude_chunks() -> None:
         },
     ]
     store = MagicMock()
-    store.search_knowledge_atoms.return_value = [rows[1]]
+    store.search_knowledge_atoms = AsyncMock(return_value=[rows[1]])
 
     with patch("knowledge_engine.services.dialog_atoms_rag.DIALOG_ATOMS_ENABLED", True):
         result = retrieve_dialog_knowledge_atoms_detailed(

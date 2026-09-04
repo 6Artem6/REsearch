@@ -9,6 +9,7 @@ from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.src.node_deep_dive.advanced_analysis_prompt import (
     ADVANCED_ANALYSIS_PROMPT,
 )
+from knowledge_engine.src.node_deep_dive.blitz_mode_prompt import BLITZ_MODE_PROMPT
 from knowledge_engine.src.node_deep_dive.context_bounded_eval import (
     CONTEXT_BOUNDED_QUESTION_RULES,
 )
@@ -34,6 +35,13 @@ from knowledge_engine.src.node_deep_dive.lecture_prompt_en import (
     LECTURE_MODE_STRUCTURE_RULES,
 )
 from knowledge_engine.src.node_deep_dive.memory_schemas import LayerDrillSession
+from knowledge_engine.src.node_deep_dive.next_module_prompt import NEXT_MODULE_PROMPT
+from knowledge_engine.src.node_deep_dive.self_check_mode_prompt import (
+    SELF_CHECK_MODE_PROMPT,
+)
+from knowledge_engine.src.node_deep_dive.socratic_mode_prompt import (
+    SOCRATIC_MODE_PROMPT,
+)
 from knowledge_engine.src.node_deep_dive.socratic_poles import (
     SOCRATIC_POLES_STATIC_RULES,
 )
@@ -54,15 +62,29 @@ TutorFactoryMode = Literal[
     "lecture",
     "blitz",
     "socratic",
+    "self_check",
+    "next_module",
 ]
 
 _MODE_PREFIX_RE = re.compile(
     r"^\[mode:(deep_dive_mech|deep_dive_how|deep_analysis|"
-    r"advanced_analysis|deep_design|gloss|lecture|blitz|socratic)\]\s*",
+    r"advanced_analysis|deep_design|gloss|lecture|blitz|socratic|"
+    r"self_check|next_module)\]\s*",
     re.I,
 )
 
+# Free-text vector matches (no literal [mode:...] tag) promoted to these
+# factory modes when classify_control_chip resolves them — see
+# _promote_vector_chip_to_mode(). Scoped to modes added for the Intent
+# Routing & Evaluator Bypass refactor only; existing gloss/how/mech/etc.
+# resolution via exact chip labels is untouched.
+_VECTOR_PROMOTABLE_FACTORY_MODES = frozenset(
+    {"blitz", "socratic", "self_check", "next_module"}
+)
+
 _CHIP_MODE_TO_CHOICE = dict(FACTORY_MODE_TO_INTENT)
+# intent (VectorIntentRouter/classify_control_chip output) -> factory_mode.
+_CHIP_MODE_TO_CHOICE_REVERSE = {v: k for k, v in _CHIP_MODE_TO_CHOICE.items()}
 
 _JSON_CONTRACT_TAIL = (
     "=== JSON OUTPUT (DeepDiveTutorContract) ===\n"
@@ -98,8 +120,7 @@ _DEEP_ANALYSIS_JSON_TAIL = (
     "Do not emit feedback_on_answer or 📋/🎯 — Host assembles those. "
     "User-facing text fields MUST be in natural Russian.\n"
     "Host sets orchestration flags after generation — focus on analysis + question.\n"
-    "If SOURCE REGISTRY is empty: references MUST be [].\n"
-    + ANTI_SYCOPHANCY_INVARIANTS
+    "If SOURCE REGISTRY is empty: references MUST be [].\n" + ANTI_SYCOPHANCY_INVARIANTS
 )
 
 _FACTORY_CONTROL_MODES = frozenset(
@@ -110,6 +131,10 @@ _FACTORY_CONTROL_MODES = frozenset(
         "advanced_analysis",
         "deep_design",
         "gloss",
+        "blitz",
+        "socratic",
+        "self_check",
+        "next_module",
     }
 )
 
@@ -173,9 +198,7 @@ def format_deep_analysis_novelty_block(
     exhausted = bool(rag_exhausted) or bool(atoms_empty)
     if exhausted:
         parts.append(
-            format_rag_exhausted_directive(
-                attraction_summary=attraction_summary
-            )
+            format_rag_exhausted_directive(attraction_summary=attraction_summary)
         )
     cite_pol = format_citation_policy_block(
         registry_empty=registry_empty,
@@ -184,9 +207,7 @@ def format_deep_analysis_novelty_block(
     if cite_pol:
         parts.append(cite_pol)
     parts.append(format_thesis_digests_block(memory))
-    parts.append(
-        format_rag_coverage_state_block(memory, rag_exhausted=exhausted)
-    )
+    parts.append(format_rag_coverage_state_block(memory, rag_exhausted=exhausted))
     return "\n\n".join(parts)
 
 
@@ -238,6 +259,8 @@ def parse_tutor_mode_prefix(user_message: str) -> tuple[str, TutorFactoryMode]:
         "lecture",
         "blitz",
         "socratic",
+        "self_check",
+        "next_module",
     ):
         return body, mode  # type: ignore[return-value]
     return body or raw, "default"
@@ -354,7 +377,7 @@ def _drill_host_orchestration(
     ru_header: str,
 ) -> str:
     nxt_line = (
-        f'If the answer is correct: credit this sub-concept, then IMMEDIATELY '
+        f"If the answer is correct: credit this sub-concept, then IMMEDIATELY "
         f'teach the next sub-concept "{next_title}" in layer {layer}. '
         "Do not offer pathway chips.\n"
         if next_title
@@ -665,9 +688,8 @@ def build_layer_completion_prompt(
         "ADVANCED_ASTERISK": "ADVANCED",
         "DEEP_ASTERISK": "DEEP",
     }.get(layer, layer or "current")
-    closed = (
-        f"Target layer {label} is fully credited"
-        + (f" ({total}/{total} sub-topics)." if total else ".")
+    closed = f"Target layer {label} is fully credited" + (
+        f" ({total}/{total} sub-topics)." if total else "."
     )
     return (
         f"{LAYER_COMPLETION_PROMPT.strip()}\n"
@@ -681,9 +703,7 @@ def build_completed_drill_layer_prompt(
     **kwargs: Any,
 ) -> str:
     """Compat alias → ``build_layer_completion_prompt``."""
-    return build_layer_completion_prompt(
-        drill_session, memory=memory, **kwargs
-    )
+    return build_layer_completion_prompt(drill_session, memory=memory, **kwargs)
 
 
 def build_drill_session_prompt(
@@ -728,6 +748,23 @@ def is_factory_control_mode(mode: TutorFactoryMode | str) -> bool:
     return (mode or "").strip().lower() in _FACTORY_CONTROL_MODES
 
 
+def _promote_vector_chip_to_mode(user_message: str, *, memory: Any = None) -> str:
+    """Free-text (no literal ``[mode:…]`` tag) blitz/socratic/self_check/
+    next_module request, resolved via VectorIntentRouter — Step 2 of Intent
+    Routing (see control_intent.classify_control_chip). Scoped to
+    ``_VECTOR_PROMOTABLE_FACTORY_MODES`` only; gloss/how/mech/etc. keep their
+    existing exact-chip-label resolution path untouched."""
+    from knowledge_engine.src.node_deep_dive.control_intent import (
+        classify_control_chip,
+    )
+
+    chip = classify_control_chip(user_message, memory=memory)
+    factory_mode = _CHIP_MODE_TO_CHOICE_REVERSE.get(chip, "")
+    if factory_mode in _VECTOR_PROMOTABLE_FACTORY_MODES:
+        return factory_mode
+    return "default"
+
+
 def select_system_prompt_and_mode(
     user_message: str,
     *,
@@ -735,15 +772,19 @@ def select_system_prompt_and_mode(
     memory: Any = None,
 ) -> tuple[str, TutorFactoryMode, str]:
     """
-    Resolve system prompt override from ``[mode:…]`` prefix.
+    Resolve system prompt override from ``[mode:…]`` prefix, or — for
+    blitz/socratic/self_check/next_module only — from a free-text
+    VectorIntentRouter match (see ``_promote_vector_chip_to_mode``).
 
     Returns ``(system_prompt, mode, cleaned_user_message)``.
-    For ``default`` / blitz / socratic without dedicated isolated prompts,
-    returns ``default_system_prompt`` unchanged (caller still owns routing).
+    For ``default`` (no tag, no vector match), returns ``default_system_prompt``
+    unchanged (caller still owns routing).
     For ``lecture``, appends mandatory PART 1 lecture → PART 2 closing-question
     structure onto ``default_system_prompt`` (does not isolate away from dense).
     """
     cleaned, mode = parse_tutor_mode_prefix(user_message)
+    if mode == "default":
+        mode = _promote_vector_chip_to_mode(user_message, memory=memory)
     system = default_system_prompt or ""
     from knowledge_engine.src.node_deep_dive.drill_orchestrator import (
         is_layer_just_completed,
@@ -814,6 +855,18 @@ def select_system_prompt_and_mode(
             RUSSIAN_OUTPUT_RULE.strip(),
         ]
         system = "\n\n".join(p for p in parts if p)
+    elif mode == "blitz":
+        system = "\n\n".join([BLITZ_MODE_PROMPT.strip(), RUSSIAN_OUTPUT_RULE.strip()])
+    elif mode == "socratic":
+        system = "\n\n".join(
+            [SOCRATIC_MODE_PROMPT.strip(), RUSSIAN_OUTPUT_RULE.strip()]
+        )
+    elif mode == "self_check":
+        system = "\n\n".join(
+            [SELF_CHECK_MODE_PROMPT.strip(), RUSSIAN_OUTPUT_RULE.strip()]
+        )
+    elif mode == "next_module":
+        system = "\n\n".join([NEXT_MODULE_PROMPT.strip(), RUSSIAN_OUTPUT_RULE.strip()])
     drill_session = getattr(memory, "layer_drill", None) if memory is not None else None
     skipped = bool(getattr(memory, "evaluator_skipped", False)) if memory else False
     if skipped:
@@ -869,4 +922,12 @@ def select_isolated_prompt_for_mode(mode: TutorFactoryMode | str) -> str | None:
         return ADVANCED_ANALYSIS_PROMPT
     if m == "gloss":
         return GLOSS_SUMMARY_PROMPT
+    if m == "blitz":
+        return BLITZ_MODE_PROMPT
+    if m == "socratic":
+        return SOCRATIC_MODE_PROMPT
+    if m == "self_check":
+        return SELF_CHECK_MODE_PROMPT
+    if m == "next_module":
+        return NEXT_MODULE_PROMPT
     return None

@@ -161,6 +161,59 @@ def post_node_init(body: NodeSessionBody, response: Response) -> dict[str, Any]:
     return out
 
 
+@router.post("/init-stream")
+async def post_node_init_stream(body: NodeSessionBody) -> StreamingResponse:
+    """Тот же SSE-паттерн, что /chat-stream (job_stream.py relay), но для
+    подготовки ноды (action=init) — по требованию пользователя FSM-стадии
+    (см. schemas/fsm.py) должны стримиться и на "подготовку ноды", не только
+    на ответ тьютора. _run_node_deep_dive_stream в work_handlers.py уже
+    action-агностичен (просто прокидывает user_action из payload) — никаких
+    изменений в воркере не требуется, только этот роут."""
+    cid = body.curriculum_id.strip()
+    nid = body.node_data.node_id.strip()
+    # Тот же fast-path, что /node/init (_resolve_ready_init_result) — без
+    # него КАЖДОЕ повторное открытие уже проинициализированной ноды шло бы
+    # через полный enqueue+worker цикл вместо мгновенного ответа.
+    ready = _resolve_ready_init_result(cid, body.node_data)
+
+    async def event_stream():
+        if ready is not None:
+            trace(f"API ▶ POST /node/init-stream (ready) | {cid}/{nid}")
+            yield f"data: {json.dumps({'type': 'complete', 'result': ready}, ensure_ascii=False)}\n\n"
+            return
+        trace(f"API ▶ POST /node/init-stream (queue SSE) | {cid}/{nid}")
+        payload = {
+            "curriculum_id": cid,
+            "node_data": body.node_data.model_dump(),
+            "user_action": "init",
+            "user_message": "",
+            "stream": True,
+        }
+        job_id = enqueue_node_deep_dive(payload)
+        try:
+            async for evt in iter_job_stream_events(
+                job_id,
+                timeout_sec=KE_NODE_DIVE_TIMEOUT_SEC,
+            ):
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        except Exception as exc:
+            from knowledge_engine.ui.errors import trace_exception
+
+            detail = trace_exception(exc, "NODE_DIVE init-stream proxy")
+            err = {
+                "type": "error",
+                "detail": detail,
+                "error_type": type(exc).__name__,
+            }
+            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.post("/restart", status_code=status.HTTP_202_ACCEPTED)
 def post_node_restart(body: NodeSessionBody) -> dict[str, Any]:
     """

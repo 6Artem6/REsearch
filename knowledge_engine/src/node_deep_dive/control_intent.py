@@ -3,11 +3,29 @@
 Fast path: explicit client tags ``[mode|action|intent|begin:…]`` and exact
 registered chip labels (0 ms). Soft path: semantic cosine match via
 ``VectorIntentRouter`` (BGE-M3 ``EMBED_MODEL``) — never substring stems.
+
+TTL-кэш (см. ``control_intent_session_scope``): один и тот же ход тьютора
+дёргает ``classify_control_chip`` ~20 раз из разных модулей (step_pipeline,
+step_analysis, coverage_router, concept_map, prompt_factory...) на один и
+тот же текст сообщения — каждый вызов без кэша заново гонял BGE-M3 embed +
+LanceDB поиск (см. живой лог: ~20 повторных "[VECTOR_ROUTER] No match" на
+один ход). Ключ кэша — ``(session_id, normalized_text, slot_active)``,
+никогда только текст: два разных пользователя/хода с одинаковой фразой не
+должны делить результат (multi-tenant). ``session_id`` пробрасывается либо
+явным kwarg'ом, либо через ``contextvars`` (см. ``control_intent_session_scope``,
+выставляется один раз в ``engine.run_node_deep_dive`` на весь ход) — это и
+даёт «суррогатным» проверкам (``is_short_begin_message`` и т.п.), у которых
+в сигнатуре нет session_id, прозрачно переиспользовать кэш.
 """
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import re
+import threading
+import time
+from collections import OrderedDict
 from typing import Literal
 
 from knowledge_engine.src.node_deep_dive.intent_definitions import (
@@ -49,6 +67,87 @@ _EXPLICIT_TAG_RE = re.compile(
 )
 
 _KNOWN_INTENTS = frozenset(INTENT_NAMES)
+
+# --- TTL-кэш classify_control_chip (multi-tenant safe) ---------------------
+
+_CHIP_CACHE_TTL_SEC = 45.0
+_CHIP_CACHE_MAXSIZE = 2048
+
+_chip_cache_lock = threading.Lock()
+# key = (session_id, normalized_text, slot_active) -> (expires_at_monotonic, (chip, source))
+_chip_cache: "OrderedDict[tuple[str, str, bool], tuple[float, tuple[str, str]]]" = (
+    OrderedDict()
+)
+
+_control_intent_session_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "control_intent_session_id",
+    default="",
+)
+
+
+@contextlib.contextmanager
+def control_intent_session_scope(session_id: str):
+    """Выставить session_id хода на время его обработки (см. module docstring).
+
+    Вызывается один раз в ``engine.run_node_deep_dive`` вокруг всего хода —
+    дальше все ~20 сайтов ``classify_control_chip`` внутри графа получают
+    его прозрачно через ``ContextVar``, без изменения своих сигнатур.
+    """
+    token = _control_intent_session_id.set((session_id or "").strip())
+    try:
+        yield
+    finally:
+        _control_intent_session_id.reset(token)
+
+
+def current_control_intent_session_id() -> str:
+    return _control_intent_session_id.get()
+
+
+def _normalize_chip_cache_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip()).casefold()
+
+
+def _chip_cache_get(
+    session_id: str, text: str, slot_active: bool
+) -> tuple[str, str] | None:
+    if not session_id:
+        # Без session_id некому доверять изоляцию между пользователями —
+        # безопаснее не кэшировать вовсе, чем рисковать утечкой между ними.
+        return None
+    key = (session_id, _normalize_chip_cache_text(text), slot_active)
+    now = time.monotonic()
+    with _chip_cache_lock:
+        entry = _chip_cache.get(key)
+        if entry is None:
+            return None
+        expires_at, result = entry
+        if expires_at < now:
+            del _chip_cache[key]
+            return None
+        _chip_cache.move_to_end(key)
+        return result
+
+
+def _chip_cache_put(
+    session_id: str,
+    text: str,
+    slot_active: bool,
+    result: tuple[str, str],
+) -> None:
+    if not session_id:
+        return
+    key = (session_id, _normalize_chip_cache_text(text), slot_active)
+    with _chip_cache_lock:
+        _chip_cache[key] = (time.monotonic() + _CHIP_CACHE_TTL_SEC, result)
+        _chip_cache.move_to_end(key)
+        while len(_chip_cache) > _CHIP_CACHE_MAXSIZE:
+            _chip_cache.popitem(last=False)
+
+
+def _clear_chip_cache_for_tests() -> None:
+    with _chip_cache_lock:
+        _chip_cache.clear()
 
 
 def has_explicit_control_tag(user_text: str) -> bool:
@@ -215,15 +314,27 @@ def classify_control_chip_detailed(
     user_text: str,
     *,
     memory: object | None = None,
+    session_id: str | None = None,
 ) -> tuple[str, str]:
-    """Вернуть ``(intent, source)``: exact | vector | fallback."""
+    """Вернуть ``(intent, source)``: exact | vector | fallback.
+
+    ``session_id`` явным kwarg'ом либо (по умолчанию) из
+    ``control_intent_session_scope`` — см. TTL-кэш в module docstring.
+    Exact/explicit путь (0 мс) кэш не трогает, только vector/fallback ветка.
+    """
     raw = (user_text or "").strip()
     if not raw:
         return "", "fallback"
     hit = _classify_explicit_and_exact(raw)
     if hit:
         return hit, "exact"
+    sid = (
+        session_id if session_id is not None else current_control_intent_session_id()
+    ).strip()
     slot_active = is_mode_selection_slot_active(memory)
+    cached = _chip_cache_get(sid, raw, slot_active)
+    if cached is not None:
+        return cached
     try:
         if slot_active:
             vec = _classify_vector(
@@ -231,36 +342,40 @@ def classify_control_chip_detailed(
                 allowed_intents=MODE_SELECTION_SLOT_INTENTS,
                 threshold=MODE_SELECTION_VECTOR_THRESHOLD,
             )
+            result = (vec, "vector") if vec else ("", "fallback")
+        else:
+            vec = _classify_vector(raw)
             if vec:
-                return vec, "vector"
-            return "", "fallback"
-        vec = _classify_vector(raw)
-        if vec:
-            from knowledge_engine.src.node_deep_dive.vector_intent_router import (
-                get_vector_intent_router,
-            )
+                from knowledge_engine.src.node_deep_dive.vector_intent_router import (
+                    get_vector_intent_router,
+                )
 
-            src = (
-                "fallback"
-                if getattr(get_vector_intent_router(), "_degraded", False)
-                else "vector"
-            )
-            return vec, src
-        return "", "fallback"
+                src = (
+                    "fallback"
+                    if getattr(get_vector_intent_router(), "_degraded", False)
+                    else "vector"
+                )
+                result = (vec, src)
+            else:
+                result = ("", "fallback")
     except Exception:
         from knowledge_engine.src.resilience_manager import classify_intent_from_rules
 
         fb = classify_intent_from_rules(raw)
         if fb:
             _trace_control(fb, raw, "fallback_rules")
-            return fb, "fallback"
-        return "", "fallback"
+            result = (fb, "fallback")
+        else:
+            result = ("", "fallback")
+    _chip_cache_put(sid, raw, slot_active, result)
+    return result
 
 
 def classify_control_chip(
     user_text: str,
     *,
     memory: object | None = None,
+    session_id: str | None = None,
 ) -> ControlChip | str:
     """
     Classify a user message as a control chip / lecture stub / empty.
@@ -271,7 +386,9 @@ def classify_control_chip(
       3. Semantic VectorIntentRouter (cosine ≥ threshold);
          при активном ``mode_selection`` — только интенты слота.
     """
-    intent, _source = classify_control_chip_detailed(user_text, memory=memory)
+    intent, _source = classify_control_chip_detailed(
+        user_text, memory=memory, session_id=session_id
+    )
     return intent  # type: ignore[return-value]
 
 

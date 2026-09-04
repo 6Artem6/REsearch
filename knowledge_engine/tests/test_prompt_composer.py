@@ -6,6 +6,7 @@ from knowledge_engine.src.node_deep_dive.prompt_types import (
     DIALOGUE_SYSTEM_PROMPT_MAX_LEN,
     DIALOGUE_SYSTEM_PROMPT_MIN_LEN,
     InteractionPromptMode,
+    PromptComposeContext,
 )
 from knowledge_engine.src.node_deep_dive.tutor_prompt_builder import (
     build_dense_system,
@@ -57,9 +58,12 @@ def test_dialogue_prompt_length_budget(caplog):
     assert any("tutor_prompt dialogue system" in r.message for r in caplog.records)
 
 
-def test_recency_appears_once_in_dialogue():
-    text = build_dialogue_system()
-    assert text.count("=== CRITICAL_RULES_RECENCY") == 1
+def test_recency_moved_out_of_cached_system_into_dynamic_context():
+    """Recency stays out of system_instruction (cache-stable); lives on ctx.recency_tail."""
+    ctx = PromptComposeContext()
+    text = compose_system_prompt(InteractionPromptMode.DIALOGUE_FEEDBACK, context=ctx)
+    assert "=== CRITICAL_RULES_RECENCY" not in text
+    assert ctx.recency_tail.count("=== CRITICAL_RULES_RECENCY") == 1
 
 
 def test_dialogue_depth_and_evaluation_rules():

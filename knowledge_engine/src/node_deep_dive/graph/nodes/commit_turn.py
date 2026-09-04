@@ -22,19 +22,21 @@ from knowledge_engine.src.node_deep_dive.tutor_dialogue import (
     extract_follow_up_from_chat_text,
     resolve_tutor_display_message,
 )
-from knowledge_engine.src.node_deep_dive.tutor_memory_content import (
-    tutor_content_for_active_window,
-)
 from knowledge_engine.src.node_deep_dive.tutor_field_limits import (
     SCHEMA_FOLLOW_UP_QUESTION_MAX,
     SCHEMA_TUTOR_MESSAGE_MAX,
+)
+from knowledge_engine.src.node_deep_dive.tutor_memory_content import (
+    tutor_content_for_active_window,
 )
 from knowledge_engine.ui.run_log import trace
 
 logger = logging.getLogger(__name__)
 
 
-def _emit_commit_telemetry(req, memory, factory_mode: str, raw_user: str, t0: float) -> None:
+def _emit_commit_telemetry(
+    req, memory, factory_mode: str, raw_user: str, t0: float
+) -> None:
     """Cheap host telemetry: exact chip only (never re-embed on the P99 path)."""
     import time
 
@@ -219,7 +221,9 @@ def commit_turn_node(state: TutorGraphState) -> TutorGraphState:
 
         display_user, factory_mode = display_user_after_mode_prefix(raw_user)
         append_to_active_window(memory, "user", display_user or raw_user)
-        rotate_window_after_message(memory, anchor)
+        rotate_window_after_message(
+            memory, anchor, req.curriculum_id, req.node_data.node_id
+        )
     else:
         factory_mode = "default"
 
@@ -229,7 +233,9 @@ def commit_turn_node(state: TutorGraphState) -> TutorGraphState:
             llm_out, fallback_compose_text=tutor
         )
         append_to_active_window(memory, "tutor", window_tutor or tutor)
-        rotate_window_after_message(memory, anchor)
+        rotate_window_after_message(
+            memory, anchor, req.curriculum_id, req.node_data.node_id
+        )
         memory.last_tutor_question_angle = infer_question_angle(tutor)
 
     llm_out = orchestrate_tutor_llm_output(
@@ -257,9 +263,10 @@ def commit_turn_node(state: TutorGraphState) -> TutorGraphState:
             memory, llm_out, focus_sub_concept_id=focus_id
         )
         # Mark overlay asterisk-question pending for specialized evaluator + FSM.
-        if is_overlay_eval_kind(factory_mode) and (
-            memory.pending_evaluation_concept_id or ""
-        ).strip():
+        if (
+            is_overlay_eval_kind(factory_mode)
+            and (memory.pending_evaluation_concept_id or "").strip()
+        ):
             from knowledge_engine.src.node_deep_dive.star_task_fsm import (
                 mark_star_task_in_progress,
             )

@@ -83,15 +83,25 @@ def _evicted_tutor_needs_question_strip(
     return last == pending
 
 
-def update_manifest_from_evicted(
+def prepare_evicted_for_manifest_extraction(
     memory: SessionMemory,
     evicted: dict[str, str],
     anchor: str,
-) -> None:
+) -> dict | None:
+    """Синхронная (без LLM) часть: guard-проверки + сборка payload для
+    background-экстракции (context_compressor_worker.run_dialog_summarize_job).
+
+    Guard-проверки (star_task/overlay, question-strip) читают ЖИВОЕ состояние
+    memory на момент eviction — их нельзя откладывать в фон, т.к. к моменту
+    выполнения job'а pending_eval_kind/last_tutor_sub_concept_id могут уже
+    измениться. Возвращает None, если сообщение нужно молча пропустить
+    (тот же контракт, что раньше был у early-return внутри
+    update_manifest_from_evicted).
+    """
     role = (evicted.get("role") or "").strip()
     content = (evicted.get("content") or "").strip()
     if not content:
-        return
+        return None
     role_l = role.lower()
     # Deep Analysis / open Star Task tutor turns must not seed fact_manifest with
     # synthesized constraints / homework hypotheses — only later user answers may.
@@ -105,39 +115,78 @@ def update_manifest_from_evicted(
         or star_task_blocks_transition(memory)
     ):
         trace("NODE_DIVE fact_manifest skip | deep_analysis/star_task tutor eviction")
-        return
+        return None
     if _evicted_tutor_needs_question_strip(memory, evicted):
         content = sanitize_evicted_tutor_content_for_manifest(content)
         trace("NODE_DIVE fact_manifest | sanitized unanswered tutor tail in evicted")
-    prev = memory.fact_manifest
-    payload = (
+    return {
+        "anchor": anchor,
+        "role": role,
+        "content": content[:2500],
+        "prev_manifest": memory.fact_manifest.model_dump(),
+        "learning_phase": memory.learning_phase,
+        "learning_mode": memory.learning_mode,
+        "expected_manifest_version": memory.manifest_version,
+    }
+
+
+def run_fact_manifest_extraction(payload: dict) -> DialogueFactManifest:
+    """Чистая LLM-экстракция без доступа к live SessionMemory — единственная
+    функция из этого модуля, которую можно безопасно звать из фонового
+    воркера (см. services/context_compressor_worker.py). Не вызывать с hot
+    path тьютора — именно этот вызов раньше блокировал ответ пользователю.
+    """
+    prev = DialogueFactManifest.model_validate(payload.get("prev_manifest") or {})
+    role = str(payload.get("role") or "")
+    content = str(payload.get("content") or "")[:2500]
+    anchor = str(payload.get("anchor") or "")
+    llm_payload = (
         f"### previous_manifest\n{prev.model_dump_json()}\n\n"
-        f"### evicted_message\n{role}: {content[:2500]}\n"
-        f"### learning_phase\n{memory.learning_phase}\n"
-        f"### learning_mode\n{memory.learning_mode}\n"
+        f"### evicted_message\n{role}: {content}\n"
+        f"### learning_phase\n{payload.get('learning_phase', '')}\n"
+        f"### learning_mode\n{payload.get('learning_mode', '')}\n"
     )
     try:
         patch = run_gemini_structured_with_chain(
             GEMINI_LITE_MODEL,
             _FACT_EXTRACT_SYSTEM,
-            payload,
+            llm_payload,
             anchor,
             DialogueFactManifestContract,
             "node_deep_dive / fact_manifest",
             rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
         )
-        memory.fact_manifest = merge_manifest(
+        return merge_manifest(
             prev,
             DialogueFactManifest.model_validate(patch.model_dump()),
         )
     except Exception as exc:
         trace(f"NODE_DIVE fact_manifest fallback | {exc}")
-        _heuristic_merge(memory, evicted)
+        return _heuristic_merge_manifest(prev, content)
 
 
-def _heuristic_merge(memory: SessionMemory, evicted: dict[str, str]) -> None:
-    text = (evicted.get("content") or "").lower()
-    prev = memory.fact_manifest
+def update_manifest_from_evicted(
+    memory: SessionMemory,
+    evicted: dict[str, str],
+    anchor: str,
+) -> None:
+    """Синхронный convenience-wrapper (guard + extraction + merge за один
+    вызов) — оставлен для тестов/вызовов вне hot path тьютора. Hot path
+    (rotate_window_after_message) больше НЕ вызывает эту функцию: он
+    публикует job через context_compressor_worker и возвращается сразу.
+    """
+    payload = prepare_evicted_for_manifest_extraction(memory, evicted, anchor)
+    if payload is None:
+        return
+    memory.fact_manifest = run_fact_manifest_extraction(payload)
+    memory.manifest_version += 1
+
+
+def _heuristic_merge_manifest(
+    prev: DialogueFactManifest,
+    evicted_content: str,
+) -> DialogueFactManifest:
+    text = (evicted_content or "").lower()
     stacks = list(prev.stack_mentions)
     for token in (
         "qdrant",
@@ -153,7 +202,7 @@ def _heuristic_merge(memory: SessionMemory, evicted: dict[str, str]) -> None:
     ):
         if token in text and token not in stacks:
             stacks.append(token)
-    memory.fact_manifest = DialogueFactManifest(
+    return DialogueFactManifest(
         agreed_concepts=list(prev.agreed_concepts),
         rejected_options=list(prev.rejected_options),
         open_bottlenecks=list(prev.open_bottlenecks),

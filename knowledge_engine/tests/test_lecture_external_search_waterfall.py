@@ -195,7 +195,7 @@ def test_waterfall_exa_early_exit(
         for i in range(3)
     ]
 
-    async def _fake_exa(query: str, per_provider: int):
+    async def _fake_exa(query: str, per_provider: int, **_kwargs):
         return list(exa)
 
     called: list[str] = []
@@ -228,7 +228,7 @@ def test_waterfall_academic_when_exa_short(
 ) -> None:
     from knowledge_engine.src.node_deep_dive import lecture_search_orchestrator as orch
 
-    async def _fake_exa(query: str, per_provider: int):
+    async def _fake_exa(query: str, per_provider: int, **_kwargs):
         return [
             VerifiedExternalSource(
                 url="https://exa.example/only",

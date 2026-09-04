@@ -104,6 +104,56 @@ def test_process_skips_eval_on_dozhat(monkeypatch) -> None:
     assert mem.sub_concepts[0].mechanic_passed is False
 
 
+def test_process_skips_eval_on_rephrase_request(monkeypatch) -> None:
+    """Free-text «переформулируй вопрос» must not be graded as a wrong/missed
+    answer — pending_evaluation_concept_id and mastery flags stay untouched
+    so the tutor can restate the same still-open question next turn."""
+    from knowledge_engine.src.node_deep_dive.vector_intent_router import (
+        VectorIntentRouter,
+        set_vector_intent_router_for_tests,
+    )
+    from knowledge_engine.tests.intent_embed_probe import lexical_probe_embed
+
+    called = {"n": 0}
+
+    def boom(*_a, **_k):
+        called["n"] += 1
+        raise AssertionError("gap eval must not run for a rephrase request")
+
+    monkeypatch.setattr(
+        "knowledge_engine.src.node_deep_dive.sub_concept_evaluator.run_sub_concept_gap_eval",
+        boom,
+    )
+    from knowledge_engine.src.node_deep_dive.schemas import NodeDataInput
+
+    router = VectorIntentRouter(
+        threshold=0.82,
+        embed_fn=lexical_probe_embed,
+        persist=False,
+        auto_sync=True,
+        enabled=True,
+    )
+    set_vector_intent_router_for_tests(router)
+    try:
+        mem = _mem_optional_mech()
+        node = NodeDataInput(
+            node_id="n1",
+            title="Subagent Architectures",
+            layer="advanced",
+            learning_goal="goal text here",
+            core_concepts=["c1"],
+        )
+        process_sub_concept_user_answer(
+            "Не понял вопрос, объясни иначе", mem, node, "anchor"
+        )
+    finally:
+        set_vector_intent_router_for_tests(None)
+    assert called["n"] == 0
+    assert mem.evaluator_skipped is True
+    assert mem.pending_evaluation_concept_id == "agg"
+    assert mem.sub_concepts[0].mechanic_passed is False
+
+
 def test_orchestrate_dozhat_does_not_force_ready() -> None:
     mem = _mem_optional_mech()
     out = DeepDiveLLMOutput(

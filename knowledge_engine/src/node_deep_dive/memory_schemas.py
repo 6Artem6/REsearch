@@ -217,7 +217,9 @@ class LayerDrillSession(BaseModel):
     status: Literal["", "DRILL_IN_PROGRESS", "DRILL_COMPLETE"] = ""
 
     def get_current_sub_concept_id(self) -> str | None:
-        if self.is_active and 0 <= self.current_index < len(self.target_sub_concept_ids):
+        if self.is_active and 0 <= self.current_index < len(
+            self.target_sub_concept_ids
+        ):
             return self.target_sub_concept_ids[self.current_index]
         return None
 
@@ -275,6 +277,15 @@ class SessionMemory(BaseModel):
         description="Legacy; не в hot path тьютора — используй fact_manifest",
     )
     fact_manifest: DialogueFactManifest = Field(default_factory=DialogueFactManifest)
+    manifest_version: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "CAS-версия fact_manifest — растёт на каждый успешный merge из "
+            "фонового context_compressor_worker; используется для отказа от "
+            "записи устаревшего summary (см. apply_fact_manifest_patch)"
+        ),
+    )
     anchor_turn: dict[str, str] = Field(default_factory=dict)
     active_window: list[dict[str, str]] = Field(default_factory=list, max_length=8)
     dialog_seq: int = Field(
@@ -422,12 +433,11 @@ class SessionMemory(BaseModel):
             if isinstance(item, str):
                 cid = item.strip()
                 if cid:
-                    out.append(
-                        {"concept_id": cid, "overlay_type": "DEEP_ASTERISK"}
-                    )
+                    out.append({"concept_id": cid, "overlay_type": "DEEP_ASTERISK"})
             else:
                 out.append(item)
         return out
+
     deep_analysis_used_source_ids: list[str] = Field(
         default_factory=list,
         max_length=32,

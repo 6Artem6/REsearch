@@ -83,11 +83,19 @@ def filter_pool_by_knee_cutoff(
     top_score = sorted_entries[0].relevance
 
     if top_score < min_floor:
+        # ЖЁСТКАЯ нижняя граница: даже лучший кандидат в пуле не может её
+        # пробить — раньше здесь всё равно возвращался sorted_entries[0]
+        # ("keep best only"), из-за чего в RAG-инспектор попадали чанки с
+        # cos=0.000 (см. баг: 3 identичных R1/R2/R3 из названия темы). Порог
+        # адаптивный (knee cutoff) ТОЛЬКО сверху вниз от top_score — вниз он
+        # никогда не опускается ниже min_floor, поэтому здесь корректно
+        # вернуть пустой список, а не подменять "нет релевантных" на
+        # "любой ценой хоть что-нибудь".
         trace(
             f"LECTURE_CHUNK_KNEE ⊘ | top={top_score:.3f} < floor={min_floor:.2f} "
-            f"→ keep best only"
+            f"→ reject all (no relevant chunks)"
         )
-        return [sorted_entries[0]]
+        return []
 
     cutoff_index = len(sorted_entries)
     knee_at: int | None = None
@@ -406,6 +414,10 @@ def select_diverse_chunks_with_cross_attention(
     filtered = filter_pool_by_knee_cutoff(
         scored, min_floor=min_floor, knee_drop_ratio=knee_drop_ratio
     )
+    if not filtered:
+        # Ничего не прошло жёсткий min_floor — легитимный пустой результат
+        # (см. filter_pool_by_knee_cutoff), не ошибка.
+        return []
     top_score = max(e.relevance for e in filtered)
     top_entry = max(filtered, key=lambda e: e.relevance)
     anchor_doc = (

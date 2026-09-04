@@ -28,9 +28,7 @@ CHIP_SKIP = "пропустить"
 
 # FSM-слот ожидания ветки после fast-track intro.
 MODE_SELECTION_SLOT = "mode_selection"
-MODE_SELECTION_SLOT_INTENTS: frozenset[str] = frozenset(
-    {"practice", "check", "skip"}
-)
+MODE_SELECTION_SLOT_INTENTS: frozenset[str] = frozenset({"practice", "check", "skip"})
 MODE_SELECTION_CHIP_LABELS: tuple[str, ...] = (
     CHIP_PRACTICE,
     CHIP_CHECK,
@@ -48,7 +46,9 @@ class IntentRule(NamedTuple):
     """
 
     intent: str
-    cues: tuple[str, ...]  # probe-embed attractors only; not production substring routing
+    cues: tuple[
+        str, ...
+    ]  # probe-embed attractors only; not production substring routing
     reference_phrases: tuple[str, ...] = ()
     exact_labels: tuple[str, ...] = ()
     system_mode: str | None = None
@@ -141,6 +141,10 @@ INTENT_RULES: tuple[IntentRule, ...] = (
             "dense material please",
             "дай лекцию по теме",
             "[mode:lecture] дай плотный материал",
+            "Сгенерируй плотную лекцию",
+            "Хочу подробную теорию",
+            "Расскажи материал",
+            "Объясни подробнее с примерами кода",
         ),
         exact_labels=(
             CHIP_LECTURE_PERIOD,
@@ -152,6 +156,47 @@ INTENT_RULES: tuple[IntentRule, ...] = (
         factory_modes=("lecture",),
     ),
     IntentRule(
+        "blitz",
+        cues=(
+            "блиц",
+            "блиц-опрос",
+            "mode:blitz",
+            "короткие вопросы",
+            "быстрая проверка",
+        ),
+        reference_phrases=(
+            "Перейти в режим блиц",
+            "Давай блиц-опрос",
+            "Короткие вопросы и ответы",
+            "Быстрая проверка",
+            "Блиц",
+            "[mode:blitz]",
+        ),
+        exact_labels=("Блиц",),
+        system_mode="[mode:blitz]",
+        factory_modes=("blitz",),
+    ),
+    IntentRule(
+        "socratic",
+        cues=(
+            "сократ",
+            "сократический",
+            "mode:socratic",
+            "наводящие вопросы",
+            "веди по шагам",
+        ),
+        reference_phrases=(
+            "Сократический диалог",
+            "Задавай наводящие вопросы",
+            "Не давай прямой ответ, веди по шагам",
+            "Режим Сократа",
+            "[mode:socratic]",
+        ),
+        exact_labels=("Режим Сократа",),
+        system_mode="[mode:socratic]",
+        factory_modes=("socratic",),
+    ),
+    IntentRule(
         "next",
         cues=(
             "идем дальше",
@@ -159,6 +204,8 @@ INTENT_RULES: tuple[IntentRule, ...] = (
             "next node",
             "следующей нод",
             "перейти дальше",
+            "следующий модуль",
+            "mode:next_module",
         ),
         reference_phrases=(
             CHIP_OVERLAY_NEXT,
@@ -166,9 +213,17 @@ INTENT_RULES: tuple[IntentRule, ...] = (
             "к следующей ноде",
             "next node",
             "перейти дальше",
+            "Следующий модуль",
+            "Перейти к следующей теме",
+            "Завершить эту ноду и идти дальше",
+            "Двигаемся дальше",
+            "Тема усвоена, давай следующую",
+            "[mode:next_module]",
         ),
         exact_labels=(CHIP_OVERLAY_NEXT,),
+        system_mode="[mode:next_module]",
         action_aliases=("next_node",),
+        factory_modes=("next_module",),
     ),
     IntentRule(
         "practice",
@@ -194,6 +249,8 @@ INTENT_RULES: tuple[IntentRule, ...] = (
             "экспресс-проверк",
             "экспресс проверка",
             "сделаем проверку",
+            "самопроверка",
+            "mode:self_check",
         ),
         reference_phrases=(
             CHIP_CHECK,
@@ -201,8 +258,16 @@ INTENT_RULES: tuple[IntentRule, ...] = (
             "сделаем проверку",
             "хочу проверку",
             "экспресс проверка знаний",
+            "Самопроверка",
+            "Дай проверочное задание",
+            "Хочу пройти тест",
+            "Проверь мои знания по теме",
+            "Практический кейс для проверки",
+            "[mode:self_check]",
         ),
         exact_labels=(CHIP_CHECK,),
+        system_mode="[mode:self_check]",
+        factory_modes=("self_check",),
     ),
     IntentRule(
         "skip",
@@ -246,6 +311,9 @@ INTENT_RULES: tuple[IntentRule, ...] = (
             "start lesson",
             "[begin]",
             "давай начнём урок",
+            "Старт",
+            "Поехали",
+            "Начнем обучение",
         ),
         exact_labels=("начать", "start", "приступим"),
     ),
@@ -334,6 +402,59 @@ INTENT_RULES: tuple[IntentRule, ...] = (
         action_aliases=("deepanalysis", "star_challenge"),
         factory_modes=("deep_analysis",),
     ),
+    IntentRule(
+        "clarify",
+        cues=(
+            "переформулируй",
+            "перефразируй",
+            "не понял вопрос",
+            "объясни вопрос иначе",
+            "уточни вопрос",
+        ),
+        reference_phrases=(
+            "Переформулируй вопрос",
+            "Не совсем понял вопрос, объясни иначе",
+            "Поясни вопрос другими словами",
+            "Что именно имеется в виду в этом вопросе?",
+            "Сформулируй вопрос по-другому",
+            "Уточни, о чём именно спрашиваешь",
+        ),
+    ),
+    IntentRule(
+        "finalize",
+        cues=(
+            "закрой тему",
+            "закроем тему",
+            "подведи итог",
+            "завершим тему",
+            "хватит по этой теме",
+        ),
+        reference_phrases=(
+            "Давай закроем тему",
+            "Подведи итог по теме",
+            "Завершим разбор этой темы",
+            "Хватит по этой теме, давай итог",
+            "Заверши тему и переходи дальше",
+            "wrap up this topic",
+        ),
+    ),
+    IntentRule(
+        "shift_focus",
+        cues=(
+            "давай под другим углом",
+            "зайдём с другой стороны",
+            "смени ракурс",
+            "рассмотрим иначе",
+            "с другой стороны",
+        ),
+        reference_phrases=(
+            "Давай зайдём под другим углом",
+            "Рассмотрим этот вопрос с другой стороны",
+            "Смени ракурс разбора",
+            "Хочу взглянуть на это иначе",
+            "Подойдём к теме с другой стороны",
+        ),
+    ),
 )
 
 INTENT_NAMES: tuple[str, ...] = tuple(rule.intent for rule in INTENT_RULES)
@@ -367,6 +488,10 @@ EVALUATOR_SKIP_INTENTS: frozenset[str] = frozenset(
         "skip",
         "begin",
         "lecture",
+        "blitz",
+        "socratic",
+        "clarify",
+        "finalize",
     }
 )
 
@@ -442,9 +567,7 @@ def validate_intent_catalog() -> dict[str, Any]:
             )
     if "deep_design" in index and "deep_analysis" in index:
         if index["deep_design"] >= index["deep_analysis"]:
-            raise ValueError(
-                "deep_design must precede deep_analysis in INTENT_RULES"
-            )
+            raise ValueError("deep_design must precede deep_analysis in INTENT_RULES")
     phrase_count = 0
     for rule in INTENT_RULES:
         if not rule.cues:

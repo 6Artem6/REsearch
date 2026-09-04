@@ -169,6 +169,14 @@ def _create_cross_encoder() -> object:
         raise
 
 
+def ensure_cross_encoder_loaded() -> None:
+    """Public warmup entry point (see ``ml_memory_guard.warmup_pipeline_async``)
+    — блокирующая, вызывать из ``asyncio.to_thread``. Идемпотентна: если
+    модель уже загружена (или уже переключилась на cosine fallback),
+    `_load_cross_encoder()` вернёт мгновенно."""
+    _load_cross_encoder()
+
+
 def _load_cross_encoder() -> object | None:
     global _cross_encoder, _use_cosine_fallback
     with _lock:
@@ -178,6 +186,9 @@ def _load_cross_encoder() -> object | None:
             return _cross_encoder
         try:
             _cross_encoder = _create_cross_encoder()
+            from knowledge_engine.services.ml_memory_guard import register_model
+
+            register_model("cross_encoder", unload_cross_encoder)
             return _cross_encoder
         except Exception as exc:
             _use_cosine_fallback = True
@@ -242,7 +253,9 @@ def score_relevance_pairs(criterion: str, texts: List[str]) -> List[float]:
         for r in raw:
             out.append(max(0.0, min(1.0, _sigmoid(float(r)))))
         _touch_ce_use()
-        _release_torch_cache()
+        from knowledge_engine.services.ml_memory_guard import guard_after_use
+
+        guard_after_use("cross_encoder")
         return out
     except Exception as exc:
         trace(f"RAG_CE ⚠ predict fallback | {exc}")

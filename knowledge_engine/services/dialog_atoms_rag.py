@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -365,12 +366,8 @@ def retrieve_dialog_knowledge_atoms_detailed(
     cap = top_k if top_k is not None else DIALOG_ATOMS_TOP_K
     floor = min_score if min_score is not None else DIALOG_ATOMS_MIN_SCORE
     excl = {str(k).strip() for k in (exclude_keys or []) if str(k).strip()}
-    excl_chunks = [
-        str(k).strip() for k in (exclude_chunk_ids or []) if str(k).strip()
-    ]
-    excl_atom_ids = [
-        str(k).strip() for k in (exclude_atom_ids or []) if str(k).strip()
-    ]
+    excl_chunks = [str(k).strip() for k in (exclude_chunk_ids or []) if str(k).strip()]
+    excl_atom_ids = [str(k).strip() for k in (exclude_atom_ids or []) if str(k).strip()]
     fetch_limit = max(cap * 4, cap + len(excl) + len(excl_chunks) + 8)
 
     search_kwargs: dict[str, Any] = {
@@ -385,7 +382,10 @@ def retrieve_dialog_knowledge_atoms_detailed(
         "pool_mult": int(pool_mult),
         "rng_seed": rng_seed,
     }
-    rows = vs.search_knowledge_atoms(query, **search_kwargs)
+    # This function only runs via LangGraph's sync-node thread dispatch (no
+    # event loop of its own) — a single local asyncio.run() per Qdrant call
+    # is the legitimate sync/async boundary here, not a nested-loop bridge.
+    rows = asyncio.run(vs.search_knowledge_atoms(query, **search_kwargs))
     if not rows and allowed:
         try:
             from knowledge_engine.services.lecture_rag_source_scope import (
@@ -398,7 +398,7 @@ def retrieve_dialog_knowledge_atoms_detailed(
             ]
             if lib_ids:
                 search_kwargs["allowed_doc_ids"] = lib_ids
-                rows = vs.search_knowledge_atoms(query, **search_kwargs)
+                rows = asyncio.run(vs.search_knowledge_atoms(query, **search_kwargs))
         except Exception as exc:
             trace(f"DIALOG_ATOMS library fallback skip | {exc}")
 
@@ -434,15 +434,13 @@ def retrieve_dialog_knowledge_atoms_detailed(
         unseen_pairs.append((row, atom))
 
     selected_pairs = unseen_pairs[: max(0, int(cap))]
-    rag_exhausted = bool(excl or excl_chunks or excl_atom_ids) and len(
-        selected_pairs
-    ) == 0
+    rag_exhausted = (
+        bool(excl or excl_chunks or excl_atom_ids) and len(selected_pairs) == 0
+    )
 
     selected = [a for _, a in selected_pairs]
     keys = [
-        atom_key(a.statement or "")
-        for a in selected
-        if (a.statement or "").strip()
+        atom_key(a.statement or "") for a in selected if (a.statement or "").strip()
     ]
     keys = [k for k in keys if k]
     atom_ids: list[str] = []

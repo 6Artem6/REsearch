@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from knowledge_engine.schemas.fsm import TutorStage
 from knowledge_engine.src.node_deep_dive.dialog_ids import (
     patch_last_tutor_history_content,
     sync_session_history_turns,
 )
+from knowledge_engine.src.node_deep_dive.graph.stage_events import stage_scope
 from knowledge_engine.src.node_deep_dive.graph.state import TutorGraphState
 from knowledge_engine.src.node_deep_dive.session_store import (
     get_session,
@@ -22,7 +26,18 @@ from knowledge_engine.src.node_deep_dive.tutor_field_limits import (
 )
 
 
-def persist_node(state: TutorGraphState) -> TutorGraphState:
+def persist_node(
+    state: TutorGraphState,
+    config: dict[str, Any] | None = None,
+) -> TutorGraphState:
+    """FSM stage wrapper, см. graph/stage_events.py."""
+    with stage_scope(
+        state, config, TutorStage.FINALIZE, running_message="Сохраняем прогресс…"
+    ):
+        return _persist_node_impl(state)
+
+
+def _persist_node_impl(state: TutorGraphState) -> TutorGraphState:
     """``persist_session_memory`` + ``sync_session_history_turns`` once per invoke."""
     req = state["request"]
     memory = state["memory"]

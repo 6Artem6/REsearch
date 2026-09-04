@@ -82,21 +82,27 @@ def merge_introduced_terms(
 
 
 def format_already_explained_terms_block(memory: SessionMemory) -> str:
+    """
+    RU (пояснение): reusable prompt-rule блок (не просто данные) — попадает в
+    DYNAMIC_SUFFIX диалогового payload'а тьютора, поэтому текст правила
+    английский по конвенции проекта (`.cursor/rules/llm-system-prompts-
+    english.mdc`); сам список терминов (ALREADY_EXPLAINED_TERMS) остаётся
+    как есть — это данные сессии, не инструкция.
+    """
     terms = normalize_introduced_terms(memory.introduced_terms or [])
     if not terms:
         return ""
     encoded = json.dumps(terms, ensure_ascii=False)
     return (
-        "### ALREADY_EXPLAINED_TERMS (Term Registry — persistent, не сбрасывать при compact)\n"
+        "### ALREADY_EXPLAINED_TERMS (Term Registry — persistent, not reset on compact)\n"
         f"ALREADY_EXPLAINED_TERMS: {encoded}\n\n"
         "Anti-Redundancy Rule:\n"
-        "ЗАПРЕЩЕНО повторно расшифровывать, переводить или давать интро-объяснение "
-        "('на пальцах') для терминов из ALREADY_EXPLAINED_TERMS.\n"
-        "Используй их как известные и освоенные концепты.\n"
-        "Расшифровывай и давай интро ТОЛЬКО для абсолютно НОВЫХ терминов, "
-        "которых ещё нет в списке.\n"
-        "В JSON-ответе заполняй поле `introduced_terms` только терминами, "
-        "впервые расшифрованными в этой реплике."
+        "FORBIDDEN to re-decode, re-translate, or give an intro explanation "
+        "('in plain terms') for terms already in ALREADY_EXPLAINED_TERMS.\n"
+        "Use them as known, already-mastered concepts.\n"
+        "Decode and introduce ONLY genuinely NEW terms not yet in the list.\n"
+        "In the JSON response, fill the `introduced_terms` field only with "
+        "terms decoded for the first time in this reply."
     )
 
 

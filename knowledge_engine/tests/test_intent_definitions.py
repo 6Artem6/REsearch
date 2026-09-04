@@ -6,6 +6,8 @@ from knowledge_engine.src.node_deep_dive.control_intent import (
     ACTION_ALIASES,
     REGISTERED_CONTROL_CHIPS,
     classify_control_chip,
+    classify_exact_control_chip,
+    is_control_chip_message,
 )
 from knowledge_engine.src.node_deep_dive.intent_definitions import (
     CHIP_ADVANCED_ANALYSIS,
@@ -14,6 +16,8 @@ from knowledge_engine.src.node_deep_dive.intent_definitions import (
     CHIP_HOW,
     CHIP_MECH,
     CHIP_OVERLAY_NEXT,
+    EVALUATOR_SKIP_INTENTS,
+    FACTORY_MODE_TO_INTENT,
     INTENT_NAMES,
     INTENT_REFERENCE_PHRASES,
     INTENT_RULES,
@@ -23,11 +27,17 @@ from knowledge_engine.src.node_deep_dive.intent_definitions import (
 )
 from knowledge_engine.src.node_deep_dive.star_task_fsm import (
     CHIP_ADVANCED_ANALYSIS as FSM_CHIP_ADVANCED,
+)
+from knowledge_engine.src.node_deep_dive.star_task_fsm import (
     CHIP_DEEP_DESIGN as FSM_CHIP_DEEP,
+)
+from knowledge_engine.src.node_deep_dive.star_task_fsm import (
     CHIP_OVERLAY_NEXT as FSM_CHIP_NEXT,
 )
 from knowledge_engine.src.node_deep_dive.vector_intent_router import (
     INTENT_REFERENCE_PHRASES as ROUTER_PHRASES,
+)
+from knowledge_engine.src.node_deep_dive.vector_intent_router import (
     VectorIntentRouter,
     iter_reference_entries,
 )
@@ -148,5 +158,61 @@ def test_chips_and_paraphrases_classify_via_ssot():
         assert classify_control_chip("[mode:lecture] Дай плотный материал") == "lecture"
         assert classify_control_chip("практика") == "practice"
         assert classify_control_chip("проверка") == "check"
+        # Free-text vector match for blitz/socratic (Intent Routing &
+        # Evaluator Bypass refactor) — no [mode:] tag, just a paraphrase.
+        assert classify_control_chip("Давай блиц-опрос") == "blitz"
+        assert classify_control_chip("Сократический диалог") == "socratic"
+        # Free-text rephrase/clarify request — no exact label, no [mode:] tag.
+        assert classify_control_chip("Переформулируй вопрос, пожалуйста") == "clarify"
+        assert (
+            classify_control_chip("Не понял вопрос, поясни другими словами")
+            == "clarify"
+        )
     finally:
         set_vector_intent_router_for_tests(None)
+
+
+# ---------------------------------------------------------------------------
+# blitz / socratic / self_check / next_module — Intent Routing & Evaluator
+# Bypass refactor (see prompt.txt): [mode:...] tags must be recognized as
+# control chips (bypassing the sub-concept gap evaluator) instead of being
+# scored as if the user evaded the question.
+# ---------------------------------------------------------------------------
+
+
+def test_blitz_and_socratic_are_new_evaluator_skip_intents():
+    assert "blitz" in EVALUATOR_SKIP_INTENTS
+    assert "socratic" in EVALUATOR_SKIP_INTENTS
+    # self_check / next_module reuse the existing check / next intents —
+    # already evaluator-skip, no new intent name needed.
+    assert "check" in EVALUATOR_SKIP_INTENTS
+    assert "next" in EVALUATOR_SKIP_INTENTS
+
+
+def test_clarify_is_an_evaluator_skip_intent():
+    """A rephrase/clarify request is not a substantive answer attempt — the
+    pending question stays open, it must not be graded NEEDS_CORRECTION."""
+    assert "clarify" in EVALUATOR_SKIP_INTENTS
+
+
+def test_factory_mode_to_intent_covers_new_tags():
+    assert FACTORY_MODE_TO_INTENT["blitz"] == "blitz"
+    assert FACTORY_MODE_TO_INTENT["socratic"] == "socratic"
+    assert FACTORY_MODE_TO_INTENT["self_check"] == "check"
+    assert FACTORY_MODE_TO_INTENT["next_module"] == "next"
+
+
+def test_explicit_mode_tags_resolve_without_embedding():
+    """Step 1 (regex tag parser) — must resolve with 0 LanceDB/BGE-M3 calls."""
+    assert classify_exact_control_chip("[mode:blitz]") == "blitz"
+    assert classify_exact_control_chip("[mode:socratic]") == "socratic"
+    assert classify_exact_control_chip("[mode:self_check]") == "check"
+    assert classify_exact_control_chip("[mode:next_module]") == "next"
+
+
+def test_explicit_mode_tags_bypass_evaluator():
+    """Regression: these tags must NOT be scored as 'user evaded the question'."""
+    assert is_control_chip_message("[mode:blitz]") is True
+    assert is_control_chip_message("[mode:socratic]") is True
+    assert is_control_chip_message("[mode:self_check]") is True
+    assert is_control_chip_message("[mode:next_module]") is True
