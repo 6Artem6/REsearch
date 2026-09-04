@@ -21,12 +21,12 @@ from knowledge_engine.services.skill_tree_store import (
     get_curriculum_meta,
 )
 from knowledge_engine.src.curriculum.curriculum_lancedb_persist import (
-    persist_approved_curriculum_hits_to_lancedb,
+    persist_approved_curriculum_hits_to_lancedb_async,
 )
 from knowledge_engine.src.curriculum.schemas import CurriculumGraph
 from knowledge_engine.src.curriculum.search_prestep import _normalize_url_key
 from knowledge_engine.src.curriculum.source_material_pipeline import (
-    enrich_search_hits_with_extracts,
+    enrich_search_hits_with_extracts_async,
     summarize_whitelist_blog_hits_async,
 )
 from knowledge_engine.src.curriculum.source_policy import resolve_source_policy
@@ -92,8 +92,8 @@ async def _run(
 
     if hits:
         hits = await summarize_whitelist_blog_hits_async(hits, target_goal)
-        hits = enrich_search_hits_with_extracts(hits, target_goal)
-        persist_approved_curriculum_hits_to_lancedb(
+        hits = await enrich_search_hits_with_extracts_async(hits, target_goal)
+        await persist_approved_curriculum_hits_to_lancedb_async(
             hits,
             label=f"lazy_ground:{node_id}",
         )

@@ -263,7 +263,8 @@ def test_rag_chunks_migrates_missing_window_summary(tmp_path, monkeypatch) -> No
 
 
 def test_persist_spatial_lancedb_upserts_atoms() -> None:
-    from unittest.mock import MagicMock
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
 
     from knowledge_engine.schemas import DocumentSummary
     from knowledge_engine.services.article_ingestion.blog_spatial_pipeline import (
@@ -271,8 +272,9 @@ def test_persist_spatial_lancedb_upserts_atoms() -> None:
     )
 
     store = MagicMock()
-    store.upsert_knowledge_atoms.return_value = 1
-    store.upsert_rag_academic_map_windows.return_value = 1
+    store.save_summary = AsyncMock(return_value=True)
+    store.upsert_knowledge_atoms = AsyncMock(return_value=1)
+    store.upsert_rag_academic_map_windows = AsyncMock(return_value=1)
     summary = DocumentSummary(
         title="t",
         url="https://example.com/a",
@@ -285,14 +287,16 @@ def test_persist_spatial_lancedb_upserts_atoms() -> None:
         scope=ScopeType.PRINCIPLE,
         statement="Isolation is not a security boundary",
     )
-    n = _persist_spatial_lancedb(
-        store,
-        url="https://example.com/a",
-        title="t",
-        summary=summary,
-        window_texts=["body"],
-        map_results=[],
-        knowledge_atoms=[atom],
+    n = asyncio.run(
+        _persist_spatial_lancedb(
+            store,
+            url="https://example.com/a",
+            title="t",
+            summary=summary,
+            window_texts=["body"],
+            map_results=[],
+            knowledge_atoms=[atom],
+        )
     )
     assert n == 1
     store.save_summary.assert_called_once()

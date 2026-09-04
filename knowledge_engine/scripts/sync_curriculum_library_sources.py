@@ -287,12 +287,27 @@ def apply_sync(curriculum_id: str) -> dict[str, Any]:
 
     store = VectorStore()
     urls_to_delete = list(plan["orphaned_urls_delete_from_lancedb"])
+
+    from knowledge_engine.scripts.cleanup_cloud_resources import delete_qdrant_urls
+    from knowledge_engine.services.article_diagram_store import (
+        delete_diagrams_for_urls,
+    )
+    from knowledge_engine.services.article_ingestion.figure_registry_service import (
+        delete_figure_registry_for_urls,
+    )
+
     return {
         **plan,
         "applied": True,
         "sessions_synced": session_count,
         "lance_rag_chunks_removed": store.delete_rag_chunks_for_urls(urls_to_delete),
         "lance_summaries_removed": store.delete_summaries_for_urls(urls_to_delete),
+        "lance_knowledge_atoms_removed": store.delete_knowledge_atoms_for_urls(
+            urls_to_delete
+        ),
+        "qdrant_urls_removed": delete_qdrant_urls(urls_to_delete),
+        "diagrams_removed": delete_diagrams_for_urls(urls_to_delete),
+        "figure_registry_removed": delete_figure_registry_for_urls(urls_to_delete),
     }
 
 
@@ -345,7 +360,11 @@ def main() -> int:
         print(
             f"applied sessions={report['sessions_synced']} "
             f"rag_chunks={report['lance_rag_chunks_removed']} "
-            f"summaries={report['lance_summaries_removed']}"
+            f"summaries={report['lance_summaries_removed']} "
+            f"knowledge_atoms={report['lance_knowledge_atoms_removed']} "
+            f"qdrant_urls={report['qdrant_urls_removed']} "
+            f"diagrams={report['diagrams_removed']} "
+            f"figure_registry={report['figure_registry_removed']}"
         )
     return 0
 

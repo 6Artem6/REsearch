@@ -7,7 +7,10 @@ URL policy: practical filters, SQLite domain blocklist, live url_validate.
 
 from __future__ import annotations
 
-from knowledge_engine.config import CURRICULUM_URL_VALIDATE_TIMEOUT_SEC
+from knowledge_engine.config import (
+    CURRICULUM_PREFLIGHT_ENABLED,
+    CURRICULUM_URL_VALIDATE_TIMEOUT_SEC,
+)
 from knowledge_engine.db.domain_blocklist import (
     add_blocked_domain,
     load_blocked_domain_set,
@@ -116,9 +119,16 @@ async def replenish_valid_hits_until_cap(
     *,
     timeout: float | None = None,
     node: CurriculumNode | None = None,
+    backfill_margin: int = 0,
 ) -> list[CurriculumSearchHit]:
     """
     Quota buckets (layer × risk) → precheck + url_validate until ``cap`` hits.
+
+    ``backfill_margin`` (see DEEP_INGEST_BACKFILL_MARGIN) widens the stopping
+    point to ``cap + backfill_margin`` valid hits, drawn from the same
+    already-fetched ``candidates`` pool (no extra network calls) — the extra
+    margin hits give downstream Pre-MAP Dedup (_ingest_blog_hits_batch_async)
+    a reserve to backfill ALIAS drops from instead of shrinking the final set.
     """
     if cap <= 0 or not candidates:
         return []
@@ -127,8 +137,16 @@ async def replenish_valid_hits_until_cap(
     if node is not None:
         quota = quota_for_node(node)
         cap = min(cap, quota.total_max)
-        ordered = order_candidates_for_node(candidates, node)
+        # RU: раньше order_candidates_for_node всегда резал до quota.total_max
+        # ДО того, как цикл ниже успевал воспользоваться backfill_margin —
+        # margin физически не мог найти запасные кандидаты, даже если сырой
+        # candidates-пул был больше total_max. limit= расширяет срез до
+        # эффективной цели (cap+margin), не трогая сами TOP-N/TOP-M выборки.
+        ordered = order_candidates_for_node(
+            candidates, node, limit=cap + max(0, backfill_margin)
+        )
 
+    effective_cap = cap + max(0, backfill_margin)
     tmo = timeout if timeout is not None else CURRICULUM_URL_VALIDATE_TIMEOUT_SEC
     blocked_domains = load_blocked_domain_set()
     valid: list[CurriculumSearchHit] = []
@@ -136,7 +154,7 @@ async def replenish_valid_hits_until_cap(
     skipped = 0
 
     for hit in ordered:
-        if len(valid) >= cap:
+        if len(valid) >= effective_cap:
             break
         hit = await canonicalize_curriculum_hit(hit)
         raw_url = (hit.url or "").strip()
@@ -151,6 +169,18 @@ async def replenish_valid_hits_until_cap(
         if key in seen:
             continue
 
+        # Exa hits already passed Pre-Flight Triage Stage 2 (parallel GET +
+        # liveness/soft-404 check on the downloaded body) before reaching
+        # this pool — a second sequential check_url_live() HEAD+GET round
+        # trip here would be pure double HTTP for the same URL.
+        if (
+            CURRICULUM_PREFLIGHT_ENABLED
+            and (hit.source_tier or "").strip().lower() == "exa"
+        ):
+            seen.add(key)
+            valid.append(hit)
+            continue
+
         ok, reason = await check_url_live(raw_url, timeout=tmo)
         if not ok:
             skipped += 1
@@ -163,7 +193,7 @@ async def replenish_valid_hits_until_cap(
 
     trace(
         f"CURRICULUM replenish ✓ | candidates={len(candidates)} "
-        f"valid={len(valid)} cap={cap} skipped={skipped} "
-        f"blocklist_domains={len(blocked_domains)}"
+        f"valid={len(valid)} cap={cap} backfill_margin={backfill_margin} "
+        f"skipped={skipped} blocklist_domains={len(blocked_domains)}"
     )
     return valid

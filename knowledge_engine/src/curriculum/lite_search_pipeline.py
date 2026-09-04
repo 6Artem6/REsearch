@@ -47,23 +47,38 @@ from knowledge_engine.ui.run_log import trace
 
 _QUERY_SYSTEM = (
     f"{RUSSIAN_OUTPUT_RULE}\n\n"
-    "Ты — Search Query Architect. Тебе дана цель обучения и список разрешённых доменов.\n"
-    "На основе своих знаний о содержании этих сайтов выбери 3–5 наиболее подходящих под тему.\n"
-    "Сгенерируй короткие (3–5 слов) поисковые запросы для SearXNG, используя оператор "
-    "`site:<domain>` для выбранных сайтов, а также 1–2 общих запроса с точными терминами "
-    "в кавычках.\n"
-    "Отвечай СТРОГО в формате JSON.\n"
-    "Схема: selected_domains (string[]), queries (string[], 4–8 элементов)."
+    "You are a Search Query Architect. You are given a learning goal and a list of "
+    "allowed domains.\n"
+    "Based on your knowledge of these sites' content, pick the 3-5 most relevant to the topic.\n"
+    "Generate short (3-5 word) SearXNG search queries, using the `site:<domain>` operator "
+    "for the selected sites, plus 1-2 general queries with exact terms in quotes.\n"
+    "Respond STRICTLY in JSON format.\n"
+    "Schema: selected_domains (string[]), queries (string[], 4-8 items)."
 )
+"""
+RU (пояснение): Lite строит короткие SearXNG-запросы с site: по 3-5 лучшим
+доменам из разрешённого списка + 1-2 общих запроса с точными терминами.
+"""
 
+# RU: narrative-density критерий (слайд-дек/буллеты без связной прозы) —
+# не по формату/расширению файла (PDF — легитимный формат наравне с
+# text/md/html/github, реальный кейс: обычный arXiv PDF не должен ловиться),
+# а по СОДЕРЖАНИЮ snippet: авторитетность домена (.edu и т.п.) не оправдывает
+# фрагментированный текст.
 _BATCH_SYSTEM = (
     f"{RUSSIAN_OUTPUT_RULE}\n\n"
-    "Ты — Content Quality Gate. Оцени список найденного контента на соответствие учебной цели.\n"
-    "Оцени по `title` и `snippet`, содержит ли источник достаточно контекста, релевантен ли "
-    "он цели и отсутствует ли в нём SEO-мусор/оффтоп.\n"
-    "Отвечай СТРОГО в формате JSON.\n"
-    "Схема: evaluations — массив { id (int), is_sufficient (bool), confidence (0–1), "
-    "reason (string, русский) } для каждого id из входа."
+    "You are a Content Quality Gate. Evaluate a list of found content against a learning goal.\n"
+    "Judge by `title` and `snippet` whether the source has enough context, is relevant to "
+    "the goal, and is free of SEO filler / off-topic noise.\n"
+    "SEPARATELY reject (is_sufficient=false) when the snippet reads as a slide deck / lecture "
+    "presentation rather than connected prose: short disjointed bullet points with no "
+    "connective narrative, formulas or terms with no explanation, fragments like "
+    '"Definition. Example. Theorem." with no prose between them. Domain authority '
+    "(.edu, etc.) does NOT excuse this — judge the narrative density of the text itself, "
+    "not the source.\n"
+    "Respond STRICTLY in JSON.\n"
+    "Schema: evaluations — array of { id (int), is_sufficient (bool), confidence (0-1), "
+    "reason (string, Russian) } for every id in the input."
 )
 
 
@@ -204,13 +219,18 @@ def build_academic_search_query_sync(
 
 _SOURCE_BATCH_SYSTEM = (
     f"{RUSSIAN_OUTPUT_RULE}\n\n"
-    "Ты — Source Evaluator (пакетный режим). Оцени каждый источник.\n"
-    "Поля title/snippet; snippet может содержать «Тезис:» для проверки цитаты в Reasoner.\n"
-    "Instant APPROVED для доменов из whitelist (engineering depth).\n"
-    "REJECTED: SEO-мусор, оффтоп, источник не подтверждает тезис/цель.\n"
-    "JSON: evaluations[] — id, status (APPROVED|REJECTED), confidence, reason (русский), "
+    "You are a Source Evaluator (batch mode). Evaluate each source.\n"
+    'title/snippet fields; snippet may contain "Thesis:" to verify a citation in the Reasoner.\n'
+    "Instant APPROVED for domains from the whitelist (engineering depth).\n"
+    "REJECTED: SEO junk, off-topic, the source does not support the thesis/goal.\n"
+    "JSON: evaluations[] — id, status (APPROVED|REJECTED), confidence, reason (Russian), "
     "suggested_action (RETRY_WITH_NEW_SOURCE|REMOVE_LINK|KEEP)."
 )
+"""
+RU (пояснение): пакетная оценка источников (Source Evaluator) — whitelist
+даёт instant APPROVED, остальное — по содержанию (SEO-мусор/оффтоп/не
+подтверждает тезис).
+"""
 
 
 def flatten_whitelist_domains() -> list[str]:

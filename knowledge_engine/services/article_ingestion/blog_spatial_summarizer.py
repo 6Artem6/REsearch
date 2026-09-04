@@ -11,6 +11,7 @@ import httpx
 from pydantic import BaseModel
 
 from knowledge_engine.config import (
+    BLOG_SPATIAL_MAP_MAX_TOKENS,
     BLOG_SPATIAL_MAP_PROVIDER,
     BLOG_SPATIAL_TIMEOUT_SEC,
     GEMMA_FALLBACK_MAX_RPM,
@@ -23,6 +24,9 @@ from knowledge_engine.config import (
     GEMMA_PRIMARY_MODEL,
     GEMMA_REDUCE_MAX_OUTPUT_TOKENS,
     GEMMA_TARGET_TPM_SAFETY_CAP,
+    MAP_DISPATCH_WINDOW_SEC,
+    MAP_FACT_BUDGET_MAX,
+    MAP_FACT_BUDGET_MIN,
     MAX_CONCURRENT_MAP_REQUESTS,
     REDUCE_STRATEGY,
     gemma_cloud_api_key_available,
@@ -50,6 +54,7 @@ from knowledge_engine.services.article_ingestion.map_diagram_attach import (
 )
 from knowledge_engine.services.article_ingestion.paragraph_token_splitter import (
     TokenWindowChunk,
+    estimate_text_tokens,
     split_annotated_text_by_tokens,
 )
 from knowledge_engine.services.llm.gemma_client import (
@@ -71,17 +76,18 @@ _POST_MAP_DEEP_WORDS = 120
 
 def _post_map_thin_reason(final: FinalArticleSummaryResponse) -> str | None:
     """Why a successful REDUCE would not count toward deep_blogs (not a hard drop)."""
-    takes = [str(t or "").strip() for t in (final.key_takeaways or []) if str(t or "").strip()]
+    takes = [
+        str(t or "").strip()
+        for t in (final.key_takeaways or [])
+        if str(t or "").strip()
+    ]
     exec_s = (final.executive_summary or "").strip()
     words = sum(len(t.split()) for t in takes) + (len(exec_s.split()) if exec_s else 0)
     atom_n = len(final.knowledge_atoms or [])
     if words >= _POST_MAP_DEEP_WORDS:
         return None
     if not takes and not exec_s:
-        return (
-            f"empty takeaways/executive_summary after REDUCE "
-            f"(atoms={atom_n})"
-        )
+        return f"empty takeaways/executive_summary after REDUCE " f"(atoms={atom_n})"
     return (
         f"extract_words={words} < {_POST_MAP_DEEP_WORDS} "
         "(takeaways/executive_summary too short for deep_blogs)"
@@ -107,8 +113,14 @@ _MAP_SYSTEM = (
     "window_role — short role tag (2–6 words), e.g. «Benchmarks», «Architecture».\n"
     "Do not select figures for VLM — they are already processed.\n"
     f"{SCOPE_TAGGING_PROMPT_RULES}\n"
-    "You MUST fill knowledge_atoms (1–12 atoms): "
-    "{scope: PRINCIPLE|MECHANIC|INSTANCE, statement, context_quote}.\n"
+    "You MUST fill knowledge_atoms — aim for the TARGET_FACTS count given in "
+    "<article_context> (a soft target scaled to this window's size, not a "
+    "hard cap; fewer is fine if the window genuinely has less to extract): "
+    "{scope: PRINCIPLE|MECHANIC|INSTANCE, statement, context_quote, cluster_key}.\n"
+    "cluster_key — a short (1-3 word) lowercase entity/topic tag for this atom, "
+    "e.g. 'cpylex', 'gil_lock' (used downstream to group near-duplicate atoms "
+    "before dedup — pick the specific subject the statement is about, not a "
+    "generic category).\n"
     "source_chunk_ids is attached by the pipeline from CHUNK_ID — leave [] or omit.\n"
     "required_diagrams MUST be an empty array []. "
     "If non-empty, each item MUST be an object "
@@ -131,8 +143,14 @@ _MAP_SYSTEM_CODE = (
     "Produce a dense window_summary of the mechanics in this slice.\n"
     "window_role — short role tag (2–6 words), e.g. «Locking», «Eval loop».\n"
     f"{SCOPE_TAGGING_PROMPT_RULES}\n"
-    "You MUST fill knowledge_atoms (1–12 atoms): "
-    "{scope: PRINCIPLE|MECHANIC|INSTANCE, statement, context_quote}.\n"
+    "You MUST fill knowledge_atoms — aim for the TARGET_FACTS count given in "
+    "<article_context> (a soft target scaled to this window's size, not a "
+    "hard cap; fewer is fine if the window genuinely has less to extract): "
+    "{scope: PRINCIPLE|MECHANIC|INSTANCE, statement, context_quote, cluster_key}.\n"
+    "cluster_key — a short (1-3 word) lowercase entity/topic tag for this atom, "
+    "e.g. 'cpylex', 'gil_lock' (used downstream to group near-duplicate atoms "
+    "before dedup — pick the specific subject the statement is about, not a "
+    "generic category).\n"
     "source_chunk_ids is attached by the pipeline from CHUNK_ID — leave [] or omit.\n"
     "Do not select figures for VLM and do not invent conceptual diagram names.\n"
     "required_diagrams MUST be an empty array []. "
@@ -190,8 +208,12 @@ _REDUCE_SYNTHESIS_SYSTEM = (
     "Rules:\n"
     "1. Do NOT extract new facts from window_summary text. "
     "All factual claims must come from clean_knowledge_atoms.\n"
-    "2. Copy knowledge_atoms into the output from phase-1 clean list "
-    "(you may only normalize ScopeType labels PRINCIPLE|MECHANIC|INSTANCE).\n"
+    "2. Your knowledge_atoms output MUST always be an empty array []. This "
+    "OVERRIDES any 'fill knowledge_atoms' instruction below — that generic "
+    "rule is for MAP/dedup calls, not this one. "
+    "The pipeline substitutes the verified phase-1 clean_knowledge_atoms list "
+    "after your response — do not re-emit them: it wastes output tokens and "
+    "risks truncating your JSON mid-array on atom-rich articles.\n"
     "3. Use window_summary ONLY as structural context to write "
     "executive_summary (1–2 coherent paragraphs) and key_takeaways "
     "(3–7 lines of the form «[SCOPE: …] …»).\n"
@@ -330,6 +352,7 @@ class _ArticleMapState:
     job: MapReduceArticleJob
     results: list[MapWindowResponse | None]
     pending: int
+    map_started: bool = False
 
 
 def _strip_redundant_article_header(body: str, article_title: str) -> str:
@@ -348,6 +371,33 @@ def _wrap_diagram_context(attached: str) -> str:
     if not block:
         return ""
     return f"<diagram_context>\n{block}\n</diagram_context>"
+
+
+# Rough per-atom output footprint (scope + statement + context_quote +
+# source_chunk_ids as JSON) — calibration heuristic, not a measured constant.
+# Only used to keep a proportionally-large target_facts from overshooting
+# GEMMA_MAP_MAX_OUTPUT_TOKENS; MAP_FACT_BUDGET_MIN/MAX are the real (env) caps.
+_EST_OUTPUT_TOKENS_PER_ATOM = 110
+
+
+def dynamic_target_facts(
+    window_text: str, diagram_block: str = ""
+) -> tuple[int, int, int]:
+    """Adaptive per-window knowledge_atoms target — proportional to window
+    size instead of the same fixed range for every window. Returns
+    (input_tokens, target_facts, projected_out_tokens)."""
+    input_tokens = estimate_text_tokens(f"{window_text}\n{diagram_block}".strip())
+    ratio = min(1.0, max(0.0, input_tokens / max(1, BLOG_SPATIAL_MAP_MAX_TOKENS)))
+    target = int(
+        round(MAP_FACT_BUDGET_MIN + ratio * (MAP_FACT_BUDGET_MAX - MAP_FACT_BUDGET_MIN))
+    )
+    target = max(MAP_FACT_BUDGET_MIN, min(MAP_FACT_BUDGET_MAX, target))
+    output_cap = resolve_gemma_map_max_output_tokens()
+    projected_out = target * _EST_OUTPUT_TOKENS_PER_ATOM
+    if projected_out > output_cap:
+        target = max(MAP_FACT_BUDGET_MIN, output_cap // _EST_OUTPUT_TOKENS_PER_ATOM)
+        projected_out = target * _EST_OUTPUT_TOKENS_PER_ATOM
+    return input_tokens, target, projected_out
 
 
 def _prompt_for_window(job: MapReduceArticleJob, w: TokenWindowChunk) -> str:
@@ -371,6 +421,8 @@ def _prompt_for_window(job: MapReduceArticleJob, w: TokenWindowChunk) -> str:
     window_text = strip_context_anchor_prefix(window_text)
     ordinal = ordinal_for_window(w.window_index, job.anchor_index_map)
     window_text = maybe_prepend_chunk_anchor(window_text, ordinal)
+    diagram_block = _wrap_diagram_context(attached)
+    _in_tok, target_facts, _proj_out = dynamic_target_facts(window_text, diagram_block)
     parts = [
         "<article_context>",
         f"ARTICLE_TITLE: {job.title[:300]}",
@@ -378,13 +430,13 @@ def _prompt_for_window(job: MapReduceArticleJob, w: TokenWindowChunk) -> str:
         f"SECTION: {section}",
         f"WINDOW_INDEX: {w.window_index}",
         f"CHUNK_ID: {chunk_id}",
+        f"TARGET_FACTS: {target_facts} (soft target, proportional to window size — not a hard cap)",
         "</article_context>",
         "",
         "<window_text>",
         window_text,
         "</window_text>",
     ]
-    diagram_block = _wrap_diagram_context(attached)
     if diagram_block:
         parts.extend(["", diagram_block])
     return "\n".join(parts)
@@ -460,6 +512,17 @@ def _format_atoms_json_block(atoms: list[KnowledgeAtom]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
+def _format_atoms_compact_block(atoms: list[KnowledgeAtom]) -> str:
+    """Scope+statement only — for the synthesis prompt, which only needs to
+    read atoms to write prose (executive_summary/key_takeaways); the model
+    never re-emits them (final.knowledge_atoms is reattached post-hoc from
+    clean_atoms). context_quote/source_chunk_ids are provenance details the
+    dedup phase needs but synthesis doesn't — dropping them here cuts the
+    input of the heaviest, slowest REDUCE call without touching output."""
+    lines = [f"- [{a.scope.value}] {a.statement}" for a in atoms]
+    return "\n".join(lines)
+
+
 def _build_reduce_user_prompt(job: MapReduceArticleJob, summaries_block: str) -> str:
     trust = float(job.trust_score if job.trust_score is not None else 1.0)
     return (
@@ -499,9 +562,7 @@ def _build_synthesis_user_prompt(
     summaries_in_cache: bool = False,
 ) -> str:
     trust = float(job.trust_score if job.trust_score is not None else 1.0)
-    atoms_block = _format_atoms_json_block(clean_atoms).replace(
-        "raw_knowledge_atoms", "clean_knowledge_atoms"
-    )
+    atoms_block = _format_atoms_compact_block(clean_atoms)
     if summaries_in_cache:
         scaffold = (
             "## window_summary scaffolding is in cached_content "
@@ -592,13 +653,33 @@ async def _structured_reduce_call(
             label=label,
             client=http_client,
             max_tokens=out_tokens,
+            # REDUCE gets priority: ignore the TPM/RPM headroom reserved
+            # away from MAP callers so document completion never queues
+            # behind MAP's own usage of the same slot.
+            priority=True,
         )
-    return await GemmaCloudClient().complete_structured(
+    # AUDIT FIX: this used to call complete_structured() with no limiter at
+    # all — complete_structured()'s own `limiter` kwarg only reconciles
+    # AFTER the call, never blocks admission — so this path (dead in the
+    # current pipeline, since map_reduce_jobs_pooled_async always builds a
+    # gemma_rl, but a real hole for any other caller) must acquire against
+    # the SAME registry entry build_gemma_model_slots() uses for the
+    # primary model before sending the request, for 100% counter coverage.
+    from knowledge_engine.services.llm.rate_limiter import get_gemma_rate_limiter
+
+    client = GemmaCloudClient()
+    est = client.estimate_request_tokens(
+        system, prompt, schema=schema, max_output_tokens=out_tokens
+    )
+    fallback_limiter = get_gemma_rate_limiter(slot=f"gemma:{client.model}")
+    await fallback_limiter.acquire(est, model=client.model, priority=True)
+    return await client.complete_structured(
         system,
         prompt,
         schema,
         label=label,
         client=http_client,
+        limiter=fallback_limiter,
         max_tokens=out_tokens,
     )
 
@@ -731,6 +812,10 @@ async def _run_two_phase_reduce(
     synth_full = _build_synthesis_user_prompt(
         job, clean_atoms=clean_atoms, summaries_block=summaries_only
     )
+    # Output no longer echoes knowledge_atoms (rule 2 above forces []) — its size
+    # is now independent of atom count, so the dedup phase's smaller cap is safe
+    # and avoids the truncation risk a full-width 4096 cap gave atom-rich articles.
+    synth_max_tokens = min(2048, GEMMA_REDUCE_MAX_OUTPUT_TOKENS)
     cached = await _try_cached_structured_reduce(
         job,
         system=_REDUCE_SYNTHESIS_SYSTEM,
@@ -742,6 +827,7 @@ async def _run_two_phase_reduce(
             summaries_in_cache=True,
         ),
         schema=FinalArticleSummaryResponse,
+        max_tokens=synth_max_tokens,
     )
     final = cached
     if final is None:
@@ -752,6 +838,7 @@ async def _run_two_phase_reduce(
             label=f"reduce_synth/{job.job_id[:20]}",
             http_client=http_client,
             gemma_rl=gemma_rl,
+            max_tokens=synth_max_tokens,
         )
     if final is None:
         return None
@@ -892,7 +979,15 @@ async def map_reduce_jobs_pooled_async(
 
     # Hard cap for all MAP backends: Semaphore(MAX_CONCURRENT_MAP_REQUESTS).
     map_sem = asyncio.Semaphore(MAX_CONCURRENT_MAP_REQUESTS)
-    reduce_sem = asyncio.Semaphore(max(1, min(2, map_concurrency)))
+    # LATENCY AUDIT: was capped at 2 regardless of batch size — with 4
+    # articles finishing MAP around the same time, the 3rd/4th had to wait
+    # for an EARLIER article's whole REDUCE phase (consensus + synthesis,
+    # tens of seconds) to free a slot even though their own MAP work was
+    # long done. Confirmed live: one article's REDUCE_START was delayed
+    # ~30s purely on this semaphore, not on TPM/RPM (REDUCE calls run with
+    # priority=True and had free headroom). 4 covers a typical batch
+    # without unbounded fan-out for larger ones.
+    reduce_sem = asyncio.Semaphore(max(1, min(4, map_concurrency)))
     reduce_queue: asyncio.Queue[_ArticleMapState] = asyncio.Queue()
     finals: dict[str, MapReduceJobOutcome] = {
         j.job_id: MapReduceJobOutcome(final=None, map_results=[]) for j in jobs
@@ -901,8 +996,21 @@ async def map_reduce_jobs_pooled_async(
     timeout = httpx.Timeout(BLOG_SPATIAL_TIMEOUT_SEC)
     gemma_rl = (
         RateLimitedLLMClient(
-            map_parallel_streams=GEMMA_MAP_FORCE_PER_MODEL_LIMITS
-            and GEMMA_MAP_FIXED_MINUTE_PACING,
+            # BUG FIXED: was `GEMMA_MAP_FORCE_PER_MODEL_LIMITS and
+            # GEMMA_MAP_FIXED_MINUTE_PACING` — with the documented default
+            # (fixed_minute=False, the modern sliding-window dispatcher),
+            # that AND collapsed to False regardless of
+            # GEMMA_MAP_FORCE_PER_MODEL_LIMITS, silently handing both model
+            # slots the SAME shared limiter (see config.py comment: this
+            # flag must ignore GEMMA_QUOTA_SHARED for MAP, unconditionally).
+            # acquire_parallel_wave's dual-basket split then always skipped
+            # the second slot (its seen_limiters dedup guard treats a
+            # shared limiter as "already tried"), capping every MAP wave at
+            # a single in-flight request instead of two — confirmed via
+            # perf_debug.log: MAP windows for the same node ran fully
+            # sequentially (1875s / 1325s vs a ~480s baseline) with the
+            # fallback model never once appearing in a wave-reserve trace.
+            map_parallel_streams=GEMMA_MAP_FORCE_PER_MODEL_LIMITS,
         )
         if use_gemma
         else None
@@ -913,11 +1021,16 @@ async def map_reduce_jobs_pooled_async(
             state = await reduce_queue.get()
             try:
                 async with reduce_sem:
+                    trace(f"[REDUCE_START] | {state.job.url[:60]}")
                     final = await _reduce_final_from_maps(
                         state.job,
                         state.results,
                         http_client=http_client,
                         gemma_rl=gemma_rl,
+                    )
+                    trace(
+                        f"[REDUCE_DONE] | {state.job.url[:60]} | "
+                        f"final={'ok' if final is not None else 'failed'}"
                     )
                 finals[state.job.job_id] = MapReduceJobOutcome(
                     final=final,
@@ -930,7 +1043,12 @@ async def map_reduce_jobs_pooled_async(
                 reduce_queue.task_done()
 
     async with httpx.AsyncClient(timeout=timeout) as http_client:
-        reduce_workers = max(1, min(2, map_concurrency))
+        # STREAMING AUDIT FIX: this stayed at 2 when reduce_sem above was
+        # raised 2->4 — real concurrency is min(worker task count,
+        # reduce_sem cap), so only 2 of the 4 permitted slots could ever be
+        # occupied. Raising reduce_sem alone did nothing once >2 articles'
+        # MAP finished close together; must match reduce_sem's cap here.
+        reduce_workers = max(1, min(4, map_concurrency))
         workers = [asyncio.create_task(reduce_worker()) for _ in range(reduce_workers)]
 
         async def _on_chunk_done(
@@ -952,6 +1070,7 @@ async def map_reduce_jobs_pooled_async(
                 f"pending={state.pending} atoms={n_atoms}"
             )
             if state.pending <= 0:
+                trace(f"[MAP_DONE] | {state.job.url[:60]} | windows={w_total}")
                 await reduce_queue.put(state)
 
         async def _map_gemma_chunk_preacquired(
@@ -960,29 +1079,43 @@ async def map_reduce_jobs_pooled_async(
             slot: GemmaModelSlot,
             *,
             http_client: httpx.AsyncClient,
-        ) -> MapWindowResponse | None:
+        ) -> tuple[MapWindowResponse | None, int]:
+            if not state.map_started:
+                state.map_started = True
+                trace(
+                    f"[MAP_START] | {state.job.url[:60]} | windows={len(state.job.windows)}"
+                )
             map_system = _map_system_for_job(state.job)
             async with map_sem:
                 prompt = _prompt_for_window(state.job, w)
                 inp, out_cap, _ = gemma_rl.estimate_budget(  # type: ignore[union-attr]
                     map_system, prompt, MapWindowResponse
                 )
+                _fb_in, target_facts, projected_out = dynamic_target_facts(w.body)
                 trace(
                     f"BLOG_SPATIAL map ▶ | backend=gemma model={slot.model} "
                     f"chunk {w.window_index + 1}/{len(state.job.windows)} "
                     f"article={state.job.url[:40]} "
                     f"[est in={inp}+out_cap={out_cap}]"
                 )
-                out, _usage_est = await gemma_rl.post_structured_preacquired(  # type: ignore[union-attr]
+                trace(
+                    f"BLOG_SPATIAL map fact-budget ▶ | "
+                    f"{w.window_index + 1}/{len(state.job.windows)} "
+                    f"facts={target_facts} input_tokens={_fb_in}/{BLOG_SPATIAL_MAP_MAX_TOKENS} "
+                    f"projected_out={projected_out}/{out_cap}"
+                )
+                out, usage = await gemma_rl.post_structured_preacquired(  # type: ignore[union-attr]
                     slot,
                     map_system,
                     prompt,
                     MapWindowResponse,
                     label=f"map/{state.job.job_id[:16]}/w{w.window_index}",
                     client=http_client,
-                    max_tokens=resolve_gemma_map_max_output_tokens(inp),
+                    max_tokens=resolve_gemma_map_max_output_tokens(
+                        inp, projected_out=projected_out
+                    ),
                 )
-                return out
+                return out, usage
 
         async def _run_gemma_map_fixed_minute(
             work: list[tuple[_ArticleMapState, TokenWindowChunk]],
@@ -1063,18 +1196,57 @@ async def map_reduce_jobs_pooled_async(
                 trace(
                     f"BLOG_SPATIAL gemma minute batch ▶ | model={slot.model} "
                     f"chunks={len(batch)} est_tpm≈{batch_est} "
-                    f"cap={cap} align_sleep={align_sleep:.1f}s"
+                    f"cap={cap} align_sleep={align_sleep:.1f}s "
+                    f"dispatch_window={MAP_DISPATCH_WINDOW_SEC:.0f}s"
                 )
 
                 async def _one(item: _MapWork) -> MapWindowResponse | None:
-                    return await _map_gemma_chunk_preacquired(
-                        item.state,
-                        item.window,
-                        slot,
-                        http_client=http_client,
+                    out, _usage = await _map_gemma_chunk_preacquired(
+                        item.state, item.window, slot, http_client=http_client
                     )
+                    if out is not None:
+                        return out
+                    # Instant failover: the primary attempt (incl. its own
+                    # internal retries + Flash-Lite fallback in gemma_client.py)
+                    # is already exhausted — try the other pool model once
+                    # immediately rather than accepting the loss for this window.
+                    alt = next((s for s in slots if s is not slot), None)
+                    if alt is None:
+                        return None
+                    trace(
+                        f"BLOG_SPATIAL gemma instant failover ▶ | "
+                        f"{slot.model} → {alt.model} | "
+                        f"chunk {item.window.window_index + 1}/{len(item.state.job.windows)}"
+                    )
+                    out, _usage = await _map_gemma_chunk_preacquired(
+                        item.state, item.window, alt, http_client=http_client
+                    )
+                    return out
 
-                results = await asyncio.gather(*[_one(item) for item in batch])
+                # Paced dispatcher: only meaningful when a batch has MORE items
+                # than can run concurrently at once (MAX_CONCURRENT_MAP_REQUESTS).
+                # Within that limit, spacing launches adds pure critical-path
+                # latency for zero rate-limit benefit: _pack_minute_batches
+                # already sized this batch to fit the model's TPM/RPM safety
+                # cap for the WHOLE minute regardless of when within it the
+                # requests fire, and map_sem already caps concurrent in-flight
+                # calls — nothing here needs an artificial sleep to stay safe.
+                # BUG FIXED: this used to apply delay = WINDOW/n unconditionally
+                # for any n > 1, even n=2 against concurrency=4 (the common case
+                # observed every run) — pure added wall time with no TPM benefit,
+                # a real contributor to the MAP-phase latency this audit targets.
+                n = len(batch)
+                delay = (
+                    MAP_DISPATCH_WINDOW_SEC / n
+                    if n > MAX_CONCURRENT_MAP_REQUESTS
+                    else 0.0
+                )
+                tasks: list[asyncio.Task] = []
+                for i, item in enumerate(batch):
+                    tasks.append(asyncio.create_task(_one(item)))
+                    if i + 1 < n and delay > 0:
+                        await asyncio.sleep(delay)
+                results = await asyncio.gather(*tasks)
                 if not GEMMA_MAP_FIXED_MINUTE_PACING:
                     usage_est = [it.est_tokens for it in batch]
                     await gemma_rl.reconcile_batch_usage(  # type: ignore[union-attr]
@@ -1111,59 +1283,158 @@ async def map_reduce_jobs_pooled_async(
                     ]
                 )
 
+        async def _one(
+            item: tuple[_ArticleMapState, TokenWindowChunk],
+            _slot: GemmaModelSlot,
+        ) -> tuple[MapWindowResponse | None, int]:
+            st, w = item
+            return await _map_gemma_chunk_preacquired(
+                st, w, _slot, http_client=http_client
+            )
+
+        async def _dispatch_group(
+            items: list[tuple[_ArticleMapState, TokenWindowChunk]],
+            slot: GemmaModelSlot,
+            reserved_tpm: int,
+            event: list | None = None,
+        ) -> None:
+            """One (slot, k)-admission group from a single wave, run as its
+            OWN background task — see BUG FIXED note on _run_gemma_map_waves
+            below for why this must not be awaited inline by the wave loop.
+
+            ``event`` is the SPECIFIC reservation this group holds in the
+            slot's limiter (from acquire_parallel_wave). It must be passed
+            straight through to reconcile — DEEP AUDIT FIX: with groups now
+            running concurrently, a later wave can admit a second group onto
+            the SAME slot's limiter before this one's HTTP call finishes.
+            Reconciling by deque position ("the last reservation") then
+            corrupts whichever group happens to be last at the moment THIS
+            one's response lands — not necessarily this group's own entry —
+            which silently reinflates or deflates an unrelated in-flight
+            reservation instead of this one."""
+            assert gemma_rl is not None
+            try:
+                results = await asyncio.gather(*[_one(item, slot) for item in items])
+            except Exception as exc:
+                trace(
+                    f"BLOG_SPATIAL map ✗ | dispatch group failed | {slot.model} | {exc}"
+                )
+                results = [(None, 0) for _ in items]
+            real_usage = [usage for _out, usage in results]
+            await gemma_rl.reconcile_batch_usage(
+                slot, real_usage, reserved_tpm, event=event
+            )
+            for (st, w), (out, _usage) in zip(items, results):
+                await _on_chunk_done(st, w.window_index, out)
+
         async def _run_gemma_map_waves(
             work: list[tuple[_ArticleMapState, TokenWindowChunk]],
         ) -> None:
+            """
+            BUG FIXED: this used to `await asyncio.gather(...)` on the WHOLE
+            wave (every slot's admitted items together) before requesting the
+            next wave — so a fast model's slot, done in e.g. 25s, sat
+            completely idle waiting for a slow model's call in the SAME wave
+            (e.g. 65s) to finish before this loop would even ASK for more
+            work on the fast slot's behalf. Confirmed live: up to ~30s of
+            dead time on the faster slot between waves, while AI Studio still
+            showed it disproportionately closer to its own TPM ceiling than
+            the slower model — the slow model's wall-clock latency, not its
+            token budget, was the real constraint, and the old lockstep wave
+            barrier wasted the fast model's spare capacity waiting on it.
+
+            Now each (slot, k) admission group from `acquire_parallel_wave`
+            runs as its own independent background task (`_dispatch_group`);
+            the loop immediately tries to admit the NEXT wave instead of
+            waiting for any group to finish. This is safe without any extra
+            bookkeeping: `try_acquire_parallel` reserves each group's TPM/RPM
+            in the limiter the moment it's admitted (before the HTTP call
+            even starts), so a later `acquire_parallel_wave` call already
+            sees that reservation and won't over-admit a still-busy slot; the
+            existing `map_sem` semaphore (MAX_CONCURRENT_MAP_REQUESTS) still
+            caps how many HTTP calls are actually in flight process-wide.
+            """
             assert gemma_rl is not None
             pos = 0
-            slots = gemma_rl.model_slots
+            in_flight: list[asyncio.Task[None]] = []
             while pos < len(work):
                 batch = work[pos : pos + map_concurrency]
-                ests = [
-                    gemma_rl.estimate_request_tokens(
-                        _map_system_for_job(st.job),
-                        _prompt_for_window(st.job, w),
-                        MapWindowResponse,
+                # DEEP AUDIT FIX: this used to call estimate_request_tokens()
+                # with no max_output_tokens, so it fell back to the FLAT
+                # resolve_gemma_map_max_output_tokens(inp) — the pre-Step-1
+                # worst-case cap — even after Step 1 taught the ACTUAL call
+                # (_map_gemma_chunk_preacquired, below) to size max_tokens off
+                # dynamic_target_facts()'s projected_out. The two diverged:
+                # the wave-admission reservation stayed pinned at inp+4096
+                # (matches the audit's est_tpm=8248 exactly: ~4152 input +
+                # 4096 flat cap) while real usage shrank toward inp+projected
+                # out. The sliding window filled up on the STALE estimate long
+                # before real TPM usage ever approached the ceiling — this is
+                # the "wave full at 8.2k, cloud shows 4.6k" lockout. Mirror
+                # the same projected_out-aware cap used for the real call.
+                ests = []
+                for st, w in batch:
+                    system_ = _map_system_for_job(st.job)
+                    prompt_ = _prompt_for_window(st.job, w)
+                    inp, _flat_cap, _ = gemma_rl.estimate_budget(
+                        system_, prompt_, MapWindowResponse
                     )
-                    for st, w in batch
-                ]
-                slot, k, reserved_tpm = await gemma_rl.acquire_parallel_wave(
+                    _fb_in, _target_facts, projected_out = dynamic_target_facts(w.body)
+                    out_cap = resolve_gemma_map_max_output_tokens(
+                        inp, projected_out=projected_out
+                    )
+                    ests.append(inp + out_cap)
+                # Dual-basket: acquire_parallel_wave reserves proportionally
+                # across the pool based on each slot's CURRENT free TPM/RPM
+                # in the sliding window — plan = [(slot, k, reserved), ...],
+                # first k items of `batch` go to plan[0]'s slot, next k to
+                # plan[1]'s slot, etc. The part exceeding the primary
+                # (31B)'s free capacity lands instantly on the next slot
+                # (26B) instead of waiting for the primary to free up.
+                plan = await gemma_rl.acquire_parallel_wave(
                     ests,
                     max_parallel=map_concurrency,
                 )
-                if k <= 0 or slot is None:
-                    await asyncio.sleep(0.25)
+                total_k = sum(k for _slot, k, _reserved, _event in plan)
+                if total_k <= 0:
+                    if in_flight:
+                        # An in-flight group finishing frees real TPM/RPM
+                        # room (via reconcile) — wait for that instead of a
+                        # blind fixed sleep when we already have work moving.
+                        done, still_pending = await asyncio.wait(
+                            in_flight,
+                            timeout=0.25,
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                        in_flight = list(still_pending)
+                        for t in done:
+                            t.result()
+                    else:
+                        await asyncio.sleep(0.25)
                     continue
-                wave = batch[:k]
-                alt_slot = slots[1] if len(slots) > 1 else slot
 
-                async def _one(
-                    item: tuple[_ArticleMapState, TokenWindowChunk],
-                    idx_in_wave: int,
-                    _slot=slot,
-                    _alt_slot=alt_slot,
-                ) -> MapWindowResponse | None:
-                    st, w = item
-                    use_slot = _slot if idx_in_wave % 2 == 0 else _alt_slot
-                    return await _map_gemma_chunk_preacquired(
-                        st, w, use_slot, http_client=http_client
+                wave = batch[:total_k]
+                idx = 0
+                for slot, k, reserved_tpm, event in plan:
+                    group_items = wave[idx : idx + k]
+                    idx += k
+                    in_flight.append(
+                        asyncio.create_task(
+                            _dispatch_group(group_items, slot, reserved_tpm, event)
+                        )
                     )
+                pos += total_k
 
-                results = await asyncio.gather(
-                    *[_one(item, i) for i, item in enumerate(wave)]
-                )
-                usage_est = [
-                    gemma_rl.estimate_request_tokens(
-                        _map_system_for_job(st.job),
-                        _prompt_for_window(st.job, w),
-                        MapWindowResponse,
-                    )
-                    for st, w in wave
-                ]
-                await gemma_rl.reconcile_batch_usage(slot, usage_est, reserved_tpm)
-                for (st, w), out in zip(wave, results):
-                    await _on_chunk_done(st, w.window_index, out)
-                pos += k
+                still_running: list[asyncio.Task[None]] = []
+                for t in in_flight:
+                    if t.done():
+                        t.result()  # propagate any unexpected exception now
+                    else:
+                        still_running.append(t)
+                in_flight = still_running
+
+            if in_flight:
+                await asyncio.gather(*in_flight)
 
         map_tasks: list[asyncio.Task[None]] = []
         if gemma_rl is not None:
@@ -1189,7 +1460,7 @@ async def map_reduce_jobs_pooled_async(
     return finals
 
 
-async def map_reduce_summarize_blog_outcome_async(
+def build_article_map_reduce_job(
     annotated_markdown: str,
     *,
     title: str,
@@ -1197,11 +1468,16 @@ async def map_reduce_summarize_blog_outcome_async(
     all_figure_ids: list[str] | None = None,
     figure_registry: object | None = None,
     source_kind: str = "article",
-) -> tuple[MapReduceJobOutcome | None, list[TokenWindowChunk]]:
+) -> tuple[MapReduceArticleJob, list[TokenWindowChunk]] | None:
+    """Chunk + build the MapReduceArticleJob — everything map_reduce_jobs_pooled_async
+    needs, but WITHOUT running it. Pure sync CPU work (no LLM calls), factored out
+    of map_reduce_summarize_blog_outcome_async so callers can build several jobs
+    and submit them together in ONE pooled batch (BATCH POOLING AGGREGATION task)
+    instead of one map_reduce_jobs_pooled_async([job]) call per document."""
     body = (annotated_markdown or "").strip()
     if len(body) < 80:
         trace("BLOG_SPATIAL map-reduce ⊘ | annotated body too short")
-        return None, []
+        return None
 
     windows = split_annotated_text_by_tokens(
         body,
@@ -1232,6 +1508,29 @@ async def map_reduce_summarize_blog_outcome_async(
         figure_registry=figure_registry,
         source_kind=source_kind or "article",
     )
+    return job, windows
+
+
+async def map_reduce_summarize_blog_outcome_async(
+    annotated_markdown: str,
+    *,
+    title: str,
+    url: str,
+    all_figure_ids: list[str] | None = None,
+    figure_registry: object | None = None,
+    source_kind: str = "article",
+) -> tuple[MapReduceJobOutcome | None, list[TokenWindowChunk]]:
+    built = build_article_map_reduce_job(
+        annotated_markdown,
+        title=title,
+        url=url,
+        all_figure_ids=all_figure_ids,
+        figure_registry=figure_registry,
+        source_kind=source_kind,
+    )
+    if built is None:
+        return None, []
+    job, windows = built
     results = await map_reduce_jobs_pooled_async([job])
     return results.get(job.job_id), windows
 

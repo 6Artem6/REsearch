@@ -13,6 +13,7 @@ from knowledge_engine.services.deduplication.consensus_synthesizer import (
 )
 from knowledge_engine.services.deduplication.entity_consensus_engine import (
     LocalFactDeduplicator,
+    _exact_merge_group_with_sizes,
     apply_anti_bloat_anchors,
     apply_entity_consensus_to_atoms,
     build_token_bounded_batches,
@@ -20,6 +21,7 @@ from knowledge_engine.services.deduplication.entity_consensus_engine import (
     collapse_facts_locally,
     consensus_batch_token_counts,
     group_facts_by_entity,
+    raw_facts_from_atoms,
 )
 
 
@@ -72,7 +74,9 @@ def test_local_deduplicator_merges_paraphrases_via_embed_and_rerank():
     facts = [
         _fact("f1", "FastAPI", obj="high-performance web APIs", anchor="A1"),
         _fact("f2", "FastAPI", obj="fast web API framework", anchor="A2"),
-        _fact("f3", "FastAPI", predicate="uses", obj="Starlette underneath", anchor="A3"),
+        _fact(
+            "f3", "FastAPI", predicate="uses", obj="Starlette underneath", anchor="A3"
+        ),
     ]
 
     def embed(texts):
@@ -143,9 +147,7 @@ def test_claim_dedup_mode_none_skips_pipeline(monkeypatch):
         statement="FastAPI provides routing.",
         source_chunk_ids=["c1"],
     )
-    result = asyncio.run(
-        apply_entity_consensus_to_atoms([atom], deduplicator=_Spy())
-    )
+    result = asyncio.run(apply_entity_consensus_to_atoms([atom], deduplicator=_Spy()))
     assert result is None
     assert calls == []
 
@@ -195,7 +197,15 @@ def test_batches_use_model_token_budget_without_dropping_facts():
         assert output_tokens <= 225 or len(batch) == 1
 
 
-def test_default_limits_are_ten_facts_and_3072_tokens(monkeypatch):
+def test_config_respects_overridden_node_and_token_limits(monkeypatch):
+    """max_nodes_per_consensus_batch()/consensus_batch_limits() must follow
+    whatever config.py currently holds, not a hardcoded literal. The default
+    went 10 -> 20 (AUDIT FIX: consensus_max_output_tokens() stopped halving
+    GEMMA_REDUCE_MAX_OUTPUT_TOKENS via a hardcoded 2048 clamp, unblocking
+    the input window) -> back to 10 (LATENCY AUDIT: 20-fact batches roughly
+    doubled real per-call output — LLM generation is sequential, so wall
+    time per call grew accordingly; 10 trades window-utilization for
+    wall-time, while keeping the earlier output-clamp fix in place)."""
     import knowledge_engine.config as ke_config
 
     monkeypatch.setattr(ke_config, "MAX_CONSENSUS_BATCH_TOKENS", 3072)
@@ -390,9 +400,9 @@ def test_synthesize_runs_batches_in_parallel():
 
 
 def test_two_phase_reduce_skips_consensus_when_mode_none(monkeypatch):
-    import knowledge_engine.config as ke_config
     from unittest.mock import AsyncMock
 
+    import knowledge_engine.config as ke_config
     from knowledge_engine.services.article_ingestion.blog_spatial_schemas import (
         DeduplicatedAtomsResponse,
         FinalArticleSummaryResponse,
@@ -460,10 +470,217 @@ def test_two_phase_reduce_skips_consensus_when_mode_none(monkeypatch):
     assert job.consensus_nodes == []
 
 
-def test_two_phase_reduce_uses_consensus_when_enabled(monkeypatch):
+def test_deduplicate_entity_group_with_sizes_reports_cluster_sizes():
+    """Singleton Shortcut prerequisite: cluster size must survive the merge
+    so the caller can tell 'no duplicate found' apart from 'merged 2 into 1'."""
+    facts = [
+        _fact("f1", "FastAPI", obj="high-performance web APIs", anchor="A1"),
+        _fact("f2", "FastAPI", obj="fast web API framework", anchor="A2"),
+        _fact(
+            "f3", "FastAPI", predicate="uses", obj="Starlette underneath", anchor="A3"
+        ),
+    ]
+
+    def embed(texts):
+        vecs = []
+        for text in texts:
+            low = text.lower()
+            if "web api" in low:
+                vecs.append([1.0, 0.0])
+            else:
+                vecs.append([0.0, 1.0])
+        return vecs
+
+    def rerank(_query: str, docs: list[str]) -> list[float]:
+        return [0.95 for _ in docs]
+
+    engine = LocalFactDeduplicator(
+        embed_fn=embed,
+        rerank_fn=rerank,
+        cluster_threshold=0.85,
+        rerank_threshold=0.88,
+    )
+    sized = engine.deduplicate_entity_group_with_sizes(facts)
+    sizes = sorted(size for _fact_obj, size in sized)
+    assert sizes == [1, 2]
+    # Old (unsized) method still works and stays identical in shape/content.
+    assert len(engine.deduplicate_entity_group(facts)) == 2
+
+
+def test_exact_merge_group_with_sizes_reports_cluster_sizes():
+    facts = [
+        _fact("f1", "FastAPI", predicate="provides", obj="HTTP APIs", anchor="A1"),
+        _fact("f2", "FastAPI", predicate="provides", obj="HTTP APIs", anchor="A2"),
+        _fact("f3", "Pydantic", predicate="validates", obj="JSON models", anchor="A3"),
+    ]
+    sized = _exact_merge_group_with_sizes(facts)
+    sizes = sorted(size for _fact_obj, size in sized)
+    assert sizes == [1, 2]
+
+
+def test_raw_facts_from_atoms_uses_cluster_key_for_grouping():
+    """Regression for Problem 3: entity_type hardcoded to 'general' used to
+    collapse every atom of an article into one giant O(n^2) group. subject is
+    set to cluster_key too (not the full statement) — entity_group_key()
+    joins entity_type+subject, and a full-statement subject would make every
+    atom's group key unique, defeating pre-partitioning just as badly."""
+    atoms = [
+        KnowledgeAtom(
+            scope=ScopeType.INSTANCE,
+            statement="GIL serializes bytecode execution across threads.",
+            cluster_key="gil_lock",
+            source_chunk_ids=["c1"],
+        ),
+        KnowledgeAtom(
+            scope=ScopeType.INSTANCE,
+            statement="GIL is released during blocking I/O calls.",
+            cluster_key="GIL_Lock",
+            source_chunk_ids=["c2"],
+        ),
+        KnowledgeAtom(
+            scope=ScopeType.INSTANCE,
+            statement="ceval.c dispatches bytecode instructions in a loop.",
+            cluster_key="cpylex",
+            source_chunk_ids=["c3"],
+        ),
+    ]
+    facts = raw_facts_from_atoms(atoms)
+    grouped = group_facts_by_entity(facts)
+    assert set(grouped.keys()) == {"gil_lock|gil_lock", "cpylex|cpylex"}
+    assert len(grouped["gil_lock|gil_lock"]) == 2
+    assert len(grouped["cpylex|cpylex"]) == 1
+    # Full statement text is preserved for embedding/comparison (via obj).
+    assert "GIL serializes" in facts[0].canonical_text
+
+
+def test_apply_entity_consensus_singleton_shortcut_skips_llm(monkeypatch):
+    """Problem 2 (Singleton Shortcut): two unrelated atoms (different
+    cluster_key -> different groups of size 1 each) must reach the LLM
+    synthesizer with an EMPTY batch list — no Gemma call for facts that were
+    never actually merged."""
     import knowledge_engine.config as ke_config
+
+    monkeypatch.setattr(ke_config, "CLAIM_DEDUP_MODE", "entity_consensus")
+
+    calls: list[list[list]] = []
+
+    async def spy(batches, **_k):
+        calls.append(batches)
+        return []
+
+    monkeypatch.setattr(
+        "knowledge_engine.services.deduplication.consensus_synthesizer.synthesize_consensus_batches",
+        spy,
+    )
+
+    atoms = [
+        KnowledgeAtom(
+            scope=ScopeType.INSTANCE,
+            statement="FastAPI serves ASGI routing.",
+            cluster_key="fastapi",
+            source_chunk_ids=["c1"],
+        ),
+        KnowledgeAtom(
+            scope=ScopeType.INSTANCE,
+            statement="Pydantic validates JSON models.",
+            cluster_key="pydantic",
+            source_chunk_ids=["c2"],
+        ),
+    ]
+    result = asyncio.run(apply_entity_consensus_to_atoms(atoms))
+    assert result is not None
+    out_atoms, nodes = result
+    assert len(out_atoms) == 2
+    assert len(nodes) == 2
+    assert calls == [[]]
+
+
+def test_apply_entity_consensus_merged_cluster_still_goes_to_llm(monkeypatch):
+    """A real duplicate pair (size 2) must still be sent to the LLM to write
+    the canonical merged text; the unrelated singleton must not."""
+    import knowledge_engine.config as ke_config
+
+    monkeypatch.setattr(ke_config, "CLAIM_DEDUP_MODE", "entity_consensus")
+
+    def embed(texts):
+        return [[1.0, 0.0] for _ in texts]
+
+    def rerank(_query: str, docs: list[str]) -> list[float]:
+        return [0.95 for _ in docs]
+
+    dedup = LocalFactDeduplicator(
+        embed_fn=embed,
+        rerank_fn=rerank,
+        cluster_threshold=0.85,
+        rerank_threshold=0.88,
+    )
+
+    calls: list[list[list]] = []
+
+    async def spy(batches, **_k):
+        calls.append(batches)
+        nodes = []
+        for batch in batches:
+            for fact in batch:
+                nodes.append(
+                    ConsensusNode(
+                        node_id=f"n-{fact.fact_id}",
+                        entity=fact.subject,
+                        summary_text=fact.canonical_text,
+                        primary_anchors=fact.merged_anchors()[:3],
+                        all_anchors=fact.merged_anchors(),
+                        status="consensus",
+                    )
+                )
+        return nodes
+
+    monkeypatch.setattr(
+        "knowledge_engine.services.deduplication.consensus_synthesizer.synthesize_consensus_batches",
+        spy,
+    )
+
+    atoms = [
+        KnowledgeAtom(
+            scope=ScopeType.INSTANCE,
+            statement="FastAPI is a fast web framework.",
+            cluster_key="fastapi",
+            source_chunk_ids=["c1"],
+        ),
+        KnowledgeAtom(
+            scope=ScopeType.INSTANCE,
+            statement="FastAPI is a high performance framework.",
+            cluster_key="fastapi",
+            source_chunk_ids=["c2"],
+        ),
+        KnowledgeAtom(
+            scope=ScopeType.INSTANCE,
+            statement="Pydantic validates JSON models.",
+            cluster_key="pydantic",
+            source_chunk_ids=["c3"],
+        ),
+    ]
+    result = asyncio.run(apply_entity_consensus_to_atoms(atoms, deduplicator=dedup))
+    assert result is not None
+    _out_atoms, nodes = result
+    assert len(nodes) == 2  # 1 passthrough (pydantic) + 1 LLM-written (merged fastapi)
+    merged_facts = [f for batch in calls[0] for f in batch]
+    assert len(merged_facts) == 1
+    assert merged_facts[0].entity_type == "fastapi"
+
+
+def test_knowledge_atom_cluster_key_defaults_and_normalizes():
+    atom = KnowledgeAtom(scope=ScopeType.PRINCIPLE, statement="x" * 10)
+    assert atom.cluster_key == "general"
+    atom2 = KnowledgeAtom(
+        scope=ScopeType.PRINCIPLE, statement="x" * 10, cluster_key="  GIL Lock  "
+    )
+    assert atom2.cluster_key == "gil lock"
+
+
+def test_two_phase_reduce_uses_consensus_when_enabled(monkeypatch):
     from unittest.mock import AsyncMock
 
+    import knowledge_engine.config as ke_config
     from knowledge_engine.services.article_ingestion.blog_spatial_schemas import (
         DeduplicatedAtomsResponse,
         FinalArticleSummaryResponse,

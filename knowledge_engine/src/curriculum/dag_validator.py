@@ -6,8 +6,8 @@ from knowledge_engine.src.curriculum.schemas import CurriculumGraph, CurriculumN
 
 # Дополнение к user repair_feedback при LLM-исправлении графа (не программный repair).
 CURRICULUM_DAG_REPAIR_PRESERVE_ANCHOR_TOPICS = (
-    "- Убедись, что все явные опорные темы, запрошенные пользователем в цели, "
-    "сохранены в итоговом графе и не потерялись при исправлении/расширении."
+    "- Make sure every explicit anchor topic the user requested in the goal "
+    "is preserved in the final graph and not lost during repair/expansion."
 )
 
 
@@ -108,9 +108,79 @@ def validate_dag_branching(graph: CurriculumGraph) -> list[str]:
     return errors
 
 
+def validate_curriculum_topology(graph: CurriculumGraph) -> list[str]:
+    """
+    Критерии: у каждой ноды in_degree + out_degree >= 1 (нет изолированных
+    orphan-нод), граф — ровно одна слабо связная компонента. Дополняет
+    validate_curriculum_dag: тот проверяет циклы/слои/referential integrity
+    существующих prerequisites, но не деградацию до отдельных изолированных
+    узлов или оторванных подграфов — validate_dag_branching тоже не ловит
+    единичный orphan, так как оперирует агрегатной статистикой по графу
+    (см. аудит изолированной ноды 'Хэш-индексы', 0 in + 0 out при в целом
+    достаточно ветвистом остальном графе). Пустой список — граф корректен.
+    """
+    errors: list[str] = []
+    nodes = graph.nodes
+    if not nodes:
+        return errors
+
+    by_id: dict[str, CurriculumNode] = {n.node_id: n for n in nodes}
+    ids = set(by_id.keys())
+
+    out_degree: dict[str, int] = {nid: 0 for nid in ids}
+    for n in nodes:
+        for p in n.prerequisites:
+            if p in ids:
+                out_degree[p] = out_degree.get(p, 0) + 1
+
+    for n in nodes:
+        in_degree = len(n.prerequisites)
+        if in_degree == 0 and out_degree.get(n.node_id, 0) == 0:
+            errors.append(
+                f"Узел '{n.node_id}' изолирован (orphan node, 0 связей). "
+                "Свяжи его как prerequisite с advanced/sota нодой или назначь "
+                "родителя."
+            )
+
+    # RU: слабая связность — Union-Find по неориентированным рёбрам, тот же
+    # приём, что и в CurriculumDAGContract._validate_topology (контрактный
+    # уровень) — здесь backstop над уже собранным CurriculumGraph.
+    parent: dict[str, str] = {nid: nid for nid in ids}
+
+    def _find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def _union(a: str, b: str) -> None:
+        ra, rb = _find(a), _find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for n in nodes:
+        for p in n.prerequisites:
+            if p in ids:
+                _union(n.node_id, p)
+
+    roots = {_find(nid) for nid in ids}
+    if len(roots) > 1:
+        errors.append(
+            f"Граф не является одной слабо связной компонентой: найдено "
+            f"{len(roots)} несвязанных частей среди {len(ids)} узлов."
+        )
+
+    return errors
+
+
 def validate_curriculum_dag_full(graph: CurriculumGraph) -> list[str]:
-    """Структурная валидность + ветвление."""
-    return validate_curriculum_dag(graph) + validate_dag_branching(graph)
+    """Структурная валидность + ветвление + связность (нет orphan-нод и
+    оторванных подграфов)."""
+    return (
+        validate_curriculum_dag(graph)
+        + validate_dag_branching(graph)
+        + validate_curriculum_topology(graph)
+    )
 
 
 def _find_cycle(by_id: dict[str, CurriculumNode]) -> list[str] | None:

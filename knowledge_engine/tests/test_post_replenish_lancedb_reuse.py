@@ -22,11 +22,11 @@ def _hit(**kwargs) -> CurriculumSearchHit:
 
 def test_mandatory_ingest_reuses_lancedb(monkeypatch) -> None:
     hit = _hit()
-    monkeypatch.setattr(
-        smp,
-        "_extracts_from_lancedb_url",
-        lambda url: (["takeaway one about pipelines"], "Cached title"),
-    )
+
+    async def _cached(url):
+        return ["takeaway one about pipelines"], "Cached title"
+
+    monkeypatch.setattr(smp, "_extracts_from_lancedb_url", _cached)
     called: list[str] = []
 
     async def _never_ingest(h, *, force_full_ingest: bool = False):
@@ -52,7 +52,10 @@ def test_mandatory_ingest_defers_missing_on_demand(monkeypatch) -> None:
         snippet="abstract text",
         key_extracts=["short"],
     )
-    monkeypatch.setattr(smp, "_extracts_from_lancedb_url", lambda url: None)
+    async def _no_cache(url):
+        return None
+
+    monkeypatch.setattr(smp, "_extracts_from_lancedb_url", _no_cache)
     spawned: list[list] = []
 
     def _spawn(hits, *, label: str):

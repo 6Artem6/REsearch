@@ -20,57 +20,23 @@ if TYPE_CHECKING:
 
 _BLOCK_START_RE = re.compile(r"^\[(P_\d+|FIG(?:_SEQ)?_\d+[^\]]*)\]", re.M)
 _FIG_TAG_RE = re.compile(r"\[(FIG(?:_SEQ)?_\d+)", re.I)
-_TIKTOKEN_SAFETY_FACTOR = 1.15
-
-_QWEN_TOKENIZER: object | None = None
-_QWEN_TOKENIZER_TRIED = False
-
-_QWEN_HF_IDS = (
-    "Qwen/Qwen2.5-7B",
-    "Qwen/Qwen2.5-7B-Instruct",
-    "Qwen/Qwen2.5-Coder-7B",
-    "Qwen/Qwen2.5-Coder-7B-Instruct",
-)
-
-
-def _load_qwen_tokenizer() -> object | None:
-    global _QWEN_TOKENIZER, _QWEN_TOKENIZER_TRIED
-    if _QWEN_TOKENIZER_TRIED:
-        return _QWEN_TOKENIZER
-    _QWEN_TOKENIZER_TRIED = True
-    try:
-        from transformers import AutoTokenizer
-    except ImportError:
-        return None
-    for model_id in _QWEN_HF_IDS:
-        try:
-            _QWEN_TOKENIZER = AutoTokenizer.from_pretrained(
-                model_id,
-                trust_remote_code=True,
-            )
-            return _QWEN_TOKENIZER
-        except Exception:
-            continue
-    return None
 
 
 def _count_tokens(text: str) -> int:
+    """Единая точка подсчёта токенов во всей кодовой базе — реальный Gemini/
+    Gemma vocab-токенайзер (src/utils/fast_tokenizer.py, offline HF
+    tokenizers, а не Qwen/tiktoken cl100k_base — те считали токены ЧУЖОЙ
+    модели, что и питало ошибку TPM-guard'а из аудита STEP 1). "gemini" и
+    "gemma" в fast_tokenizer.count_tokens ведут на один и тот же google_enc,
+    так что этот единственный вызов корректен для обоих провайдеров, которые
+    используют estimate_text_tokens (Bulk Gate/Triage-батчинг — Gemini;
+    gemma_client.py budget estimation — Gemma)."""
     raw = text or ""
     if not raw:
         return 0
-    tok = _load_qwen_tokenizer()
-    if tok is not None:
-        try:
-            return len(tok.encode(raw))
-        except Exception:
-            pass
-    try:
-        import tiktoken
+    from knowledge_engine.src.utils.fast_tokenizer import token_counter
 
-        enc = tiktoken.get_encoding("cl100k_base")
-        return max(1, int(len(enc.encode(raw)) * _TIKTOKEN_SAFETY_FACTOR))
-    except Exception:
-        return max(1, int(len(raw) // 4 * _TIKTOKEN_SAFETY_FACTOR))
+    return token_counter.count_tokens(raw, "gemini")
 
 
 @dataclass

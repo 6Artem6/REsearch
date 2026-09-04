@@ -154,7 +154,7 @@ async def ingest_academic_body_gemma(
         url=url,
         registry=None,
     )
-    store.save_summary(summary, skip_rag_ingest=True)
+    await store.save_summary(summary, skip_rag_ingest=True)
     # Align MAP bodies + window_summary by window_index (skip empty bodies).
     map_texts: list[str] = []
     window_summaries: list[str | None] = []
@@ -169,14 +169,14 @@ async def ingest_academic_body_gemma(
             window_summaries.append(None)
         else:
             window_summaries.append((m.window_summary or "").strip() or None)
-    n_map = store.upsert_rag_academic_map_windows(
+    n_map = await store.upsert_rag_academic_map_windows(
         url,
         title or url,
         map_texts or windows_body,
         summary,
         window_summaries=window_summaries,
     )
-    n_atoms = store.upsert_knowledge_atoms(url, list(final.knowledge_atoms or []))
+    n_atoms = await store.upsert_knowledge_atoms(url, list(final.knowledge_atoms or []))
     trace(
         f"ACADEMIC ingest ✓ | Gemma map-reduce | map_windows={len(map_texts or windows_body)} "
         f"rag_rows={n_map} atoms={n_atoms} | {url[:55]}"

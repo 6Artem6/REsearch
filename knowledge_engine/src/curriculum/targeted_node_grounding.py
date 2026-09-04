@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import time
+from typing import Callable
 
 from knowledge_engine.config import (
     CURRICULUM_DEEP_NODE_MAX_HITS,
     CURRICULUM_MODEL_FIRST_MIN_NODES,
+    CURRICULUM_TWO_PASS_MODEL_FIRST_ENABLED,
 )
 from knowledge_engine.src.curriculum.curriculum_lancedb_persist import (
-    persist_approved_curriculum_hits_to_lancedb,
+    persist_approved_curriculum_hits_to_lancedb_async,
 )
 from knowledge_engine.src.curriculum.dag_validator import validate_curriculum_dag
-from knowledge_engine.src.curriculum.model_first_flash import generate_model_first_graph
+from knowledge_engine.src.curriculum.model_first_flash import (
+    generate_model_first_graph,
+    generate_model_first_graph_two_pass,
+)
 from knowledge_engine.src.curriculum.node_risk_classification import (
     classify_and_apply_node_risks,
 )
@@ -25,8 +30,9 @@ from knowledge_engine.src.curriculum.schemas import (
 )
 from knowledge_engine.src.curriculum.search_prestep import _normalize_url_key
 from knowledge_engine.src.curriculum.source_material_pipeline import (
-    enrich_search_hits_with_extracts,
-    summarize_whitelist_blog_hits_async,
+    _ACADEMIC_SOURCE_TIERS,
+    _BLOG_SOURCE_TIERS,
+    enrich_search_hits_with_extracts_async,
 )
 from knowledge_engine.src.curriculum.source_registry import (
     cap_curriculum_sources_registry,
@@ -121,7 +127,13 @@ def generate_curriculum_targeted_grounding(
         "CURRICULUM targeted grounding ▶ | Model-First → Risk → lazy (no search on create)"
     )
 
-    graph = generate_model_first_graph(inp, anchor)
+    # RU: CURRICULUM_TWO_PASS_MODEL_FIRST_ENABLED — staged rollout (см.
+    # аудит изолированных нод); дефолт False, включать явно env-переменной.
+    graph = (
+        generate_model_first_graph_two_pass(inp, anchor)
+        if CURRICULUM_TWO_PASS_MODEL_FIRST_ENABLED
+        else generate_model_first_graph(inp, anchor)
+    )
     node_count_initial = len(graph.nodes)
 
     graph = classify_and_apply_node_risks(
@@ -211,6 +223,7 @@ async def lazy_ground_deep_node_on_demand(
     source_policy: str,
     anchor: str,
     reground_academic: bool = False,
+    on_progress: Callable[[str], None] | None = None,
 ) -> tuple[CurriculumGraph, CurriculumNode]:
     """Один DEEP-нода: Exa / Consensus / academic → registry + LanceDB."""
     if node.node_risk_kind != "DEEP":
@@ -234,6 +247,8 @@ async def lazy_ground_deep_node_on_demand(
         if key:
             exclude.add(key)
 
+    if on_progress:
+        on_progress("Ищем источники по теме…")
     hits = await search_sources_for_deep_node_async(
         node,
         target_goal,
@@ -243,15 +258,45 @@ async def lazy_ground_deep_node_on_demand(
         on_demand=True,
         registry_entries=registry,
     )
+    if hits and on_progress:
+        on_progress("Обрабатываем найденные материалы…")
     if hits:
-        summarized = await summarize_whitelist_blog_hits_async(hits, target_goal)
-        by_url = {h.url.strip().rstrip("/").lower(): h for h in summarized}
-        hits = [by_url.get(h.url.strip().rstrip("/").lower(), h) for h in hits]
-        hits = enrich_search_hits_with_extracts(hits, target_goal)
-        persist_approved_curriculum_hits_to_lancedb(
-            hits,
-            label=f"lazy_ground:{node.node_id}",
-        )
+        # search_sources_for_deep_node_async already runs every returned hit
+        # through summarize_whitelist_blog_hits_async internally (its own
+        # "post-replenish" ingest step, right before it returns) — these
+        # hits already carry key_extracts/title from that full MAP+REDUCE
+        # pass. Re-summarizing here duplicated the entire expensive Gemma
+        # fetch+annotate+triage+MAP+REDUCE pipeline a second time for every
+        # hit (confirmed via perf_debug.log audit: 8 MAP+REDUCE passes for
+        # 4 documents, ~805s wall time). enrich_search_hits_with_extracts is
+        # a cheap read-only Qdrant lookup — safe to keep as a light backfill
+        # for any hit that still lacks extracts.
+        hits = await enrich_search_hits_with_extracts_async(hits, target_goal)
+        # Хиты тиров blog/academic уже прошли через собственные ingest-пути
+        # summarize_whitelist_blog_hits_async (_ingest_blog_hits_batch_async /
+        # _ingest_academic_hit_async) внутри search_sources_for_deep_node_async
+        # — там VectorStore.save_summary для этих URL уже вызван. Персист
+        # здесь ещё раз — повторный embed+upsert document_summaries для уже
+        # сохранённых в Qdrant данных (подтверждено perf_debug.log: те же URL
+        # эмбедятся и сохраняются дважды, с разрывом ~24s, в рамках одного
+        # вызова node_deep_dive). Этот проход нужен только тирам, которые
+        # НЕ прошли тот ingest (например хиты из реестра).
+        # save_summary/Qdrant теперь нативно async (VectorStore больше не
+        # мостит через asyncio.run() внутри) — await напрямую на текущем
+        # event loop корутины, без переброса в тред.
+        already_persisted_tiers = _BLOG_SOURCE_TIERS | _ACADEMIC_SOURCE_TIERS
+        unpersisted_hits = [
+            h
+            for h in hits
+            if (h.source_tier or "").strip() not in already_persisted_tiers
+        ]
+        if unpersisted_hits:
+            if on_progress:
+                on_progress("Сохраняем материалы в базу знаний…")
+            await persist_approved_curriculum_hits_to_lancedb_async(
+                unpersisted_hits,
+                label=f"lazy_ground:{node.node_id}",
+            )
 
     next_src_idx = len(registry) + 1
     updated_node = node
@@ -305,6 +350,8 @@ async def lazy_ground_deep_node_on_demand(
             refresh_node_session_diagrams_from_articles,
         )
 
+        if on_progress:
+            on_progress("Готовим диаграммы по материалам…")
         n = refresh_node_session_diagrams_from_articles(
             graph.curriculum_id,
             updated_node,

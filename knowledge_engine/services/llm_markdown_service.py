@@ -106,6 +106,7 @@ def enrich_node_deep_dive_response(
         learning_phase=resp.learning_phase,
         learning_mode=resp.learning_mode,
         source_registry=list(resp.source_registry),
+        mapped_source_ids=list(resp.mapped_source_ids or []),
         lecture_rag_inspector=list(resp.lecture_rag_inspector or [])[:16],
     )
 

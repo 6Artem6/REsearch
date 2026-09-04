@@ -15,8 +15,8 @@ from knowledge_engine.services.article_ingestion.blog_spatial_schemas import (
 )
 from knowledge_engine.services.article_ingestion.blog_spatial_summarizer import (
     MapReduceArticleJob,
+    build_article_map_reduce_job,
     map_reduce_jobs_pooled_async,
-    map_reduce_summarize_blog_outcome,
     summarize_blog_article_spatial,
 )
 from knowledge_engine.services.article_ingestion.document_triage_engine import (
@@ -521,14 +521,12 @@ def _map_job_from_ingest(
         figure_registry=figure_registry,
         trust_score=float(getattr(job, "trust_score", 1.0) or 1.0),
         source_kind=(
-            "source_code"
-            if is_code_or_raw_source(job.page_url, body)
-            else "article"
+            "source_code" if is_code_or_raw_source(job.page_url, body) else "article"
         ),
     )
 
 
-def _upsert_spatial_map_windows(
+async def _upsert_spatial_map_windows(
     store: VectorStore,
     url: str,
     title: str,
@@ -546,7 +544,7 @@ def _upsert_spatial_map_windows(
     while len(window_summaries) < len(window_texts):
         window_summaries.append(None)
     if any(window_texts):
-        store.upsert_rag_academic_map_windows(
+        await store.upsert_rag_academic_map_windows(
             url,
             title,
             window_texts,
@@ -555,7 +553,7 @@ def _upsert_spatial_map_windows(
         )
 
 
-def _persist_spatial_lancedb(
+async def _persist_spatial_lancedb(
     store: VectorStore,
     *,
     url: str,
@@ -570,8 +568,8 @@ def _persist_spatial_lancedb(
         _collect_raw_knowledge_atoms,
     )
 
-    store.save_summary(summary, skip_rag_ingest=True)
-    _upsert_spatial_map_windows(
+    await store.save_summary(summary, skip_rag_ingest=True)
+    await _upsert_spatial_map_windows(
         store,
         url,
         title,
@@ -582,8 +580,8 @@ def _persist_spatial_lancedb(
     atoms = list(knowledge_atoms or [])
     if not atoms:
         atoms = _collect_raw_knowledge_atoms(map_results)
-    n_atoms = store.upsert_knowledge_atoms(url, atoms)
-    trace(f"BLOG_SPATIAL LanceDB ✓ | atoms={n_atoms} | {url[:55]}")
+    n_atoms = await store.upsert_knowledge_atoms(url, atoms)
+    trace(f"BLOG_SPATIAL Qdrant ✓ | atoms={n_atoms} | {url[:55]}")
     return n_atoms
 
 
@@ -655,7 +653,7 @@ async def run_spatial_diagram_ingest_jobs_async(
             registry=reg,
         )
         map_job = next((m for m in map_jobs if m.job_id == url or m.url == url), None)
-        _persist_spatial_lancedb(
+        await _persist_spatial_lancedb(
             store,
             url=url,
             title=ingest_job.article_title or url,
@@ -734,15 +732,38 @@ def run_blog_spatial_diagram_ingest_batch(
     return run_spatial_diagram_ingest_jobs(jobs)
 
 
-def ingest_blog_with_spatial_mapping(
+@dataclass
+class _BlogSpatialContext:
+    """Everything ingest_blog_with_spatial_mapping needs to run/finalize a
+    MAP+REDUCE job — fetch/annotate/gate/triage/figure-registry/VLM already
+    done, no LLM MAP+REDUCE call made yet. Factored out so a batch of
+    documents can each be prepared independently and then submitted to
+    map_reduce_jobs_pooled_async together in ONE pooled call (BATCH POOLING
+    AGGREGATION task) instead of one map_reduce_jobs_pooled_async([job])
+    call per document."""
+
+    title: str
+    page_url: str
+    annotated: AnnotatedArticle
+    fig_ids: list[str]
+    registry: object
+    vlm_saved: int
+    source_kind: str
+
+
+def _prepare_blog_spatial_context(
     title: str,
     url: str,
     source_id: str = "",
     *,
     raw_html: str | None = None,
     raw_bytes: bytes | None = None,
-    save_lancedb: bool = True,
-) -> tuple[AnnotatedArticle | None, DocumentSummary | None, int]:
+) -> tuple[AnnotatedArticle | None, _BlogSpatialContext | None]:
+    """Stage A (fetch) -> B (annotate/gate/triage) -> C (figure registry/VLM).
+    Returns (annotated, None) for every early-reject path that
+    ingest_blog_with_spatial_mapping used to return (annotated, None, 0) for
+    directly — callers should mirror that by returning (annotated, None, 0)
+    themselves when context is None."""
     page_url = (url or "").strip()
     raw: bytes | str | None = raw_bytes
     fetch_method = ""
@@ -753,10 +774,10 @@ def ingest_blog_with_spatial_mapping(
             html, fetch_method = smart_fetch_page_html(page_url)
             raw = html
     if isinstance(raw, bytes) and len(raw) < 40:
-        return None, None, 0
+        return None, None
     if isinstance(raw, str) and len(raw.strip()) < 200:
         trace(f"BLOG_SPATIAL pipeline ⊘ | thin content | {page_url[:60]}")
-        return None, None, 0
+        return None, None
 
     preview = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
     github_corpus = fetch_method in ("github_trees", "github_zip", "github_blob")
@@ -770,11 +791,15 @@ def ingest_blog_with_spatial_mapping(
     else:
         annotated = build_annotated_from_content(raw, page_url)
         annotated, _triage_outcome = _triage_for_pipeline(annotated, raw)
-    if not annotated.annotated_markdown and isinstance(preview, str) and len(preview.strip()) >= 200:
+    if (
+        not annotated.annotated_markdown
+        and isinstance(preview, str)
+        and len(preview.strip()) >= 200
+    ):
         annotated = wrap_raw_source_as_annotated(preview, page_url)
         code_raw = True
     if not annotated.annotated_markdown:
-        return annotated, None, 0
+        return annotated, None
 
     if not code_raw:
         annotated, gate_result = _apply_inbound_ingest_gate(
@@ -788,7 +813,7 @@ def ingest_blog_with_spatial_mapping(
                 f"BLOG_SPATIAL pipeline ⊘ | {getattr(gate_result, 'reject_reason', '')} "
                 f"| Q={getattr(gate_result, 'quality', None)} | {page_url[:60]}"
             )
-            return annotated, None, 0
+            return annotated, None
 
     fig_ids = _figure_ids(annotated)
     aid = canonical_article_id(source_id, page_url)
@@ -806,71 +831,215 @@ def ingest_blog_with_spatial_mapping(
         page_url=page_url,
     )
 
-    source_kind = "source_code" if code_raw else "article"
-    outcome, map_windows = map_reduce_summarize_blog_outcome(
-        annotated.annotated_markdown,
+    ctx = _BlogSpatialContext(
         title=title or page_url,
-        url=page_url,
-        all_figure_ids=fig_ids,
-        figure_registry=registry,
-        source_kind=source_kind,
+        page_url=page_url,
+        annotated=annotated,
+        fig_ids=fig_ids,
+        registry=registry,
+        vlm_saved=vlm_saved,
+        source_kind="source_code" if code_raw else "article",
     )
-    final = outcome.final if outcome else None
+    return annotated, ctx
+
+
+async def _finalize_blog_spatial_result(
+    ctx: _BlogSpatialContext,
+    outcome: object | None,
+    map_windows: list[TokenWindowChunk],
+    *,
+    save_lancedb: bool,
+) -> tuple[AnnotatedArticle | None, DocumentSummary | None, int]:
+    final = getattr(outcome, "final", None) if outcome else None
     if final is None:
         legacy = summarize_blog_article_spatial(
-            annotated.annotated_markdown,
-            title=title or page_url,
-            url=page_url,
-            all_figure_ids=fig_ids,
+            ctx.annotated.annotated_markdown,
+            title=ctx.title,
+            url=ctx.page_url,
+            all_figure_ids=ctx.fig_ids,
         )
         if legacy is None:
-            return annotated, None, 0
-        summary = _document_summary_from_spatial(legacy, title=title, url=page_url)
-        saved = vlm_saved
+            return ctx.annotated, None, 0
+        summary = _document_summary_from_spatial(
+            legacy, title=ctx.title, url=ctx.page_url
+        )
+        saved = ctx.vlm_saved
     else:
         summary = _document_summary_from_final(
             final,
-            title=title,
-            url=page_url,
-            registry=registry,
+            title=ctx.title,
+            url=ctx.page_url,
+            registry=ctx.registry,
         )
-        saved = vlm_saved
+        saved = ctx.vlm_saved
 
     if save_lancedb:
         store = VectorStore()
         if outcome is not None and final is not None:
-            _persist_spatial_lancedb(
+            await _persist_spatial_lancedb(
                 store,
-                url=page_url,
-                title=title or page_url,
+                url=ctx.page_url,
+                title=ctx.title,
                 summary=summary,
                 window_texts=[(w.body or "").strip() for w in map_windows],
                 map_results=list(outcome.map_results),
                 knowledge_atoms=list(final.knowledge_atoms or []),
             )
         else:
-            _persist_spatial_lancedb(
+            await _persist_spatial_lancedb(
                 store,
-                url=page_url,
-                title=title or page_url,
+                url=ctx.page_url,
+                title=ctx.title,
                 summary=summary,
                 window_texts=(
                     [(w.body or "").strip() for w in map_windows]
-                    or [annotated.annotated_markdown]
+                    or [ctx.annotated.annotated_markdown]
                 ),
                 map_results=[None] * max(1, len(map_windows)),
             )
-        trace(f"BLOG_SPATIAL pipeline ✓ | LanceDB saved | {page_url[:60]}")
+        trace(f"BLOG_SPATIAL pipeline ✓ | LanceDB saved | {ctx.page_url[:60]}")
 
-    return annotated, summary, saved
+    return ctx.annotated, summary, saved
 
 
-def persist_gemma_cloud_map_fallback(
+async def ingest_blog_with_spatial_mapping(
+    title: str,
+    url: str,
+    source_id: str = "",
+    *,
+    raw_html: str | None = None,
+    raw_bytes: bytes | None = None,
+    save_lancedb: bool = True,
+) -> tuple[AnnotatedArticle | None, DocumentSummary | None, int]:
+    import asyncio
+
+    annotated, ctx = await asyncio.to_thread(
+        _prepare_blog_spatial_context,
+        title,
+        url,
+        source_id,
+        raw_html=raw_html,
+        raw_bytes=raw_bytes,
+    )
+    if ctx is None:
+        return annotated, None, 0
+
+    from knowledge_engine.services.article_ingestion.blog_spatial_summarizer import (
+        map_reduce_summarize_blog_outcome_async,
+    )
+
+    outcome, map_windows = await map_reduce_summarize_blog_outcome_async(
+        annotated_markdown=ctx.annotated.annotated_markdown,
+        title=ctx.title,
+        url=ctx.page_url,
+        all_figure_ids=ctx.fig_ids,
+        figure_registry=ctx.registry,
+        source_kind=ctx.source_kind,
+    )
+    return await _finalize_blog_spatial_result(
+        ctx, outcome, map_windows, save_lancedb=save_lancedb
+    )
+
+
+async def ingest_blog_spatial_mapping_batch_async(
+    items: list[tuple[str, str, str, str | None]],
+    *,
+    save_lancedb: bool = True,
+) -> dict[str, tuple[AnnotatedArticle | None, DocumentSummary | None, int]]:
+    """Batched sibling of ingest_blog_with_spatial_mapping: prepares every
+    (title, url, source_id, raw_html) request independently (annotate/gate —
+    each on its own thread, same concurrency as before; pass raw_html when
+    the caller already fetched the page, else it's fetched here) but submits
+    ALL of their MAP+REDUCE jobs in a SINGLE
+    map_reduce_jobs_pooled_async(articles=N) call, instead of N separate
+    single-article calls. A single pooled job lets the dual-basket
+    dispatcher and shared REDUCE queue coordinate GEMMA_BUDGET_MAX_TPM
+    across the whole batch instead of N independent, competing pools
+    (BATCH POOLING AGGREGATION task).
+
+    Returns a dict keyed by url — same 3-tuple shape as
+    ingest_blog_with_spatial_mapping's return value, one entry per input url.
+    """
+    import asyncio
+
+    if not items:
+        return {}
+
+    async def _prepare(title: str, url: str, source_id: str, raw_html: str | None):
+        return await asyncio.to_thread(
+            _prepare_blog_spatial_context,
+            title,
+            url,
+            source_id,
+            raw_html=raw_html,
+        )
+
+    prepared = await asyncio.gather(*[_prepare(t, u, s, h) for t, u, s, h in items])
+
+    jobs: list[MapReduceArticleJob] = []
+    ctx_by_job_id: dict[str, _BlogSpatialContext] = {}
+    windows_by_job_id: dict[str, list[TokenWindowChunk]] = {}
+    results: dict[str, tuple[AnnotatedArticle | None, DocumentSummary | None, int]] = {}
+
+    for (_title, url, _source_id, _raw_html), (annotated, ctx) in zip(items, prepared):
+        if ctx is None:
+            results[url] = (annotated, None, 0)
+            continue
+        built = build_article_map_reduce_job(
+            ctx.annotated.annotated_markdown,
+            title=ctx.title,
+            url=ctx.page_url,
+            all_figure_ids=ctx.fig_ids,
+            figure_registry=ctx.registry,
+            source_kind=ctx.source_kind,
+        )
+        if built is None:
+            results[url] = await _finalize_blog_spatial_result(
+                ctx, None, [], save_lancedb=save_lancedb
+            )
+            continue
+        job, windows = built
+        jobs.append(job)
+        ctx_by_job_id[job.job_id] = ctx
+        windows_by_job_id[job.job_id] = windows
+
+    if jobs:
+        trace(
+            f"BLOG_SPATIAL pool ▶ | curriculum batch articles={len(jobs)} "
+            f"chunks={sum(len(j.windows) for j in jobs)}"
+        )
+        finals = await map_reduce_jobs_pooled_async(jobs)
+
+        # STREAMING AUDIT FIX (barrier #2): this used to persist articles
+        # one at a time in a plain for-loop, so article N's embed+Qdrant
+        # write couldn't even overlap article N+1's — pure added tail
+        # latency on top of REDUCE, with zero benefit (each call builds its
+        # own fresh VectorStore()/ctx, nothing shared to serialize on).
+        async def _finalize_one(
+            job: MapReduceArticleJob,
+        ) -> tuple[str, tuple[AnnotatedArticle | None, DocumentSummary | None, int]]:
+            ctx = ctx_by_job_id[job.job_id]
+            outcome = finals.get(job.job_id)
+            result = await _finalize_blog_spatial_result(
+                ctx, outcome, windows_by_job_id[job.job_id], save_lancedb=save_lancedb
+            )
+            return ctx.page_url, result
+
+        finalized = await asyncio.gather(*[_finalize_one(job) for job in jobs])
+        for url, result in finalized:
+            results[url] = result
+
+    return results
+
+
+async def persist_gemma_cloud_map_fallback(
     title: str,
     url: str,
     raw_text: str,
 ) -> DocumentSummary | None:
     """Gemma Cloud MAP (or structured passport) with obligatory *_map_* RAG windows."""
+    import asyncio
+
     body = (raw_text or "").strip()
     if len(body) < 200:
         return None
@@ -880,18 +1049,21 @@ def persist_gemma_cloud_map_fallback(
     md = (annotated.annotated_markdown or "").strip()
     if len(md) < 80:
         return None
-    outcome, windows = map_reduce_summarize_blog_outcome(
-        md,
+
+    from knowledge_engine.services.article_ingestion.blog_spatial_summarizer import (
+        map_reduce_summarize_blog_outcome_async,
+    )
+
+    outcome, windows = await map_reduce_summarize_blog_outcome_async(
+        annotated_markdown=md,
         title=title or page_url,
         url=page_url,
         source_kind=kind,
     )
     store = VectorStore()
     if outcome is not None and outcome.final is not None:
-        summary = _document_summary_from_final(
-            outcome.final, title=title, url=page_url
-        )
-        _persist_spatial_lancedb(
+        summary = _document_summary_from_final(outcome.final, title=title, url=page_url)
+        await _persist_spatial_lancedb(
             store,
             url=page_url,
             title=title or page_url,
@@ -906,13 +1078,15 @@ def persist_gemma_cloud_map_fallback(
     from knowledge_engine.services.summarizer import summarize_article
 
     try:
-        summary = summarize_article(title or page_url, page_url, body)
+        summary = await asyncio.to_thread(
+            summarize_article, title or page_url, page_url, body
+        )
     except Exception as exc:
         trace(f"BLOG_SPATIAL fallback Gemma summarizer ✗ | {exc}")
         return None
     if not windows:
         windows = [TokenWindowChunk(window_index=0, body=md)]
-    _persist_spatial_lancedb(
+    await _persist_spatial_lancedb(
         store,
         url=page_url,
         title=title or page_url,

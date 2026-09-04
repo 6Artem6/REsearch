@@ -59,6 +59,28 @@ def test_select_advanced_two_each():
     assert practical_n == 2
 
 
+def test_select_hits_by_quota_limit_widens_beyond_total_max():
+    """Regression: order_candidates_for_node used to hard-cap at
+    quota.total_max BEFORE replenish_valid_hits_until_cap's backfill_margin
+    loop ever got a chance to use the extra headroom — margin candidates were
+    physically unreachable even when the raw pool had plenty. limit= lets the
+    fallback spill (and final slice) grow past total_max while per-bucket
+    TOP-N/TOP-M picks stay exactly as quota dictates."""
+    q = get_source_quota(
+        "advanced", "DEEP"
+    )  # academic_max=2 practical_max=2 total_max=4
+    candidates = [
+        _hit(f"https://developers.example.com/{i}", "exa", 0.9 - i * 0.01)
+        for i in range(8)
+    ]
+    picked_default = select_hits_by_quota(candidates, q)
+    assert len(picked_default) == 4  # unchanged default behaviour
+
+    picked_widened = select_hits_by_quota(candidates, q, limit=6)
+    assert len(picked_widened) == 6
+    assert [h.url for h in picked_widened[:4]] == [h.url for h in picked_default]
+
+
 def test_sota_selection_academic_majority():
     q = get_source_quota("sota", "DEEP")
     candidates = [

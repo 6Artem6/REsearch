@@ -219,6 +219,98 @@ def patch_curriculum_graph_node(
     return False
 
 
+_CURRICULUM_SOURCES_REGISTRY_CAP = 32  # см. CurriculumGraph.curriculum_sources_registry Field(max_length=32)
+
+
+def patch_curriculum_sources_registry(
+    curriculum_id: str,
+    new_entries: list[dict[str, Any]],
+) -> list[str]:
+    """Добавляет записи в curriculum_sources_registry (глобальная библиотека
+    курса), переиспользуя source_id для URL, уже есть в реестре. Минимальный
+    raw-dict патч в духе patch_curriculum_graph_node — не трогает target_goal/
+    meta/другие ноды (в отличие от save_curriculum_record, который заменяет
+    всю запись целиком и требует точных meta-полей, иначе их молча теряет).
+
+    Возвращает список source_id в порядке ``new_entries`` — вызывающий код
+    привязывает их к node.mapped_source_ids сам (см.
+    lecture_search_orchestrator._attach_sources_to_node_graph — источник
+    этого фикса: verified_external_sources сохранялись в resource_urls, но
+    без записи в реестре coerce_references_to_registry отбрасывал их из
+    references/панели, а lecture_body получал голые [n] вместо [Sn]).
+
+    При переполнении (>32) не трогает записи, на которые ссылается
+    mapped_source_ids хоть одной ноды — та же политика, что и
+    source_registry.cap_curriculum_sources_registry, применённая здесь на
+    raw dict без повторной Pydantic-валидации всего графа."""
+    cid = (curriculum_id or "").strip()
+    if not cid or not new_entries:
+        return []
+
+    def _norm(u: str) -> str:
+        return (u or "").strip().rstrip("/").lower()
+
+    with _lock:
+        doc = _load_doc()
+        for item in doc.get("curricula") or []:
+            if item.get("curriculum_id") != cid:
+                continue
+            graph = item.get("graph") or {}
+            registry = list(graph.get("curriculum_sources_registry") or [])
+            by_url = {
+                _norm(str(e.get("url") or "")): str(e.get("source_id") or "")
+                for e in registry
+                if isinstance(e, dict) and e.get("url")
+            }
+            used_ids = {
+                str(e.get("source_id") or "") for e in registry if isinstance(e, dict)
+            }
+            next_idx = len(registry) + 1
+
+            result_ids: list[str] = []
+            for e in new_entries:
+                url_key = _norm(str(e.get("url") or ""))
+                if url_key and url_key in by_url:
+                    result_ids.append(by_url[url_key])
+                    continue
+                while f"src_{next_idx}" in used_ids:
+                    next_idx += 1
+                sid = f"src_{next_idx}"
+                used_ids.add(sid)
+                next_idx += 1
+                new_entry = dict(e)
+                new_entry["source_id"] = sid
+                registry.append(new_entry)
+                if url_key:
+                    by_url[url_key] = sid
+                result_ids.append(sid)
+
+            if len(registry) > _CURRICULUM_SOURCES_REGISTRY_CAP:
+                mapped_ids: set[str] = set()
+                for raw in graph.get("nodes") or []:
+                    for sid_raw in raw.get("mapped_source_ids") or []:
+                        s = str(sid_raw or "").strip()
+                        if s:
+                            mapped_ids.add(s)
+                pinned = [
+                    e for e in registry if str(e.get("source_id") or "") in mapped_ids
+                ]
+                rest = [
+                    e
+                    for e in registry
+                    if str(e.get("source_id") or "") not in mapped_ids
+                ]
+                keep_rest = max(0, _CURRICULUM_SOURCES_REGISTRY_CAP - len(pinned))
+                registry = pinned + rest[:keep_rest]
+
+            graph["curriculum_sources_registry"] = registry
+            item["graph"] = graph
+            item["updated_at"] = _now_iso()
+            _save_doc(doc)
+            return result_ids
+    return []
+
+
 def _short_neighbor_concepts(concepts: list[str] | None, max_items: int = 3) -> str:
     parts: list[str] = []
     for c in concepts or []:

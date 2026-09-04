@@ -15,6 +15,7 @@ from knowledge_engine.config import (
     CURRICULUM_ON_DEMAND_V08_MAX_PAPERS,
     CURRICULUM_ON_DEMAND_V08_POOL_SIZE,
     CURRICULUM_USE_V08_CONSENSUS,
+    DEEP_INGEST_BACKFILL_MARGIN,
 )
 from knowledge_engine.services.search.exa_transform import (
     fetch_exa_curriculum_hits_for_node,
@@ -611,7 +612,7 @@ async def run_reuse_producer(
         CURRICULUM_ON_DEMAND_V08_POOL_SIZE,
         CURRICULUM_ON_DEMAND_V08_MAX_PAPERS + 4,
     )
-    reuse_raw = merge_on_demand_reuse_hits(
+    reuse_raw = await merge_on_demand_reuse_hits(
         ctx.search_vector,
         list(registry_entries or []),
         cap=reuse_pool_cap,
@@ -1007,6 +1008,7 @@ async def search_sources_for_deep_node_async(
         merged,
         cap,
         node=node,
+        backfill_margin=DEEP_INGEST_BACKFILL_MARGIN,
     )
     from knowledge_engine.src.curriculum.source_material_pipeline import (
         ingest_mandatory_academic_hits_async,
@@ -1018,7 +1020,12 @@ async def search_sources_for_deep_node_async(
         label=f"post_replenish:{node.node_id}",
         defer_missing=on_demand,
     )
-    valid = await summarize_whitelist_blog_hits_async(valid, goal)
+    valid = await summarize_whitelist_blog_hits_async(
+        valid,
+        goal,
+        backfill_margin=DEEP_INGEST_BACKFILL_MARGIN,
+        desired_count=cap,
+    )
     trace(
         f"CURRICULUM targeted search ✓ | node={node.node_id} "
         f"stream_hits={len(merged)} valid_after_replenish={len(valid)}"
