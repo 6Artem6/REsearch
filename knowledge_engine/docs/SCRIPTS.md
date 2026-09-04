@@ -1,7 +1,7 @@
 # Каталог `knowledge_engine/scripts`
 
 Канонический список setup-, diagnostic-, maintenance- и legacy-скриптов.
-Актуальность CLI сверена с `argparse` и shell-кодом 2026-08-18.
+Актуальность CLI сверена с `argparse` и shell-кодом 2026-08-27.
 
 Все команды выполняются из корня `REsearch`. Для Python-команд:
 
@@ -80,24 +80,32 @@ python knowledge_engine/scripts/cancel_work_job.py \
 
 | Скрипт | Ключи | Назначение |
 |--------|-------|------------|
-| `clear_node_sources.py` | `--curriculum ID --node ID [--apply] [--no-clear-blocklist] [--no-scrub-registry] [--json]` | Планирует или удаляет sources одной ноды из graph/session/LanceDB и, по умолчанию, из blocklist. Без `--apply` — dry-run. **destructive** |
+| `clear_node_data.py` | `--curriculum-id ID --node-id ID [--apply] [--skip-cloud] [--skip-library-gc] [--no-clear-blocklist] [--no-scrub-registry] [--json]` | **Единая точка входа** для очистки данных одной ноды: последовательно вызывает `cleanup_cloud_resources` (Qdrant+Redis) → `clear_node_sources` (LanceDB/graph/session/blocklist) → `sync_curriculum_library_sources` (GC осиротевших registry-записей после очистки ноды). Порядок important — cloud обязан отработать ДО того, как local-этап очистит `mapped_source_ids`. Без `--apply` — dry-run (Stage 3 preview в dry-run занижен — граф ещё не пропатчен). **destructive** |
+| `clear_node_sources.py` | `--curriculum ID --node ID [--apply] [--no-clear-blocklist] [--no-scrub-registry] [--json]` | Планирует или удаляет sources одной ноды из graph/session/LanceDB и, по умолчанию, из blocklist. Без `--apply` — dry-run. Вызывается из `clear_node_data.py`, но применим и отдельно. **destructive** |
+| `cleanup_cloud_resources.py` | `--node-id ID --curriculum-id ID [--dry-run]` (apply по умолчанию, `--dry-run` для предпросмотра) | Удаляет из **Qdrant** (rag_chunks/document_summaries/knowledge_atoms по url/doc_id) и Redis (`ke:lock:node_ground:*`) записи ноды/куррикулума. URL резолвятся через `clear_node_sources._collect_node_source_urls` (registry + `resource_urls`/`source_ref` — не только registry, т.к. `mapped_source_ids` может ссылаться на несуществующие registry-записи). Gemini Cache — не применимо (нет node/curriculum linkage). LanceDB не трогает. **destructive, external** |
 | `sync_node_session_sources.py` | `--curriculum ID --node ID [--apply] [--json]` | Сверяет `session.source_registry` с `mapped_source_ids`, retarget/scrub ссылок. Без `--apply` — dry-run. **writes** |
-| `sync_curriculum_library_sources.py` | `--curriculum ID [--apply] [--json]` | Удаляет orphan registry entries, синхронизирует sessions; из глобального LanceDB удаляет URL только если он не используется другими curriculum. Без `--apply` — dry-run. **destructive** |
+| `backfill_verified_source_registry.py` | `[--curriculum ID] [--node ID] [--apply] [--json]` | Регистрирует в `curriculum_sources_registry`/`mapped_source_ids` URL, у которых уже есть `resource_urls` + `document_summaries`, но не привязан registry (см. `persist_verified_external_sources_to_node` в `lecture_search_orchestrator.py` — без реестра `coerce_references_to_registry` отбрасывает все references, лекция цитирует `[n]` вместо `[Sn]`). Без `--curriculum` — сканирует все куррикулумы. URL без `document_summaries` пропускает. Без `--apply` — dry-run. **writes** |
+| `sync_curriculum_library_sources.py` | `--curriculum ID [--apply] [--json]` | Удаляет orphan registry entries, синхронизирует sessions; из глобального LanceDB удаляет URL только если он не используется другими curriculum. Без `--apply` — dry-run. Вызывается из `clear_node_data.py` как финальный шаг, но применим и отдельно для GC всей библиотеки курса. **destructive** |
 | `run_lazy_ground_node.py` | `[--curriculum-id ID] [--node-id ID] [--on-demand] [--full-academic] [--also-spatial-url URL] [--also-spatial-pdf PATH]` | Принудительный targeted search/ingest одной ноды. `--full-academic` отключает fast on-demand path. **writes, external/cost** |
 | `inspect_node_source_collection.py` | `--curriculum ID --node ID [--source-id ID] [--url URL] [--probe-fetch] [--probe-smart] [--timeout 25] [--json]` | Сверяет graph/session/LanceDB source collection. Probe-ключи выполняют реальные HTTP/fetch запросы. |
 | `sync_personal_rag_profile.py` | `[--force]` | Индексирует `user_profile.md` в `light_rag_facts`; `--force` сбрасывает SHA-предохранитель. **writes** |
 
-Рекомендуемый порядок для очистки:
+Рекомендуемый способ полностью очистить одну ноду (local + cloud + library GC
+одной командой) — `clear_node_data.py`:
 
 ```bash
-python knowledge_engine/scripts/clear_node_sources.py \
-  --curriculum agentic_systems_architecture \
-  --node governed_agent_pipelines
-# проверить plan
-python knowledge_engine/scripts/clear_node_sources.py \
-  --curriculum agentic_systems_architecture \
-  --node governed_agent_pipelines --apply
+python knowledge_engine/scripts/clear_node_data.py \
+  --curriculum-id agentic_systems_architecture \
+  --node-id governed_agent_pipelines
+# проверить план (Stage 3 preview занижен до --apply, см. описание скрипта)
+python knowledge_engine/scripts/clear_node_data.py \
+  --curriculum-id agentic_systems_architecture \
+  --node-id governed_agent_pipelines --apply
 ```
+
+`clear_node_sources.py`/`cleanup_cloud_resources.py`/`sync_curriculum_library_sources.py`
+остаются рабочими самостоятельно (например, для GC всей библиотеки курса без
+привязки к конкретной ноде).
 
 ## 3. LanceDB и кэши
 
@@ -148,6 +156,7 @@ python knowledge_engine/scripts/clear_node_sources.py \
 |--------|-------------------|------------|
 | `run_pipeline_llm_trace.py` | `[--query TEXT] [--mode consensus\|fast] [--thread-id ID] [--profile PATH]` | v0.8 research pipeline с `KE_LLM_FULL_TRACE=1`; пишет `knowledge_engine/.runs/*.log`. **external/cost** |
 | `extract_llm_prompt_samples.py` | `[LOG_FILE] [-o\|--out PATH] [--max-per-function 2]` | Извлекает prompt/response samples из full trace. Выход может содержать пользовательские данные и model output. **writes** |
+| `log_profiler.py` | `LOG_FILE [--top 15] [--since "HH:MM:SS"\|"YYYY-MM-DD HH:MM:SS"] [--llm-audit]` | Разбор произвольного лога прогона ноды/воркера (`trace()`, `logging`-формат, pytest caplog): тайминг по 6 стадиям пайплайна, топ самых долгих событий. `--since` обрезает лог с метки (для анализа конкретного прогона в общем `perf_debug.log`). `--llm-audit` — реестр реальных LLM-вызовов (Gemini/Gemma): токены in/out, латентность, конкурентность (пиковая одновременность вызовов, простои ≥5s без LLM-вызовов), RPM-spacing/quota-события, размер payload по стадиям (Triage/Bulk Gate/Code Dedup). Не привязан к v0.7/v0.8 research pipeline — общий инструмент для аудита RPM/TPM/параллелизма Skill Tree node-прогонов (см. `PERFORMANCE.md` §"Token & Rate Governor"). **read-only** |
 | `run_v07.py` | `QUERY [--profile PATH] [--thread-id ID] [--json] [--no-repl]` | CLI research graph; фактическая версия выбирается через `GRAPH_VERSION`. **legacy, external/cost** |
 | `smoke_v07.py` | `--query TEXT [--profile PATH] [--thread-id ID]` | Compile + полный smoke v0.7 graph. **legacy, external/cost** |
 | `run-v07-analysis.sh` | `"QUERY"` | Shell-wrapper над `run_v07.py`, подхватывает `.env`. **legacy** |
@@ -169,8 +178,8 @@ python knowledge_engine/scripts/clear_node_sources.py \
 В каталоге перечислены все текущие файлы `knowledge_engine/scripts/`:
 
 - 18 shell-скриптов;
-- 36 Python-скрипта;
-- всего 54.
+- 43 Python-скрипта;
+- всего 61.
 
 Новый файл в `scripts/` должен получить строку здесь одновременно с добавлением
 CLI. Для destructive-команд обязательны default dry-run либо явное предупреждение.
