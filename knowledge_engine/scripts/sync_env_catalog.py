@@ -31,6 +31,10 @@ _PAT_BOOL_OS = re.compile(
 
 ROUTER = "qwen2.5-coder:1.5b"
 MAIN = "qwen2.5-coder:7b"
+# Дефолты для *_MODEL переменных без Ollama-легаси в имени (см. config.py:
+# SELECTION_PROMPTS_MODEL / ARTICLE_DIAGRAM_FILTER_MODEL / COMPETENCY_EXTRACT_MODEL).
+CLOUD_ROUTER = "gemma-4-26b-a4b-it"
+CLOUD_MAIN = "gemma-4-31b-it"
 
 SECRET_KEYS = frozenset(
     {
@@ -89,38 +93,26 @@ SECTIONS: list[tuple[str, list[str]]] = [
         ["KE_TRACE_STDOUT", "KE_LOG_PLAIN", "KE_LLM_FULL_TRACE"],
     ),
     (
-        "Ollama local",
+        "Model roles (Cloud LLM)",
         [
-            "OLLAMA_BASE_URL",
-            "OLLAMA_AUTO_START",
             "LOCAL_ROUTER_MODEL",
             "LOCAL_HEAVY_MODEL",
             "LOCAL_L2_MODEL",
             "REACT_EVAL_MODEL",
             "MAIN_MODEL",
-            "GUARDRAILS_OLLAMA_MODEL",
             "GUARDRAILS_MODEL",
             "CONTEXT_EVAL_MODEL",
             "CONTEXT_EVAL_NUM_PREDICT",
-            "OLLAMA_ROUTER_NUM_CTX",
-            "OLLAMA_HEAVY_NUM_CTX",
-            "OLLAMA_NUM_CTX",
-            "OLLAMA_ROUTER_KEEP_ALIVE",
-            "OLLAMA_HEAVY_KEEP_ALIVE",
-            "OLLAMA_NUM_PARALLEL",
-            "OLLAMA_NUM_PREDICT",
-            "OLLAMA_GUARDRAILS_NUM_PREDICT",
-            "OLLAMA_STRUCTURE_NUM_PREDICT",
-            "SELECTION_PROMPTS_OLLAMA_MODEL",
+            "SELECTION_PROMPTS_MODEL",
             "SELECTION_PROMPTS_TIMEOUT_SEC",
             "SELECTION_PROMPTS_KEEP_ALIVE",
             "SELECTION_PROMPTS_NUM_PREDICT",
-            "ARTICLE_DIAGRAM_FILTER_OLLAMA_MODEL",
+            "ARTICLE_DIAGRAM_FILTER_MODEL",
             "ARTICLE_DIAGRAM_FILTER_TIMEOUT_SEC",
             "ARTICLE_DIAGRAM_FILTER_NUM_PREDICT",
             "ARTICLE_DIAGRAM_FILTER_NUM_CTX",
             "ARTICLE_MAX_DIAGRAMS_PER_ARTICLE",
-            "COMPETENCY_EXTRACT_OLLAMA_MODEL",
+            "COMPETENCY_EXTRACT_MODEL",
             "COMPETENCY_EXTRACT_TIMEOUT_SEC",
             "COMPETENCY_EXTRACT_NUM_PREDICT",
         ],
@@ -451,12 +443,12 @@ MANUAL_DEFAULTS: dict[str, str] = {
     "REACT_EVAL_MODEL": ROUTER,
     "MAIN_MODEL": MAIN,
     "CONTEXT_EVAL_MODEL": ROUTER,
-    "SELECTION_PROMPTS_OLLAMA_MODEL": ROUTER,
+    "SELECTION_PROMPTS_MODEL": CLOUD_ROUTER,
     "SELECTION_PROMPTS_KEEP_ALIVE": "5m",
     "BLOG_SPATIAL_SUMMARIZER_MODEL": MAIN,
-    "ARTICLE_DIAGRAM_FILTER_OLLAMA_MODEL": MAIN,
-    "COMPETENCY_EXTRACT_OLLAMA_MODEL": ROUTER,
-    "GUARDRAILS_OLLAMA_MODEL": MAIN,
+    "ARTICLE_DIAGRAM_FILTER_MODEL": CLOUD_MAIN,
+    "COMPETENCY_EXTRACT_MODEL": CLOUD_ROUTER,
+    "GUARDRAILS_MODEL": CLOUD_MAIN,
     "GEMINI_FLASH_MODEL": "gemini-3.1-flash-lite",
     "GEMINI_TUTOR_MODEL": "gemini-3.1-flash-lite",
     "GEMINI_REASONER_MODEL": "gemini-3.6-flash",
@@ -490,7 +482,6 @@ MANUAL_DEFAULTS: dict[str, str] = {
     "KE_API_BASE": "http://127.0.0.1:8765",
     "MAX_URLS": "5",
     "GRAPH_RECURSION_LIMIT": "0",
-    "OLLAMA_NUM_PARALLEL": "1",
     "LECTURE_RAG_CE_MIN_SCORE": "0.50",
     "CURRICULUM_GEMINI_WEB_HARVEST_ENABLED": "true",
     "CONSENSUS_INPUT_SELECTOR": (
@@ -534,7 +525,6 @@ def scan_env_keys() -> set[str]:
             if k:
                 keys.add(k)
     keys.add("GRAPH_VERSION")
-    keys.add("OLLAMA_NUM_PARALLEL")
     return keys
 
 
@@ -621,14 +611,27 @@ def parse_active_env_keys(path: Path) -> set[str]:
     return active
 
 
-def strip_catalog_block(text: str) -> str:
+def strip_catalog_block(text: str) -> tuple[str, list[str]]:
+    """Убирает старый catalog-блок. БАГ (нашёлся 2026-08-29): если кто-то
+    вручную раскомментировал строку ПРЯМО внутри старого блока (это выглядит
+    как обычный env-файл, соблазн отредактировать на месте велик), она
+    раньше молча уничтожалась здесь — не переносилась в miss_env (потому что
+    была активна), не сохранялась в теле (потому что жила внутри блока,
+    который просто вырезается целиком). Теперь такие строки возвращаются
+    отдельно и вызывающий код (main) дописывает их в тело файла."""
     if _MARKER_START not in text:
-        return text.rstrip()
+        return text.rstrip(), []
     before, rest = text.split(_MARKER_START, 1)
     if _MARKER_END in rest:
-        _, after = rest.split(_MARKER_END, 1)
-        return (before.rstrip() + after).rstrip()
-    return before.rstrip()
+        block, after = rest.split(_MARKER_END, 1)
+    else:
+        block, after = rest, ""
+    preserved: list[str] = []
+    for line in block.splitlines():
+        s = line.strip()
+        if s and not s.startswith("#") and "=" in s:
+            preserved.append(s)
+    return (before.rstrip() + after).rstrip(), preserved
 
 
 def build_catalog_block(
@@ -697,7 +700,15 @@ def main() -> int:
 
     if args.merge_env:
         raw = ENV_FILE.read_text(encoding="utf-8", errors="ignore")
-        base = strip_catalog_block(raw)
+        base, preserved = strip_catalog_block(raw)
+        if preserved:
+            preserved_keys = [p.split("=", 1)[0].strip() for p in preserved]
+            base = (
+                base.rstrip()
+                + "\n\n# --- restored from catalog block (were active, not "
+                "overwritten by sync) ---\n" + "\n".join(preserved) + "\n"
+            )
+            print(f"preserved {len(preserved)} active override(s): {preserved_keys}")
         base = enrich_commented_defaults_in_body(base, defaults)
         ENV_FILE.write_text(
             base + build_catalog_block(miss_env, defaults),

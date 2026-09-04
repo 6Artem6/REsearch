@@ -33,6 +33,17 @@ markdown>=3.5,<4.0
 Pillow>=10.0.0,<12.0.0
 imagehash>=4.3.0,<5.0.0
 SQLAlchemy>=2.0.0,<3.0.0
+# --- Postgres/pgvector (Phase 0/1 миграции, см. docs/) ---
+# langgraph-checkpoint-postgres запяли на 2.0.x, НЕ latest (3.1.x): latest требует
+# langgraph-checkpoint>=3.0, а у нас langgraph 0.2.x тянет langgraph-checkpoint 2.1.2
+# (langgraph-checkpoint-postgres==2.0.25 требует langgraph-checkpoint<3.0.0,>=2.1.2 — совпадает).
+asyncpg>=0.31.0,<0.32.0
+psycopg[binary]>=3.3.0,<3.4.0
+pgvector>=0.5.0,<0.6.0
+alembic>=1.19.0,<1.20.0
+langgraph-checkpoint-postgres>=2.0.25,<2.1.0
+pydantic-settings>=2.15.0,<3.0.0
 sentence-transformers>=3.0.0,<4.0.0
 duckduckgo-search>=6.3.0,<8.0.0
 exa-py>=1.0.0,<2.0.0
+psutil>=5.9.0,<8.0.0
