@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, TypeVar
 from urllib.parse import urlparse
 
@@ -12,6 +13,9 @@ from pydantic import BaseModel, Field
 
 from knowledge_engine.config import (
     CURRICULUM_PRACTICAL_EXA_LIMIT,
+    CURRICULUM_PREFLIGHT_ENABLED,
+    CURRICULUM_PREFLIGHT_FETCH_CAP,
+    CURRICULUM_PREFLIGHT_FINAL_ARTICLES,
     EXA_API_KEY,
     EXA_DUAL_QUERY_EN_RATIO,
     EXA_FAIR_ROUND_ROBIN_MAX_PER_DOMAIN,
@@ -39,21 +43,19 @@ _SKIP_OLLAMA_MIN_WORDS = 100
 
 _EXA_QUERY_SYSTEM = (
     f"{RUSSIAN_OUTPUT_RULE}\n\n"
-    "Ты — Search Query Architect для Exa (engineering blogs, case studies, EN whitelist).\n"
-    "На вход: учебный контекст (часто русский).\n\n"
-    "Цель query_en: инженерные разборы и гайды по реализации, НЕ страницы API/SDK.\n"
-    "ЗАПРЕЩЕНО: запросы вида «langchain vectorstores API», «vertexai SDK reference», "
-    "«cloud provider setup docs» без контекста архитектуры.\n"
-    "ТРЕБУЙ в query_en фокус на концепты и архитектуру — используй фреймы (если уместно): "
-    "deep dive, architecture, implementation guide, how it works, benchmark, trade-offs.\n"
-    "Пример темы «гибридный поиск»:\n"
-    "  Плохо: hybrid search vectorstores indexing\n"
-    "  Хорошо: hybrid search implementation sparse dense BM25 RRF reciprocal rank fusion "
-    "local vector database\n\n"
-    "Выдай:\n"
-    "- query_en: английский запрос 12–120 слов, термины CS, без «API reference».\n"
-    "- query_ru: тот же инженерный фокус на русском (сокращённо).\n"
-    "JSON: query_en, query_ru (строки, 8–400 символов)."
+    "You are a Search Query Architect for Exa (official docs + engineering blogs).\n"
+    "Input: learning context (often Russian).\n\n"
+    "Goal for query_en: mix of (1) official specifications and language/framework "
+    "documentation (PEP, CPython, MDN, PyTorch docs) and (2) architecture deep-dives.\n"
+    "FORBIDDEN: swagger/openapi consoles, SDK class lists, cloud setup wizards.\n"
+    "ALLOWED: canonical spec and vendor documentation hosts for THIS topic, "
+    "plus architecture deep-dives.\n"
+    "Prefer frames when useful: specification, internals, how it works, architecture, "
+    "trade-offs, benchmark.\n\n"
+    "Emit:\n"
+    "- query_en: English 12–120 words, CS terms.\n"
+    "- query_ru: same engineering focus in Russian (shorter).\n"
+    "JSON: query_en, query_ru (strings, 8–400 chars)."
 )
 
 _EXA_DOC_URL_MARKERS: tuple[str, ...] = (
@@ -112,31 +114,41 @@ class ExaQueryPlanOut(BaseModel):
     ru_short: str = Field(default="", max_length=400)
     ru_expert_article: str = Field(default="", max_length=400)
     ru_practical_cases: str = Field(default="", max_length=400)
+    keywords: list[str] = Field(default_factory=list, max_length=8)
+    core_theme: str = Field(default="", max_length=600)
 
 
 _EXA_QUERY_PLAN_SYSTEM = (
-    "You are a Search Query Architect for Exa (engineering blogs, long-form case studies, "
-    "whitelist domains only).\n"
+    "You are a Search Query Architect for Exa (official documentation AND "
+    "engineering blogs / long-form case studies).\n"
     "Input: learning context (title, concepts, goal — often Russian).\n\n"
-    "Produce diverse search vectors so recall covers architecture explainers, internals, "
-    "failure modes, and Russian engineering longreads (Habr, T-Bank Tech, Avito Tech, etc.).\n\n"
+    "Produce diverse search vectors covering: language/runtime specs (PEP, CPython, "
+    "framework docs), architecture explainers, internals, failure modes, and Russian "
+    "engineering longreads.\n\n"
     "Rules for ALL English vectors:\n"
-    "- Focus on concepts, architecture, implementation — NOT API/SDK reference pages.\n"
-    "- Avoid queries like «langchain vectorstores API» without architectural context.\n"
-    "- Prefer frames: deep dive, architecture, implementation guide, how it works, "
-    "benchmark, trade-offs, failure modes.\n\n"
+    "- Include official spec/docs queries when the topic is a language, runtime, "
+    "or API (e.g. PEP 703, CPython ceval, PyTorch docs) — not only blogs.\n"
+    "- Still avoid swagger/openapi consoles and cloud product setup wizards.\n"
+    "- Prefer frames: specification, internals, architecture, implementation, "
+    "how it works, benchmark, trade-offs, failure modes.\n\n"
     "Rules for Russian vectors (ru_short, ru_expert_article, ru_practical_cases):\n"
     "- Write queries IN RUSSIAN.\n"
-    "- Use declarative longread style as on Habr: e.g. «Подробный разбор архитектуры…», "
-    "«Практический опыт оптимизации…», «Устройство под капотом…».\n"
-    "- Use terminology typical of Russian engineering blogs (архитектура, под капотом, "
-    "практический опыт, узкие места, продакшен).\n"
-    "- ru_expert_article: expert deep-dive / architecture article on Habr-style sites.\n"
-    "- ru_practical_cases: production cases, optimization war stories, incident postmortems.\n\n"
-    "For each vector also output a short English highlight_query (1–2 sentences) telling Exa "
-    "which sentences to extract: architecture, trade-offs, benchmarks — not API parameter lists.\n\n"
+    "- Use declarative longread style as on Habr when asking for blogs, AND "
+    "mention официальная документация / PEP / спецификация when relevant.\n"
+    "- ru_expert_article: expert deep-dive / architecture article.\n"
+    "- ru_practical_cases: production cases, optimization war stories, incidents.\n\n"
+    "For each vector also output a short English highlight_query (1–2 sentences) "
+    "telling Exa which sentences to extract: spec rules, architecture, trade-offs, "
+    "benchmarks — not API parameter lists.\n\n"
+    "Additionally output two fields for a local pre-flight relevance gate "
+    "(NOT sent to Exa):\n"
+    "- keywords: 5–8 strict, specific technical entities/terms for this node "
+    "(exact names — API/function/algorithm/spec names, not generic words).\n"
+    "- core_theme: 1–2 dense English sentences summarizing what a relevant source "
+    "MUST cover, written for a cross-encoder relevance query (not a search query).\n\n"
     "JSON fields: en_declarative, en_technical, en_edge_cases, ru_short, "
-    "ru_expert_article, ru_practical_cases (8–400 chars each)."
+    "ru_expert_article, ru_practical_cases (8–400 chars each), "
+    "keywords (5–8 strings), core_theme (1–600 chars)."
 )
 
 _EXA_HIGHLIGHT_BY_ROLE: dict[ExaQueryRole, str] = {
@@ -208,10 +220,20 @@ def exa_domain_key(url: str) -> str:
 
 
 def _exa_url_quality_score(url: str) -> int:
-    """Выше = больше «статья/гайд», ниже = API docs."""
+    """Выше = больше «статья/гайд» или официальные docs; ниже = swagger/API consoles."""
     low = (url or "").strip().lower()
     if not low:
         return 0
+    from knowledge_engine.services.search.exa_domains import is_official_docs_host
+
+    if is_official_docs_host(low):
+        score = 4
+        for marker in _EXA_ARTICLE_URL_MARKERS:
+            if marker in low:
+                score += 1
+        if "/swagger/" in low or "/openapi/" in low:
+            return -6
+        return score
     score = 0
     for marker in _EXA_ARTICLE_URL_MARKERS:
         if marker in low:
@@ -413,6 +435,43 @@ def fair_domain_round_robin(
     return out[:cap]
 
 
+def fill_round_robin_tail(
+    selected: list[_THit],
+    all_hits: list[_THit],
+    target: int,
+    *,
+    get_url: Callable[[_THit], str] | None = None,
+) -> list[_THit]:
+    """Добор до `target` из хвоста, отсечённого `fair_domain_round_robin`'s
+    per-domain cap'ом — в исходном порядке релевантности (`all_hits`
+    предполагается уже отсортированным по Exa score, как на выходе
+    `merge_multi_vector_exa_hits`), не ослабляя anti-monoculture защиту там,
+    где кандидатов реально хватает на несколько доменов.
+
+    Раньше при низком разнообразии доменов в конкретном Exa-ответе (например
+    все raw-хиты с одного хоста) round-robin честно резал итог до
+    `max_per_domain`, а остаток того же ответа просто терялся — добор не
+    происходил, хотя материал был в наличии (аудит: `domains=1` → `out=2`
+    вместо квоты в 4, при raw_total=18 — сетевой Pass 2 при этом не
+    триггерился, т.к. зависел только от `raw_total==0`, а не от итогового
+    дефицита после cap'а). Эта функция — Шаг Б двухэтапного добора.
+    """
+    if len(selected) >= target:
+        return selected
+    url_fn = get_url or (lambda h: getattr(h, "url", "") or "")
+    seen = {(url_fn(h) or "").strip().lower() for h in selected}
+    out = list(selected)
+    for h in all_hits:
+        if len(out) >= target:
+            break
+        key = (url_fn(h) or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(h)
+    return out
+
+
 def apply_exa_domain_cap(
     hits: list[ExaSearchHit],
     *,
@@ -573,15 +632,24 @@ def exa_response_to_curriculum_hits(
     return [exa_hit_to_curriculum_hit(h) for h in capped if h.url.startswith("http")]
 
 
+@dataclass(frozen=True)
+class ExaQueryPlan:
+    """Multi-vector Exa specs plus the local pre-flight triage payload."""
+
+    specs: list[ExaQuerySpec]
+    keywords: list[str] = field(default_factory=list)
+    core_theme: str = ""
+
+
 async def build_exa_query_plan(
     context: str,
     *,
     anchor: str,
-) -> list[ExaQuerySpec]:
+) -> ExaQueryPlan:
     """Multi-vector Exa plan (Lite); ≥1–2 Russian vectors guaranteed when possible."""
     ru = (context or "").strip()[:1200]
     if len(ru) < 8:
-        return []
+        return ExaQueryPlan(specs=[])
 
     from knowledge_engine.src.curriculum.lite_search_pipeline import _lite_structured
 
@@ -592,8 +660,11 @@ async def build_exa_query_plan(
             json.dumps(
                 {
                     "learning_context": ru,
-                    "avoid": "SDK/API reference, swagger, openapi docs, cloud console setup",
-                    "prefer": "architecture, Habr-style Russian longreads, production cases",
+                    "avoid": "swagger, openapi consoles, cloud console setup wizards",
+                    "prefer": (
+                        "official docs and PEPs, CPython/runtime internals, "
+                        "architecture, production cases, Habr-style longreads"
+                    ),
                 },
                 ensure_ascii=False,
             ),
@@ -610,8 +681,8 @@ async def build_exa_query_plan(
             ("ru_expert_article", "ru_expert_article"),
             ("ru_practical_cases", "ru_practical_cases"),
         ]
-        for field, role in field_roles:
-            q = (getattr(out, field) or "").strip()[:400]
+        for field_name, role in field_roles:
+            q = (getattr(out, field_name) or "").strip()[:400]
             if len(q) < 8:
                 continue
             hl = _EXA_HIGHLIGHT_BY_ROLE[role]
@@ -632,9 +703,17 @@ async def build_exa_query_plan(
         if not specs:
             raise ValueError("empty query plan")
 
+        keywords = [k.strip()[:80] for k in (out.keywords or []) if (k or "").strip()][
+            :8
+        ]
+        core_theme = (out.core_theme or "").strip()[:600]
+
         roles = ",".join(s.role for s in specs)
-        trace(f"CURRICULUM exa query_plan ✓ | vectors={len(specs)} roles={roles}")
-        return specs
+        trace(
+            f"CURRICULUM exa query_plan ✓ | vectors={len(specs)} roles={roles} "
+            f"keywords={len(keywords)} core_theme={'set' if core_theme else 'empty'}"
+        )
+        return ExaQueryPlan(specs=specs, keywords=keywords, core_theme=core_theme)
     except Exception as exc:
         trace(f"CURRICULUM exa query_plan fallback | {exc}")
         ru_q, en_q = await build_exa_dual_queries(context, anchor=anchor)
@@ -655,7 +734,7 @@ async def build_exa_query_plan(
                     highlight_query=_EXA_HIGHLIGHT_BY_ROLE["ru_expert_article"],
                 )
             )
-        return fallback
+        return ExaQueryPlan(specs=fallback)
 
 
 async def build_exa_dual_queries(
@@ -676,8 +755,8 @@ async def build_exa_dual_queries(
             json.dumps(
                 {
                     "learning_context": ru,
-                    "avoid": "SDK/API reference pages, cloud console setup, v2_operations",
-                    "prefer": "architecture, implementation guide, deep dive, benchmark",
+                    "avoid": "swagger/openapi consoles, cloud console setup",
+                    "prefer": "official specs/docs, architecture, implementation, deep dive",
                 },
                 ensure_ascii=False,
             ),
@@ -738,6 +817,10 @@ async def _lite_rerank_exa_hits(
             max_per_domain=per_dom,
             get_url=lambda h: h.url,
         )
+        if len(diversified) < min(cap, len(approved)):
+            diversified = fill_round_robin_tail(
+                diversified, approved, min(cap, len(approved)), get_url=lambda h: h.url
+            )
         return diversified[:cap]
     trace("CURRICULUM exa lite rerank ⊘ | approved=0 — keep domain-capped order")
     return hits[:cap]
@@ -751,6 +834,10 @@ async def _exa_search_one(
     exclude_text: list[str] | None = None,
     highlight_query: str | None = None,
     max_num_results: int | None = None,
+    include_domains: list[str] | None = None,
+    search_type: str = "auto",
+    category: str | None = None,
+    allow_unrestricted_fallback: bool = False,
 ) -> list[ExaSearchHit]:
     if not (query or "").strip():
         return []
@@ -762,14 +849,21 @@ async def _exa_search_one(
         if max_num_results is not None
         else CURRICULUM_PRACTICAL_EXA_LIMIT
     )
-    exc_text = normalize_exa_exclude_text(exclude_text or EXA_EXCLUDE_TEXT)
+    if exclude_text is not None:
+        exc_text = normalize_exa_exclude_text(exclude_text)
+    else:
+        exc_text = normalize_exa_exclude_text(EXA_EXCLUDE_TEXT)
     hl = (highlight_query or EXA_PRACTICAL_HIGHLIGHT_QUERY).strip()
     response = await asyncio.to_thread(
         client.search,
         query.strip(),
         num_results=max(1, min(num_results, cap)),
+        search_type=search_type,
+        include_domains=include_domains,
         exclude_text=exc_text,
+        category=category,
         highlight_query=hl,
+        allow_unrestricted_fallback=allow_unrestricted_fallback,
     )
     return list(response.hits)
 
@@ -798,10 +892,26 @@ async def fetch_exa_curriculum_hits_for_node(
         return []
 
     context = _learning_context_for_node(node, course_goal)
-    plan = await build_exa_query_plan(
+    from knowledge_engine.services.search.exa_domain_validate import (
+        prepare_exa_pass1_domains,
+    )
+    from knowledge_engine.services.search.exa_source_expand import (
+        absorb_new_exa_hosts,
+        exa_pass2_categories,
+        expand_search_context_with_flash_lite,
+        filter_pass1_official_hosts,
+    )
+
+    expansion = await asyncio.to_thread(expand_search_context_with_flash_lite, context)
+    live_domains = await prepare_exa_pass1_domains(expansion.primary_domains)
+    validated_domains = filter_pass1_official_hosts(live_domains)
+    docs_exclude: list[str] | None = [] if expansion.include_official_docs else None
+
+    qplan = await build_exa_query_plan(
         context,
         anchor=f"{anchor}:practical:{node.node_id}",
     )
+    plan = qplan.specs
     if not plan:
         return []
 
@@ -813,7 +923,11 @@ async def fetch_exa_curriculum_hits_for_node(
     )
 
     per_vector = max(3, EXA_FETCH_NUM_RESULTS // max(1, len(plan)))
-    fetch_cap = max(cap + 8, cap * 2, EXA_FETCH_NUM_RESULTS)
+    fetch_cap = (
+        CURRICULUM_PREFLIGHT_FETCH_CAP
+        if CURRICULUM_PREFLIGHT_ENABLED
+        else max(cap + 8, cap * 2, EXA_FETCH_NUM_RESULTS)
+    )
     recall_per_domain = max(1, EXA_RECALL_MAX_PER_DOMAIN)
     sem = asyncio.Semaphore(max(1, EXA_MAX_CONCURRENT_SEARCH))
 
@@ -823,19 +937,121 @@ async def fetch_exa_curriculum_hits_for_node(
         f"max_per_domain={recall_per_domain} concurrency={EXA_MAX_CONCURRENT_SEARCH}"
     )
 
-    async def _search_spec(spec: ExaQuerySpec) -> list[ExaSearchHit]:
-        async with sem:
-            return await _exa_search_one(
-                client,
-                spec.query,
-                per_vector,
-                highlight_query=spec.highlight_query,
-                max_num_results=EXA_FETCH_NUM_RESULTS,
+    async def _search_vectors(
+        *,
+        include_domains: list[str],
+        category: str | None,
+    ) -> list[list[ExaSearchHit]]:
+        async def _one(spec: ExaQuerySpec) -> list[ExaSearchHit]:
+            docs_lane = spec.role in ("en_technical", "en_declarative")
+            async with sem:
+                return await _exa_search_one(
+                    client,
+                    spec.query,
+                    per_vector,
+                    highlight_query=spec.highlight_query,
+                    max_num_results=EXA_FETCH_NUM_RESULTS,
+                    include_domains=include_domains,
+                    search_type=(expansion.search_type if docs_lane else "auto"),
+                    category=category,
+                    exclude_text=docs_exclude,
+                    allow_unrestricted_fallback=False,
+                )
+
+        return list(await asyncio.gather(*[_one(s) for s in plan]))
+
+    # Квота, которую реально нужно набрать для ноды — не путать с `fetch_cap`
+    # (широкая recall-ёмкость round-robin'а). Двухэтапный добор (Шаг А/Б) и
+    # решение о сетевом Pass 2 меряются именно по ней, а не по голому
+    # raw_total: раньше Pass 2 триггерился ТОЛЬКО при raw_total==0, из-за чего
+    # прогон с raw_total=18, но domains=1 (все хиты с одного хоста —
+    # обычная непредсказуемость Exa между запросами) молча отдавал 2
+    # источника вместо 4, хотя сетевой добор мог бы найти остальные.
+    target_cap = (
+        min(cap, CURRICULUM_PREFLIGHT_FINAL_ARTICLES)
+        if CURRICULUM_PREFLIGHT_ENABLED
+        else cap
+    )
+
+    def _merge_and_cap(
+        all_batches: list[list[ExaSearchHit]],
+    ) -> tuple[list[ExaSearchHit], list[ExaSearchHit]]:
+        merged = merge_multi_vector_exa_hits(all_batches, cap=fetch_cap)
+        capped = fair_domain_round_robin(
+            merged,
+            fetch_cap,
+            max_per_domain=recall_per_domain,
+            get_url=lambda h: h.url,
+        )
+        if len(capped) < target_cap:
+            before = len(capped)
+            capped = fill_round_robin_tail(
+                capped, merged, target_cap, get_url=lambda h: h.url
             )
+            if len(capped) > before:
+                trace(
+                    f"CURRICULUM exa tail_fill ✓ | {before}→{len(capped)} "
+                    f"target_cap={target_cap} (добор из хвоста round-robin'а)"
+                )
+        return merged, capped
 
     try:
         client = ExaSearchClient(api_key=EXA_API_KEY)
-        batches = await asyncio.gather(*[_search_spec(s) for s in plan])
+        batches: list[list[ExaSearchHit]] = []
+        raw_total = 0
+        merged_raw: list[ExaSearchHit] = []
+        capped_raw: list[ExaSearchHit] = []
+        if validated_domains:
+            trace(
+                f"CURRICULUM exa pass 1 ▶ | include_domains={validated_domains} "
+                f"category=None"
+            )
+            batches = await _search_vectors(
+                include_domains=validated_domains,
+                category=None,
+            )
+            raw_total = sum(len(b) for b in batches)
+            trace(f"CURRICULUM exa pass 1 ✓ | hits={raw_total}")
+            if raw_total:
+                merged_raw, capped_raw = _merge_and_cap(batches)
+
+        # Сетевой Pass 2 — ТОЛЬКО если после Pass 1 + добора из хвоста всё
+        # ещё не хватает до target_cap (не по голому raw_total==0).
+        if len(capped_raw) < target_cap:
+            for cat in exa_pass2_categories(expansion):
+                trace(
+                    f"CURRICULUM exa pass 2 ▶ | include_domains=∅ category={cat} "
+                    f"(after_pass1_and_tail={len(capped_raw)}/{target_cap})"
+                )
+                extra_batches = await _search_vectors(
+                    include_domains=[],
+                    category=cat,
+                )
+                extra_total = sum(len(b) for b in extra_batches)
+                raw_total += extra_total
+                trace(f"CURRICULUM exa pass 2 ✓ | category={cat} hits={extra_total}")
+                if extra_total:
+                    batches = batches + extra_batches
+                    merged_raw, capped_raw = _merge_and_cap(batches)
+                    if len(capped_raw) >= target_cap:
+                        break
+            if len(capped_raw) < target_cap and expansion.use_broader_search:
+                extra = await _exa_search_one(
+                    client,
+                    plan[0].query,
+                    fetch_cap,
+                    highlight_query=plan[0].highlight_query,
+                    max_num_results=EXA_FETCH_NUM_RESULTS,
+                    include_domains=[],
+                    search_type=expansion.search_type,
+                    exclude_text=docs_exclude,
+                    allow_unrestricted_fallback=False,
+                )
+                raw_total += len(extra)
+                trace(f"CURRICULUM exa pass 2 ✓ | category=None hits={len(extra)}")
+                if extra:
+                    batches = batches + [extra]
+                    merged_raw, capped_raw = _merge_and_cap(batches)
     except ExaNotConfiguredError as exc:
         trace(f"CURRICULUM exa ✗ | {exc}")
         return []
@@ -843,16 +1059,11 @@ async def fetch_exa_curriculum_hits_for_node(
         trace(f"CURRICULUM exa ✗ | {exc}")
         return []
 
-    raw_total = sum(len(b) for b in batches)
-    trace(f"CURRICULUM exa raw hits | total={raw_total} from_vectors={len(batches)}")
-
-    merged_raw = merge_multi_vector_exa_hits(batches, cap=fetch_cap)
-    capped_raw = fair_domain_round_robin(
-        merged_raw,
-        fetch_cap,
-        max_per_domain=recall_per_domain,
-        get_url=lambda h: h.url,
+    trace(
+        f"CURRICULUM exa raw hits | total={raw_total} from_vectors={len(batches)} "
+        f"capped={len(capped_raw)}/{target_cap}"
     )
+
     hits = [exa_hit_to_curriculum_hit(h) for h in capped_raw]
     hits = filter_and_rank_exa_curriculum_hits(hits)
 
@@ -875,28 +1086,51 @@ async def fetch_exa_curriculum_hits_for_node(
         f"(from_ranked={len(hits)})"
     )
 
-    threshold = max(1, EXA_RERANK_LITE_THRESHOLD)
-    if len(out) > threshold:
-        out = await _lite_rerank_exa_hits(
+    if CURRICULUM_PREFLIGHT_ENABLED and qplan.core_theme:
+        from knowledge_engine.src.curriculum.pre_flight_triage import (
+            run_pre_flight_triage,
+        )
+
+        out = await run_pre_flight_triage(
             out,
-            context,
-            list(node.core_concepts or []),
-            anchor=f"{anchor}:practical:{node.node_id}",
-            cap=cap,
-            max_per_domain=recall_per_domain,
+            core_theme=qplan.core_theme,
+            keywords=qplan.keywords,
+            final_articles=min(cap, CURRICULUM_PREFLIGHT_FINAL_ARTICLES),
         )
     else:
-        out = fair_domain_round_robin(
-            out,
-            cap,
-            max_per_domain=recall_per_domain,
-            get_url=lambda h: h.url,
-        )[:cap]
+        threshold = max(1, EXA_RERANK_LITE_THRESHOLD)
+        if len(out) > threshold:
+            out = await _lite_rerank_exa_hits(
+                out,
+                context,
+                list(node.core_concepts or []),
+                anchor=f"{anchor}:practical:{node.node_id}",
+                cap=cap,
+                max_per_domain=recall_per_domain,
+            )
+        else:
+            before_cap_robin = out
+            out = fair_domain_round_robin(
+                out,
+                cap,
+                max_per_domain=recall_per_domain,
+                get_url=lambda h: h.url,
+            )
+            if len(out) < min(cap, len(before_cap_robin)):
+                out = fill_round_robin_tail(
+                    out,
+                    before_cap_robin,
+                    min(cap, len(before_cap_robin)),
+                    get_url=lambda h: h.url,
+                )
+            out = out[:cap]
 
     skip_n = sum(1 for h in out if h.skip_ollama_summary)
+    absorb_new_exa_hosts([h.url for h in out])
     trace(
         f"CURRICULUM exa ✓ | node={node.node_id} hits={len(out)} "
-        f"skip_ollama={skip_n}"
+        f"skip_ollama={skip_n} intent={expansion.intent} "
+        f"primary_domains={len(validated_domains)}"
     )
     return out[:cap]
 
@@ -924,7 +1158,7 @@ async def fetch_exa_curriculum_hits_simple(
     try:
         client = ExaSearchClient(api_key=EXA_API_KEY)
         response = await asyncio.to_thread(
-            client.search,
+            client.search_expanded,
             q,
             num_results=max(1, min(limit, CURRICULUM_PRACTICAL_EXA_LIMIT)),
         )

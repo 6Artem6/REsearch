@@ -1,4 +1,4 @@
-"""Pre-filter изображений: batch Ollama → Top-K для VLM."""
+"""Pre-filter изображений: batch Gemma Cloud → Top-K для VLM."""
 
 from __future__ import annotations
 
@@ -7,19 +7,11 @@ import json
 import re
 from typing import List
 
-import httpx
 from pydantic import BaseModel, Field, field_validator
 
 from knowledge_engine.config import (
-    ARTICLE_DIAGRAM_FILTER_NUM_CTX,
-    ARTICLE_DIAGRAM_FILTER_NUM_PREDICT,
-    ARTICLE_DIAGRAM_FILTER_OLLAMA_MODEL,
-    ARTICLE_DIAGRAM_FILTER_TIMEOUT_SEC,
     ARTICLE_MAX_DIAGRAMS_PER_ARTICLE,
-    OLLAMA_BASE_URL,
-    SELECTION_PROMPTS_KEEP_ALIVE,
 )
-from knowledge_engine.services.ollama_runtime import ensure_ollama_server
 from knowledge_engine.services.parsers.base import ExtractedImage
 from knowledge_engine.ui.run_log import trace
 
@@ -183,14 +175,12 @@ def _parse_batch_result(text: str) -> BatchFilterResult | None:
         return None
 
 
-async def _ollama_batch_filter(
+async def _gemma_batch_filter(
     indices: list[int],
     images: list[ExtractedImage],
 ) -> BatchFilterResult | None:
     if not indices:
         return BatchFilterResult()
-    if not await ensure_ollama_server():
-        return None
 
     lines = [
         "Select candidate ids suitable for architecture diagram / VLM extraction.",
@@ -201,31 +191,23 @@ async def _ollama_batch_filter(
         lines.append(_candidate_block(idx, images[idx]))
     prompt = "\n".join(lines)
     trace(
-        f"ARTICLE_SMART_FILTER ollama ▶ | batch_ids={len(indices)} "
-        f"prompt_chars={len(prompt)} num_ctx={ARTICLE_DIAGRAM_FILTER_NUM_CTX}"
+        f"ARTICLE_SMART_FILTER gemma ▶ | batch_ids={len(indices)} "
+        f"prompt_chars={len(prompt)}"
     )
+    try:
+        from knowledge_engine.llm import complete_structured_async
 
-    url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/generate"
-    payload = {
-        "model": ARTICLE_DIAGRAM_FILTER_OLLAMA_MODEL,
-        "system": _SYSTEM,
-        "prompt": prompt,
-        "stream": False,
-        "keep_alive": SELECTION_PROMPTS_KEEP_ALIVE,
-        "options": {
-            "num_predict": ARTICLE_DIAGRAM_FILTER_NUM_PREDICT,
-            "num_ctx": ARTICLE_DIAGRAM_FILTER_NUM_CTX,
-            "temperature": 0.05,
-        },
-    }
-    timeout = httpx.Timeout(ARTICLE_DIAGRAM_FILTER_TIMEOUT_SEC)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post(url, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-    parsed = _parse_batch_result(str(data.get("response") or ""))
+        parsed = await complete_structured_async(
+            BatchFilterResult,
+            _SYSTEM,
+            prompt,
+            label="article_smart_filter",
+        )
+    except Exception as exc:
+        trace(f"ARTICLE_SMART_FILTER gemma ✗ | {exc}")
+        return None
     if parsed is None:
-        trace("ARTICLE_SMART_FILTER ollama ✗ | JSON parse failed")
+        trace("ARTICLE_SMART_FILTER gemma ✗ | JSON parse failed")
     return parsed
 
 
@@ -252,7 +234,7 @@ async def _filter_all_batches(images: list[ExtractedImage]) -> list[ApprovedDiag
         return []
     merged: list[ApprovedDiagram] = []
     for group in groups:
-        result = await _ollama_batch_filter(group, images)
+        result = await _gemma_batch_filter(group, images)
         batch_approved: list[ApprovedDiagram] = []
         if result is not None:
             batch_approved = list(result.approved)
@@ -273,7 +255,7 @@ def filter_structural_diagram_candidates(
 ) -> list[ExtractedImage]:
     """
     Batch Qwen → Top-K по importance (хронология при равном score).
-    При недоступности Ollama — пустой список (VLM не вызывается).
+    При недоступности Gemma Cloud — пустой список (VLM не вызывается).
     """
     n = len(images)
     if n == 0:
@@ -283,12 +265,12 @@ def filter_structural_diagram_candidates(
     try:
         approved = asyncio.run(_filter_all_batches(images))
     except Exception as exc:
-        trace(f"ARTICLE_SMART_FILTER ollama ✗ | {exc}")
+        trace(f"ARTICLE_SMART_FILTER gemma ✗ | {exc}")
         return []
 
     if not approved:
         trace(
-            f"ARTICLE_SMART_FILTER | candidates={n} ollama_batches={len(groups)} "
+            f"ARTICLE_SMART_FILTER | candidates={n} gemma_batches={len(groups)} "
             "qwen_approved=0 vlm_next=0"
         )
         return []
@@ -296,7 +278,7 @@ def filter_structural_diagram_candidates(
     before_cap = len({a.id for a in approved if 0 <= a.id < n})
     out = _apply_top_k(images, approved)
     trace(
-        f"ARTICLE_SMART_FILTER | candidates={n} ollama_batches={len(groups)} "
+        f"ARTICLE_SMART_FILTER | candidates={n} gemma_batches={len(groups)} "
         f"qwen_approved={before_cap} top_k={len(out)} "
         f"cap={ARTICLE_MAX_DIAGRAMS_PER_ARTICLE} vlm_next={len(out)}"
     )

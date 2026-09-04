@@ -14,19 +14,23 @@ from knowledge_engine.ui.run_log import trace
 
 _RISK_SYSTEM = (
     f"{RUSSIAN_OUTPUT_RULE}\n\n"
-    "Ты — инспектор учебного графа. Для каждой ноды определи тип знания:\n\n"
-    "**BASE** (Общая практика): стандартные концепты, синтаксис, базовые паттерны, "
-    "введение в тему. Веб-поиск для них НЕ нужен — достаточно знаний модели.\n\n"
-    "**DEEP** (Тонкости и академика): архитектурные риски, edge cases, гарантии "
-    "отказоустойчивости, формальные/распределённые алгоритмы, SOTA, верификация, "
-    "сложные trade-offs. Для них ТРЕБУЕТСЯ внешний RAG.\n\n"
-    "Правила:\n"
-    "- foundation с базовым синтаксисом → чаще BASE.\n"
-    "- advanced/sota с рисками, гарантиями, формальными моделями → DEEP.\n"
-    "- Не помечай всё DEEP: ~30–50% нод обычно DEEP.\n\n"
-    "JSON: assignments — массив { node_id, risk_kind (BASE|DEEP), reason (русский) } "
-    "для каждого node_id из входа."
+    "You are a curriculum graph inspector. For each node, determine its knowledge type:\n\n"
+    "**BASE** (General practice): standard concepts, syntax, basic patterns, "
+    "topic introduction. No web search is needed — the model's own knowledge is enough.\n\n"
+    "**DEEP** (Nuances and academia): architectural risks, edge cases, fault-tolerance "
+    "guarantees, formal/distributed algorithms, SOTA, verification, "
+    "complex trade-offs. These REQUIRE external RAG.\n\n"
+    "Rules:\n"
+    "- foundation nodes with basic syntax → usually BASE.\n"
+    "- advanced/sota nodes with risks, guarantees, formal models → DEEP.\n"
+    "- Do not mark everything DEEP: ~30-50% of nodes is typical for DEEP.\n\n"
+    "JSON: assignments — an array of { node_id, risk_kind (BASE|DEEP), reason (Russian) } "
+    "for every node_id in the input."
 )
+"""
+RU (пояснение): классификация нод BASE (хватит знаний модели) vs DEEP
+(нужен внешний RAG) — этап 2 генерации курса, перед добором источников.
+"""
 
 
 class NodeRiskAssignment(BaseModel):

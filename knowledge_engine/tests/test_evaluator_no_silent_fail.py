@@ -92,6 +92,8 @@ def test_id_mismatch_single_update_soft_accepted():
             why_passed=True,
             how_passed=True,
             mechanic_passed=False,
+            accuracy_grade="EXACT_AND_CORRECT",
+            detected_errors_or_misconceptions=[],
             evidence="async hierarchy",
             focus_hint="",
         )

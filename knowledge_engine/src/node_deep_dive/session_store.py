@@ -21,7 +21,11 @@ from knowledge_engine.src.node_deep_dive.dialog_ids import (
     parse_msg_id,
     reconcile_dialog_history,
 )
-from knowledge_engine.src.node_deep_dive.memory_schemas import SessionMemory
+from knowledge_engine.src.node_deep_dive.fact_manifest import merge_manifest
+from knowledge_engine.src.node_deep_dive.memory_schemas import (
+    DialogueFactManifest,
+    SessionMemory,
+)
 from knowledge_engine.src.node_deep_dive.schemas import NodeContentBlock, NodeStatus
 from knowledge_engine.src.node_deep_dive.term_registry import (
     carry_introduced_terms,
@@ -115,6 +119,61 @@ def persist_session_memory(
         prev["updated_at"] = datetime.now(timezone.utc).isoformat()
         all_data[key] = prev
         _save_all(all_data)
+
+
+def apply_fact_manifest_patch(
+    curriculum_id: str,
+    node_id: str,
+    expected_version: int,
+    new_manifest: DialogueFactManifest,
+) -> bool:
+    """CAS-merge результата фоновой fact_manifest-экстракции
+    (services/context_compressor_worker.py).
+
+    Читает свежую запись сессии ПРЯМО под ``_lock`` и пишет только
+    ``memory.fact_manifest``/``manifest_version`` — остальные поля записи
+    (history/content/...) могли измениться, пока фоновая задача считала
+    Gemini, и не должны затираться.
+
+    ВАЖНО (найдено на живом прогоне): один ход пользователя может вызвать
+    ``rotate_window_after_message`` дважды подряд (эвикция user- и
+    tutor-сообщения одного и того же хода — см. ``commit_turn_node``), и
+    оба enqueue происходят с ОДНОЙ и той же ``expected_manifest_version``
+    (версия растёт только здесь, в фоне, а не синхронно на hot path). Это
+    не гонка с пользователем — просто два job'а одного хода. Строгий
+    abort-on-mismatch (как было раньше) в этом случае выбрасывал честно
+    извлечённые факты второго job'а, хотя реального конфликта не было.
+    ``merge_manifest`` — аддитивная операция (union списков с dedup, см.
+    ``_merge_lists``), поэтому вместо abort здесь всегда мёржим
+    ``new_manifest`` поверх СВЕЖЕГО (не устаревшего enqueue-time) текущего
+    ``fact_manifest`` и монотонно растим версию. Несовпадение
+    ``expected_version`` только логируется — данные всё равно не теряются.
+    """
+    from knowledge_engine.ui.run_log import trace
+
+    key = _session_key(curriculum_id, node_id)
+    with _lock:
+        all_data = _load_all()
+        entry = all_data.get(key)
+        if not entry:
+            trace(f"WORKER dialog_summarize CAS ⊘ | {key} | session not found")
+            return False
+        memory = memory_from_blob(entry.get("memory"))
+        if memory is None:
+            trace(f"WORKER dialog_summarize CAS ⊘ | {key} | no memory blob")
+            return False
+        if memory.manifest_version != expected_version:
+            trace(
+                f"WORKER dialog_summarize CAS merge (stale base) | {key} | "
+                f"expected_version={expected_version} actual={memory.manifest_version}"
+            )
+        memory.fact_manifest = merge_manifest(memory.fact_manifest, new_manifest)
+        memory.manifest_version += 1
+        entry = dict(entry)
+        entry["memory"] = memory_to_blob(memory)
+        all_data[key] = entry
+        _save_all(all_data)
+        return True
 
 
 def normalize_dialog_history(
@@ -295,14 +354,20 @@ def save_session(
         from knowledge_engine.src.node_deep_dive.tutor_dialogue import (
             recover_tutor_display_from_chat_sessions,
         )
+        from knowledge_engine.src.node_deep_dive.tutor_field_limits import (
+            SCHEMA_FOLLOW_UP_QUESTION_MAX,
+            SCHEMA_TUTOR_MESSAGE_MAX,
+        )
 
         full = (memory.last_tutor_display_message or "").strip()
         if not full:
             full, fu = recover_tutor_display_from_chat_sessions(memory)
             if full:
-                memory.last_tutor_display_message = full[:12_000]
+                memory.last_tutor_display_message = full[:SCHEMA_TUTOR_MESSAGE_MAX]
                 if fu:
-                    memory.last_tutor_follow_up_question = fu[:2000]
+                    memory.last_tutor_follow_up_question = fu[
+                        :SCHEMA_FOLLOW_UP_QUESTION_MAX
+                    ]
         if full:
             norm_history = patch_last_tutor_history_content(norm_history, full)
     _repair_tutor_history_markdown(norm_history)

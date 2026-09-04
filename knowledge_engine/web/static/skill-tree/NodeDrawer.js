@@ -258,7 +258,7 @@ function renderRouteCurriculumMaterials(selectedNode, curriculum, session) {
         React.createElement(
           "h4",
           { className: "drawer-subtitle" },
-          "Адресация ноды (mapped_source_ids)",
+          "Адресация ноды",
         ),
         React.createElement(
           "ul",
@@ -377,6 +377,7 @@ export function NodeDrawer({
           status: st,
           masteryDashboard: session?.masteryDashboard,
           topicMasteryScore: session?.topicMasteryScore,
+          lastEvalDirective: session?.lastEvalDirective,
           onModeSelect: onModeSelect,
           disabled: composeLocked,
         }),
@@ -488,9 +489,13 @@ export function NodeDrawer({
             type: "button",
             className: "verify-btn",
             onClick: () => {
-              if (!composeLocked) onVerify?.();
+              if (!composeLocked && !nodeGenerating) onVerify?.();
             },
-            disabled: composeLocked,
+            disabled: Boolean(composeLocked || nodeGenerating),
+            title:
+              composeLocked || nodeGenerating
+                ? "Дождитесь ответа тьютора"
+                : undefined,
           },
           "Финальная проверка",
         ),

@@ -20,10 +20,16 @@ from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.curriculum_whitelist_prompt import (
     _TUTOR_NEIGHBORHOOD_RULES,
 )
+from knowledge_engine.src.node_deep_dive.context_bounded_eval import (
+    CONTEXT_BOUNDED_QUESTION_RULES,
+)
 from knowledge_engine.src.node_deep_dive.dialogue_prompt_en import (
     DIALOGUE_RECENCY_REMINDERS_EN,
     dialogue_base_system_parts,
     dialogue_module_parts,
+)
+from knowledge_engine.src.node_deep_dive.tutor_field_limits import (
+    PROMPT_LECTURE_BODY_TARGET_MAX_WORDS,
 )
 from knowledge_engine.src.node_deep_dive.interaction_prompt_layout import (
     BLOCK_STATIC_PRESET_HEADER,
@@ -51,6 +57,8 @@ from knowledge_engine.src.node_deep_dive.lecture_prompt_en import (
     LECTURE_CHAT_INTERACTION_MODE,
     LECTURE_CHAT_TAIL_RULES,
     LECTURE_DENSE_RULES,
+    LECTURE_GAP_STEERING_RULES,
+    LECTURE_MODE_STRUCTURE_RULES,
     LECTURE_SYSTEM_PROMPT,
     NO_CLOSING_QUESTIONNAIRES,
     NODE_MATERIALS_TOUR_RULES,
@@ -118,6 +126,7 @@ def _intro_module_parts() -> list[str]:
         INTRO_MODULE_INTRO_ASSESSMENT,
         INTRO_MODULE_CONTEXT_BRIDGE,
         CONCEPT_INTRODUCTION_INTRO_RULES,
+        CONTEXT_BOUNDED_QUESTION_RULES,
         QUESTION_FORMATION_RULES,
     ]
 
@@ -131,6 +140,7 @@ def _lecture_chat_module_parts() -> list[str]:
         LECTURE_CHAT_INTERACTION_MODE,
         CONCEPT_INTRODUCTION_FRAMEWORK,
         LECTURE_DENSE_RULES,
+        LECTURE_MODE_STRUCTURE_RULES,
         KNOWLEDGE_TRIANGULATION_LECTURE_RULES,
         DIAGRAM_INTEGRATION_CROSS_REF,
         DIAGRAM_SELECTION_RULES,
@@ -143,6 +153,7 @@ def _lecture_chat_module_parts() -> list[str]:
         NODE_MATERIALS_TOUR_RULES,
         _TUTOR_NEIGHBORHOOD_RULES,
         format_whitelist_for_reasoner_prompt(),
+        CONTEXT_BOUNDED_QUESTION_RULES,
         QUESTION_FORMATION_RULES,
         DIALOGUE_TUTOR_JSON_CONTRACT,
     ]
@@ -161,7 +172,10 @@ def _dense_lecture_module_parts(ctx: PromptComposeContext) -> list[str]:
     if ctx.topic_already_covered:
         parts.append(TOPIC_ALREADY_COVERED_DENSE)
     if not ctx.topic_already_covered and not ctx.targeted:
-        parts.append(f"lecture_body (REQUIRED): ≥{min_w} words for chat")
+        parts.append(
+            f"lecture_body (REQUIRED): ≥{min_w} words for chat; "
+            f"target ≤{PROMPT_LECTURE_BODY_TARGET_MAX_WORDS} words unless user asks for more"
+        )
     else:
         parts.append(
             "lecture_body: relevant delta only or targeted deep dive (no base repeat)"
@@ -176,6 +190,7 @@ def _dense_lecture_module_parts(ctx: PromptComposeContext) -> list[str]:
             PINNED_DIAGRAMS_GUIDING_RULES,
             DIAGRAM_SELECTION_RULES,
             EXTERNAL_SEARCH_TOOL_RULE,
+            CONTEXT_BOUNDED_QUESTION_RULES,
             QUESTION_FORMATION_RULES,
             REASONER_SOURCE_ATTRIBUTION_PROMPT,
             format_whitelist_for_reasoner_prompt(),
@@ -226,6 +241,7 @@ def build_critical_rules_recency_tail(
     elif mode == InteractionPromptMode.LECTURE_CHAT:
         parts.extend(
             [
+                LECTURE_MODE_STRUCTURE_RULES,
                 NO_CLOSING_QUESTIONNAIRES,
                 CONCEPT_INTRODUCTION_LECTURE_RULE,
                 DIAGRAM_INTEGRATION_CROSS_REF,
@@ -236,6 +252,8 @@ def build_critical_rules_recency_tail(
     elif mode == InteractionPromptMode.LECTURE_DENSE:
         parts.extend(
             [
+                LECTURE_MODE_STRUCTURE_RULES,
+                LECTURE_GAP_STEERING_RULES,
                 NO_CLOSING_QUESTIONNAIRES,
                 CONCEPT_INTRODUCTION_LECTURE_RULE,
                 DIAGRAM_INTEGRATION_CROSS_REF,
@@ -287,7 +305,10 @@ def compose_system_prompt(
         topic_already_covered=ctx.topic_already_covered,
     )
     ctx.last_recency_len = len(recency)
-    sections.append(recency)
+    ctx.recency_tail = recency
+    # Recency/explained-terms/topic-covered stay out of system_instruction so it is a
+    # byte-stable prefix for Gemini context caching; caller injects ctx.recency_tail
+    # into the per-turn user payload instead (see build_dynamic_suffix / recency_rules).
     text = "\n\n".join(s for s in sections if (s or "").strip())
     total_len = len(text)
     if mode == InteractionPromptMode.DIALOGUE_FEEDBACK:

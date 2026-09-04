@@ -16,8 +16,12 @@ from knowledge_engine.schemas import (
     EngineGraphState,
     EngineState,
 )
+from knowledge_engine.schemas.research_schemas import (
+    ClarificationConstraintsResponse,
+    render_clarification_constraints,
+)
 from knowledge_engine.services.context_manager import rolling_summarize_dialogue
-from knowledge_engine.services.gemini_research_session import ask_gemini_research
+from knowledge_engine.src.analytics.gemini_v07 import run_gemini_flash_structured
 from knowledge_engine.src.processors.question_formation_rules import (
     QUESTION_FORMATION_RULES,
 )
@@ -35,15 +39,38 @@ def _constraints_already_rich(parsed: EngineState) -> bool:
     return has_stack and has_topic
 
 
-def _gemini_clarify(question: str, parsed: EngineState) -> str:
-    payload = (
-        "Ответь на русском, 5–8 буллетов, без вступления.\n\n"
-        f"Контекст задачи: {parsed.user_problem}\n"
-        f"Стек: {parsed.context_constraints or '(нет)'}\n\n"
-        f"Вопрос: {question}"
+_CLARIFY_SYSTEM = (
+    "You extract concrete technical constraints for an architecture research run.\n"
+    "Return strictly valid JSON matching ClarificationConstraintsResponse.\n"
+    "Required key: constraints — 3 to 8 short non-empty strings "
+    "(stack, RAM, latency, local-only, data volume, SLA).\n"
+    "No markdown, no prose outside JSON. User-facing strings in natural Russian.\n"
+)
+
+
+def _gemini_clarify(
+    question: str, parsed: EngineState
+) -> ClarificationConstraintsResponse:
+    user = (
+        f"Research question:\n{question}\n\n"
+        f"Problem:\n{parsed.user_problem}\n"
+        f"Known stack / constraints:\n{parsed.context_constraints or '(none)'}\n"
     )
-    set_status("[intent_and_clarify] уточнение → Gemini (короткий запрос)…")
-    return ask_gemini_research(payload)
+    anchor = f"{parsed.user_problem}\n{parsed.context_constraints}".strip()
+    set_status("[intent_and_clarify] уточнение → Gemini structured JSON…")
+    return run_gemini_flash_structured(
+        _CLARIFY_SYSTEM,
+        user,
+        anchor,
+        ClarificationConstraintsResponse,
+        "intent_and_clarify / ClarificationConstraintsResponse",
+    )
+
+
+def format_clarification_constraints(
+    payload: ClarificationConstraintsResponse,
+) -> str:
+    return render_clarification_constraints(payload)
 
 
 def intent_and_clarify_node(state: EngineGraphState) -> dict[str, Any]:
@@ -95,7 +122,8 @@ def intent_and_clarify_node(state: EngineGraphState) -> dict[str, Any]:
         use_gemini = CLARIFY_VIA_GEMINI and not SKIP_GEMINI
 
         if use_gemini:
-            answer_text = _gemini_clarify(question, parsed).strip()
+            clarified = _gemini_clarify(question, parsed)
+            answer_text = render_clarification_constraints(clarified)
             history.append({"role": "assistant", "content": question})
             history.append({"role": "assistant", "content": f"[Gemini] {answer_text}"})
         else:

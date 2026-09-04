@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from knowledge_engine.src.node_deep_dive.concept_map import (
     advance_next_question_after_evaluation,
     format_concept_map_for_tutor,
@@ -123,7 +125,12 @@ def test_gap_eval_system_has_depth_and_topic_rules():
     assert "how_passed" in GAP_EVAL_SYSTEM
     assert "mechanic_passed" in GAP_EVAL_SYSTEM
     assert "focus_hint" in GAP_EVAL_SYSTEM
+    assert "accuracy_grade" in GAP_EVAL_SYSTEM
+    assert "EXACT_AND_CORRECT" in GAP_EVAL_SYSTEM
     assert "evaluation_target" in GAP_EVAL_SYSTEM
+    assert "STRICT SCOPE & ABSTRACTION CEILING" in GAP_EVAL_SYSTEM
+    assert "last_tutor_question" in GAP_EVAL_SYSTEM
+    assert "Silence or omission" in GAP_EVAL_SYSTEM
 
 
 def test_merge_layer_flags_is_cumulative_or():
@@ -237,11 +244,13 @@ def test_tutor_prompt_explicit_ban_praise_on_partial_gap():
     assert "отлично" in DIALOGUE_SYSTEM_INSTRUCTION_EN
     assert "отлично" in dialogue_system
     assert "last_evaluator_feedback" in dialogue_system
-    assert "CRITICAL TRANSPARENCY REQUIREMENT" in FEEDBACK_TRANSPARENCY_REQUIREMENT_EN
-    assert "CRITICAL TRANSPARENCY REQUIREMENT" in dialogue_system
+    assert "HOST TRANSPARENCY" in FEEDBACK_TRANSPARENCY_REQUIREMENT_EN
+    assert "HOST TRANSPARENCY" in dialogue_system
     assert "last_evaluator_focus_hint" in dialogue_system
-    assert "Чего не хватило для полного зачёта" in dialogue_system
+    assert "📋" in FEEDBACK_TRANSPARENCY_REQUIREMENT_EN
+    assert "Do not emit" in FEEDBACK_TRANSPARENCY_REQUIREMENT_EN or "FORBIDDEN" in FEEDBACK_TRANSPARENCY_REQUIREMENT_EN
     assert "PASSED_WITH_GLOSS" in DIALOGUE_THRESHOLD_DIRECTIVE_EN
+    assert "DO NOT generate a new technical" in DIALOGUE_THRESHOLD_DIRECTIVE_EN
     assert "PASSED_WITH_GLOSS" in dialogue_system
     assert "PROBE_NEXT_LAYER" in dialogue_system
     assert "evaluator" in GLOBAL_REGISTRY_PROMPT_RULES.lower()
@@ -266,3 +275,234 @@ def test_concept_map_exposes_structured_focus_hint_and_evidence():
     assert "last_eval_directive: PROBE_NEXT_LAYER:HOW" in block
     assert "THRESHOLD_DIRECTIVE: ask ONLY about layer HOW" in block
     assert "W1H0M0" in block
+
+
+def test_partial_grade_does_not_close_layer():
+    from knowledge_engine.schemas.drill_schemas import AnswerAccuracyGrade
+    from knowledge_engine.src.node_deep_dive.sub_concept_evaluator import (
+        apply_threshold_to_sub_concept,
+        passes_threshold,
+    )
+
+    ok, d = passes_threshold(
+        "advanced",
+        True,
+        True,
+        False,
+        accuracy_grade=AnswerAccuracyGrade.PARTIAL,
+        detected_errors=["Пропущен инвариант владения."],
+    )
+    assert ok is False
+    assert d == "PROBE_NEXT_LAYER:MECHANIC"
+
+    row = SubConceptRecord(
+        id="kv_cache",
+        label="KV-cache",
+        success_criterion="WHY+HOW",
+        status="unchecked",
+    )
+    directive = apply_threshold_to_sub_concept(
+        row,
+        layer="advanced",
+        why=True,
+        how=True,
+        mechanic=False,
+        evidence="Мотивация кэша названа.",
+        llm_focus_hint="Не раскрыт инвариант инвалидации.",
+        accuracy_grade=AnswerAccuracyGrade.PARTIAL,
+        detected_errors=["Пропущен инвариант инвалидации."],
+        correct_claims=["KV-cache убирает повторный проход по ключам."],
+    )
+    assert row.why_passed is False
+    assert row.how_passed is False
+    assert row.status == "partial"
+    assert row.failed_attempts == 1
+    assert row.last_accuracy_grade == "PARTIAL"
+    assert "инвариант" in (row.focus_hint or "")
+    assert directive == "PROBE_NEXT_LAYER:WHY"
+
+
+def test_misunderstanding_soft_regresses_partial_to_gap():
+    from knowledge_engine.schemas.drill_schemas import AnswerAccuracyGrade
+    from knowledge_engine.src.node_deep_dive.sub_concept_evaluator import (
+        apply_threshold_to_sub_concept,
+    )
+
+    row = SubConceptRecord(
+        id="kv_cache",
+        label="KV-cache",
+        status="partial",
+        why_passed=False,
+        failed_attempts=1,
+    )
+    apply_threshold_to_sub_concept(
+        row,
+        layer="advanced",
+        why=True,
+        how=False,
+        mechanic=False,
+        llm_focus_hint="Смешение KV-cache с page cache.",
+        accuracy_grade=AnswerAccuracyGrade.MISUNDERSTANDING,
+        detected_errors=["KV-cache описан как page cache ОС."],
+    )
+    assert row.status == "gap"
+    assert row.why_passed is False
+    assert row.failed_attempts == 2
+    assert row.last_accuracy_grade == "MISUNDERSTANDING"
+
+
+def test_partial_does_not_unverify():
+    from knowledge_engine.schemas.drill_schemas import AnswerAccuracyGrade
+    from knowledge_engine.src.node_deep_dive.sub_concept_evaluator import (
+        apply_threshold_to_sub_concept,
+    )
+
+    row = SubConceptRecord(
+        id="kv_cache",
+        label="KV-cache",
+        status="verified",
+        why_passed=True,
+        how_passed=False,
+    )
+    apply_threshold_to_sub_concept(
+        row,
+        layer="advanced",
+        why=False,
+        how=True,
+        mechanic=False,
+        accuracy_grade=AnswerAccuracyGrade.PARTIAL,
+        detected_errors=["HOW без инвариантов ролей."],
+        correct_claims=["Pipeline стадий назван верно."],
+        llm_focus_hint="Нужны инварианты разделения ролей.",
+    )
+    assert row.status == "verified"
+    assert row.why_passed is True
+    assert row.how_passed is False
+    assert row.focus_hint
+
+
+def test_select_next_attracts_failed_attempts():
+    mem = SessionMemory()
+    mem.sub_concepts = [
+        SubConceptRecord(
+            id="alpha",
+            label="Alpha",
+            status="partial",
+            failed_attempts=0,
+        ),
+        SubConceptRecord(
+            id="beta",
+            label="Beta",
+            status="partial",
+            failed_attempts=2,
+            last_accuracy_grade="MISUNDERSTANDING",
+        ),
+        SubConceptRecord(
+            id="gamma",
+            label="Gamma",
+            status="unchecked",
+        ),
+    ]
+    nxt = select_next_sub_concept(mem)
+    assert nxt is not None
+    assert nxt.id == "beta"
+
+
+def test_partial_status_update_requires_correct_claims() -> None:
+    from pydantic import ValidationError
+
+    from knowledge_engine.schemas.llm_contracts.tutor import SubConceptStatusUpdate
+
+    with pytest.raises(ValidationError):
+        SubConceptStatusUpdate(
+            id="kv_cache",
+            why_passed=True,
+            how_passed=False,
+            mechanic_passed=False,
+            accuracy_grade="PARTIAL",
+            detected_errors_or_misconceptions=["Пропущен инвариант."],
+            correct_claims=[],
+        )
+
+
+def test_select_next_does_not_reorder_active_drill():
+    from knowledge_engine.src.node_deep_dive.memory_schemas import LayerDrillSession
+
+    mem = SessionMemory()
+    mem.sub_concepts = [
+        SubConceptRecord(
+            id="pyobject",
+            label="PyObject",
+            status="verified",
+            why_passed=True,
+            how_passed=False,
+        ),
+        SubConceptRecord(
+            id="refcnt",
+            label="refcnt",
+            status="partial",
+            why_passed=True,
+            how_passed=False,
+            failed_attempts=5,
+            last_accuracy_grade="MISUNDERSTANDING",
+        ),
+    ]
+    mem.layer_drill = LayerDrillSession(
+        is_active=True,
+        target_layer="HOW",
+        target_sub_concept_ids=["pyobject", "refcnt"],
+        current_index=0,
+        status="DRILL_IN_PROGRESS",
+    )
+    nxt = select_next_sub_concept(mem)
+    assert nxt is not None
+    assert nxt.id == "pyobject"
+
+
+def test_subconcept_evidence_accumulates_across_eval_turns():
+    from knowledge_engine.schemas.drill_schemas import AnswerAccuracyGrade
+    from knowledge_engine.src.node_deep_dive.memory_schemas import (
+        accumulate_evidence_text,
+    )
+    from knowledge_engine.src.node_deep_dive.sub_concept_evaluator import (
+        apply_threshold_to_sub_concept,
+    )
+
+    assert "WHY" in accumulate_evidence_text("WHY закрыт.", "HOW: arena→pool")
+    assert "HOW: arena→pool" in accumulate_evidence_text("WHY закрыт.", "HOW: arena→pool")
+    kept = accumulate_evidence_text(
+        "реальный зачёт GIL",
+        "evaluator_degraded: empty_or_failed_llm_update",
+    )
+    assert "реальный зачёт GIL" in kept
+    assert "evaluator_degraded" not in kept
+
+    row = SubConceptRecord(id="gil_mutex", label="GIL mutex", status="unchecked")
+    apply_threshold_to_sub_concept(
+        row,
+        layer="foundation",
+        why=True,
+        how=False,
+        mechanic=False,
+        evidence="GIL сериализует байткод.",
+        llm_focus_hint="Не раскрыт eval_breaker.",
+        accuracy_grade=AnswerAccuracyGrade.PARTIAL,
+        detected_errors=["Нет eval_breaker."],
+        correct_claims=["GIL сериализует байткод."],
+    )
+    first = row.evidence
+    assert "GIL сериализует байткод" in first
+    apply_threshold_to_sub_concept(
+        row,
+        layer="foundation",
+        why=True,
+        how=True,
+        mechanic=False,
+        evidence="eval_breaker проверяется между итерациями.",
+        llm_focus_hint="Не раскрыт ceval switch при I/O.",
+        accuracy_grade=AnswerAccuracyGrade.PARTIAL,
+        detected_errors=["Нет switch при I/O."],
+        correct_claims=["eval_breaker между итерациями."],
+    )
+    assert "GIL сериализует байткод" in (row.evidence or "")
+    assert "eval_breaker" in (row.evidence or "")

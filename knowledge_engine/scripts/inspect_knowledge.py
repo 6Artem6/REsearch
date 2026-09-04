@@ -286,6 +286,15 @@ def inspect_document(
         passport_text.append("URL:\n", style="bold underline blue")
         passport_text.append(f"{document_row.get('url') or url_hint or 'Н/Д'}\n\n")
 
+        exec_sum = str(document_row.get("executive_summary") or "").strip()
+        passport_text.append(
+            "Executive Summary (passport):\n", style="bold underline green"
+        )
+        if exec_sum:
+            passport_text.append(f"{exec_sum}\n\n")
+        else:
+            passport_text.append("(пусто)\n\n")
+
         takeaways = document_row.get("key_takeaways", [])
         if isinstance(takeaways, str):
             try:
@@ -329,6 +338,15 @@ def inspect_document(
                     f"[bold red]Атомы знаний для doc_id='{doc_id_found}' не "
                     "найдены.[/bold red]"
                 )
+                takeaways = (document_row or {}).get("key_takeaways") or []
+                exec_sum = str((document_row or {}).get("executive_summary") or "")
+                if takeaways or exec_sum.strip():
+                    console.print(
+                        "[dim]Паспорт есть, таблица knowledge_atoms пуста: "
+                        "ingest записал REDUCE в document_summaries, но не "
+                        "вызвал upsert_knowledge_atoms. Нужен повторный "
+                        "ingest / backfill.[/dim]"
+                    )
             else:
                 table = Table(
                     title=f"2. Очищенные Атомы Знаний (Всего: {len(atoms)})",

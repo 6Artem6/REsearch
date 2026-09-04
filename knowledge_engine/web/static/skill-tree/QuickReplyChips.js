@@ -1,19 +1,19 @@
 /**
  * Contextual Quick Reply chips under the last tutor message
- * (only when ready_for_transition). Layer-aware: foundation / advanced / sota.
+ * (only when ready_for_transition). Host `quick_replies` is the SSOT;
+ * client reconstruction is a legacy fallback.
  */
 
 import React, { useMemo } from "react";
+import {
+  ActionChips,
+  HOST_CHIP_LABELS,
+  QUICK_REPLY_INTENTS,
+  chipsFromHostLabels,
+  hostChipLabelsFromSession,
+} from "./ActionChips.js";
 
-/** Messages sent to the tutor — Prompt Factory `[mode:…]` prefixes. */
-export const QUICK_REPLY_INTENTS = {
-  gloss:
-    "[mode:gloss] Сформируй сжатую выжимку (Glossary) по оставшимся слоям.",
-  how: "[mode:deep_dive_how] Разбери архитектуру темы.",
-  mech: "[mode:deep_dive_mech] Разбери механики и код темы.",
-  nextNode: "next_node_ui",
-  clarify: "clarify_focus",
-};
+export { HOST_CHIP_LABELS, QUICK_REPLY_INTENTS, chipsFromHostLabels };
 
 /** Nodes that list `nodeId` as a prerequisite (forward edges). */
 export function listSuccessorNodes(curriculum, nodeId) {
@@ -79,7 +79,6 @@ export function openOptionalLayers(session, nodeLayer) {
   const open = [];
   if (opts.includes("HOW") && !how) open.push("HOW");
   if (opts.includes("MECHANIC") && !mech) open.push("MECHANIC");
-  // Fallback: per-item gaps when aggregates are mixed
   if (!open.length) {
     const items = session?.coverageSummary?.items || [];
     for (const it of items) {
@@ -103,64 +102,61 @@ export function isFullDepthClosure(session, nodeLayer) {
   return Boolean(why && how && mech);
 }
 
-/** @deprecated use openOptionalLayers */
-export function hasOptionalMechOpen(session, nodeLayer = "advanced") {
-  return openOptionalLayers(session, nodeLayer).includes("MECHANIC");
-}
-
 /**
  * @param {object} session
  * @param {string} [nodeLayer]
  * @returns {{ id: string, label: string, intent: string }[]}
  */
 export function buildTransitionChips(session, nodeLayer) {
-  if (!session?.readyForTransition) return [];
+  const host = chipsFromHostLabels(hostChipLabelsFromSession(session));
+  if (!session?.readyForTransition) {
+    return host;
+  }
+  if (host.length) return host;
+
   const ly = normalizeNodeLayer(nodeLayer || session?.nodeLayer);
   const open = openOptionalLayers(session, ly);
   const full = isFullDepthClosure(session, ly) || ly === "sota";
+  const score = Number(session?.topicMasteryScore ?? 0);
 
-  // Scenario 1: full depth / SotA — next node + clarify
   if (full || open.length === 0) {
+    const next = {
+      id: "next",
+      label: HOST_CHIP_LABELS.next,
+      intent: QUICK_REPLY_INTENTS.nextNode,
+    };
+    if (score < 100 && ly !== "sota") return [next];
     return [
       {
-        id: "next",
-        label: "➔ Выбрать следующую ноду",
-        intent: QUICK_REPLY_INTENTS.nextNode,
+        id: "deep_design",
+        label: "Архитектурный дизайн",
+        intent: QUICK_REPLY_INTENTS.deepDesign,
       },
-      {
-        id: "clarify",
-        label: "🔍 Задать уточняющий вопрос",
-        intent: QUICK_REPLY_INTENTS.clarify,
-      },
+      next,
     ];
   }
 
-  // Scenario 2: threshold met, optional layer(s) open
-  const pushLayer = open[0]; // HOW before MECH
-  const pushIntent =
-    pushLayer === "HOW" ? QUICK_REPLY_INTENTS.how : QUICK_REPLY_INTENTS.mech;
+  const pushLayer = open[0];
+  const pushHow = pushLayer === "HOW";
   return [
     {
       id: "gloss",
-      label: "➔ Передать Gloss и далее",
+      label: HOST_CHIP_LABELS.gloss,
       intent: QUICK_REPLY_INTENTS.gloss,
     },
     {
       id: "push",
-      label: `⚡ Дожать ${pushLayer}`,
-      intent: pushIntent,
+      label: pushHow ? HOST_CHIP_LABELS.how : HOST_CHIP_LABELS.mech,
+      intent: pushHow ? QUICK_REPLY_INTENTS.how : QUICK_REPLY_INTENTS.mech,
     },
     {
       id: "next",
-      label: "➔ Выбрать следующую ноду",
+      label: HOST_CHIP_LABELS.next,
       intent: QUICK_REPLY_INTENTS.nextNode,
     },
   ];
 }
 
-/**
- * Temporary chips under the last tutor turn.
- */
 export function QuickReplyChips({
   visible,
   session,
@@ -170,36 +166,16 @@ export function QuickReplyChips({
 }) {
   const chips = useMemo(
     () => (visible ? buildTransitionChips(session, nodeLayer) : []),
-    [visible, session, nodeLayer],
+    [visible, session, nodeLayer, session?.quickReplies, session?.suggestedChips, session?.topicMasteryScore],
   );
-  if (!visible || !chips.length) return null;
-
-  return React.createElement(
-    "div",
-    {
-      className: "tutor-quick-replies",
-      role: "group",
-      "aria-label": "Дальнейшие шаги",
-    },
-    chips.map((chip) =>
-      React.createElement(
-        "button",
-        {
-          key: chip.id,
-          type: "button",
-          className: `tutor-quick-reply-chip tutor-quick-reply-${chip.id}`,
-          disabled: Boolean(disabled),
-          onClick: () => onChip?.(chip),
-        },
-        chip.label,
-      ),
-    ),
-  );
+  return React.createElement(ActionChips, {
+    visible,
+    chips,
+    disabled,
+    onChip,
+  });
 }
 
-/**
- * Lightweight picker for successor nodes from the skill graph.
- */
 export function NextNodeSelector({ open, nodes, onSelect, onClose }) {
   if (!open) return null;
   const list = nodes || [];

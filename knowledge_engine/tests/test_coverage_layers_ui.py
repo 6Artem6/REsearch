@@ -68,6 +68,25 @@ def test_coverage_gloss_hint_when_why_how_without_mechanic():
     assert cov.items[0].status_hint == "Не хватает механик реализации"
 
 
+def test_coverage_item_carries_last_accuracy_grade():
+    mem = _mem(
+        SubConceptRecord(
+            id="sc_a",
+            label="Иерархия",
+            why_passed=True,
+            how_passed=False,
+            mechanic_passed=False,
+            status="partial",
+            last_accuracy_grade="PARTIAL",
+        ),
+        directive="PROBE_NEXT_LAYER:HOW",
+    )
+    cov = build_coverage_summary(mem)
+    assert cov is not None
+    assert cov.items[0].last_accuracy_grade == "PARTIAL"
+    assert cov.active_layer == "HOW"
+
+
 def test_status_hint_untouched_is_laconic():
     mem = _mem(
         SubConceptRecord(

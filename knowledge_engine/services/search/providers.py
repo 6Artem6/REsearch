@@ -340,7 +340,9 @@ class ExaSearchProvider(BaseSearchProvider):
         client = ExaSearchClient(api_key=EXA_API_KEY)
         num = max(1, min(limit, 25))
         try:
-            response = await asyncio.to_thread(client.search, query, num_results=num)
+            response = await asyncio.to_thread(
+                client.search_expanded, query, num_results=num
+            )
         except ExaNotConfiguredError as exc:
             return [{"error": str(exc), "source": "exa"}]
         except Exception as exc:

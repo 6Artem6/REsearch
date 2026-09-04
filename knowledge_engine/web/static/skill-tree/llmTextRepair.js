@@ -232,11 +232,7 @@ const reSplitBeforeOrdered = new RegExp(
   "iu",
 );
 const reSplitBeforeSubitem = new RegExp(
-  `(?<=[.!?…])\\s+(?=(?:\\*\\*[а-яёa-z]\\)\\*\\*|[а-яёa-z]\\)\\s))`,
-  "iu",
-);
-const reSplitBeforeSubitemPlain = new RegExp(
-  "\\s+(?=(?:\\*\\*[а-яёa-z]\\)\\*\\*|[а-яёa-z]\\)\\s))",
+  `\\n\\s*(?=(?:\\*\\*[а-яёa-z]\\)\\*\\*|[а-яёa-z]\\)\\s))`,
   "iu",
 );
 const reOlWrongLetter = new RegExp(
@@ -252,9 +248,21 @@ const reLiRealOrdered = new RegExp(
   "iu",
 );
 const reSubInParagraph = new RegExp(
-  "<p>((?:(?!<\\/p>).*)(?:\\*\\*[а-яёa-z]\\)\\*\\*|[а-яёa-z]\\)\\s)(?:(?!<\\/p>).)+)<\\/p>",
+  "<p>((?:(?!<\\/p>).)*(?:\\n|<br\\s*\\/?>)\\s*(?:\\*\\*[а-яёa-z]\\)\\*\\*|[а-яёa-z]\\)\\s)(?:(?!<\\/p>).)+)<\\/p>",
   "giu",
 );
+
+const reMathOperatorTail = new RegExp("[+*/=,]\\s*$");
+
+function letterSubitemIsParenContinuation(prefix) {
+  const prev = String(prefix || "").replace(/\s+$/u, "");
+  if (!prev) return false;
+  const open = (prev.match(/\(/g) || []).length;
+  const close = (prev.match(/\)/g) || []).length;
+  if (open > close) return true;
+  if (/[([{]$/u.test(prev)) return true;
+  return reMathOperatorTail.test(prev);
+}
 
 function stripParagraphInnerHtml(inner) {
   return inner
@@ -274,15 +282,20 @@ function listHtmlFromParagraphTexts(texts) {
     curItems = [];
   }
 
+  let prevText = "";
   for (const raw of texts) {
     const text = raw.trim();
     if (!text) return null;
+    if (reSubLineStart.test(text) && letterSubitemIsParenContinuation(prevText)) {
+      return null;
+    }
     const wrong = reWrongNumLetter.exec(text);
     if (wrong) {
       const li = `<li>${wrong[1].trim()} ${(wrong[2] || "").trim()}</li>`.trim();
       if (curKind && curKind !== "ul") flush();
       curKind = "ul";
       curItems.push(li);
+      prevText = text;
       continue;
     }
     if (reOrderedLine.test(text)) {
@@ -290,6 +303,7 @@ function listHtmlFromParagraphTexts(texts) {
       if (curKind && curKind !== "ol") flush();
       curKind = "ol";
       curItems.push(`<li>${body}</li>`);
+      prevText = text;
       continue;
     }
     const bullet = /^-\s+(.*)$/s.exec(text);
@@ -297,12 +311,14 @@ function listHtmlFromParagraphTexts(texts) {
       if (curKind && curKind !== "ul") flush();
       curKind = "ul";
       curItems.push(`<li>${bullet[1].trim()}</li>`);
+      prevText = text;
       continue;
     }
     if (reSubLineStart.test(text)) {
       if (curKind && curKind !== "ul") flush();
       curKind = "ul";
       curItems.push(`<li>${text}</li>`);
+      prevText = text;
       continue;
     }
     return null;
@@ -512,8 +528,21 @@ function normalizeListBlocksForMarkdown(text) {
       continue;
     }
     if (reSubLineStart.test(stripped)) {
+      const prevLine = buf.length ? buf[buf.length - 1] : out.length ? out[out.length - 1] : "";
+      if (letterSubitemIsParenContinuation(prevLine)) {
+        const joined = `${prevLine.replace(/\s+$/u, "")} ${stripped}`;
+        if (buf.length) buf[buf.length - 1] = joined;
+        else if (out.length) out[out.length - 1] = joined;
+        else out.push(stripped);
+        continue;
+      }
       flushBuf();
       appendBullet(stripped);
+      continue;
+    }
+    if (stripped.startsWith("- ")) {
+      flushBuf();
+      appendBullet(stripped.replace(/^-/, "").trim());
       continue;
     }
     flushBuf();
@@ -549,17 +578,22 @@ function splitGluedOrderedParagraph(body) {
 }
 
 function splitGluedSubitemsParagraph(body) {
-  let parts = body.split(reSplitBeforeSubitem);
-  if (parts.length < 2) {
-    parts = body.split(reSplitBeforeSubitemPlain);
-  }
+  const text = String(body || "").replace(/<br\s*\/?>/gi, "\n");
+  const parts = text.split(reSplitBeforeSubitem);
   if (parts.length < 2) return null;
-  const items = [];
-  for (const part of parts) {
-    const chunk = part.trim();
-    if (chunk) items.push(`<li>${chunk}</li>`);
+  const merged = [parts[0]];
+  for (let i = 1; i < parts.length; i += 1) {
+    const prev = merged[merged.length - 1];
+    if (letterSubitemIsParenContinuation(prev)) {
+      merged[merged.length - 1] = `${prev.replace(/\s+$/u, "")} ${parts[i].replace(/^\s+/u, "")}`;
+    } else {
+      merged.push(parts[i]);
+    }
   }
-  return items.length >= 2 ? `<ul>${items.join("")}</ul>` : null;
+  const items = merged.map((part) => part.trim()).filter(Boolean);
+  return items.length >= 2
+    ? `<ul>${items.map((chunk) => `<li>${chunk}</li>`).join("")}</ul>`
+    : null;
 }
 
 /** Разбить <p> с «1. … 2. …» / «а) … б) …» (зеркало backend postprocess_html_glued_lists). */
@@ -582,6 +616,10 @@ export function postprocessTutorHtml(html) {
       return `<ol>${fixed}</ol>`;
     }
     return `<ul>${fixed}</ul>`;
+  });
+  out = out.replace(reSubInParagraph, (m, body) => {
+    const repl = splitGluedSubitemsParagraph(body);
+    return repl || m;
   });
   return out;
 }
@@ -611,8 +649,6 @@ function repairGluedNumberedListsOnLine(line) {
     /([.!?…:;])(\s+)(\*\*[а-яёa-z]\)\*\*)/giu,
     "$1\n$3",
   );
-  s = s.replace(/(\))\s+([а-яёa-z]\)\s)/giu, "$1\n$2");
-  s = s.replace(/([.!?…:;])(\s+)([а-яёa-z]\)\s)/giu, "$1\n$3");
   s = s.replace(reInlineWrongNumLetter, "\n- $2 ");
   return s;
 }
@@ -630,6 +666,8 @@ function splitMarkdownHeaderLine(line) {
   const m = /^(#{1,6}\s+)/u.exec(s);
   if (!m) return line;
   const rest = s.slice(m[0].length);
+  // Keep numbered ATX headings intact (deep_analysis: ``## 3. Точки отказа…``).
+  if (/^\d{1,2}\.\s+\S/u.test(rest)) return line;
   let pm = /\s+(При\s+[а-яё])/u.exec(rest);
   if (!pm) pm = /\s+([А-ЯЁ][а-яё]{2,}\s+[а-яё])/u.exec(rest);
   if (pm) {
@@ -638,6 +676,37 @@ function splitMarkdownHeaderLine(line) {
     return `${title}\n\n${body}`;
   }
   return line;
+}
+
+function rejoinSplitNumberedHeadings(text) {
+  const lines = String(text || "").split("\n");
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const stripped = lines[i].trim();
+    const hm = /^(#{1,6})\s*(\d{1,2})\.\s*$/u.exec(stripped);
+    if (hm) {
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j += 1;
+      if (j < lines.length) {
+        const nxt = lines[j].trim();
+        if (
+          nxt &&
+          !nxt.startsWith("#") &&
+          !/^\d{1,2}\.\s+/u.test(nxt) &&
+          !nxt.startsWith("```") &&
+          !nxt.startsWith("|")
+        ) {
+          out.push(`${hm[1]} ${hm[2]}. ${nxt}`);
+          i = j + 1;
+          continue;
+        }
+      }
+    }
+    out.push(lines[i]);
+    i += 1;
+  }
+  return out.join("\n");
 }
 
 const CODE_FENCE_RE = /```[^\n`]*\n[\s\S]*?```/g;
@@ -649,9 +718,18 @@ function applyOutsideCodeFences(text, fn) {
   let m;
   const re = new RegExp(CODE_FENCE_RE.source, "g");
   while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push(fn(text.slice(last, m.index)));
-    parts.push(m[0]);
-    last = m.index + m[0].length;
+    if (m.index > last) {
+      let prefix = text.slice(last, m.index);
+      if (prefix && !prefix.endsWith("\n")) prefix = `${prefix.replace(/\s+$/, "")}\n\n`;
+      parts.push(fn(prefix));
+    }
+    let fence = m[0];
+    const after = m.index + m[0].length;
+    if (after < text.length && text[after] !== "\n") {
+      fence = `${fence.replace(/\s+$/, "")}\n\n`;
+    }
+    parts.push(fence);
+    last = after;
   }
   if (last < text.length) parts.push(fn(text.slice(last)));
   return parts.join("");
@@ -794,9 +872,29 @@ function wrapBarePythonRegions(text) {
   return out.join("\n");
 }
 
+function detachGluedCodeFences(text) {
+  const raw = text || "";
+  if (!raw.includes("```")) return raw;
+  const parts = [];
+  let last = 0;
+  let m;
+  const re = new RegExp(CODE_FENCE_RE.source, "g");
+  while ((m = re.exec(raw)) !== null) {
+    let prefix = raw.slice(last, m.index);
+    if (prefix && !prefix.endsWith("\n")) prefix = `${prefix.replace(/\s+$/, "")}\n\n`;
+    let fence = m[0];
+    const after = m.index + m[0].length;
+    if (after < raw.length && raw[after] !== "\n") fence = `${fence.replace(/\s+$/, "")}\n\n`;
+    parts.push(prefix, fence);
+    last = after;
+  }
+  parts.push(raw.slice(last));
+  return parts.join("");
+}
+
 export function repairLectureCodeBlocks(text) {
-  const raw = (text || "").trim();
-  if (!raw || (!raw.includes("def ") && !raw.includes("class "))) return text || "";
+  const raw = detachGluedCodeFences((text || "").trim());
+  if (!raw || (!raw.includes("def ") && !raw.includes("class "))) return raw || text || "";
   const parts = [];
   let last = 0;
   let m;
@@ -827,9 +925,11 @@ export function repairLectureMarkdownLayout(text) {
     c = repairGluedNumberedLists(c);
     c = collapseBlankLinesInListRuns(c);
     c = normalizeListBlocksForMarkdown(c);
+    c = rejoinSplitNumberedHeadings(c);
     return c;
   };
   t = applyOutsideCodeFences(t, layoutChunk);
+  t = rejoinSplitNumberedHeadings(t);
   t = t.replace(/\n{3,}/g, "\n\n");
   return t.trim();
 }
@@ -1019,4 +1119,37 @@ export function tutorMarkdownToHtml(text) {
     closeList();
   }
   return out.join("");
+}
+
+const SOURCE_TAG_RE = /\[S(\d+)\]/g;
+
+/**
+ * Клиентский fallback-рендер (tutorMarkdownToHtml / structuredAnalysisToHtml)
+ * не знает про source registry — [Sn] от LLM остаётся голым текстом без
+ * <a href>, пока сообщение не перерисуется backend-HTML (после reload). Эта
+ * функция — тот же линкифай, что и backend linkify_source_anchors_html
+ * (src/processors/source_anchors.py), но на стороне клиента: применяется
+ * ТОЛЬКО к html без backend-ссылок, не трогает уже готовые <a> (не вызывать
+ * поверх tutorHtml из ответа сервера — там [Sn] уже обёрнут в <a>).
+ */
+export function linkifySourceAnchorsHtml(html, registry) {
+  const raw = String(html || "");
+  if (!raw || !Array.isArray(registry) || !registry.length) return raw;
+  const byId = {};
+  for (const e of registry) {
+    const sid = String(e?.id || e?.source_id || "").trim();
+    if (sid) byId[sid] = e;
+  }
+  if (!Object.keys(byId).length) return raw;
+  return raw.replace(SOURCE_TAG_RE, (m, num) => {
+    const sid = `S${num}`;
+    const ent = byId[sid];
+    const url = String(ent?.url || "").trim();
+    if (!ent || !url) return m;
+    const title = String(ent.title || sid).replace(/"/g, "&quot;");
+    return (
+      `<a href="${escapeHtml(url)}" class="source-anchor" target="_blank" ` +
+      `rel="noopener noreferrer" title="${title}">[${sid}]</a>`
+    );
+  });
 }

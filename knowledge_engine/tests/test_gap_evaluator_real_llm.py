@@ -95,6 +95,11 @@ def _status_from_contract(
         mechanic=bool(u0.mechanic_passed),
         evidence=u0.evidence or "",
         llm_focus_hint=u0.focus_hint or "",
+        accuracy_grade=getattr(u0, "accuracy_grade", None),
+        detected_errors=list(
+            getattr(u0, "detected_errors_or_misconceptions", None) or []
+        ),
+        correct_claims=list(getattr(u0, "correct_claims", None) or []),
     )
     return target.status
 

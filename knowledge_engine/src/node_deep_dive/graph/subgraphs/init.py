@@ -14,5 +14,4 @@ async def init_node(
     """Prepare session memory/content; first tutor question on later chat."""
     from knowledge_engine.src.node_deep_dive.engine import run_init_prepare_turn
 
-    _ = config
-    return await run_init_prepare_turn(state)
+    return await run_init_prepare_turn(state, config)

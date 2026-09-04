@@ -36,7 +36,27 @@ def run_work_job(job: WorkJob) -> dict[str, Any]:
     if job.kind == WorkJobKind.CURRICULUM_EXPAND:
         return _run_curriculum_expand(job.payload)
     if job.kind == WorkJobKind.NODE_DEEP_DIVE:
+        if job.payload.get("stream"):
+            return _run_node_deep_dive_stream(job)
         return _run_node_deep_dive(job.payload)
+    if job.kind == WorkJobKind.RAG_GATEWAY:
+        return _run_rag_gateway(job.payload)
+    if job.kind == WorkJobKind.DIALOG_SUMMARIZE:
+        from knowledge_engine.services.context_compressor_worker import (
+            run_dialog_summarize_job,
+        )
+
+        return run_dialog_summarize_job(job.payload)
+    if job.kind == WorkJobKind.NODE_EXPLAIN:
+        if job.payload.get("stream"):
+            from knowledge_engine.services.node_explain_job import (
+                run_node_explain_stream_job,
+            )
+
+            return run_node_explain_stream_job(job.id, job.payload)
+        from knowledge_engine.services.node_explain_job import run_node_explain_job
+
+        return run_node_explain_job(job.payload)
     raise ValueError(f"Unknown work job kind: {job.kind}")
 
 
@@ -188,6 +208,77 @@ def _run_node_deep_dive(payload: dict[str, Any]) -> dict[str, Any]:
         f"{time.perf_counter() - t_job:.1f}s"
     )
     return result
+
+
+def _run_node_deep_dive_stream(job: WorkJob) -> dict[str, Any]:
+    import time
+
+    from knowledge_engine.services.job_stream import append_job_stream_event
+    from knowledge_engine.src.node_deep_dive.engine import (
+        iter_node_deep_dive_chat_stream,
+    )
+    from knowledge_engine.ui.run_log import trace
+
+    payload = job.payload
+    action = str(payload.get("user_action") or "chat")
+    cid = str(payload.get("curriculum_id") or "")
+    nid = (payload.get("node_data") or {}).get("node_id", "")
+    trace(f"WORKER node_deep_dive stream ▶ {action} | {cid}/{nid} job={job.id}")
+    t_job = time.perf_counter()
+    node_raw = payload.get("node_data") or {}
+    req = NodeDeepDiveRequest(
+        curriculum_id=str(payload.get("curriculum_id") or "").strip(),
+        node_data=NodeDataInput.model_validate(node_raw),
+        user_action=str(payload.get("user_action") or "chat"),
+        user_message=str(payload.get("user_message") or ""),
+    )
+
+    async def _run() -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        async for evt in iter_node_deep_dive_chat_stream(req):
+            append_job_stream_event(job.id, evt)
+            if evt.get("type") == "complete" and isinstance(evt.get("result"), dict):
+                result = evt["result"]
+            if evt.get("type") == "error":
+                raise RuntimeError(str(evt.get("detail") or "chat stream error"))
+        return result
+
+    try:
+        out = asyncio.run(
+            asyncio.wait_for(_run(), timeout=KE_NODE_DIVE_ASYNC_TIMEOUT_SEC)
+        )
+    except asyncio.TimeoutError as exc:
+        raise TimeoutError(
+            f"Node Deep-Dive async timeout (dive≤{KE_NODE_DIVE_ASYNC_TIMEOUT_SEC:.0f}s)"
+        ) from exc
+    trace(
+        f"WORKER node_deep_dive stream ✓ {action} | {cid}/{nid} | "
+        f"{time.perf_counter() - t_job:.1f}s"
+    )
+    return out
+
+
+def _run_rag_gateway(payload: dict[str, Any]) -> dict[str, Any]:
+    from knowledge_engine.src.rag_gateway.gateway import (
+        query_directional_rag,
+        save_user_fact_request,
+    )
+    from knowledge_engine.src.rag_gateway.schemas import (
+        DirectionalRAGQuery,
+        SaveUserFactRequest,
+    )
+
+    op = str(payload.get("op") or "").strip().lower()
+    body = payload.get("body") or {}
+    if op == "query":
+        req = DirectionalRAGQuery.model_validate(body)
+        result = asyncio.run(query_directional_rag(req))
+        return result.model_dump()
+    if op == "facts":
+        req = SaveUserFactRequest.model_validate(body)
+        n = asyncio.run(save_user_fact_request(req))
+        return {"indexed": n, "node_id": req.node_id}
+    raise ValueError(f"Unknown rag_gateway op: {op}")
 
 
 def process_pending_analysis_jobs() -> bool:

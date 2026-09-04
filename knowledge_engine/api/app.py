@@ -24,9 +24,11 @@ from knowledge_engine.api.routes import (
     v08,
     work_jobs,
 )
+from knowledge_engine.logging_setup import get_logger
 from knowledge_engine.ui.run_log import trace
 
 _WEB_STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
+logger = get_logger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -43,14 +45,20 @@ def create_app() -> FastAPI:
     def _startup_log() -> None:
         import knowledge_engine.config as cfg
         from knowledge_engine.services.job_store import _JOB_STORE_PATH, job_store
+        from knowledge_engine.services.ml_runtime import get_process_role
 
         n = len(job_store.list_recent(limit=10_000))
-        print(
+        logger.info(
             f"Knowledge Engine API | GRAPH_VERSION={cfg.GRAPH_VERSION} "
             f"| trace_stdout={cfg.KE_TRACE_STDOUT} | jobs_loaded={n} "
             f"| job_store={_JOB_STORE_PATH} "
-            f"| consensus_profile={cfg.BROWSER_PROFILE_PATH}",
-            flush=True,
+            f"| consensus_profile={cfg.BROWSER_PROFILE_PATH}"
+        )
+        from knowledge_engine.services.ml_runtime import get_process_role
+
+        trace(
+            f"API ▶ startup | process_role={get_process_role() or 'unset'} "
+            "(ML weights load only in worker)"
         )
 
     @app.on_event("shutdown")

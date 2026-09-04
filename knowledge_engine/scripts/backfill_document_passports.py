@@ -136,7 +136,7 @@ def remap_atom_source_chunk_ids(
     return out
 
 
-def discover_blind_documents(
+async def discover_blind_documents(
     store: VectorStore,
     *,
     doc_id_filter: str | None = None,
@@ -151,7 +151,7 @@ def discover_blind_documents(
     When ``allowed_doc_ids`` / ``allowed_urls`` are set (curriculum scope),
     only matching LanceDB docs are considered.
     """
-    atom_docs = store.knowledge_atom_doc_ids()
+    atom_docs = await store.knowledge_atom_doc_ids()
     metas = store.list_rag_documents()
     want = (doc_id_filter or "").strip()
     out: list[BlindDocument] = []
@@ -273,9 +273,9 @@ async def backfill_one_document(
         registry=None,
     )
     # Skip sliding-window re-ingest — preserve existing rag_chunks bodies.
-    store.save_summary(summary, skip_rag_ingest=True)
+    await store.save_summary(summary, skip_rag_ingest=True)
 
-    n_atoms = store.upsert_knowledge_atoms(
+    n_atoms = await store.upsert_knowledge_atoms(
         url,
         atoms,
         doc_id=blind.doc_id,
@@ -290,7 +290,7 @@ async def backfill_one_document(
         ws = (m.window_summary or "").strip()
         if ws:
             summaries_by_chunk[cid] = ws
-    n_ws = store.update_rag_window_summaries(blind.doc_id, summaries_by_chunk)
+    n_ws = await store.update_rag_window_summaries(blind.doc_id, summaries_by_chunk)
 
     return {
         "doc_id": blind.doc_id,
@@ -388,7 +388,7 @@ async def _amain(args: argparse.Namespace) -> int:
 
     store = VectorStore()
     trace(f"BACKFILL passports ▶ | lance={LANCE_DB_PATH}")
-    blinds = discover_blind_documents(
+    blinds = await discover_blind_documents(
         store,
         doc_id_filter=(args.doc_id or "").strip() or None,
         allowed_doc_ids=allowed_doc_ids,

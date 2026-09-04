@@ -32,8 +32,8 @@ def runtime_config() -> ConfigResponse:
         graph_version=(cfg.GRAPH_VERSION or "0.4").strip(),
         gemini_model=cfg.GEMINI_MODEL,
         gemini_configured=is_gemini_available(),
-        ollama_base_url=cfg.OLLAMA_BASE_URL,
+        ollama_base_url="",
         searxng_base_url=cfg.SEARXNG_BASE_URL,
-        local_heavy_model=cfg.LOCAL_HEAVY_MODEL,
-        local_router_model=cfg.LOCAL_ROUTER_MODEL,
+        local_heavy_model=cfg.GEMMA_PRIMARY_MODEL,
+        local_router_model=cfg.GEMMA_FALLBACK_MODEL,
     )

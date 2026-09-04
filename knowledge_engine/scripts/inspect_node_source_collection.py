@@ -136,6 +136,8 @@ def _smart_fetch_probe(url: str) -> dict[str, Any]:
 
 
 def _lance_report(urls: list[str]) -> dict[str, Any]:
+    import asyncio
+
     store = VectorStore()
     vs = VectorStore()
     per_url: dict[str, Any] = {}
@@ -144,7 +146,7 @@ def _lance_report(urls: list[str]) -> dict[str, Any]:
         if not u.startswith("http"):
             continue
         did = VectorStore.doc_id_for_url(u)
-        summaries = store.fetch_summaries_by_urls([u], limit=1)
+        summaries = asyncio.run(store.fetch_summaries_by_urls([u], limit=1))
         chunks = vs.fetch_rag_chunks_by_doc_id(did)
         chunk_chars = sum(len(str(c.get("chunk_text") or "")) for c in chunks)
         summary = summaries[0] if summaries else None

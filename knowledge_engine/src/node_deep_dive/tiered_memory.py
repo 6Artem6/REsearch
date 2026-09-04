@@ -222,7 +222,31 @@ def compute_topic_mastery(memory: SessionMemory) -> int:
 
 
 def engagement_topic_mastery(memory: SessionMemory) -> int:
-    """Прогресс для UI: матрица + фаза цикла и статусы концептов."""
+    """
+    Core Progress 0–100 for the node.
+
+    Denominator is **only** core sub-concepts (``is_extension=False``).
+    Overlay (``is_extension=True``, ``deep_mastery_concepts``) never dilutes
+    or inflates this score. All core ``status==verified`` → 100, even if
+    ``deep_mastery_concepts`` is empty.
+    """
+    from knowledge_engine.src.node_deep_dive.concept_map_state import core_sub_concepts
+
+    core = core_sub_concepts(memory)
+    if core:
+        n = len(core)
+        verified_n = sum(1 for s in core if s.status == "verified")
+        if verified_n == n:
+            return 100
+        sc_partial = sum(1 for s in core if s.status == "partial")
+        status_floor = min(99, round(100 * verified_n / n) + sc_partial * 4)
+        why = sum(1.0 for s in core if s.why_passed) / n
+        how = sum(1.0 for s in core if s.how_passed) / n
+        mech = sum(1.0 for s in core if s.mechanic_passed) / n
+        layer_score = min(99, round(100.0 * (why + how + mech) / 3.0))
+        # Ignore concepts_matrix / phase floors / deep_mastery — overlay isolation.
+        return min(99, max(0, status_floor, layer_score))
+
     from_matrix = compute_topic_mastery(memory)
     phase_floor = {
         "intro_assessment": 12,
@@ -237,24 +261,6 @@ def engagement_topic_mastery(memory: SessionMemory) -> int:
         verified = sum(1 for r in rows if r.status == "verified")
         in_prog = sum(1 for r in rows if r.status == "in_progress")
         status_floor = min(92, verified * 22 + in_prog * 12)
-    sub = memory.sub_concepts
-    layer_score = 0
-    if sub:
-        sc_verified = sum(1 for s in sub if s.status == "verified")
-        sc_partial = sum(1 for s in sub if s.status == "partial")
-        sub_floor = min(
-            95,
-            round(100 * sc_verified / len(sub)) + sc_partial * 4,
-        )
-        status_floor = max(status_floor, sub_floor)
-        # WHY/HOW/MECHANIC thirds (aligned with Threshold Engine + UI depth bar).
-        why = sum(1 for s in sub if s.why_passed) / len(sub)
-        how = sum(1 for s in sub if s.how_passed) / len(sub)
-        mech = sum(1 for s in sub if s.mechanic_passed) / len(sub)
-        layer_score = min(100, round(100.0 * (why + how + mech) / 3.0))
-        if any(s.why_passed or s.how_passed or s.mechanic_passed for s in sub):
-            # Prefer depth-layer score when micro-eval flags are present.
-            return min(100, max(from_matrix, layer_score))
     return min(100, max(from_matrix, phase_floor, status_floor))
 
 
@@ -269,11 +275,21 @@ def derive_node_status(
     critical_gap: str | None,
 ) -> NodeStatus:
     score = sync_topic_mastery_score(memory)
-    rows = memory.concepts_matrix
-    all_verified = bool(rows) and all(r.status == "verified" for r in rows)
+    from knowledge_engine.src.node_deep_dive.concept_map_state import core_sub_concepts
+
+    core = core_sub_concepts(memory)
     gap_text = (critical_gap or "").strip()
     if gap_text and score < 40:
         return "gap"
+    if core:
+        all_core_verified = all(s.status == "verified" for s in core)
+        if all_core_verified and score >= 100:
+            return "mastered"
+        if score >= 40:
+            return "deep_understanding"
+        return "in_progress"
+    rows = memory.concepts_matrix
+    all_verified = bool(rows) and all(r.status == "verified" for r in rows)
     if all_verified and score >= 100:
         return "mastered"
     if score >= 40:

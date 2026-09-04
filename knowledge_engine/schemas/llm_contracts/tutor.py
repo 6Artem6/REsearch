@@ -4,17 +4,34 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
+from knowledge_engine.schemas.drill_schemas import (
+    AnswerAccuracyGrade,
+    TechnicalConceptAudit,
+    audit_feedback_text,
+    validate_grade_matches_errors,
+)
 from knowledge_engine.src.node_deep_dive.memory_schemas import (
     ConceptMasteryStatus,
     LectureExtractedConcept,
-    UserIntent,
 )
 from knowledge_engine.src.node_deep_dive.schemas import (
     DenseMaterialOutput,
     NodeStatus,
     RichReferenceItem,
+)
+from knowledge_engine.src.node_deep_dive.tutor_field_limits import (
+    PROMPT_FOLLOW_UP_MAX_CHARS,
+    SCHEMA_BRIDGE_TO_NEXT_MAX,
+    SCHEMA_CHECKPOINT_PROMPT_MAX,
+    SCHEMA_FEEDBACK_ON_ANSWER_MAX,
+    SCHEMA_FOLLOW_UP_QUESTION_MAX,
+    SCHEMA_LECTURE_BODY_MAX,
+    SCHEMA_NEW_GAP_MAX,
+    SCHEMA_SUMMARY_MAX,
+    SCHEMA_TECHNICAL_EXPLANATION_MAX,
+    SCHEMA_TUTOR_MESSAGE_MAX,
 )
 
 SuggestedNextStep = Literal["next_node", "deep_dive_optional"]
@@ -41,7 +58,14 @@ STRUCTURED_LECTURE_FIELD_RULES = (
     "   - DIAGRAMS: cite [Diagram N] only if N exists in DIAGRAM_CATALOG / PINNED_DIAGRAMS; "
     "never reference missing external charts/SVG.\n"
     "   - FORBIDDEN in lecture_body: meta verdicts / self-check scoreboards "
-    "(«Вердикт самопроверки», «Пользователь корректно…» as assessment headers).\n\n"
+    "(«Вердикт самопроверки», «Пользователь корректно…» as assessment headers); "
+    "closing quiz questions; «?» in the last paragraph; "
+    "'Самопроверка' / 'Вопрос:' self-check headers. "
+    "lecture_body is theory, code, and architecture only.\n"
+    "CRITICAL NEGATIVE CONSTRAINT: Do NOT include any closing questions, self-check "
+    "queries, or 'Самопроверка:' headers inside lecture_body. The lecture_body MUST "
+    "contain pure educational content only. The checkpoint question belongs EXCLUSIVELY "
+    "in checkpoint_prompt.\n\n"
     "2. `diagrams_referenced`: tags discussed in body.\n"
     "3. `referenced_diagram_id`: exact asset id from DIAGRAM_CATALOG for the panel "
     "(or null). NEVER write raw Mermaid code in any JSON field.\n"
@@ -52,6 +76,10 @@ STRUCTURED_LECTURE_FIELD_RULES = (
     "(snake_case key + summary ≤600 chars in Russian); do not duplicate next_recommended_subtopics.\n"
     "7. `introduced_terms`: terms/acronyms you FIRST introduced or glossed in this lecture "
     "(e.g. RRF, BM25, HNSW); exclude terms from ALREADY_EXPLAINED_TERMS in payload.\n"
+    "8. `checkpoint_prompt`: the ONLY field for ONE technical self-check question "
+    "(must contain «?»; PART 1 lecture_body must end without «?» / without a quiz); "
+    "target ≤400 characters. Every scored criterion MUST be named here and "
+    "introduced in lecture_body first.\n"
     "OUTPUT MUST BE VALID JSON CONFORMING TO THE PYDANTIC SCHEMA.\n"
 )
 """
@@ -71,12 +99,15 @@ class VerifiedSourceReference(BaseModel):
 class StructuredLectureResponse(BaseModel):
     lecture_body: str = Field(
         ...,
-        max_length=24_000,
+        max_length=SCHEMA_LECTURE_BODY_MAX,
         description=(
-            "Markdown лекция: LaTeX, код в ```python fences с переносами строк, "
-            "[Diagram N], сноски [S1] без URL в тексте; "
-            "обязательная экскурсия по [AVAILABLE NODE MATERIALS] при наличии кода/схем"
+            "Markdown theory only: LaTeX, ```python fences with real newlines, "
+            "[Diagram N], [S1]/[R1] citations without URLs; node-materials tour when "
+            "code/diagrams exist. FORBIDDEN: closing self-check questions, a final «?» "
+            "paragraph, or 'Самопроверка' / 'Вопрос:' headers. Checkpoint belongs "
+            "exclusively in checkpoint_prompt."
         ),
+        # RU: теоретический блок без контрольного вопроса и без заголовков самопроверки.
     )
     diagrams_referenced: list[str] = Field(
         default_factory=list,
@@ -107,7 +138,7 @@ class StructuredLectureResponse(BaseModel):
         ),
     )
     summary: str = Field(
-        default="", max_length=12_000, description="Выжимка для панели"
+        default="", max_length=SCHEMA_SUMMARY_MAX, description="Выжимка для панели"
     )
     referenced_diagram_id: str | None = Field(
         default=None,
@@ -124,12 +155,18 @@ class StructuredLectureResponse(BaseModel):
     )
     checkpoint_prompt: str = Field(
         default="",
-        max_length=2000,
-        description="Один вопрос самопроверки (контент для пользователя, не meta-verdict)",
+        max_length=SCHEMA_CHECKPOINT_PROMPT_MAX,
+        description=(
+            "The ONLY field for the single self-check question "
+            "(must contain «?»). Do not duplicate it in lecture_body. "
+            "Every scored criterion MUST be named here and introduced in "
+            "lecture_body first. FORBIDDEN: a surface question whose hidden "
+            "rubric is a deeper unasked layer."
+        ),
     )
     bridge_to_next: str = Field(
         default="",
-        max_length=2000,
+        max_length=SCHEMA_BRIDGE_TO_NEXT_MAX,
         description="Следующий шаг без риторических вопросов",
     )
 
@@ -137,11 +174,13 @@ class StructuredLectureResponse(BaseModel):
 class IntroAssessmentContract(BaseModel):
     tutor_message: str = Field(
         ...,
-        max_length=2000,
+        max_length=SCHEMA_TUTOR_MESSAGE_MAX,
         description=(
-            "Вводный контекст + один практический вопрос или мини-кейс (≤400 символов вопроса). "
-            "Без «голых» аббревиатур; вопрос на интуицию/проблему, не на настройку "
-            "незнакомого алгоритма (Concept Introduction для intro)."
+            "Intro context plus ONE practical question or mini-case "
+            "(question ≤400 chars). No bare unexplained jargon. Stay at the "
+            "asked layer. Every criterion later scored MUST appear in this "
+            "text. FORBIDDEN: a surface question whose hidden rubric is a "
+            "deeper unasked layer."
         ),
     )
     node_status: NodeStatus = Field(
@@ -151,13 +190,22 @@ class IntroAssessmentContract(BaseModel):
 
 
 class DeepDiveTutorContract(BaseModel):
+    audit: TechnicalConceptAudit = Field(
+        ...,
+        description=(
+            "Strict technical audit of the learner's previous answer, filled "
+            "BEFORE any other learner-facing text. Discriminated on "
+            "feedback_kind: EXACT → confirmation; NEEDS_CORRECTION → "
+            "correction_breakdown only."
+        ),
+    )
     node_status: NodeStatus = Field(
         default="in_progress",
         description="Прогресс по ноде",
     )
     summary: str = Field(
         default="",
-        max_length=12_000,
+        max_length=SCHEMA_SUMMARY_MAX,
         description="Выжимка для панели Materials",
     )
     referenced_diagram_id: str | None = Field(
@@ -176,22 +224,24 @@ class DeepDiveTutorContract(BaseModel):
             "(asset_id S1…, url/title копировать дословно). Пустой список, если не цитировал."
         ),
     )
-    feedback_on_answer: str = Field(
-        default="",
-        max_length=4000,
-        description="Короткая реакция и разбор предыдущего ответа пользователя",
-    )
     technical_explanation: str = Field(
         default="",
-        max_length=10_000,
+        max_length=SCHEMA_TECHNICAL_EXPLANATION_MAX,
         description=(
-            "Сухой инженерный разбор темы: без «?», без follow-up и без анонса следующих подтем"
+            "Сухой инженерный разбор темы: без «?», без follow-up и без анонса следующих подтем. "
+            "В [mode:deep_analysis] — длинный многосекционный Deep Material Analysis."
         ),
     )
     follow_up_question: str = Field(
         default="",
-        max_length=2000,
-        description="Подводка и вопрос по следующей подтеме (с «?»)",
+        max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX,
+        description=(
+            "Lead-in plus ONE question on the next sub-topic (must contain «?»). "
+            f"Target ≤{PROMPT_FOLLOW_UP_MAX_CHARS} characters. "
+            "Every criterion the Evaluator may require MUST be named or "
+            "scope-locked here and introduced in technical_explanation on "
+            "first mention."
+        ),
     )
     question_sub_concept_id: str | None = Field(
         default=None,
@@ -203,7 +253,7 @@ class DeepDiveTutorContract(BaseModel):
     )
     new_gap_to_record: str | None = Field(
         default=None,
-        max_length=2000,
+        max_length=SCHEMA_NEW_GAP_MAX,
         description="Пробел для LightRAG если выявлен",
     )
     introduced_terms: list[str] = Field(
@@ -221,26 +271,146 @@ class DeepDiveTutorContract(BaseModel):
     ready_for_transition: bool = Field(
         default=False,
         description=(
-            "True если все ключевые sub_concepts/фаза закрыты: без нового тех. вопроса, "
-            "только итог и выбор пользователя (next_node / deep_dive_optional)."
+            "Host-owned (Python). Leave false/inert — the host overwrites from "
+            "BGE/FSM after generation. Do not invent topic-close logic."
         ),
     )
     suggested_next_step: SuggestedNextStep | None = Field(
         default=None,
         description=(
-            "При ready_for_transition=true: next_node — следующая нода/лекция; "
-            "deep_dive_optional — предложена опциональная углублённая подтема."
+            "Host-owned (Python). Leave null — the host overwrites after generation."
         ),
     )
     quick_replies: list[str] = Field(
         default_factory=list,
         max_length=4,
         description=(
-            "Короткие chip-labels для UI Quick Replies. "
-            "На PASSED_WITH_GLOSS fork при закрытии ноды: ровно "
-            "«Хочу Gloss», «Дожать MECH», «Идем дальше». Иначе []."
+            "Host-owned (Python). Leave empty — the host sets UI chips from "
+            "open optional layers / FSM. Do not invent chip labels."
         ),
     )
+
+    @computed_field
+    @property
+    def feedback_on_answer(self) -> str:
+        return audit_feedback_text(self.audit)
+
+    @model_validator(mode="after")
+    def validate_audit_branch_consistency(self) -> DeepDiveTutorContract:
+        validate_grade_matches_errors(self.audit)
+        return self
+
+
+class DeepDiveExplainContract(BaseModel):
+    """Tutor turn when Host skipped Evaluator — no TechnicalConceptAudit."""
+
+    node_status: NodeStatus = Field(
+        default="in_progress",
+        description="Прогресс по ноде",
+    )
+    summary: str = Field(
+        default="",
+        max_length=SCHEMA_SUMMARY_MAX,
+        description="Выжимка для панели Materials",
+    )
+    referenced_diagram_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "ID of the diagram chosen from the provided node diagram catalog. "
+            "Do NOT write raw Mermaid code here."
+        ),
+    )
+    references: list[RichReferenceItem] = Field(
+        default_factory=list,
+        max_length=6,
+        description=(
+            "Карточки источников для панели: только строки из SOURCE REGISTRY."
+        ),
+    )
+    technical_explanation: str = Field(
+        default="",
+        max_length=SCHEMA_TECHNICAL_EXPLANATION_MAX,
+        description=(
+            "Engineering explanation only. No learner-answer verdict. "
+            "No questions (no '?') in this field."
+        ),
+    )
+    follow_up_question: str = Field(
+        default="",
+        max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX,
+        description=(
+            f"Optional one follow-up question (must contain «?» if set); "
+            f"target ≤{PROMPT_FOLLOW_UP_MAX_CHARS} characters"
+        ),
+    )
+    question_sub_concept_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Map id for follow_up_question, or null.",
+    )
+    introduced_terms: list[str] = Field(
+        default_factory=list,
+        max_length=16,
+        description="Terms first glossed in this turn.",
+    )
+    verified_sub_concept_ids: list[str] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Host-owned; leave empty.",
+    )
+    ready_for_transition: bool = Field(
+        default=False,
+        description="Host-owned. Leave false.",
+    )
+    suggested_next_step: SuggestedNextStep | None = Field(
+        default=None,
+        description="Host-owned. Leave null.",
+    )
+    quick_replies: list[str] = Field(
+        default_factory=list,
+        max_length=4,
+        description="Host-owned. Leave empty.",
+    )
+
+    @computed_field
+    @property
+    def feedback_on_answer(self) -> str:
+        return ""
+
+    # RU: оценка пропущена — вердикта нет.
+
+
+class DeepDiveDeepAnalysisContract(DeepDiveTutorContract):
+    """
+    Structural contract for [mode:deep_analysis] / open Star Task turns.
+
+    Only validates that follow_up_question is present and non-empty.
+    Orchestration flags (ready_for_transition, quick_replies) are forced in
+    Python after the LLM call — not via phrase / boolean validators.
+    """
+
+    follow_up_question: str = Field(
+        ...,
+        min_length=1,
+        max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX,
+        description=(
+            "REQUIRED non-empty: exactly ONE engineering design / evaluation "
+            f"question with «?»; target ≤{PROMPT_FOLLOW_UP_MAX_CHARS} characters. "
+            "Question derived from the Problem / Edge / Trade-off analysis "
+            "(FACT_ATTRACTION). When SOURCE REGISTRY is empty, references=[]."
+        ),
+    )
+
+    @field_validator("follow_up_question")
+    @classmethod
+    def _follow_up_nonempty(cls, v: str) -> str:
+        text = (v or "").strip()
+        if not text:
+            raise ValueError(
+                "follow_up_question is REQUIRED and must be non-empty for deep_analysis"
+            )
+        return text
 
 
 class ConceptUpdateContract(BaseModel):
@@ -251,10 +421,13 @@ class ConceptUpdateContract(BaseModel):
 
 
 class StepAnalysisContract(BaseModel):
-    intent: UserIntent = Field(
-        default="ANSWER",
-        description="INTENT_EXPLAIN только при явной лекции; ANSWER для диалога",
-    )
+    """
+    RU (пояснение): intent сюда больше не входит — тип сообщения (lecture /
+    finalize / shift_focus / control chips) резолвится детерминированно через
+    VectorIntentRouter выше по пайплайну (см. step_analysis_node), LLM отвечает
+    только за concept_updates/critical_gap.
+    """
+
     concept_updates: list[ConceptUpdateContract] = Field(
         default_factory=list,
         max_length=12,
@@ -271,7 +444,8 @@ class SubConceptStatusUpdate(BaseModel):
     """
     Layer fact-extract from one user answer (no mastery verdict).
 
-    Threshold Engine (Python) OR-merges flags and sets VERIFIED/PARTIAL.
+    Threshold Engine (Python) credits layer flags and VERIFIED only on
+    ``accuracy_grade=EXACT_AND_CORRECT`` with an empty error list.
     """
 
     id: str = Field(..., min_length=2, max_length=64)
@@ -281,11 +455,39 @@ class SubConceptStatusUpdate(BaseModel):
     )
     how_passed: bool = Field(
         default=False,
-        description="HOW: architecture / invariants / role split in THIS answer",
+        description="HOW: components / roles / invariants present in THIS answer",
     )
     mechanic_passed: bool = Field(
         default=False,
-        description="MECHANIC: math / algorithm / code detail in THIS answer",
+        description="MECHANIC: named execution/detail layer present in THIS answer",
+    )
+    accuracy_grade: AnswerAccuracyGrade = Field(
+        ...,
+        description=(
+            "Accuracy strictly within the explicitly requested scope of the "
+            "question. Unasked deeper layers MUST NOT reduce this grade. "
+            "Host credits layers / VERIFIED only on EXACT_AND_CORRECT with "
+            "empty detected_errors_or_misconceptions. PARTIAL does not close "
+            "a layer."
+        ),
+    )
+    detected_errors_or_misconceptions: list[str] = Field(
+        default_factory=list,
+        max_length=16,
+        description=(
+            "Only explicit factually false statements in THIS answer. "
+            "Must be empty on EXACT_AND_CORRECT. Silence or omission of "
+            "unasked topics is NOT an error. PARTIAL may be empty when the "
+            "answer is incomplete but not factually wrong."
+        ),
+    )
+    correct_claims: list[str] = Field(
+        default_factory=list,
+        max_length=8,
+        description=(
+            "Theses from THIS answer that are correct (facts only, "
+            "no praise). Required non-empty when accuracy_grade is PARTIAL."
+        ),
     )
     evidence: str = Field(
         default="",
@@ -296,8 +498,9 @@ class SubConceptStatusUpdate(BaseModel):
         default="",
         max_length=500,
         description=(
-            "Optional note on the weakest missing layer in THIS answer "
-            "(Python may override from threshold)"
+            "On PARTIAL / non-exact: the single missing element from the "
+            "explicitly asked scope. NEVER demand unasked deeper layers. "
+            "Python may override from the threshold probe layer."
         ),
     )
     # Legacy optional — ignored by Threshold Engine (kept for schema soft-compat).
@@ -305,6 +508,28 @@ class SubConceptStatusUpdate(BaseModel):
         default=None,
         description="Deprecated: Python Threshold Engine owns status",
     )
+
+    @model_validator(mode="after")
+    def grade_must_match_errors(self) -> SubConceptStatusUpdate:
+        errors = [
+            e.strip()
+            for e in (self.detected_errors_or_misconceptions or [])
+            if (e or "").strip()
+        ]
+        claims = [c.strip() for c in (self.correct_claims or []) if (c or "").strip()]
+        if self.accuracy_grade == AnswerAccuracyGrade.EXACT_AND_CORRECT:
+            if errors:
+                raise ValueError(
+                    "EXACT_AND_CORRECT forbids non-empty "
+                    "detected_errors_or_misconceptions."
+                )
+            return self
+        if self.accuracy_grade == AnswerAccuracyGrade.PARTIAL and not claims:
+            raise ValueError(
+                "PARTIAL requires non-empty correct_claims "
+                "(theses that were already right)."
+            )
+        return self
 
 
 class SubConceptGapEvalContract(BaseModel):

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from knowledge_engine.config import LOCAL_HEAVY_MODEL, OLLAMA_STRUCTURE_NUM_PREDICT
+from knowledge_engine.config import LOCAL_HEAVY_MODEL
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.schemas import EngineGraphState, QueryExpansionResult
 from knowledge_engine.services.gemini_stateless import global_anchor_from_state
@@ -44,7 +44,6 @@ def query_expansion_node(state: EngineGraphState) -> dict[str, Any]:
         user,
         anchor,
         "query_expansion / QueryExpansionResult",
-        num_predict=OLLAMA_STRUCTURE_NUM_PREDICT,
     )
     expanded = [q.strip() for q in result.expanded_queries if q.strip()][:15]
     if len(expanded) < 5:

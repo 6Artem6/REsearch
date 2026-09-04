@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { sortDialogMessages, dialogMsgId, tutorHtmlMatchesContentForMessage } from "./api.js";
 import { LlmHtmlBlock } from "./LlmHtmlBlock.js";
 import {
+  linkifySourceAnchorsHtml,
   postprocessTutorHtml,
   structuredAnalysisToHtml,
   tutorMarkdownToHtml,
@@ -26,11 +27,11 @@ const QUICK = [
   },
   {
     label: "Самопроверка",
-    text: "Один короткий вопрос самопроверки по материалу справа.",
+    text: "[mode:self_check] Один короткий вопрос самопроверки по материалу справа.",
   },
   {
     label: "Следующий модуль",
-    text: "INTENT_FINALIZE: что я усовоил и куда логично перейти дальше?",
+    text: "[mode:next_module] Что я усвоил и куда логично перейти дальше?",
   },
 ];
 
@@ -52,6 +53,7 @@ export function NodeTutorChat({
   onSend,
   disabled,
   generating,
+  stageMessage,
   curriculumId,
   nodeData,
   curriculum,
@@ -66,8 +68,11 @@ export function NodeTutorChat({
   const composeLocked = Boolean(disabled);
   const explainEnabled = Boolean(curriculumId && nodeData);
   const tutorTurnKey = lastTutorMsgId(messages);
+  const hostQuickCount = Array.isArray(session?.quickReplies)
+    ? session.quickReplies.length
+    : 0;
   const showTransitionChips =
-    Boolean(session?.readyForTransition) &&
+    (Boolean(session?.readyForTransition) || hostQuickCount > 0) &&
     !chipsDismissed &&
     !generating &&
     Boolean(tutorTurnKey);
@@ -76,7 +81,7 @@ export function NodeTutorChat({
     // New tutor turn / new transition flag → show chips again.
     setChipsDismissed(false);
     setNodePickerOpen(false);
-  }, [tutorTurnKey, session?.readyForTransition, session?.lastEvalDirective]);
+  }, [tutorTurnKey, session?.readyForTransition, session?.lastEvalDirective, session?.quickReplies]);
 
   const successorNodes = useMemo(
     () => listSuccessorNodes(curriculum, nodeData?.node_id),
@@ -108,11 +113,6 @@ export function NodeTutorChat({
       setNodePickerOpen(true);
       return;
     }
-    if (chip.intent === QUICK_REPLY_INTENTS.clarify) {
-      dismissChips();
-      inputRef.current?.focus?.();
-      return;
-    }
     // Gloss / HOW / MECH → send [mode:…] intent to Prompt Factory.
     dismissChips();
     send(chip.intent);
@@ -136,7 +136,11 @@ export function NodeTutorChat({
       React.createElement(
         "div",
         { className: "tutor-busy-hint", "aria-live": "polite" },
-        "Генерация ответа… можно читать историю выше; новые сообщения временно недоступны.",
+        // stageMessage — последнее FSM stage-событие (см. schemas/fsm.py,
+        // api.js::nodeChatStream) с бэкенда; статичный текст — fallback,
+        // пока событий ещё не пришло или backend их не шлёт (non-stream путь).
+        stageMessage ||
+          "Генерация ответа… можно читать историю выше; новые сообщения временно недоступны.",
       ),
     React.createElement(
       "div",
@@ -160,7 +164,12 @@ export function NodeTutorChat({
             tutorHtml &&
             tutorHtmlMatchesContentForMessage(m.content || "", tutorHtml);
           const tutorMarkdownHtml =
-            m.role === "tutor" ? tutorMarkdownToHtml(m.content || "") : "";
+            m.role === "tutor"
+              ? linkifySourceAnchorsHtml(
+                  tutorMarkdownToHtml(m.content || ""),
+                  session?.sourceRegistry,
+                )
+              : "";
           const isLastTutor = m.role === "tutor" && msgKey === tutorTurnKey;
           return React.createElement(
             "div",

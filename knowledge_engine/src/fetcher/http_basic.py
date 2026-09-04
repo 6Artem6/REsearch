@@ -101,6 +101,7 @@ def _trafilatura_extract(html: str) -> str:
             html,
             include_comments=False,
             include_tables=True,
+            include_formatting=True,
             output_format="markdown",
         )
         if out and len(out.strip()) > 80:

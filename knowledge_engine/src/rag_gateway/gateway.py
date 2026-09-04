@@ -13,6 +13,10 @@ from knowledge_engine.config import (
     RAG_LATENCY_WARN_MS,
     RAG_RETRIEVAL_PER_DIRECTION,
 )
+from knowledge_engine.services.ml_memory_guard import (
+    rag_request_scope,
+    spawn_warmup_task,
+)
 from knowledge_engine.src.locks import run_under_uma_lock
 from knowledge_engine.src.memory.light_rag import LightRAG
 from knowledge_engine.src.rag_gateway.cross_encoder import score_relevance_pairs
@@ -58,7 +62,22 @@ def _deduplicate_facts(
 async def query_directional_rag(req: DirectionalRAGQuery) -> DirectionalRAGResponse:
     """
     Модуль 3: векторный поиск → cross-encoder → cutoff → дедуп → сжатие → top-N.
+
+    Это единая точка входа "всего RAG-запроса" для ML_MEMORY_GUARD: здесь
+    начинается request-scoped 5-минутный cooldown (``rag_request_scope``,
+    отсчёт стартует по завершении, не от последнего вызова модели) и
+    запускается параллельный async-прогрев моделей (``spawn_warmup_task``)
+    В ПОРЯДКЕ реального использования пайплайном (Embedding → Cross-Encoder)
+    — параллельно ``rag.vector_search`` ниже, а не только Exa-стадии.
     """
+    async with rag_request_scope():
+        spawn_warmup_task()
+        return await _query_directional_rag_impl(req)
+
+
+async def _query_directional_rag_impl(
+    req: DirectionalRAGQuery,
+) -> DirectionalRAGResponse:
     t0 = time.perf_counter()
     trace(f"RAG_GATEWAY ▶ directional | node={req.target_node}")
     rag = LightRAG()

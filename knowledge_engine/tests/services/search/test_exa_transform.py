@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from knowledge_engine.config import EXA_RECALL_MAX_PER_DOMAIN
 from knowledge_engine.services.search.exa_client import ExaSearchHit
 from knowledge_engine.services.search.exa_transform import (
+    ExaQueryPlanOut,
     _combined_exa_rank_score,
     _exa_url_quality_score,
     _normalize_exa_score,
     _normalize_url_quality_score,
+    build_exa_query_plan,
     fair_domain_round_robin,
+    fill_round_robin_tail,
     filter_and_rank_exa_curriculum_hits,
     merge_multi_vector_exa_hits,
 )
@@ -113,3 +118,110 @@ def test_fair_domain_round_robin_respects_recall_max_per_domain():
     assert alpha_count <= per_domain
     assert beta_count <= per_domain
     assert len(out) == min(cap, per_domain * 2)
+
+
+def test_fill_round_robin_tail_tops_up_from_low_diversity_response():
+    """Инцидент из аудита: 18 raw hits, но ВСЕ с одного домена (github.com) —
+    round-robin с max_per_domain=2 честно режет до 2, хотя target_cap=4 и
+    материала на самом деле хватает (просто с одного хоста). Добор из
+    хвоста должен закрыть дефицит без сетевого Pass 2."""
+    hits = [
+        ExaSearchHit(
+            url=f"https://github.com/org/repo/blob/main/file_{i}.py",
+            title=f"file_{i}",
+            score=0.9 - i * 0.01,
+        )
+        for i in range(18)
+    ]
+    per_domain = 2
+    target_cap = 4
+
+    capped = fair_domain_round_robin(
+        hits, 15, max_per_domain=per_domain, get_url=lambda h: h.url
+    )
+    assert len(capped) == per_domain  # только один домен — cap сработал как задумано
+
+    filled = fill_round_robin_tail(capped, hits, target_cap, get_url=lambda h: h.url)
+    assert len(filled) == target_cap
+    # Первые per_domain элементов сохранены как есть (порядок round-robin).
+    assert filled[:per_domain] == capped
+    # Добор идёт по исходной релевантности (hits уже отсортирован по score).
+    assert [h.url for h in filled[per_domain:]] == [
+        h.url for h in hits[per_domain:target_cap]
+    ]
+    # Без дублей.
+    assert len({h.url for h in filled}) == len(filled)
+
+
+def test_fill_round_robin_tail_noop_when_target_already_met():
+    hits = [
+        ExaSearchHit(url="https://a.example.com/1", title="a", score=0.9),
+        ExaSearchHit(url="https://b.example.com/1", title="b", score=0.8),
+    ]
+    filled = fill_round_robin_tail(hits, hits, 2, get_url=lambda h: h.url)
+    assert filled == hits
+
+
+def test_fill_round_robin_tail_stops_when_source_pool_exhausted():
+    """Если после добора всё равно не хватает до target — отдаём что есть,
+    не падаем и не дублируем (по этому сигналу вызывающий код решает,
+    нужен ли сетевой Pass 2)."""
+    hits = [ExaSearchHit(url="https://only.example.com/1", title="only", score=0.9)]
+    capped = fair_domain_round_robin(
+        hits, 15, max_per_domain=2, get_url=lambda h: h.url
+    )
+    filled = fill_round_robin_tail(capped, hits, 4, get_url=lambda h: h.url)
+    assert len(filled) == 1
+
+
+def test_build_exa_query_plan_carries_keywords_and_core_theme(monkeypatch):
+    async def fake_lite_structured(system, payload, anchor, schema, label):
+        assert schema is ExaQueryPlanOut
+        return ExaQueryPlanOut(
+            en_declarative="architecture deep dive",
+            en_technical="internals implementation details",
+            en_edge_cases="",
+            ru_short="",
+            ru_expert_article="разбор архитектуры",
+            ru_practical_cases="",
+            keywords=["GIL", "ceval", "asyncio", "GIL"],
+            core_theme="A relevant source explains CPython's GIL and ceval loop.",
+        )
+
+    monkeypatch.setattr(
+        "knowledge_engine.src.curriculum.lite_search_pipeline._lite_structured",
+        fake_lite_structured,
+    )
+
+    plan = asyncio.run(
+        build_exa_query_plan("python internals and memory", anchor="test")
+    )
+    assert plan.core_theme.startswith("A relevant source")
+    assert "GIL" in plan.keywords
+    assert "asyncio" in plan.keywords
+    assert len(plan.specs) >= 2
+    roles = {s.role for s in plan.specs}
+    assert "en_declarative" in roles
+    assert "ru_expert_article" in roles
+
+
+def test_build_exa_query_plan_fallback_has_empty_keywords_and_theme(monkeypatch):
+    async def failing_lite_structured(*args, **kwargs):
+        raise RuntimeError("lite unavailable")
+
+    async def fake_dual_queries(context, *, anchor):
+        return "русский запрос", "english query terms internals"
+
+    monkeypatch.setattr(
+        "knowledge_engine.src.curriculum.lite_search_pipeline._lite_structured",
+        failing_lite_structured,
+    )
+    monkeypatch.setattr(
+        "knowledge_engine.services.search.exa_transform.build_exa_dual_queries",
+        fake_dual_queries,
+    )
+
+    plan = asyncio.run(build_exa_query_plan("python internals", anchor="test"))
+    assert plan.keywords == []
+    assert plan.core_theme == ""
+    assert len(plan.specs) >= 1

@@ -8,9 +8,14 @@ from typing import List, Optional
 
 import lancedb
 import numpy as np
-from langchain_ollama import OllamaEmbeddings
 
-from knowledge_engine.config import EMBED_MODEL, LANCE_DB_PATH, OLLAMA_BASE_URL
+from knowledge_engine.config import LANCE_DB_PATH
+from knowledge_engine.db.embed_model_guard import (
+    drop_if_embed_space_mismatch,
+    row_matches_embed_model,
+    stamp_embed_model,
+)
+from knowledge_engine.services.search.bge_m3_embed import BgeM3Embeddings
 from knowledge_engine.src.locks import run_under_uma_lock
 from knowledge_engine.src.state import StructuredChunk
 
@@ -38,7 +43,7 @@ class ChunkDedupStore:
         LANCE_DB_PATH.mkdir(parents=True, exist_ok=True)
         self._table_name = table_name
         self._db = lancedb.connect(str(LANCE_DB_PATH))
-        self._embeddings = OllamaEmbeddings(model=EMBED_MODEL, base_url=OLLAMA_BASE_URL)
+        self._embeddings = BgeM3Embeddings()
 
     def _embed_sync(self, text: str) -> List[float]:
         return self._embeddings.embed_query(text[:8000])
@@ -58,6 +63,8 @@ class ChunkDedupStore:
             return 0.0
         best = 0.0
         for row in hits:
+            if not row_matches_embed_model(row):
+                continue
             existing = row.get("vector")
             if existing is None:
                 continue
@@ -74,13 +81,16 @@ class ChunkDedupStore:
         vector: List[float],
         meta: dict,
     ) -> None:
-        row = {
-            "chunk_id": chunk_id,
-            "doc_id": doc_id,
-            "text": text[:12_000],
-            "vector": vector,
-            "meta_json": json.dumps(meta, ensure_ascii=False),
-        }
+        row = stamp_embed_model(
+            {
+                "chunk_id": chunk_id,
+                "doc_id": doc_id,
+                "text": text[:12_000],
+                "vector": vector,
+                "meta_json": json.dumps(meta, ensure_ascii=False),
+            }
+        )
+        drop_if_embed_space_mismatch(self._db, self._table_name)
         if self._table_name not in self._db.table_names():
             self._db.create_table(self._table_name, data=[row])
         else:

@@ -53,7 +53,10 @@ from knowledge_engine.src.retrieval.consensus_papers import (
 )
 from knowledge_engine.src.retrieval.consensus_types import ConsensusMessageResult
 from knowledge_engine.src.retrieval.semantic_scholar import ScholarPaper
+from knowledge_engine.logging_setup import get_logger
 from knowledge_engine.ui.run_log import trace
+
+logger = get_logger(__name__)
 
 _URL_RE = re.compile(r"https?://[^\s\]<\"')]+")
 _RESULTS_URL_RE = re.compile(
@@ -184,7 +187,7 @@ class ConsensusSessionManager:
                     f"{preview}"
                 )
                 trace(line)
-                print(line, flush=True)
+                logger.debug(line)
                 self._json_traffic_log.append(
                     {
                         "method": method,

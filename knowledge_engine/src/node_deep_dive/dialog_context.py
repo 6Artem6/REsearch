@@ -270,6 +270,17 @@ def build_layer2_session_state_context(
         )
     if mastery_block:
         parts.append(mastery_block)
+    if cid:
+        try:
+            from knowledge_engine.context_drift_manager import ContextDriftManager
+
+            drift = ContextDriftManager(cid).build_cross_node_prompt_context(
+                exclude_node_id=str(getattr(node, "node_id", "") or "")
+            )
+            if drift:
+                parts.append(drift)
+        except Exception:
+            pass
     if global_block:
         parts.append(global_block)
     diagram_guard = format_diagram_repeat_guard(memory)

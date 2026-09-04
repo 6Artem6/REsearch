@@ -12,6 +12,8 @@ _TRANSITION_CHOICE_MARKERS = (
     "углуб",
     "хочешь",
     "хотите",
+    "advanced",
+    "deep mode",
     "deep dive",
     "deep_dive",
     "next_node",
@@ -20,6 +22,11 @@ _TRANSITION_CHOICE_MARKERS = (
 )
 
 _UNANSWERED_NOTE = "[Unanswered tutor question removed]"
+
+
+def is_transition_choice_question(fragment: str) -> bool:
+    """True when a «?» fragment is a next-step CTA, not a technical quiz."""
+    return _is_transition_choice_fragment(fragment)
 
 
 def _is_transition_choice_fragment(fragment: str) -> bool:
@@ -61,7 +68,7 @@ def strip_trailing_question_sentences(
         last = sentences[-1].strip()
         if "?" not in last:
             break
-        if keep_transition_choice and _is_transition_choice_fragment(last):
+        if keep_transition_choice and is_transition_choice_question(last):
             break
         sentences.pop()
         removed = True
@@ -74,7 +81,7 @@ def strip_trailing_question_sentences(
         while paras:
             tail = paras[-1].strip()
             if "?" in tail and not (
-                keep_transition_choice and _is_transition_choice_fragment(tail)
+                keep_transition_choice and is_transition_choice_question(tail)
             ):
                 paras.pop()
                 removed = True

@@ -43,3 +43,4 @@ class TutorGraphState(TypedDict, total=False):
     response_verified_sub_concept_ids: list[str]
     session_history: list[dict[str, str]]
     _stream_callback: Any
+    is_layer_just_completed: bool

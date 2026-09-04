@@ -79,7 +79,7 @@ def hits_from_registry_entries(
     return out
 
 
-def hits_from_lancedb_goal(
+async def hits_from_lancedb_goal(
     goal: str,
     *,
     cap: int,
@@ -90,7 +90,7 @@ def hits_from_lancedb_goal(
         return []
     store = VectorStore()
     try:
-        summaries = store.hybrid_search(q[:1200], limit=max(cap + 4, 6))
+        summaries = await store.hybrid_search(q[:1200], limit=max(cap + 4, 6))
     except Exception as exc:
         trace(f"CURRICULUM on_demand LanceDB ⊘ | hybrid_search | {exc}")
         return []
@@ -120,7 +120,7 @@ def hits_from_lancedb_goal(
     return out
 
 
-def merge_on_demand_reuse_hits(
+async def merge_on_demand_reuse_hits(
     goal: str,
     registry_entries: list,
     *,
@@ -144,7 +144,7 @@ def merge_on_demand_reuse_hits(
 
     if len(merged) < cap:
         need = cap - len(merged)
-        for h in hits_from_lancedb_goal(
+        for h in await hits_from_lancedb_goal(
             goal,
             cap=need + 2,
             exclude_url_keys=seen,

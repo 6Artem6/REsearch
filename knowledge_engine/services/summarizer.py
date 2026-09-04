@@ -42,8 +42,9 @@ def summarize_article(
     system = SystemMessage(
         content=(
             f"{RUSSIAN_OUTPUT_RULE} "
-            "Ты research-аналитик. Сжимай материал по инженерным критериям и личному фокусу. "
-            "Выход — JSON DocumentSummary. diagram_descriptions дополни переданными описаниями схем."
+            "You are a research analyst. Compress the material using the engineering "
+            "quality criteria and the personal focus. Output JSON DocumentSummary. "
+            "Extend diagram_descriptions with any diagram notes that were provided."
         )
     )
     human = HumanMessage(

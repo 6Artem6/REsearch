@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class TOCNode(BaseModel):
@@ -31,14 +31,55 @@ class DocumentStructureTree(BaseModel):
 
 
 class TriageDecisionResponse(BaseModel):
-    keep_paragraph_ranges: List[Tuple[str, str]] = Field(
-        ...,
-        description="Пары [start_P_id, end_P_id] для секций с основным техническим контентом",
+    keep_paragraph_ranges: List[List[str]] = Field(
+        default_factory=list,
+        description=(
+            "Inclusive ranges as [start_P_id, end_P_id] pairs for MAIN technical "
+            "content. Example: [[\"P_2\", \"P_123\"]]. Use list-of-lists, not objects."
+        ),
     )
+    # RU: пары абзацев, которые оставляем в теле статьи.
     pruned_sections_reason: List[str] = Field(
-        ...,
-        description="Удалённые секции и причины",
+        default_factory=list,
+        description=(
+            "Dropped sections and why (bibliography, appendix, legal). "
+            "Empty list if nothing was pruned."
+        ),
     )
+    # RU: причины выкинутых секций; пустой список, если подрезки не было.
+
+    @field_validator("keep_paragraph_ranges", mode="before")
+    @classmethod
+    def _coerce_keep_ranges(cls, value: object) -> list[list[str]]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return []
+        out: list[list[str]] = []
+        for item in value:
+            if isinstance(item, dict):
+                start = item.get("start_p_id") or item.get("start")
+                end = item.get("end_p_id") or item.get("end")
+                if start and end:
+                    out.append([str(start).strip(), str(end).strip()])
+                continue
+            if isinstance(item, (list, tuple)) and len(item) >= 2:
+                start, end = str(item[0]).strip(), str(item[1]).strip()
+                if start and end:
+                    out.append([start, end])
+        return out
+
+    @field_validator("pruned_sections_reason", mode="before")
+    @classmethod
+    def _coerce_reasons(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            line = value.strip()
+            return [line] if line else []
+        if isinstance(value, list):
+            return [str(x).strip() for x in value if str(x).strip()]
+        return []
 
 
 class TriageOutcome(BaseModel):

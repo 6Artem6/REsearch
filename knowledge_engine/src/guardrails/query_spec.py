@@ -1,11 +1,8 @@
-"""Stage 0/1 — Ollama 7B guardrails → ValidatedQuerySpec."""
+"""Stage 0/1 — Cloud LLM Pipeline guardrails → ValidatedQuerySpec."""
 
 from __future__ import annotations
 
-from knowledge_engine.config import (
-    GUARDRAILS_OLLAMA_MODEL,
-    OLLAMA_GUARDRAILS_NUM_PREDICT,
-)
+from knowledge_engine.config import GUARDRAILS_MODEL
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.local_llm_stateless import run_local_structured
 from knowledge_engine.src.guardrails.term_guard import extract_user_acronyms
@@ -13,7 +10,7 @@ from knowledge_engine.src.locks import run_under_uma_lock
 from knowledge_engine.src.state import ValidatedQuerySpec
 from knowledge_engine.ui.run_log import trace
 
-_DEFAULT_MODEL = GUARDRAILS_OLLAMA_MODEL
+_DEFAULT_MODEL = GUARDRAILS_MODEL
 
 
 def _build_anchor(user_query: str, user_profile_md: str) -> str:
@@ -69,7 +66,7 @@ def _generate_validated_query_spec_sync(
         f"Detected acronyms in user query: {', '.join(extract_user_acronyms(query)) or '(none)'}"
     )
 
-    trace(f"GUARDRAILS ▶ Ollama structured | model={model_name}")
+    trace(f"GUARDRAILS ▶ Cloud LLM structured | model={model_name}")
     spec = run_local_structured(
         model_name,
         ValidatedQuerySpec,
@@ -78,7 +75,6 @@ def _generate_validated_query_spec_sync(
         anchor,
         "guardrails / ValidatedQuerySpec",
         temperature=0.05,
-        num_predict=OLLAMA_GUARDRAILS_NUM_PREDICT,
     )
     trace(
         f"GUARDRAILS raw ✓ keywords={len(spec.target_keywords)} "
@@ -111,7 +107,7 @@ async def generate_validated_query_spec(
     grounding_context: str = "",
 ) -> ValidatedQuerySpec:
     """
-    Ollama 7B structured JSON under ``uma_resource_lock``.
+    Cloud LLM structured JSON under ``uma_resource_lock``.
     Grounding must be fetched outside the lock (see ``manager.run_stage_0_1``).
     """
     model = (model_name or _DEFAULT_MODEL).strip()

@@ -15,6 +15,7 @@ from knowledge_engine.config import (
     RAG_CE_AUTO_UNLOAD_IDLE_SEC,
     RAG_CE_TORCH_DTYPE,
     RAG_CROSS_ENCODER_MODEL,
+    RAG_CROSS_ENCODER_REVISION,
 )
 from knowledge_engine.ui.run_log import trace
 
@@ -120,22 +121,38 @@ def _touch_ce_use() -> None:
     _schedule_idle_unload()
 
 
+def _identity_activation() -> object:
+    import torch.nn as nn
+
+    return nn.Identity()
+
+
 def _create_cross_encoder() -> object:
+    from knowledge_engine.services.ml_runtime import assert_ml_weights_allowed
+
+    assert_ml_weights_allowed("Cross-Encoder reranker")
     import torch
     from sentence_transformers import CrossEncoder
 
     device = _resolve_torch_device()
     dtype = _resolve_torch_dtype(device)
+    from knowledge_engine.services.hf_model_cache import resolve_hf_snapshot
+
+    local = resolve_hf_snapshot(
+        RAG_CROSS_ENCODER_MODEL,
+        revision=RAG_CROSS_ENCODER_REVISION,
+    )
     trace(
         f"RAG_CE ▶ загрузка {RAG_CROSS_ENCODER_MODEL} | device={device} "
-        f"dtype={dtype}"
+        f"dtype={dtype} src=local_cache"
     )
     automodel_args = {"dtype": dtype}
     try:
         model = CrossEncoder(
-            RAG_CROSS_ENCODER_MODEL,
+            local,
             device=device,
             automodel_args=automodel_args,
+            default_activation_function=_identity_activation(),
         )
         trace("RAG_CE ✓ loaded")
         return model
@@ -143,12 +160,21 @@ def _create_cross_encoder() -> object:
         if dtype != torch.float32:
             trace(f"RAG_CE ⚠ low-precision load failed, fp32 | {exc}")
             model = CrossEncoder(
-                RAG_CROSS_ENCODER_MODEL,
+                local,
                 device=device,
+                default_activation_function=_identity_activation(),
             )
             trace("RAG_CE ✓ loaded (fp32 fallback)")
             return model
         raise
+
+
+def ensure_cross_encoder_loaded() -> None:
+    """Public warmup entry point (see ``ml_memory_guard.warmup_pipeline_async``)
+    — блокирующая, вызывать из ``asyncio.to_thread``. Идемпотентна: если
+    модель уже загружена (или уже переключилась на cosine fallback),
+    `_load_cross_encoder()` вернёт мгновенно."""
+    _load_cross_encoder()
 
 
 def _load_cross_encoder() -> object | None:
@@ -160,6 +186,9 @@ def _load_cross_encoder() -> object | None:
             return _cross_encoder
         try:
             _cross_encoder = _create_cross_encoder()
+            from knowledge_engine.services.ml_memory_guard import register_model
+
+            register_model("cross_encoder", unload_cross_encoder)
             return _cross_encoder
         except Exception as exc:
             _use_cosine_fallback = True
@@ -168,19 +197,20 @@ def _load_cross_encoder() -> object | None:
 
 
 def _cosine_fallback_scores(criterion: str, texts: List[str]) -> List[float]:
-    """Детерминированный fallback: косинус эмбеддингов Ollama (не cross-encoder)."""
-    from langchain_ollama import OllamaEmbeddings
+    """Deterministic fallback: BGE-M3 cosine mapped to [0, 1] (not Cross-Encoder)."""
+    from knowledge_engine.services.search.bge_m3_embed import embed_texts_bge_m3
 
-    from knowledge_engine.config import EMBED_MODEL, OLLAMA_BASE_URL
-
-    emb = OllamaEmbeddings(model=EMBED_MODEL, base_url=OLLAMA_BASE_URL)
-    qv = np.asarray(emb.embed_query(criterion[:8000]), dtype=np.float64)
+    payload = [criterion[:8000], *[t[:8000] for t in texts]]
+    vecs = embed_texts_bge_m3(payload)
+    if len(vecs) != len(payload):
+        return [0.0 for _ in texts]
+    qv = np.asarray(vecs[0], dtype=np.float64)
     nq = np.linalg.norm(qv)
     if nq == 0:
         return [0.0 for _ in texts]
     scores: List[float] = []
-    for t in texts:
-        tv = np.asarray(emb.embed_query(t[:8000]), dtype=np.float64)
+    for tv_raw in vecs[1:]:
+        tv = np.asarray(tv_raw, dtype=np.float64)
         nt = np.linalg.norm(tv)
         if nt == 0:
             scores.append(0.0)
@@ -192,7 +222,11 @@ def _cosine_fallback_scores(criterion: str, texts: List[str]) -> List[float]:
 
 def score_relevance_pairs(criterion: str, texts: List[str]) -> List[float]:
     """
-    Парные оценки (relevance_criteria <-> chunk). Возврат в шкале 0..1.
+    Pair scores (relevance_criteria <-> chunk) in [0, 1].
+
+    ``BAAI/bge-reranker-v2-m3`` emits raw logits. Sentence-Transformers
+    ``predict()`` would apply Sigmoid by default when num_labels=1 — we force
+    Identity and apply σ once so scores are calibrated, not double-squashed.
     """
     if not texts:
         return []
@@ -207,15 +241,21 @@ def score_relevance_pairs(criterion: str, texts: List[str]) -> List[float]:
     pairs = [(crit, t[:2000]) for t in texts]
     try:
         import torch
+        import torch.nn as nn
 
         with torch.inference_mode():
-            raw = model.predict(pairs, batch_size=min(16, len(pairs)))
+            raw = model.predict(
+                pairs,
+                batch_size=min(16, len(pairs)),
+                activation_fct=nn.Identity(),
+            )
         out: List[float] = []
         for r in raw:
-            val = float(r)
-            out.append(_sigmoid(val))
+            out.append(max(0.0, min(1.0, _sigmoid(float(r)))))
         _touch_ce_use()
-        _release_torch_cache()
+        from knowledge_engine.services.ml_memory_guard import guard_after_use
+
+        guard_after_use("cross_encoder")
         return out
     except Exception as exc:
         trace(f"RAG_CE ⚠ predict fallback | {exc}")

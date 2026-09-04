@@ -44,8 +44,24 @@ def format_tutor_source_registry_light(registry: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def format_tutor_source_registry_pinned(registry: list[dict[str, Any]]) -> str:
+def format_tutor_source_registry_pinned(
+    registry: list[dict[str, Any]],
+    *,
+    allow_node_anchor: bool = True,
+) -> str:
     if not registry:
+        # Default allow_node_anchor=True: empty mapped_source_ids is common;
+        # requiring [S1]/references would force hallucinated citations.
+        if allow_node_anchor:
+            return (
+                "### SOURCE REGISTRY\n"
+                "(пусто — у ноды нет mapped_source_ids в библиотеке курса)\n"
+                "[CITATION_POLICY: REGISTRY_EMPTY — ACTIVE]\n"
+                "- Требование [S1]/[S2] / непустых JSON references НЕАКТИВНО.\n"
+                "- JSON `references`: обязательно [].\n"
+                "- Разрешены якоря материалов ноды: [S_node], [code-N], [diagram-N].\n"
+                "- Не выдумывай статьи, URL или фейковые [S1].\n"
+            )
         return (
             "### SOURCE REGISTRY\n"
             "(пусто — у ноды нет mapped_source_ids в библиотеке курса)\n"
@@ -55,8 +71,9 @@ def format_tutor_source_registry_pinned(registry: list[dict[str, Any]]) -> str:
     return (
         f"{body}\n\n"
         "=== CITATION POLICY (обязательно) ===\n"
-        "- В tutor_message / lecture_body: только inline-теги [S1], [S2], … из реестра выше; "
-        "также [diagram-N] / [code-N] из материалов ноды.\n"
+        "- В tutor_message / lecture_body / technical_explanation: только inline-теги "
+        "[S1], [S2], … из реестра выше; также [diagram-N] / [code-N] из материалов ноды; "
+        "и [R1]…[Rn] из RAG MATERIAL / dialog atoms, если этот блок передан в payload.\n"
         "- ЗАПРЕЩЕНО: любые http/https, Markdown `[текст](url)`, голые URL в тексте ответа.\n"
         "- Внешние источники — ТОЛЬКО в JSON `references` (dialogue) или `used_sources` (лекция): "
         "скопируй title и url ТОЧНО из строки реестра; asset_id = id реестра (S1, S2, …).\n"

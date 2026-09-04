@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from functools import lru_cache
+from typing import Any, AsyncIterator
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
@@ -81,9 +83,34 @@ def build_tutor_graph() -> StateGraph:
 
 @lru_cache(maxsize=1)
 def get_compiled_tutor_graph():
-    """Compiled graph with in-memory checkpointer (dev)."""
+    """Compiled graph with in-memory checkpointer (fallback — RAM-only,
+    теряется при рестарте процесса; см. config.GRAPH_CHECKPOINTER_BACKEND
+    == "memory"). Дефолт с Phase 2 — tutor_graph_session() ниже."""
     memory = MemorySaver()
     return build_tutor_graph().compile(checkpointer=memory)
 
 
-__all__ = ["TutorGraphState", "build_tutor_graph", "get_compiled_tutor_graph"]
+@asynccontextmanager
+async def tutor_graph_session() -> AsyncIterator[tuple[Any, Any]]:
+    """Postgres-checkpointed граф на время ОДНОГО хода (Phase 2, дефолт —
+    см. config.GRAPH_CHECKPOINTER_BACKEND). Открывает и закрывает
+    TutorGraphService/AsyncPostgresSaver внутри вызова — см.
+    services/tutor_graph_service.py про то, почему нельзя переиспользовать
+    пул между ходами (воркер создаёт новый event loop на job).
+
+    yield (service, compiled_graph) — вызывающий код зовёт
+    service.run_or_resume(compiled_graph, config, initial_state), не просто
+    compiled_graph.ainvoke(...), чтобы получить resumeability бесплатно.
+    """
+    from knowledge_engine.services.tutor_graph_service import TutorGraphService
+
+    async with TutorGraphService() as svc:
+        yield svc, svc.compile(build_tutor_graph())
+
+
+__all__ = [
+    "TutorGraphState",
+    "build_tutor_graph",
+    "get_compiled_tutor_graph",
+    "tutor_graph_session",
+]

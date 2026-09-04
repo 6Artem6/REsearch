@@ -62,15 +62,19 @@ def extract_clean_json(text: str) -> str:
     return raw
 
 
-def _decode_json_string(raw: str, start: int) -> str:
-    """Декодировать JSON string value с позиции start (после открывающей кавычки)."""
+def _decode_json_string(raw: str, start: int) -> tuple[str, bool]:
+    """Decode a JSON string value starting after the opening quote.
+
+    Returns (decoded_text, complete) where complete is True iff the closing
+    quote was seen in ``raw``.
+    """
     out: list[str] = []
     i = start
     n = len(raw)
     while i < n:
         ch = raw[i]
         if ch == '"':
-            break
+            return "".join(out), True
         if ch == "\\" and i + 1 < n:
             esc = raw[i + 1]
             mapping = {
@@ -96,16 +100,27 @@ def _decode_json_string(raw: str, start: int) -> str:
             continue
         out.append(ch)
         i += 1
-    return "".join(out)
+    return "".join(out), False
+
+
+def partial_json_string_field_state(raw: str, field: str) -> tuple[str, str]:
+    """Partial JSON string field: (value, status).
+
+    status is ``missing`` (key not in buffer yet), ``partial`` (opened, no
+    closing quote), or ``complete``.
+    """
+    pat = re.compile(rf'"{re.escape(field)}"\s*:\s*"', re.IGNORECASE)
+    m = pat.search(raw or "")
+    if not m:
+        return "", "missing"
+    value, complete = _decode_json_string(raw, m.end())
+    return value, "complete" if complete else "partial"
 
 
 def partial_json_string_field(raw: str, field: str) -> str:
     """Текст поля из неполного JSON (стрим)."""
-    pat = re.compile(rf'"{re.escape(field)}"\s*:\s*"', re.IGNORECASE)
-    m = pat.search(raw or "")
-    if not m:
-        return ""
-    return _decode_json_string(raw, m.end())
+    value, _status = partial_json_string_field_state(raw, field)
+    return value
 
 
 def resolved_json_field_text(raw: str, field: str) -> str:
@@ -173,26 +188,79 @@ class JsonFieldStreamFilter:
 
 
 TUTOR_DIALOGUE_STREAM_FIELDS: tuple[str, ...] = (
-    "feedback_on_answer",
+    "confirmation",
+    "correction_breakdown",
     "technical_explanation",
     "follow_up_question",
 )
 
+TUTOR_EXPLAIN_STREAM_FIELDS: tuple[str, ...] = (
+    "technical_explanation",
+    "follow_up_question",
+)
+
+DRILL_ACTIVE_STREAM_FIELDS: tuple[str, ...] = (
+    "status_header",
+    "confirmation",
+    "correction_breakdown",
+    "theory_body",
+    "next_question",
+)
+
+DRILL_COMPLETE_STREAM_FIELDS: tuple[str, ...] = (
+    "praise",
+    "layer_summary",
+    "transition_framing",
+)
+
+# Mutually exclusive audit branches — skip if omitted/empty, never block later fields.
+_OPTIONAL_STREAM_FIELDS = frozenset({"confirmation", "correction_breakdown"})
+
 
 class TutorDialogueFieldsStreamFilter:
-    """Стримит в UI склейку трёх полей dialogue tutor в порядке генерации."""
+    """Стримит в UI склейку полей structured JSON в порядке UI, не JSON.
 
-    def __init__(self, on_delta: Callable[[str], None]) -> None:
+    Gemini emits nested ``audit.confirmation`` before ``status_header``. If we
+    joined whatever keys are already visible, SSE deltas (append-only) would
+    glue confirmation+header and then reprint confirmation after the header
+    lands. Compose only a prefix-stable layout: wait for earlier required
+    fields to finish before appending later ones.
+    """
+
+    def __init__(
+        self,
+        on_delta: Callable[[str], None],
+        fields: tuple[str, ...] | None = None,
+    ) -> None:
         self._on_delta = on_delta
+        self._fields = fields or TUTOR_DIALOGUE_STREAM_FIELDS
         self._buffer = ""
         self._emitted_value = ""
 
+    def _format_field(self, field: str, value: str) -> str:
+        text = (value or "").strip()
+        if not text:
+            return ""
+        if field == "next_question" and not text.startswith("**Вопрос:**"):
+            return f"**Вопрос:** {text}"
+        return text
+
     def _compose_partial(self) -> str:
         parts: list[str] = []
-        for field in TUTOR_DIALOGUE_STREAM_FIELDS:
-            v = streaming_json_field_text(self._buffer, field).strip()
-            if v:
-                parts.append(v)
+        for field in self._fields:
+            raw_value, status = partial_json_string_field_state(self._buffer, field)
+            optional = field in _OPTIONAL_STREAM_FIELDS
+            if status == "missing":
+                if optional:
+                    continue
+                break
+            formatted = self._format_field(field, raw_value)
+            if status == "partial":
+                if formatted:
+                    parts.append(formatted)
+                break
+            if formatted:
+                parts.append(formatted)
         return "\n\n".join(parts)
 
     def _emit_value_delta(self, value: str) -> None:
@@ -225,10 +293,11 @@ class TutorDialogueFieldsStreamFilter:
 
 def wrap_stream_callback_for_tutor_dialogue_fields(
     stream_callback: Callable[[str], None] | None,
+    fields: tuple[str, ...] | None = None,
 ) -> TutorDialogueFieldsStreamFilter | None:
     if not stream_callback:
         return None
-    return TutorDialogueFieldsStreamFilter(stream_callback)
+    return TutorDialogueFieldsStreamFilter(stream_callback, fields=fields)
 
 
 def wrap_stream_callback_for_json_field(
@@ -246,7 +315,15 @@ def structured_stream_text_field(response_schema: type | None) -> str | None:
     name = getattr(response_schema, "__name__", "") or ""
     if name == "DenseMaterialOutput" or name == "StructuredLectureResponse":
         return "lecture_body"
-    if name == "DeepDiveTutorContract":
+    if name in (
+        "DeepDiveTutorContract",
+        "DeepDiveDeepAnalysisContract",
+        "DeepDiveExplainContract",
+    ):
+        return None
+    if name == "ActiveDrillStepResponse":
+        return None
+    if name == "LayerCompletionTutorOutput":
         return None
     if name in ("DeepDiveLLMOutput", "IntroAssessmentOutput"):
         return "tutor_message"

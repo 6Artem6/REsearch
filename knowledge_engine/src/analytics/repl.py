@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
-from knowledge_engine.llm_locale import GEMINI_RUSSIAN_ROLE, RUSSIAN_OUTPUT_RULE
-from knowledge_engine.src.analytics.gemini_v07 import run_gemini_flash_text
+from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
+from knowledge_engine.schemas.research_schemas import ReplFollowUpResponse
+from knowledge_engine.src.analytics.gemini_v07 import run_gemini_flash_structured
 
 _MAX_CONTEXT_CHARS = 48_000
 
@@ -81,18 +82,33 @@ def build_repl_context(state: Dict[str, Any]) -> str:
     return _truncate(body, _MAX_CONTEXT_CHARS)
 
 
+_REPL_SYSTEM = (
+    "You are an assistant for an already-completed Knowledge Engine v0.7 research run.\n"
+    "Return strictly valid JSON matching ReplFollowUpResponse.\n"
+    "Required key: answer. Optional: sources_cover_question (false if RESEARCH CONTEXT "
+    "does not cover the question).\n"
+    "Ground answer only in RESEARCH CONTEXT (chunks, ConceptGraph, gap map, matrix).\n"
+    "If sources lack data, say so in answer and set sources_cover_question=false.\n"
+    "Do not shrink the answer to UMA/Mac unless the question is about hardware.\n"
+    f"{RUSSIAN_OUTPUT_RULE}\n"
+    "The answer field MUST be natural Russian.\n"
+)
+
+
 def answer_follow_up(
     question: str,
     repl_context: str,
     global_anchor: str,
 ) -> str:
-    system = (
-        f"{GEMINI_RUSSIAN_ROLE} {RUSSIAN_OUTPUT_RULE} "
-        "Ты помощник по уже выполненному исследованию Knowledge Engine v0.7. "
-        "Отвечай только на основе RESEARCH CONTEXT ниже (чанки, ConceptGraph, gap map, матрица). "
-        "Если в контексте нет данных — явно скажи, что источники не покрывают вопрос. "
-        "Дай технически развернутый ответ: механики, допущения, сравнение подходов. "
-        "Не сужай ответ до UMA/Mac, если вопрос не про железо."
+    user = (
+        f"## RESEARCH CONTEXT\n{repl_context}\n\n"
+        f"## Follow-up question\n{question.strip()}"
     )
-    user = f"## RESEARCH CONTEXT\n{repl_context}\n\n## Уточняющий вопрос\n{question.strip()}"
-    return run_gemini_flash_text(system, user, global_anchor, "REPL follow-up")
+    parsed = run_gemini_flash_structured(
+        _REPL_SYSTEM,
+        user,
+        global_anchor,
+        ReplFollowUpResponse,
+        "REPL follow-up",
+    )
+    return (parsed.answer or "").strip()

@@ -1,9 +1,11 @@
-"""Файловый trace прогона: фазы графа, Ollama, статусы (дополняет Rich Live)."""
+"""Файловый trace прогона: фазы графа, Gemma Cloud, статусы (дополняет Rich Live)."""
 
 from __future__ import annotations
 
+import logging
 import queue
 import re
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -40,6 +42,9 @@ class _TraceJob:
     use_redis: bool
     skip_file: bool
     path: Path | None
+    caller_file: str
+    caller_line: int
+    caller_func: str
 
 
 def _ke_trace_stdout() -> bool:
@@ -93,10 +98,38 @@ def _ensure_redis_worker() -> None:
 
 
 def _trace_worker_loop() -> None:
+    from knowledge_engine.logging_setup import trace_mirror_logger
+
     while True:
         job = _trace_q.get()
         if job is None:
             break
+        # Re-checked per job (cheap — trace_mirror_logger() caches internally);
+        # keeps this responsive to LOG_TO_FILE being set after the worker starts.
+        # The whole block is guarded: an exception here (e.g. trace_mirror_logger()
+        # failing to create its log dir) must never kill this single worker thread —
+        # that would silently stop ALL trace() output (file, stdout, Redis), not
+        # just the mirror write, since every sink is served by this one loop.
+        try:
+            std_logger = trace_mirror_logger()
+            if std_logger is not None:
+                # Attribute the record to the real trace() call site (captured on
+                # the calling thread) instead of this worker loop's own frame —
+                # stacklevel can't do it here since emission happens on a
+                # different thread than the call, with its own stack.
+                record = std_logger.makeRecord(
+                    std_logger.name,
+                    logging.INFO,
+                    job.caller_file,
+                    job.caller_line,
+                    job.message,
+                    (),
+                    None,
+                    func=job.caller_func,
+                )
+                std_logger.handle(record)
+        except Exception:
+            pass
         try:
             if job.stdout:
                 if job.multiline:
@@ -181,6 +214,10 @@ def trace(message: str) -> None:
     path = _log_path
     use_redis = bool(log_id and _redis_logs_on())
     skip_file = use_redis and not multiline
+    # Captured here (on the caller's thread/stack) — the worker thread that
+    # eventually logs this has its own stack, so stacklevel can't reach back
+    # to the real trace(...) call site from there.
+    caller = sys._getframe(1)
     _trace_q.put_nowait(
         _TraceJob(
             message=message,
@@ -192,6 +229,9 @@ def trace(message: str) -> None:
             use_redis=use_redis,
             skip_file=skip_file,
             path=path,
+            caller_file=caller.f_code.co_filename,
+            caller_line=caller.f_lineno,
+            caller_func=caller.f_code.co_name,
         )
     )
 
@@ -213,11 +253,11 @@ def node_end(node_id: str, detail: str = "") -> None:
     on_node_end(node_id, elapsed, detail)
 
 
-def ollama_invoke(llm: Any, messages: list[Any], label: str) -> Any:
-    from knowledge_engine.ui.logger import on_ollama_end, on_ollama_start
+def gemma_cloud_invoke(llm: Any, messages: list[Any], label: str) -> Any:
+    from knowledge_engine.ui.logger import on_gemma_cloud_end, on_gemma_cloud_start
 
-    model = getattr(llm, "model", None) or getattr(llm, "model_name", "ollama")
-    on_ollama_start(str(model), label)
+    model = getattr(llm, "model", None) or getattr(llm, "model_name", "gemma-cloud")
+    on_gemma_cloud_start(str(model), label)
     t0 = time.monotonic()
     try:
         result = llm.invoke(messages)
@@ -237,14 +277,18 @@ def ollama_invoke(llm: Any, messages: list[Any], label: str) -> Any:
             else:
                 raw = str(result)
             trace_llm_messages(label, messages, raw, model=str(model))
-        on_ollama_end(str(model), label, time.monotonic() - t0, ok=True)
+        on_gemma_cloud_end(str(model), label, time.monotonic() - t0, ok=True)
         return result
     except Exception as exc:
         from knowledge_engine.ui.errors import format_error_with_cause
 
-        on_ollama_end(str(model), label, time.monotonic() - t0, ok=False)
-        trace(f"OLLAMA ✗ {model} | {label} — {format_error_with_cause(exc)}")
+        on_gemma_cloud_end(str(model), label, time.monotonic() - t0, ok=False)
+        trace(f"GEMMA_CLOUD ✗ {model} | {label} — {format_error_with_cause(exc)}")
         raise
+
+
+# Historical name — same Gemma Cloud path.
+ollama_invoke = gemma_cloud_invoke
 
 
 _ensure_trace_worker()

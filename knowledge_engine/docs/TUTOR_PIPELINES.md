@@ -81,7 +81,7 @@ flowchart TB
   NC --> WJ
 ```
 
-Без живого worker (или `KE_WORKER_INLINE_FALLBACK=true`) `POST /curriculum/*` и `POST /node/*` → **503**. `GET /api/v1/health` → `worker_ok`.
+Без живого worker `POST /curriculum/*`, `POST /node/*` и RAG-gateway → **503**. `KE_WORKER_INLINE_FALLBACK` больше не исполняет ML в API. `GET /api/v1/health` → `worker_ok`.
 
 Очередь: `api/helpers/work_enqueue.py` → `services/work_job_store.py` (или Redis pub/sub при `REDIS_URL`).
 

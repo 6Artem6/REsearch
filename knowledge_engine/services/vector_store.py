@@ -9,9 +9,14 @@ from typing import Any, Callable, List, Optional, TypeVar
 
 import lancedb
 import numpy as np
-from langchain_ollama import OllamaEmbeddings
 
-from knowledge_engine.config import EMBED_MODEL, LANCE_DB_PATH, OLLAMA_BASE_URL
+import knowledge_engine.config as _config
+from knowledge_engine.config import EMBED_MODEL, LANCE_DB_PATH
+from knowledge_engine.db.embed_model_guard import (
+    drop_if_embed_space_mismatch,
+    row_matches_embed_model,
+    stamp_embed_model,
+)
 from knowledge_engine.db.knowledge_atoms_schema import (
     COL_CONTEXT_QUOTE as KA_COL_CONTEXT_QUOTE,
 )
@@ -42,35 +47,108 @@ from knowledge_engine.db.rag_chunks_schema import (
     COL_WINDOW_SUMMARY,
     RAG_CHUNKS_TABLE,
 )
+from knowledge_engine.db.repositories.postgres_vector_repository import (
+    generate_vector_id,
+)
 from knowledge_engine.schemas import DocumentSummary, KnowledgeNode
 from knowledge_engine.services.lance_db_maintenance import (
     is_lance_format_error,
     reset_lance_directory,
 )
+from knowledge_engine.services.search.bge_m3_embed import BgeM3Embeddings
 from knowledge_engine.ui.run_log import trace
 
 TABLE_NAME = "document_summaries"
+
+_qdrant_store_singleton: Any | None = None
+_postgres_store_adapter: Any | None = None
+_postgres_store_loop_id: int | None = None
+
+
+def _get_qdrant_backend() -> Any | None:
+    """Lazy singleton; only constructed when QDRANT_URL is configured."""
+    global _qdrant_store_singleton
+    if not (_config.QDRANT_URL or "").strip():
+        return None
+    if _qdrant_store_singleton is None:
+        from knowledge_engine.services.qdrant_vector_store import QdrantVectorStore
+
+        _qdrant_store_singleton = QdrantVectorStore()
+    return _qdrant_store_singleton if _qdrant_store_singleton.enabled else None
+
+
+async def _get_postgres_backend() -> Any | None:
+    """Lazy singleton adapter, НО keyed по текущему event loop.
+
+    ИСПРАВЛЕНО (Phase 3): комментарий здесь раньше утверждал, что проблемы
+    per-job event loop нет — это оказалось НЕВЕРНО и найдено живым
+    воспроизведением: воркер зовёт node_deep_dive job'ы через
+    asyncio.run() (см. services/work_handlers.py) — КАЖДЫЙ job получает
+    новый event loop. SQLAlchemy AsyncEngine/asyncpg-пул, созданный в loop A,
+    ломается при использовании из loop B с
+    `InterfaceError: cannot perform operation: another operation is in
+    progress` на второй же job. Детектируем смену loop'а и пересоздаём
+    движок — старый просто отбрасывается (его loop уже закрыт, корректно
+    dispose() из НОВОГО loop'а невозможно; соединения умирают вместе со
+    старым loop'ом на транспортном уровне)."""
+    global _postgres_store_adapter, _postgres_store_loop_id
+    import asyncio
+
+    current_loop_id = id(asyncio.get_running_loop())
+    if (
+        _postgres_store_adapter is not None
+        and _postgres_store_loop_id != current_loop_id
+    ):
+        _postgres_store_adapter = None
+
+    if _postgres_store_adapter is None:
+        from knowledge_engine.db.repositories.postgres_vector_repository import (
+            PostgresVectorRepository,
+        )
+        from knowledge_engine.services.postgres_vector_store_adapter import (
+            PostgresVectorStoreAdapter,
+        )
+
+        repo = await PostgresVectorRepository.create(_config.POSTGRES_DSN)
+        _postgres_store_adapter = PostgresVectorStoreAdapter(repo)
+        _postgres_store_loop_id = current_loop_id
+    return _postgres_store_adapter
+
+
+async def _get_active_vector_store() -> Any | None:
+    """Единая точка выбора бэкенда (см. config.VECTOR_STORE_BACKEND, Phase 2).
+    Заменяет прежний _get_qdrant_store() как единственную фабрику, которую
+    зовут все ~9 read/write путей ниже — им не нужно знать, какой бэкенд
+    активен, оба соответствуют одному интерфейсу (см. postgres_vector_store_adapter.py).
+    """
+    if _config.VECTOR_STORE_BACKEND == "qdrant":
+        return _get_qdrant_backend()
+    return await _get_postgres_backend()
+
+
 NODES_TABLE = "knowledge_nodes"
 
 T = TypeVar("T")
 
 
 def _summary_document(summary: DocumentSummary) -> str:
+    """FTS-текст паспорта: сначала executive_summary, затем сжатые takeaways."""
     parts = [
         summary.title,
         summary.url,
+        (summary.executive_summary or "").strip(),
         " ".join(summary.cs_concepts),
         " ".join(summary.key_takeaways),
         " ".join(summary.failure_modes),
         " ".join(summary.diagram_descriptions),
     ]
-    return "\n".join(parts)
+    return "\n".join(p for p in parts if (p or "").strip())
 
 
 class VectorStore:
     def __init__(self) -> None:
         LANCE_DB_PATH.mkdir(parents=True, exist_ok=True)
-        self._embeddings = OllamaEmbeddings(model=EMBED_MODEL, base_url=OLLAMA_BASE_URL)
+        self._embeddings = BgeM3Embeddings()
         self._db = lancedb.connect(str(LANCE_DB_PATH))
         self._verify_lance_readable()
 
@@ -103,47 +181,55 @@ class VectorStore:
             raise RuntimeError("LanceDB table empty — сначала save_summary")
         return self._db.open_table(TABLE_NAME)
 
-    def save_summary(
+    async def save_summary(
         self,
         summary: DocumentSummary,
         *,
         skip_rag_ingest: bool = False,
-    ) -> None:
+    ) -> bool:
+        """Returns True only if the document_summaries Qdrant write actually
+        landed (store configured + upsert confirmed) — callers that report a
+        per-item success status must check this instead of assuming success."""
         document = _summary_document(summary)
-        trace(f"EMBED ▶ {EMBED_MODEL} | LanceDB save {summary.url[:60]}")
+        trace(f"EMBED ▶ {EMBED_MODEL} | Qdrant save {summary.url[:60]}")
         from knowledge_engine.ui.logger import set_phase, set_status
 
         set_phase(f"embed {EMBED_MODEL}")
-        set_status(f"[LanceDB] embed → save {summary.title[:50]}…")
+        set_status(f"[Qdrant] embed → save {summary.title[:50]}…")
         vector = self._embeddings.embed_query(document)
-        row = {
-            "title": summary.title,
-            "url": summary.url,
-            "cs_concepts": json.dumps(summary.cs_concepts, ensure_ascii=False),
-            "key_takeaways": json.dumps(summary.key_takeaways, ensure_ascii=False),
-            "failure_modes": json.dumps(summary.failure_modes, ensure_ascii=False),
-            "diagram_descriptions": json.dumps(
-                summary.diagram_descriptions, ensure_ascii=False
-            ),
-            "document": document,
-            "vector": vector,
-        }
-        if TABLE_NAME not in self._db.table_names():
-            self._db.create_table(TABLE_NAME, data=[row])
-            try:
-                self._db.open_table(TABLE_NAME).create_fts_index("document")
-            except Exception:
-                pass
+        row = stamp_embed_model(
+            {
+                "title": summary.title,
+                "url": summary.url,
+                "executive_summary": (summary.executive_summary or "").strip(),
+                "cs_concepts": json.dumps(summary.cs_concepts, ensure_ascii=False),
+                "key_takeaways": json.dumps(summary.key_takeaways, ensure_ascii=False),
+                "failure_modes": json.dumps(summary.failure_modes, ensure_ascii=False),
+                "diagram_descriptions": json.dumps(
+                    summary.diagram_descriptions, ensure_ascii=False
+                ),
+                "document": document,
+            }
+        )
+        store = await _get_active_vector_store()
+        qdrant_ok = False
+        if store is None:
+            trace(f"QDRANT save skip ⚠ | QDRANT_URL not set | {summary.url[:60]}")
         else:
-            self._table().add([row])
+            await store.ensure_collection(TABLE_NAME, len(vector))
+            qdrant_ok = await store.upsert_documents(TABLE_NAME, [row], [vector])
+            if qdrant_ok:
+                trace(f"QDRANT save ✓ | {summary.url[:60]}")
+            else:
+                trace(
+                    f"QDRANT save ✗ | upsert failed, see PERF trace above | {summary.url[:60]}"
+                )
         if skip_rag_ingest:
-            return
-        try:
-            from knowledge_engine.ingestion.ingest import ingest_document_summary
+            return qdrant_ok
+        from knowledge_engine.ingestion.ingest import ingest_document_summary
 
-            ingest_document_summary(summary, body_text=document, store=self)
-        except Exception as exc:
-            trace(f"RAG_CHUNKS ingest skip | {exc}")
+        await ingest_document_summary(summary, body_text=document, store=self)
+        return qdrant_ok
 
     def _rag_chunks_table(self, *, create: bool = False):
         if RAG_CHUNKS_TABLE not in self._db.table_names():
@@ -152,51 +238,38 @@ class VectorStore:
             return None
         return self._db.open_table(RAG_CHUNKS_TABLE)
 
-    def _add_rag_chunk_rows(
+    async def _add_rag_chunk_rows(
         self,
         rows: list[dict[str, Any]],
         *,
         doc_id: str | None = None,
     ) -> None:
-        from knowledge_engine.db.rag_chunks_schema import (
-            COL_DETAIL_INSTRUCTION,
-            COL_DOC_ID,
-            COL_SOURCE_TYPE,
-            COL_TRUST_SCORE,
-        )
+        """doc_id больше не используется внутри (раньше — для delete-перед-upsert,
+        см. комментарий ниже); оставлен в сигнатуре ради вызывающих call site'ов,
+        не тронутых в этом Phase."""
+        rows = [stamp_embed_model(r) for r in rows]
+        store = await _get_active_vector_store()
+        if store is None:
+            trace(
+                f"QDRANT rag_chunks save skip ⚠ | QDRANT_URL not set | rows={len(rows)}"
+            )
+            return
 
-        table = self._rag_chunks_table(create=False)
-        if table is not None:
-            if doc_id:
-                try:
-                    table.delete(f"{COL_DOC_ID} = '{self._sql_literal(doc_id)}'")
-                except Exception:
-                    pass
-            try:
-                table.add(rows)
-            except Exception as exc:
-                msg = str(exc).lower()
-                omit: set[str] = set()
-                if "source_type" in msg or "detail_instruction" in msg:
-                    omit.update({COL_SOURCE_TYPE, COL_DETAIL_INSTRUCTION})
-                if "trust_score" in msg:
-                    omit.add(COL_TRUST_SCORE)
-                if "window_summary" in msg:
-                    omit.add(COL_WINDOW_SUMMARY)
-                if omit:
-                    slim = [
-                        {k: v for k, v in row.items() if k not in omit} for row in rows
-                    ]
-                    trace("RAG_CHUNKS schema fallback | omit " + ",".join(sorted(omit)))
-                    table.add(slim)
-                else:
-                    raise
-        else:
-            self._db.create_table(RAG_CHUNKS_TABLE, data=rows)
-            try:
-                self._db.open_table(RAG_CHUNKS_TABLE).create_fts_index(COL_CHUNK_TEXT)
-            except Exception:
-                pass
+        vectors = [list(r.get(COL_CHUNK_VECTOR) or []) for r in rows]
+        docs = [{k: v for k, v in r.items() if k != COL_CHUNK_VECTOR} for r in rows]
+        if vectors and vectors[0]:
+            await store.ensure_collection(RAG_CHUNKS_TABLE, len(vectors[0]))
+        # Раньше здесь стоял delete_by_field(doc_id) ПЕРЕД upsert (неатомарная
+        # пара — см. фикс в upsert_knowledge_atoms выше). chunk_id теперь
+        # детерминирован (f"{doc_id}_chunk_{i}" / f"{doc_id}_map_{i}"),
+        # upsert сам перезаписывает существующие строки. Компромисс: если
+        # документ переключается с naive-чанкинга на MAP-чанкинг (или
+        # наоборот) и новых чанков МЕНЬШЕ, чем было, старые лишние строки не
+        # удаляются автоматически — та же orphan-очистка, сознательно вне
+        # этого Phase (см. отчёт).
+        ok = await store.upsert_documents(RAG_CHUNKS_TABLE, docs, vectors)
+        if ok:
+            trace(f"QDRANT rag_chunks save ✓ | rows={len(rows)}")
 
     @staticmethod
     def _resolve_chunk_trust_score(
@@ -223,7 +296,7 @@ class VectorStore:
             return hashlib.sha256(b"local").hexdigest()[:24]
         return hashlib.sha256(key.encode("utf-8")).hexdigest()[:24]
 
-    def upsert_rag_chunks_from_summary(
+    async def upsert_rag_chunks_from_summary(
         self,
         summary: DocumentSummary,
         *,
@@ -235,6 +308,12 @@ class VectorStore:
         url = (summary.url or "").strip()
         title = (summary.title or url or "source")[:400]
         doc_id = self.doc_id_for_url(url or title)
+        if any(
+            "_map_" in str(row.get(COL_CHUNK_ID) or "")
+            for row in self.fetch_rag_chunks_by_doc_id(doc_id)
+        ):
+            trace(f"RAG_CHUNKS skip naive ingest | MAP windows exist | {url[:70]}")
+            return 0
         doc_summary_text = _summary_document(summary)[:8000]
         chunk_source = (body_text or doc_summary_text).strip()
         pieces = split_sliding_window(
@@ -267,10 +346,10 @@ class VectorStore:
                 }
             )
 
-        self._add_rag_chunk_rows(rows, doc_id=doc_id)
+        await self._add_rag_chunk_rows(rows, doc_id=doc_id)
         return len(rows)
 
-    def upsert_rag_academic_map_windows(
+    async def upsert_rag_academic_map_windows(
         self,
         url: str,
         title: str,
@@ -313,18 +392,10 @@ class VectorStore:
                     COL_WINDOW_SUMMARY: win_sum,
                 }
             )
-        table = self._rag_chunks_table(create=False)
-        if table is not None:
-            self._add_rag_chunk_rows(rows, doc_id=doc_id)
-        else:
-            self._db.create_table(RAG_CHUNKS_TABLE, data=rows)
-            try:
-                self._db.open_table(RAG_CHUNKS_TABLE).create_fts_index(COL_CHUNK_TEXT)
-            except Exception:
-                pass
+        await self._add_rag_chunk_rows(rows, doc_id=doc_id)
         return len(rows)
 
-    def upsert_knowledge_atoms(
+    async def upsert_knowledge_atoms(
         self,
         url: str,
         atoms: list[Any],
@@ -347,134 +418,254 @@ class VectorStore:
                     normalized.append(KnowledgeAtom.model_validate(item))
                 except Exception:
                     continue
+        store = await _get_active_vector_store()
+        if store is None:
+            trace(
+                f"QDRANT knowledge_atoms save skip ⚠ | QDRANT_URL not set | doc_id={did[:12]}…"
+            )
+            return 0
+
         if not normalized:
             # Still clear stale atoms for this doc when REDUCE produced none.
-            if KNOWLEDGE_ATOMS_TABLE in self._db.table_names():
-                try:
-                    self._db.open_table(KNOWLEDGE_ATOMS_TABLE).delete(
-                        f"{KA_COL_DOC_ID} = '{self._sql_literal(did)}'"
-                    )
-                except Exception:
-                    pass
+            await store.delete_by_field(KNOWLEDGE_ATOMS_TABLE, KA_COL_DOC_ID, did)
             return 0
 
         rows: list[dict[str, Any]] = []
+        vectors: list[list[float]] = []
         for atom in normalized:
             stmt = (atom.statement or "").strip()
             if not stmt:
                 continue
             vec = self._embeddings.embed_query(stmt[:8000])
             rows.append(
-                {
-                    KA_COL_ID: str(uuid.uuid4()),
-                    KA_COL_DOC_ID: did,
-                    KA_COL_URL: url,
-                    KA_COL_STATEMENT: stmt[:2000],
-                    KA_COL_SCOPE: atom.scope.value,
-                    KA_COL_SOURCE_CHUNK_IDS: list(atom.source_chunk_ids or []),
-                    KA_COL_CONTEXT_QUOTE: (atom.context_quote or "")[:800],
-                    KA_COL_VECTOR: vec,
-                }
+                stamp_embed_model(
+                    {
+                        # Детерминированный UUIDv5 от (doc_id, statement) — раньше
+                        # тут был uuid4(), из-за чего повторный ingest того же
+                        # документа плодил дубли атомов вместо upsert-перезаписи
+                        # (см. аудит Phase 1, PostgresVectorRepository.generate_vector_id).
+                        KA_COL_ID: str(generate_vector_id(did, "atom", stmt)),
+                        KA_COL_DOC_ID: did,
+                        KA_COL_URL: url,
+                        KA_COL_STATEMENT: stmt[:2000],
+                        KA_COL_SCOPE: atom.scope.value,
+                        KA_COL_SOURCE_CHUNK_IDS: list(atom.source_chunk_ids or []),
+                        KA_COL_CONTEXT_QUOTE: (atom.context_quote or "")[:800],
+                        # Kept in payload (unlike rag_chunks/document_summaries):
+                        # search_knowledge_atoms' MMR needs per-candidate vectors,
+                        # not just similarity-to-query.
+                        KA_COL_VECTOR: vec,
+                    }
+                )
             )
+            vectors.append(vec)
         if not rows:
             return 0
 
-        def _write() -> int:
-            if KNOWLEDGE_ATOMS_TABLE not in self._db.table_names():
-                self._db.create_table(KNOWLEDGE_ATOMS_TABLE, data=rows)
-                try:
-                    self._db.open_table(KNOWLEDGE_ATOMS_TABLE).create_fts_index(
-                        KA_COL_STATEMENT
-                    )
-                except Exception:
-                    pass
-                return len(rows)
-            table = self._db.open_table(KNOWLEDGE_ATOMS_TABLE)
-            try:
-                table.delete(f"{KA_COL_DOC_ID} = '{self._sql_literal(did)}'")
-            except Exception:
-                pass
-            try:
-                table.add(rows)
-            except Exception as exc:
-                # Older tables may store source_chunk_ids as JSON string.
-                msg = str(exc).lower()
-                if "source_chunk_ids" in msg or "list" in msg:
-                    slim = []
-                    for row in rows:
-                        r = dict(row)
-                        r[KA_COL_SOURCE_CHUNK_IDS] = json.dumps(
-                            list(row.get(KA_COL_SOURCE_CHUNK_IDS) or []),
-                            ensure_ascii=False,
-                        )
-                        slim.append(r)
-                    table.add(slim)
-                else:
-                    raise
-            return len(rows)
-
-        n = self._with_lance_recovery(_write)
-        trace(
-            f"KNOWLEDGE_ATOMS upsert ✓ | doc_id={did[:12]}… "
-            f"atoms={n} | {(url or '')[:55]}"
-        )
+        await store.ensure_collection(KNOWLEDGE_ATOMS_TABLE, len(vectors[0]))
+        # Раньше здесь стоял delete_by_field ПЕРЕД upsert — два отдельных
+        # сетевых вызова без транзакции: падение между ними оставляло doc_id
+        # вообще без атомов (см. аудит Phase 1). id теперь детерминирован
+        # (см. фикс выше), поэтому upsert сам корректно перезаписывает
+        # существующие строки — delete больше не нужен для ЭТОГО случая.
+        # Компромисс: если набор атомов для doc_id УМЕНЬШИЛСЯ между прогонами
+        # (новый REDUCE даёт меньше statement'ов, чем раньше), старые лишние
+        # строки не удаляются автоматически — orphan-очистка сознательно не
+        # входит в этот Phase (см. отчёт), не как часть write-пути.
+        ok = await store.upsert_documents(KNOWLEDGE_ATOMS_TABLE, rows, vectors)
+        n = len(rows) if ok else 0
+        if ok:
+            trace(
+                f"QDRANT knowledge_atoms upsert ✓ | doc_id={did[:12]}… "
+                f"atoms={n} | {(url or '')[:55]}"
+            )
         return n
 
-    def search_knowledge_atoms(
+    @staticmethod
+    def _row_chunk_ids(row: dict[str, Any]) -> list[str]:
+        raw = row.get(KA_COL_SOURCE_CHUNK_IDS)
+        if raw is None:
+            return []
+        if isinstance(raw, str):
+            s = raw.strip()
+            if not s:
+                return []
+            if s.startswith("["):
+                try:
+                    parsed = json.loads(s)
+                    if isinstance(parsed, list):
+                        return [str(x).strip() for x in parsed if str(x).strip()]
+                except Exception:
+                    pass
+            return [s]
+        if isinstance(raw, (list, tuple, set)):
+            return [str(x).strip() for x in raw if str(x).strip()]
+        return []
+
+    @staticmethod
+    def _mmr_select_rows(
+        rows: list[dict[str, Any]],
+        qv: np.ndarray,
+        *,
+        limit: int,
+        lambda_mult: float,
+    ) -> list[dict[str, Any]]:
+        """Maximal Marginal Relevance over scored knowledge_atoms rows."""
+        if not rows or limit <= 0:
+            return []
+        lam = float(lambda_mult)
+        if lam >= 0.999 or len(rows) <= 1:
+            return rows[:limit]
+
+        def _norm_vec(row: dict[str, Any]) -> np.ndarray | None:
+            vec = row.get(KA_COL_VECTOR)
+            if vec is None:
+                return None
+            arr = np.asarray(vec, dtype=np.float64).reshape(-1)
+            n = float(np.linalg.norm(arr))
+            if n <= 0:
+                return None
+            return arr / n
+
+        candidates = list(rows)
+        selected: list[dict[str, Any]] = []
+        selected_vecs: list[np.ndarray] = []
+        while candidates and len(selected) < limit:
+            best_i = 0
+            best_score = float("-inf")
+            for i, row in enumerate(candidates):
+                rel = float(row.get("_score") or 0.0)
+                if not selected_vecs:
+                    mmr = rel
+                else:
+                    cv = _norm_vec(row)
+                    if cv is None:
+                        mmr = lam * rel
+                    else:
+                        max_sim = max(float(np.dot(cv, sv)) for sv in selected_vecs)
+                        mmr = lam * rel - (1.0 - lam) * max_sim
+                if mmr > best_score:
+                    best_score = mmr
+                    best_i = i
+            chosen = candidates.pop(best_i)
+            selected.append(chosen)
+            cv = _norm_vec(chosen)
+            if cv is not None:
+                selected_vecs.append(cv)
+        return selected
+
+    @staticmethod
+    def _stochastic_sample_rows(
+        rows: list[dict[str, Any]],
+        *,
+        limit: int,
+        rng: np.random.Generator,
+    ) -> list[dict[str, Any]]:
+        """Sample ``limit`` rows from a larger pool with score-weighted weights."""
+        if not rows or limit <= 0:
+            return []
+        if len(rows) <= limit:
+            return list(rows)
+        scores = np.asarray(
+            [max(1e-6, float(r.get("_score") or 0.0)) for r in rows],
+            dtype=np.float64,
+        )
+        # Softmax-ish: emphasize higher scores but keep mass on the long tail.
+        logits = scores / max(float(np.mean(scores)), 1e-6)
+        logits = logits - float(np.max(logits))
+        weights = np.exp(logits)
+        weights = weights / float(np.sum(weights))
+        idx = rng.choice(len(rows), size=limit, replace=False, p=weights)
+        # Preserve relative relevance order among the sample.
+        picked = [rows[int(i)] for i in sorted(idx, key=lambda j: -scores[int(j)])]
+        return picked
+
+    async def search_knowledge_atoms(
         self,
         query: str,
         *,
         limit: int = 8,
         allowed_doc_ids: list[str] | None = None,
         min_score: float = 0.0,
+        exclude_ids: list[str] | None = None,
+        exclude_chunk_ids: list[str] | None = None,
+        lambda_mult: float = 1.0,
+        query_noise: float = 0.0,
+        stochastic_sample: bool = False,
+        pool_mult: int = 3,
+        rng_seed: int | None = None,
     ) -> list[dict[str, Any]]:
         """
         Vector search over ``knowledge_atoms.statement`` (no parent-chunk expand).
 
         Returns rows with ``_score`` (cosine similarity) plus schema fields.
+
+        Deep-analysis diversity knobs:
+        - ``exclude_ids`` / ``exclude_chunk_ids``: hard filters (DB where + post-filter)
+        - ``lambda_mult`` < 1: MMR toward diversity
+        - ``query_noise``: stochastic perturbation of the query embedding
+        - ``stochastic_sample``: score-weighted sample from an over-fetched pool
         """
         q = (query or "").strip()
-        if not q or KNOWLEDGE_ATOMS_TABLE not in self._db.table_names():
+        if not q:
+            return []
+        store = await _get_active_vector_store()
+        if store is None:
             return []
         allow = [d for d in (allowed_doc_ids or []) if (d or "").strip()]
         if allowed_doc_ids is not None and not allow:
             return []
 
-        try:
-            table = self._db.open_table(KNOWLEDGE_ATOMS_TABLE)
-            if table.count_rows() == 0:
-                return []
-        except Exception:
-            return []
+        excl_ids = [str(x).strip() for x in (exclude_ids or []) if str(x).strip()]
+        excl_chunks = {
+            str(x).strip() for x in (exclude_chunk_ids or []) if str(x).strip()
+        }
 
         qv = np.asarray(self._embeddings.embed_query(q[:8000]), dtype=np.float64)
         qn = float(np.linalg.norm(qv))
         if qn > 0:
             qv = qv / qn
 
-        try:
-            builder = table.search(qv.tolist())
-            if allow:
-                where = self._where_doc_ids_in(allow)
-                if where:
-                    try:
-                        builder = builder.where(where, prefilter=True)
-                    except TypeError:
-                        builder = builder.where(where)
-            results = builder.limit(max(1, int(limit) * 3)).to_list()
-        except Exception as exc:
-            trace(f"KNOWLEDGE_ATOMS search skip | {exc}")
-            return []
+        noise = max(0.0, float(query_noise))
+        if noise > 0:
+            rng = np.random.default_rng(rng_seed)
+            qv = qv + noise * rng.normal(size=qv.shape)
+            qn2 = float(np.linalg.norm(qv))
+            if qn2 > 0:
+                qv = qv / qn2
+
+        want = max(1, int(limit))
+        fetch_mult = max(1, int(pool_mult))
+        # Over-fetch for exclude / MMR / stochastic refill.
+        if excl_ids or excl_chunks or float(lambda_mult) < 0.999 or stochastic_sample:
+            fetch_mult = max(fetch_mult, 4)
+        fetch_n = max(want * fetch_mult, want + len(excl_ids) + 8)
+
+        results = await store.search_similar(
+            KNOWLEDGE_ATOMS_TABLE,
+            qv.tolist(),
+            limit=fetch_n,
+            doc_id_filter=allow or None,
+            exclude_ids_filter=excl_ids or None,
+        )
 
         floor = max(0.0, float(min_score))
+        excl_id_set = set(excl_ids)
         out: list[dict[str, Any]] = []
         for row in results:
-            vec = row.get(KA_COL_VECTOR)
-            if vec is None:
+            if not row_matches_embed_model(row):
                 continue
-            cv = np.asarray(vec, dtype=np.float64)
-            cn = float(np.linalg.norm(cv))
-            score = float(np.dot(qv, cv / cn)) if cn > 0 else 0.0
+            rid = str(row.get(KA_COL_ID) or "").strip()
+            if rid and rid in excl_id_set:
+                continue
+            chunk_ids = self._row_chunk_ids(row)
+            if excl_chunks and chunk_ids and any(c in excl_chunks for c in chunk_ids):
+                continue
+            # Also exclude by atom id used as a synthetic chunk key when chunks empty.
+            if excl_chunks and rid and rid in excl_chunks:
+                continue
+            # Qdrant collections are COSINE-distance; `_score` IS cosine similarity.
+            score = float(row.get("_score") or 0.0)
             if score < floor:
                 continue
             did = str(row.get(KA_COL_DOC_ID) or "").strip()
@@ -484,39 +675,39 @@ class VectorStore:
             item["_score"] = score
             out.append(item)
         out.sort(key=lambda r: float(r.get("_score") or 0.0), reverse=True)
-        return out[: max(1, int(limit))]
 
-    def count_knowledge_atoms(self, doc_id: str) -> int:
-        """Number of knowledge_atoms rows for ``doc_id`` (0 if table missing)."""
+        # Pool for MMR / stochastic: keep top-M above floor (never lower threshold).
+        pool_n = max(
+            want * 2, min(len(out), want * 5 if stochastic_sample else want * 3)
+        )
+        pool = out[:pool_n]
+        selected = self._mmr_select_rows(
+            pool,
+            qv,
+            limit=max(want * 2, want) if stochastic_sample else want,
+            lambda_mult=float(lambda_mult),
+        )
+        if stochastic_sample and len(selected) > want:
+            rng = np.random.default_rng(rng_seed)
+            selected = self._stochastic_sample_rows(selected, limit=want, rng=rng)
+        else:
+            selected = selected[:want]
+        return selected
+
+    async def count_knowledge_atoms(self, doc_id: str) -> int:
+        """Number of knowledge_atoms rows for ``doc_id`` (0 if Qdrant unset/empty)."""
         did = (doc_id or "").strip()
-        if not did or KNOWLEDGE_ATOMS_TABLE not in self._db.table_names():
+        store = await _get_active_vector_store()
+        if not did or store is None:
             return 0
-        try:
-            table = self._db.open_table(KNOWLEDGE_ATOMS_TABLE)
-            return int(
-                table.count_rows(filter=f"{KA_COL_DOC_ID} = '{self._sql_literal(did)}'")
-            )
-        except Exception:
-            try:
-                rows = self._db.open_table(KNOWLEDGE_ATOMS_TABLE).to_arrow().to_pylist()
-            except Exception:
-                return 0
-            return sum(1 for r in rows if str(r.get(KA_COL_DOC_ID) or "") == did)
+        return await store.count_by_field(KNOWLEDGE_ATOMS_TABLE, KA_COL_DOC_ID, did)
 
-    def knowledge_atom_doc_ids(self) -> set[str]:
+    async def knowledge_atom_doc_ids(self) -> set[str]:
         """Set of doc_ids that already have at least one knowledge atom."""
-        if KNOWLEDGE_ATOMS_TABLE not in self._db.table_names():
+        store = await _get_active_vector_store()
+        if store is None:
             return set()
-        try:
-            rows = self._db.open_table(KNOWLEDGE_ATOMS_TABLE).to_arrow().to_pylist()
-        except Exception:
-            return set()
-        out: set[str] = set()
-        for row in rows:
-            did = str(row.get(KA_COL_DOC_ID) or "").strip()
-            if did:
-                out.add(did)
-        return out
+        return await store.distinct_field_values(KNOWLEDGE_ATOMS_TABLE, KA_COL_DOC_ID)
 
     def list_rag_documents(self) -> list[dict[str, Any]]:
         """
@@ -560,9 +751,11 @@ class VectorStore:
 
     @staticmethod
     def passport_is_filled(summary: DocumentSummary | None) -> bool:
-        """True when document_summaries / passport has usable takeaways."""
+        """True, если паспорт содержит Reduce-прозу или (legacy) takeaways."""
         if summary is None:
             return False
+        if (summary.executive_summary or "").strip():
+            return True
         takes = [
             str(t).strip() for t in (summary.key_takeaways or []) if str(t).strip()
         ]
@@ -586,7 +779,7 @@ class VectorStore:
                 found = self._row_to_summary(row)
         return found
 
-    def update_rag_window_summaries(
+    async def update_rag_window_summaries(
         self,
         doc_id: str,
         summaries_by_chunk_id: dict[str, str],
@@ -621,14 +814,14 @@ class VectorStore:
             out.append(r)
         if updated == 0:
             return 0
-        self._add_rag_chunk_rows(out, doc_id=did)
+        await self._add_rag_chunk_rows(out, doc_id=did)
         trace(
             f"RAG_CHUNKS window_summary ✓ | doc_id={did[:12]}… "
             f"updated={updated}/{len(out)}"
         )
         return updated
 
-    def upsert_rag_exa_highlights_fallback(
+    async def upsert_rag_exa_highlights_fallback(
         self,
         url: str,
         title: str,
@@ -673,15 +866,7 @@ class VectorStore:
             COL_DETAIL_INSTRUCTION: detail,
             COL_TRUST_SCORE: trust,
         }
-        table = self._rag_chunks_table(create=False)
-        if table is not None:
-            self._add_rag_chunk_rows([row], doc_id=doc_id)
-        else:
-            self._db.create_table(RAG_CHUNKS_TABLE, data=[row])
-            try:
-                self._db.open_table(RAG_CHUNKS_TABLE).create_fts_index(COL_CHUNK_TEXT)
-            except Exception:
-                pass
+        await self._add_rag_chunk_rows([row], doc_id=doc_id)
         return 1
 
     def delete_rag_chunks_for_urls(self, urls: list[str]) -> int:
@@ -703,6 +888,41 @@ class VectorStore:
                 )
                 if before:
                     table.delete(f"{COL_DOC_ID} = '{self._sql_literal(did)}'")
+                    removed += before
+            except Exception:
+                continue
+        return removed
+
+    def _knowledge_atoms_table(self):
+        if KNOWLEDGE_ATOMS_TABLE not in self._db.table_names():
+            return None
+        return self._db.open_table(KNOWLEDGE_ATOMS_TABLE)
+
+    def delete_knowledge_atoms_for_urls(self, urls: list[str]) -> int:
+        """Local LanceDB ``knowledge_atoms`` rows by doc_id, mirroring
+        ``delete_rag_chunks_for_urls``. Live writes for this table moved to
+        Qdrant-only (see ``upsert_knowledge_atoms``), but pre-migration rows
+        were left behind in LanceDB with no cleanup path — clear_node_data /
+        library GC previously deleted rag_chunks/summaries here but never
+        touched this table, leaking stale atoms for cleared/orphaned nodes."""
+        removed = 0
+        for raw in urls:
+            u = (raw or "").strip()
+            if not u.startswith("http"):
+                continue
+            did = self.doc_id_for_url(u)
+            table = self._knowledge_atoms_table()
+            if table is None:
+                continue
+            try:
+                before = len(
+                    table.search()
+                    .where(f"{KA_COL_DOC_ID} = '{self._sql_literal(did)}'")
+                    .limit(500)
+                    .to_list()
+                )
+                if before:
+                    table.delete(f"{KA_COL_DOC_ID} = '{self._sql_literal(did)}'")
                     removed += before
             except Exception:
                 continue
@@ -766,7 +986,7 @@ class VectorStore:
         except Exception:
             return 0
 
-    def search_rag_chunk_rows(
+    async def search_rag_chunk_rows(
         self,
         query: str,
         *,
@@ -776,14 +996,15 @@ class VectorStore:
         prefilter: bool = True,
         relevance_penalty: float = 1.0,
     ) -> list[dict[str, Any]]:
-        """Vector search on fine chunks; LanceDB prefilter on doc_id when allow-list set."""
-        table = self._rag_chunks_table(create=False)
-        if table is None or table.count_rows() == 0:
+        """Vector search on fine chunks via Qdrant; doc_id allow-list applied server-side."""
+        store = await _get_active_vector_store()
+        if store is None:
             return []
 
         allow = [d for d in (allowed_doc_ids or []) if (d or "").strip()]
         if allowed_doc_ids is not None and not allow:
             return []
+        _ = prefilter  # Qdrant filtered ANN is always applied server-side, pre-search
 
         qv = np.asarray(
             self._embeddings.embed_query((query or "")[:8000]), dtype=np.float64
@@ -792,19 +1013,13 @@ class VectorStore:
         if qn > 0:
             qv = qv / qn
 
-        results: list[dict[str, Any]] = []
-        try:
-            builder = table.search(qv.tolist())
-            if allow:
-                where = self._where_doc_ids_in(allow)
-                if where:
-                    try:
-                        builder = builder.where(where, prefilter=True)
-                    except TypeError:
-                        builder = builder.where(where)
-            results = builder.limit(limit).to_list()
-        except Exception:
-            return []
+        results = await store.search_similar(
+            RAG_CHUNKS_TABLE,
+            qv.tolist(),
+            limit=limit,
+            doc_id_filter=allow or None,
+        )
+        results = [r for r in results if row_matches_embed_model(r)]
 
         # --- Early exit: score + hard cutoff BEFORE any CE/MMR / Lite context ---
         penalty = max(0.0, min(1.0, float(relevance_penalty)))
@@ -817,9 +1032,9 @@ class VectorStore:
         scored: list[dict[str, Any]] = []
         for row in results:
             doc_vec = row.get(COL_DOC_META_VECTOR)
-            chunk_vec = row.get(COL_CHUNK_VECTOR)
-            if chunk_vec is None:
-                continue
+            # Qdrant collections are COSINE-distance; `_score` IS cosine similarity
+            # (equivalent to the manual normalized-dot-product LanceDB used).
+            cos_chunk = float(row.get("_score") or 0.0)
             if doc_gate_threshold > 0 and doc_vec is not None:
                 dv = np.asarray(doc_vec, dtype=np.float64)
                 dn = float(np.linalg.norm(dv))
@@ -827,9 +1042,6 @@ class VectorStore:
                     cos_doc = float(np.dot(qv, dv / dn))
                     if cos_doc < doc_gate_threshold:
                         continue
-            cv = np.asarray(chunk_vec, dtype=np.float64)
-            cn = float(np.linalg.norm(cv))
-            cos_chunk = float(np.dot(qv, cv / cn)) if cn > 0 else 0.0
             if penalty < 1.0:
                 cos_chunk *= penalty
             trust = coerce_trust_score(row.get(COL_TRUST_SCORE), default=1.0)
@@ -885,34 +1097,21 @@ class VectorStore:
         rows.sort(key=lambda r: int(r.get(COL_CHUNK_INDEX) or 0))
         return rows
 
-    def hybrid_search(self, query: str, limit: int = 3) -> List[DocumentSummary]:
-        if TABLE_NAME not in self._db.table_names():
+    async def hybrid_search(self, query: str, limit: int = 3) -> List[DocumentSummary]:
+        """Vector search via Qdrant (document_summaries). No keyword/FTS fusion —
+        Qdrant search_similar is vector-only, unlike LanceDB's BM25+vector hybrid."""
+        store = await _get_active_vector_store()
+        if store is None:
             return []
-
-        table = self._table()
-        if table.count_rows() == 0:
-            return []
-
         query_vector = self._embeddings.embed_query(query)
-        try:
-            results = (
-                table.search(query, query_type="hybrid")
-                .vector(query_vector)
-                .limit(limit)
-                .to_list()
-            )
-        except Exception:
-            results = table.search(query_vector).limit(limit).to_list()
-
-        summaries: list[DocumentSummary] = []
-        for row in results:
-            summaries.append(self._row_to_summary(row))
-        return summaries
+        results = await store.search_similar(TABLE_NAME, query_vector, limit=limit)
+        return [self._row_to_summary(row) for row in results]
 
     def _row_to_summary(self, row: dict) -> DocumentSummary:
         return DocumentSummary(
             title=row.get("title") or "",
             url=row.get("url") or "",
+            executive_summary=str(row.get("executive_summary") or "").strip(),
             cs_concepts=json.loads(row.get("cs_concepts") or "[]"),
             key_takeaways=json.loads(row.get("key_takeaways") or "[]"),
             failure_modes=json.loads(row.get("failure_modes") or "[]"),
@@ -943,43 +1142,35 @@ class VectorStore:
 
         out: list[tuple[DocumentSummary, list[float]]] = []
         for row in results:
+            if not row_matches_embed_model(row):
+                continue
             vec = row.get("vector")
             if vec is None:
                 continue
             out.append((self._row_to_summary(row), list(vec)))
         return out
 
-    def fetch_summaries_by_urls(
+    async def fetch_summaries_by_urls(
         self,
         urls: list[str],
         limit: int = 8,
     ) -> list[DocumentSummary]:
-        """Конспекты LanceDB для URL из маршрута / registry (Consensus, скачанные)."""
-        want: set[str] = set()
-        for raw in urls:
-            u = (raw or "").strip()
-            if u.startswith("http"):
-                want.add(u.rstrip("/").lower())
-        if not want or TABLE_NAME not in self._db.table_names():
-            return []
-        table = self._table()
-        if table.count_rows() == 0:
+        """Конспекты для URL из маршрута / registry — точечный lookup через Qdrant."""
+        store = await _get_active_vector_store()
+        if store is None:
             return []
         summaries: list[DocumentSummary] = []
         seen: set[str] = set()
-        try:
-            rows = table.to_arrow().to_pylist()
-        except Exception:
-            rows = []
-        for row in rows:
-            url = (row.get("url") or "").strip()
-            key = url.rstrip("/").lower()
-            if key not in want or key in seen:
-                continue
-            seen.add(key)
-            summaries.append(self._row_to_summary(row))
+        for raw in urls:
             if len(summaries) >= limit:
                 break
+            u = (raw or "").strip()
+            if not u.startswith("http") or u in seen:
+                continue
+            seen.add(u)
+            payload = await store.fetch_by_url(TABLE_NAME, u)
+            if payload is not None:
+                summaries.append(self._row_to_summary(payload))
         return summaries
 
     def fetch_summaries_by_urls_with_vectors(
@@ -1034,15 +1225,18 @@ class VectorStore:
         document = "\n".join(filter(None, [level, content, source_url or ""]))
         trace(f"KNODE save {level} | {nid[:8]}…")
         vector = self._embeddings.embed_query(document)
-        row = {
-            "id": nid,
-            "level": level,
-            "parent_id": parent_id or "",
-            "content": content,
-            "source_url": source_url or "",
-            "document": document,
-            "vector": vector,
-        }
+        row = stamp_embed_model(
+            {
+                "id": nid,
+                "level": level,
+                "parent_id": parent_id or "",
+                "content": content,
+                "source_url": source_url or "",
+                "document": document,
+                "vector": vector,
+            }
+        )
+        drop_if_embed_space_mismatch(self._db, NODES_TABLE)
         if NODES_TABLE not in self._db.table_names():
             self._db.create_table(NODES_TABLE, data=[row])
             try:
@@ -1145,6 +1339,8 @@ class VectorStore:
 
         out: list[tuple[KnowledgeNode, list[float]]] = []
         for row in results:
+            if not row_matches_embed_model(row):
+                continue
             vec = row.get("vector")
             if vec is None:
                 continue

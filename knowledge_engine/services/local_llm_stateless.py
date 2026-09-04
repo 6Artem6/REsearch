@@ -1,4 +1,4 @@
-"""Локальный Ollama: structured JSON без Gemini (Re-Act evaluator, fallback)."""
+"""Локальный structured JSON: Gemma Cloud SSOT (бывший Ollama helper)."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def run_local_structured(
     temperature: float = 0.1,
     num_predict: int | None = None,
 ) -> T:
-    """Изолированный вызов Ollama (без chat history)."""
+    """Изолированный structured-вызов Gemma Cloud (без chat history)."""
     llm = structured_chat(
         model, schema, temperature=temperature, num_predict=num_predict
     )

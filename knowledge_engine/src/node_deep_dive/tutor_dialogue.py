@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from knowledge_engine.src.node_deep_dive.schemas import DeepDiveLLMOutput
+
+_SELF_CHECK_MARKER = "**Самопроверка:**"
+_MIN_TRAILING_QUESTION_LEN = 20
+# A follow-up must be a short checkpoint — not an entire lecture paragraph.
+_MAX_FOLLOW_UP_PARAGRAPH_LEN = 800
 
 
 def compose_tutor_dialogue_message(
@@ -59,6 +65,72 @@ def resolve_tutor_display_message(
     return repair_llm_display_text((fallback or "").strip())
 
 
+def extract_follow_up_from_chat_text(text: str) -> tuple[str, str]:
+    """
+    Split chat/lecture body into (technical_explanation, follow_up_question).
+
+    Primary: explicit ``**Самопроверка:**`` marker.
+    Fallback: last non-empty paragraph (or last line) ending with ``?`` / ``？``.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return "", ""
+    if _SELF_CHECK_MARKER in raw:
+        body, _, tail = raw.partition(_SELF_CHECK_MARKER)
+        return body.strip(), tail.strip()
+
+    paras = [p.strip() for p in re.split(r"\n\s*\n", raw) if p.strip()]
+    if not paras:
+        return raw, ""
+
+    def _ends_with_question(s: str) -> bool:
+        t = (s or "").rstrip()
+        return len(t) >= _MIN_TRAILING_QUESTION_LEN and t.endswith(("?", "？"))
+
+    def _extract_trailing_question_sentence(block: str) -> str:
+        """Pull the last short ``?`` sentence from a long glued paragraph."""
+        t = (block or "").strip()
+        if not _ends_with_question(t):
+            return ""
+        sentences = [p.strip() for p in re.split(r"(?<=[.!?…])\s+", t) if p.strip()]
+        if sentences and _ends_with_question(sentences[-1]):
+            candidate = sentences[-1]
+            if len(candidate) <= _MAX_FOLLOW_UP_PARAGRAPH_LEN:
+                return candidate
+        lines = [ln.strip() for ln in t.split("\n") if ln.strip()]
+        if len(lines) >= 2 and _ends_with_question(lines[-1]):
+            candidate = lines[-1]
+            if len(candidate) <= _MAX_FOLLOW_UP_PARAGRAPH_LEN:
+                return candidate
+        return ""
+
+    last = paras[-1]
+    if _ends_with_question(last):
+        if len(last) > _MAX_FOLLOW_UP_PARAGRAPH_LEN:
+            follow = _extract_trailing_question_sentence(last)
+            if follow:
+                idx = last.rfind(follow)
+                technical = (last[:idx].strip() if idx > 0 else "").strip()
+                if paras[:-1]:
+                    prefix = "\n\n".join(paras[:-1]).strip()
+                    technical = (
+                        f"{prefix}\n\n{technical}".strip() if technical else prefix
+                    )
+                return technical, follow
+        technical = "\n\n".join(paras[:-1]).strip()
+        return technical, last
+
+    lines = [ln.strip() for ln in last.split("\n") if ln.strip()]
+    if len(lines) >= 2 and _ends_with_question(lines[-1]):
+        follow = lines[-1]
+        rebuilt_last = "\n".join(lines[:-1]).strip()
+        technical_parts = paras[:-1] + ([rebuilt_last] if rebuilt_last else [])
+        technical = "\n\n".join(technical_parts).strip()
+        return technical, follow
+
+    return raw, ""
+
+
 def deep_dive_llm_output_from_chat_text(
     text: str,
     *,
@@ -66,13 +138,16 @@ def deep_dive_llm_output_from_chat_text(
     **extra,
 ) -> DeepDiveLLMOutput:
     """Legacy/dense/coverage: один текст чата → semantic fields."""
-    raw = (text or "").strip()
-    technical = raw
-    follow_up = ""
-    if "**Самопроверка:**" in raw:
-        body, _, tail = raw.partition("**Самопроверка:**")
-        technical = body.strip()
-        follow_up = tail.strip()
+    technical, follow_up = extract_follow_up_from_chat_text(text)
+    # Prefer caller-supplied follow_up / technical when explicitly passed via extra.
+    if "follow_up_question" in extra and not (extra.get("follow_up_question") or "").strip():
+        extra = {**extra}
+        del extra["follow_up_question"]
+    if "technical_explanation" in extra and not (
+        extra.get("technical_explanation") or ""
+    ).strip():
+        extra = {**extra}
+        del extra["technical_explanation"]
     data = {
         "node_status": node_status,
         "feedback_on_answer": "",

@@ -31,16 +31,24 @@ class TradeOffOption(BaseModel):
 class DocumentSummary(BaseModel):
     title: str = Field(description="Краткий заголовок на русском")
     url: str
+    executive_summary: str = Field(
+        default="",
+        description=(
+            "Phase-2 Reduce passport prose (1–2 paragraphs); empty on legacy rows."
+        ),
+    )
+    """ RU: итоговая синтезированная проза паспорта документа. """
     cs_concepts: List[str] = Field(
         default_factory=list, description="Концепты на русском"
     )
     key_takeaways: List[str] = Field(
         default_factory=list,
         description=(
-            "Выжимки на русском; желательно с префиксом "
-            "[SCOPE: PRINCIPLE|MECHANIC|INSTANCE]"
+            "Compressed synthesis takeaways (3–7), preferably tagged "
+            "[SCOPE: PRINCIPLE|MECHANIC|INSTANCE]; not the atom catalog."
         ),
     )
+    """ RU: сжатые выводы синтеза; полный каталог фактов — в knowledge_atoms. """
     failure_modes: List[str] = Field(
         default_factory=list, description="Failure modes на русском"
     )

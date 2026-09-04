@@ -11,9 +11,11 @@ from knowledge_engine.config import (
     KE_API_RELOAD,
     PACKAGE_ROOT,
 )
+from knowledge_engine.services.ml_runtime import mark_api_process
 
 
 def main() -> None:
+    mark_api_process()
     host = KE_API_HOST
     port = KE_API_PORT
     reload = KE_API_RELOAD
@@ -22,6 +24,7 @@ def main() -> None:
         str(PACKAGE_ROOT / "graph"),
         str(PACKAGE_ROOT / "services"),
         str(PACKAGE_ROOT / "nodes"),
+        str(PACKAGE_ROOT / "schemas"),
         str(PACKAGE_ROOT / "ui"),
         str(PACKAGE_ROOT / "src"),
     ]

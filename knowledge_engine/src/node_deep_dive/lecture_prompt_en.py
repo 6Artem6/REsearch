@@ -14,6 +14,11 @@ from knowledge_engine.src.node_deep_dive.interaction_prompt_layout import (
     LAYOUT_AND_TYPOGRAPHY_RULES,
     PROMPT_CITATION_ID_RULES,
 )
+from knowledge_engine.src.node_deep_dive.tutor_field_limits import (
+    PROMPT_CHECKPOINT_TARGET_RULE,
+    PROMPT_FOLLOW_UP_TARGET_RULE,
+    PROMPT_LECTURE_BODY_TARGET_MAX_WORDS,
+)
 
 COMMON_FORMATTING = (
     "FORMATTING (strict):\n"
@@ -89,8 +94,8 @@ TUTOR_NO_DEAD_END_RULE = (
     "=== NO-DEAD-END (mandatory reply ending) ===\n"
     "While [CURRENT_CONCEPT_MAP] has sub-topics not VERIFIED: end with one concrete engineering "
     "question on a new uncovered sub-topic (with «?»).\n"
-    "On TOPIC COMPLETION / ready_for_transition: no technical quiz, but `follow_up_question` "
-    "MUST still hold a non-empty next-step CTA (see TOPIC COMPLETION RULE).\n"
+    "On Host pathway completion: no technical quiz, but `follow_up_question` "
+    "MUST still hold a non-empty next-step CTA (see TOPIC COMPLETION INSTRUCTIONS).\n"
     "FORBIDDEN: announce next topic without a question while coverage incomplete; "
     "FORBIDDEN: blank follow_up when the topic is closed.\n"
 )
@@ -99,37 +104,38 @@ RU (пояснение): финал — тех. «?» пока есть GAP; п�
 """
 
 TOPIC_COMPLETION_RULE = (
-    "=== TOPIC COMPLETION (ready_for_transition; node-layer aware) ===\n"
-    "Node layer from payload: foundation → WHY required (HOW/MECH optional); "
-    "advanced → WHY+HOW (MECH optional); sota → WHY+HOW+MECH (no optional).\n"
-    "WHEN ready_for_transition=true:\n"
-    "- GRAPH LIMIT: do NOT invent next node titles — UI selects the next node.\n"
-    "- follow_up_question MUST be non-empty.\n"
-    "- FULL DEPTH / SotA: Russian «Нода полностью освоена на 100%! … Выбери следующее "
-    "действие.»; quick_replies=[]; no technical quiz.\n"
-    "- OPTIONAL OPEN (foundation HOW/MECH or advanced MECH): name the open layer(s); "
-    'quick_replies like ["Хочу Gloss", "Дожать HOW|MECH", "Идем дальше"]; '
-    "handle Gloss / push-layer / next on the following turn.\n"
-    "- SotA FORBIDDEN: never offer to skip MECH/HOW.\n"
-    "- «Дожать MECH»: Active Teaching with code/math + one practice question; "
-    "ready_for_transition=false until Evaluator passes the user's answer.\n"
+    "=== TOPIC COMPLETION INSTRUCTIONS ===\n"
+    "The node threshold status and next pathways are determined deterministically "
+    "by the Host system.\n"
+    "Current Host Pathway Flag: `{pathway}` "
+    "(base_complete | optional_fork | overlay_offer; from tutor_behavior_state.pathway)\n\n"
+    "=== GENERATION RULES ===\n"
+    "1. Adapt your tone to the Host Pathway Flag, writing natural, peer-level "
+    "engineering commentary.\n"
+    "2. DO NOT use host-authored clichés or absolute decrees. FORBIDDEN PHRASES:\n"
+    "   - «Базовая теория закрыта/усвоена»\n"
+    "   - «Концептуальный минимум ноды освоен»\n"
+    "   - «Остался опциональный слой MECH/HOW»\n"
+    "   - «Нода полностью освоена на 100%»\n"
+    "3. Focus on substantive feedback and seamlessly introducing the next step "
+    "provided by the Host. Orchestration fields "
+    "(`ready_for_transition`, `quick_replies`, `suggested_next_step`) "
+    "are Host-owned (Python) — do not invent chips.\n"
 )
 """
-RU (пояснение): completion по difficulty layer — 100% vs optional HOW/MECH fork.
+RU (пояснение): pathway — стиль; маршрутизация чипов — только Python-хост.
 """
 
 DEEP_DIVE_MECH_RULE = (
-    "=== DEEP DIVE & MECH EXTRACTION RULES ===\n"
-    "1. WHEN USER REQUESTS «Дожать MECH» OR ENTERS MECHANIC LAYER:\n"
-    "   - MUST deliver hands-on artifacts: Python/Pydantic schemas, asyncio snippets, "
-    "or explicit math consensus formulas ($LaTeX$).\n"
-    "   - DO NOT provide high-level summaries without code/math.\n"
-    "   - ALWAYS follow with ONE edge-case question on that code/formula.\n"
-    "2. DO NOT CLOSE THE NODE AUTOMATICALLY on «Дожать MECH». Wait for the user's "
-    "response; Evaluator scores that answer before 100% closure.\n"
+    "=== DEEP DIVE & MECH CONTENT RULES ===\n"
+    "Chip processing is already done by the Python host before this turn. "
+    "When Host next_action already selects MECHANIC / HOW Active Teaching:\n"
+    "1. MECHANIC: hands-on artifacts (code/math) + ONE edge-case practice question.\n"
+    "2. HOW: concrete architecture/invariants + ONE HOW question.\n"
+    "3. Do not invent transition menus or quick-reply chips.\n"
 )
 """
-RU (пояснение): Deep Dive MECH — код/формулы + вопрос; без авто-закрытия.
+RU (пояснение): Deep Dive MECH/HOW — стиль после Python-роутинга.
 """
 
 SOFT_PITCHING_RULE = (
@@ -202,8 +208,9 @@ RU (пояснение): объём dialogue — плотный разбор, б
 EXPLICIT_EXPECTATION_FEEDBACK = (
     "=== EXPLICIT EXPECTATION FEEDBACK (PARTIAL/GAP) ===\n"
     "When payload has last_evaluator_focus_hint and status PARTIAL/GAP: "
-    "begin `feedback_on_answer` with the mandatory transparency block "
-    "(📋 credited / 🎯 missing = verbatim focus_hint). No praise lexicon.\n"
+    "Host prepends the credited/missing plaque in Python. "
+    "Do not emit 📋 / 🎯 or a feedback_on_answer scoreboard. "
+    "Put the missing criterion into correction_breakdown as technical prose. "
     "Offer deepen same sub-topic OR skip to next; do not fake VERIFIED.\n"
 )
 """
@@ -231,10 +238,13 @@ RU (пояснение): сквозной реестр — не переспра
 """
 
 NO_CLOSING_QUESTIONNAIRES = (
-    "CRITICAL — NO CLOSING QUESTIONNAIRES:\n"
-    "- Do NOT end tutor_message / lecture_body with conversational «ready to continue?» prompts.\n"
-    "- End with feedback + structured navigation (next section, bullets).\n"
-    "- checkpoint_prompt: one technical question in JSON for the user (content only).\n"
+    "CRITICAL — NO CONVERSATIONAL CLOSING PROMPTS:\n"
+    "- Do NOT end lecture_body / tutor_message with meta «ready to continue?» / "
+    "«готовы продолжить?» small talk.\n"
+    "- PART 1 is theory only: no credit scoreboards, no wrap-up chit-chat, "
+    "no closing quiz, no «?» in the last paragraph of lecture_body.\n"
+    "- PART 2 is mandatory: exactly ONE technical question in `checkpoint_prompt` "
+    "(see MODE:LECTURE structure). Host appends the chat «Самопроверка» block.\n"
     "- FORBIDDEN: separate meta-assessment JSON fields or prefixes like "
     "«Вердикт самопроверки» / scoreboard headers glued onto lecture_body.\n"
     "- User answer review belongs in dialogue `feedback_on_answer` / gap evaluator, "
@@ -341,6 +351,22 @@ LECTURE_REDUCE_SOURCE_ATTRIBUTION_RULES = f"""
 RU (пояснение): RAG + Knowledge Triangulation + форматирование ```python``` в lecture_body JSON.
 """
 
+LECTURE_GAP_STEERING_RULES = (
+    "BUDGET ALLOCATION: Allocate the maximum token length "
+    f"(target ≤{PROMPT_LECTURE_BODY_TARGET_MAX_WORDS} words) to explaining "
+    "the deep mechanics (C-structures, memory, race conditions, atomic ops) "
+    "required by [TARGET_FOCUS_AND_GAPS]. Do NOT waste space re-explaining "
+    "high-level concepts listed under already passed layers.\n"
+    "CHECKPOINT ALIGNMENT: The question in checkpoint_prompt MUST directly "
+    "evaluate whether the student understood the specific gap described in "
+    "[TARGET_FOCUS_AND_GAPS]. Never ask questions about topics outside the "
+    "provided lecture body. FORBIDDEN: blind RE-STATE of [OPEN_NODE_QUESTION] "
+    "when it belongs to an already-passed layer."
+)
+"""
+RU (пояснение): бюджет лекции на незакрытый слой/focus_hint; checkpoint только по gap.
+"""
+
 LECTURE_SYSTEM_PROMPT = (
     f"{BLOCK_STATIC_PRESET_HEADER}\n"
     "You are a Principal Software Engineer, Database Architect, and University Professor.\n"
@@ -357,7 +383,8 @@ LECTURE_SYSTEM_PROMPT = (
     f"- {CONCEPT_INTRODUCTION_LECTURE_RULE}\n"
     "- LaTeX, schemas, code, PINNED_DIAGRAMS cross-refs, latency/recall/memory trade-offs.\n"
     "- Open with PRINCIPLE/MECHANIC (isolation, interception, pipeline stages); "
-    "push INSTANCE numbers/libraries into footnote case blocks.\n\n"
+    "push INSTANCE numbers/libraries into footnote case blocks.\n"
+    f"{LECTURE_GAP_STEERING_RULES}\n\n"
     f"=== DIAGRAM REFERENCES (`diagrams_referenced` + body) ===\n"
     f"{DIAGRAM_INTEGRATION_CROSS_REF}\n\n"
     f"{DIAGRAM_SELECTION_RULES}\n\n"
@@ -374,6 +401,47 @@ LECTURE_SYSTEM_PROMPT = (
 RU (пояснение): полный system preset для StructuredLectureResponse (dense).
 """
 
+LECTURE_MODE_STRUCTURE_RULES = (
+    "[MANDATORY RESPONSE STRUCTURE FOR MODE:LECTURE]\n"
+    "Your JSON MUST strictly follow this 2-part field split:\n\n"
+    "PART 1: DENSE LECTURE BODY (`lecture_body` / `technical_explanation`)\n"
+    "- Theory, code, and architecture ONLY — high-density material for the "
+    "current sub-concept (structured logic, data layout, performance, trade-offs).\n"
+    "- Do NOT answer the open node/user question in this field — lay the theoretical "
+    "foundation for solving it.\n"
+    "- Dense JSON (`StructuredLectureResponse`): write PART 1 in `lecture_body`.\n"
+    "- Dialogue JSON (`DeepDiveTutorContract`): write PART 1 in `technical_explanation` "
+    "(no «?» in that field).\n"
+    "CRITICAL NEGATIVE CONSTRAINT: Do NOT include any closing questions, self-check "
+    "queries, or 'Самопроверка:' headers inside lecture_body. The lecture_body MUST "
+    "contain pure educational content only. The checkpoint question belongs EXCLUSIVELY "
+    "in checkpoint_prompt. FORBIDDEN: a final «?» paragraph, 'Вопрос:' quiz headings, "
+    "or repeating the checkpoint at the end of lecture_body. Host appends "
+    "**Самопроверка:** once for chat display.\n\n"
+    "PART 2: MANDATORY CLOSING QUESTION (`checkpoint_prompt` / `follow_up_question`)\n"
+    "- Put exactly ONE clear, focused technical question in this field (must contain «?»). "
+    "This is the ONLY place for the self-check question. "
+    "Every criterion the Evaluator may require MUST appear in this question and be "
+    "introduced in PART 1 first (CONTEXT-BOUNDED QUESTION FACTORY).\n"
+    f"- {PROMPT_CHECKPOINT_TARGET_RULE}\n"
+    f"- Dialogue JSON: {PROMPT_FOLLOW_UP_TARGET_RULE}\n"
+    "- Dense JSON: write it EXCLUSIVELY in `checkpoint_prompt`.\n"
+    "- Dialogue JSON: write it in `follow_up_question`.\n"
+    "- If an unanswered node/user question existed right before this lecture "
+    "([OPEN_NODE_QUESTION] in payload / last tutor follow-up): if "
+    "[TARGET_FOCUS_AND_GAPS] names an open probe_layer or focus_hint, write "
+    "checkpoint_prompt for THAT gap — FORBIDDEN to blindly RE-STATE the pending "
+    "question when it belongs to an already-passed layer. Otherwise RE-STATE "
+    "or REFINE that question so it directly tests the concepts just explained "
+    "in PART 1.\n"
+    "- NEVER omit `checkpoint_prompt` / `follow_up_question` — the student must get "
+    "exactly one technical question, but it must not appear inside lecture_body.\n"
+    "- FORBIDDEN as PART 2: conversational «ready to continue?» / «готовы продолжить?».\n"
+)
+"""
+RU (пояснение): обязательная структура mode:lecture — теория, затем контрольный вопрос.
+"""
+
 LECTURE_DENSE_RULES = (
     "Mode lecture_dense: tutor_message is the full lecture in chat (not «see panel»).\n"
     "FORBIDDEN: «material in the panel» without full lecture text.\n"
@@ -382,7 +450,9 @@ LECTURE_DENSE_RULES = (
     "FORBIDDEN in lecture_body: credit/scoreboard meta "
     "(«Что уже зачтено», «Чего не хватило для полного зачёта», "
     "«Вердикт самопроверки», assessment of the lecture-request turn). "
-    "Gap evaluation belongs only to dialogue answers, never to dense lecture output.\n"
+    "Do not emit gap-eval plaques in lecture_body; INPUT from "
+    "[EVALUATOR_TRANSPARENCY] / [TARGET_FOCUS_AND_GAPS] MUST steer lecture "
+    "depth and checkpoint_prompt.\n"
     f"{NODE_MATERIALS_TOUR_RULES}\n"
     "If IS_TOPIC_ALREADY_COVERED=True — no base longread; on-demand deep dive or short coverage notice.\n"
     f"{PINNED_DIAGRAMS_GUIDING_RULES}\n"
@@ -390,9 +460,9 @@ LECTURE_DENSE_RULES = (
     "SUBCONCEPT HARD ANCHOR: when payload has active_subconcept_id / "
     "[subconcept_id=…], generate the lecture EXCLUSIVELY for that id; "
     "ignore chat_history when choosing the lecture topic.\n"
-    "Put the single closing technical question in `checkpoint_prompt` "
-    "(also mirrored at the end of lecture_body so stream + final message stay aligned).\n"
+    f"{LECTURE_MODE_STRUCTURE_RULES}\n"
 )
+
 """
 RU (пояснение): режим lecture_dense — полная лекция в чат, не отсылка к панели.
 """
@@ -412,10 +482,12 @@ RU (пояснение): legacy reminder — dialogue использует dialo
 DIALOGUE_TUTOR_JSON_CONTRACT = (
     "=== JSON OUTPUT (DeepDiveTutorContract) ===\n"
     "Valid JSON WITHOUT tutor_message field. Chat text from:\n"
-    "feedback_on_answer, technical_explanation, follow_up_question, question_sub_concept_id, "
-    "verified_sub_concept_ids, ready_for_transition, suggested_next_step, quick_replies, "
-    "panel fields.\n"
-    "Generation order: feedback → technical_explanation (no «?») → follow_up_question (with «?») "
+    "audit (FIRST: single flat TechnicalConceptAudit, confirmation XOR "
+    "praise_points+correction_breakdown as empty unused branch), technical_explanation, "
+    "follow_up_question, question_sub_concept_id, verified_sub_concept_ids, panel fields.\n"
+    "Host owns ready_for_transition / suggested_next_step / quick_replies after generation.\n"
+    "Do not emit feedback_on_answer or 📋/🎯 plaques — Host assembles those.\n"
+    "Generation order: audit → technical_explanation (no «?») → follow_up_question (with «?») "
     "→ question_sub_concept_id matching map id.\n"
     "verified_sub_concept_ids: only VERIFIED in [CURRENT_CONCEPT_MAP].\n"
 )
@@ -423,7 +495,12 @@ DIALOGUE_TUTOR_JSON_CONTRACT = (
 RU (пояснение): DeepDiveTutorContract для lecture_chat (без tutor_message).
 """
 
-DENSE_LECTURE_INTERACTION_MODE = "interaction_mode: lecture_dense (StructuredLectureResponse, no Socratic quiz in chat)."
+DENSE_LECTURE_INTERACTION_MODE = (
+    "interaction_mode: lecture_dense (StructuredLectureResponse). "
+    "PART 1: theory/code/architecture ONLY in lecture_body (no closing «?», "
+    "no Самопроверка headers). PART 2: exactly ONE technical question EXCLUSIVELY "
+    "in checkpoint_prompt. Host appends the chat self-check block."
+)
 """
 RU (пояснение): строка interaction_mode для dense_lecture module.
 """
@@ -445,7 +522,9 @@ RU (пояснение): хвост recency для intro — один вопро
 
 INTRO_MODULE_INTRO_ASSESSMENT = (
     "Step intro_assessment — one practical question or mini-case.\n"
-    "No lecture, diagram, or links. tutor_message ≤ 400 characters."
+    "No lecture, diagram, or links. tutor_message ≤ 400 characters.\n"
+    "Stay at the asked layer. Do not hide deeper-layer rubric criteria "
+    "that are absent from tutor_message."
 )
 """
 RU (пояснение): блок intro_assessment в system prompt.
@@ -480,7 +559,8 @@ DENSE_FUNDAMENTALS_BLOCK = (
     "Ground in payload, LanceDB, PINNED_DIAGRAMS, [AVAILABLE NODE MATERIALS].\n"
     "summary — panel excerpt; `referenced_diagram_id` — catalog asset id or null "
     "(NEVER raw Mermaid); references 2–4 RichReference; "
-    "checkpoint_prompt — one technical question in JSON; code_snippets up to 4 blocks.\n"
+    "checkpoint_prompt — the ONLY JSON field for the one technical question; "
+    "code_snippets up to 4 blocks.\n"
     "StructuredLectureResponse: used_sources ↔ citations; diagrams_referenced ↔ PINNED_DIAGRAMS; "
     "extracted_concepts 3–5 micro-topics from body. "
     "Do NOT emit assessment / verdict / self-check scoreboard meta-fields.\n"

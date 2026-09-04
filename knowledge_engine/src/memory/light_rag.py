@@ -10,16 +10,19 @@ from typing import List
 
 import lancedb
 import numpy as np
-from langchain_ollama import OllamaEmbeddings
 
 from knowledge_engine.config import (
-    EMBED_MODEL,
     LANCE_DB_PATH,
     LIGHT_RAG_MIN_COSINE_SIM,
     LIGHT_RAG_PROFILE_LIMIT,
-    OLLAMA_BASE_URL,
     USER_PROFILE_PATH,
 )
+from knowledge_engine.db.embed_model_guard import (
+    drop_if_embed_space_mismatch,
+    row_matches_embed_model,
+    stamp_embed_model,
+)
+from knowledge_engine.services.search.bge_m3_embed import BgeM3Embeddings
 from knowledge_engine.src.locks import run_under_uma_lock
 from knowledge_engine.src.processors.source_anchors import strip_source_anchor_tags_list
 from knowledge_engine.ui.run_log import trace
@@ -66,7 +69,7 @@ class LightRAG:
         LANCE_DB_PATH.mkdir(parents=True, exist_ok=True)
         self._table_name = table_name
         self._db = lancedb.connect(str(LANCE_DB_PATH))
-        self._embeddings = OllamaEmbeddings(model=EMBED_MODEL, base_url=OLLAMA_BASE_URL)
+        self._embeddings = BgeM3Embeddings()
 
     def _embed_sync(self, text: str) -> List[float]:
         return self._embeddings.embed_query(text[:8000])
@@ -86,6 +89,7 @@ class LightRAG:
     def _ingest_profile_rows_sync(self, rows: list[dict]) -> None:
         if not rows:
             return
+        drop_if_embed_space_mismatch(self._db, self._table_name)
         self._delete_profile_segments_sync()
         if self._table_name not in self._db.table_names():
             self._db.create_table(self._table_name, data=rows)
@@ -107,13 +111,17 @@ class LightRAG:
         for i, seg in enumerate(segments):
             vector = await self._embed(seg)
             rows.append(
-                {
-                    "chunk_id": f"{PROFILE_DOC_PREFIX}_{i}",
-                    "doc_id": f"{PROFILE_DOC_PREFIX}_{i}",
-                    "text": seg[:12_000],
-                    "vector": vector,
-                    "meta_json": json.dumps({"kind": "profile"}, ensure_ascii=False),
-                }
+                stamp_embed_model(
+                    {
+                        "chunk_id": f"{PROFILE_DOC_PREFIX}_{i}",
+                        "doc_id": f"{PROFILE_DOC_PREFIX}_{i}",
+                        "text": seg[:12_000],
+                        "vector": vector,
+                        "meta_json": json.dumps(
+                            {"kind": "profile"}, ensure_ascii=False
+                        ),
+                    }
+                )
             )
         await run_under_uma_lock(self._ingest_profile_rows_sync, rows)
         trace(f"Light RAG ✓ profile segments indexed | n={len(rows)}")
@@ -122,6 +130,7 @@ class LightRAG:
     def _ingest_rows_sync(self, rows: list[dict]) -> None:
         if not rows:
             return
+        drop_if_embed_space_mismatch(self._db, self._table_name)
         if self._table_name not in self._db.table_names():
             self._db.create_table(self._table_name, data=rows)
         else:
@@ -137,13 +146,15 @@ class LightRAG:
                 continue
             vector = await self._embed(clean)
             batch.append(
-                {
-                    "chunk_id": uuid.uuid4().hex[:16],
-                    "doc_id": FACT_DOC_ID,
-                    "text": clean[:12_000],
-                    "vector": vector,
-                    "meta_json": json.dumps({"kind": "fact"}, ensure_ascii=False),
-                }
+                stamp_embed_model(
+                    {
+                        "chunk_id": uuid.uuid4().hex[:16],
+                        "doc_id": FACT_DOC_ID,
+                        "text": clean[:12_000],
+                        "vector": vector,
+                        "meta_json": json.dumps({"kind": "fact"}, ensure_ascii=False),
+                    }
+                )
             )
             accepted += 1
         if batch:
@@ -169,6 +180,8 @@ class LightRAG:
             return []
         scored: List[tuple[float, str]] = []
         for row in hits:
+            if not row_matches_embed_model(row):
+                continue
             doc_id = str(row.get("doc_id") or "")
             meta_raw = row.get("meta_json") or "{}"
             try:
@@ -254,6 +267,8 @@ class LightRAG:
             return []
         scored: List[tuple[float, str, dict]] = []
         for row in hits:
+            if not row_matches_embed_model(row):
+                continue
             doc_id = str(row.get("doc_id") or "")
             meta_raw = row.get("meta_json") or "{}"
             try:
@@ -324,13 +339,15 @@ class LightRAG:
             "node_id": (node_id or "").strip()[:80],
         }
         vector = await self._embed(clean)
-        row = {
-            "chunk_id": uuid.uuid4().hex[:16],
-            "doc_id": FACT_DOC_ID,
-            "text": clean[:12_000],
-            "vector": vector,
-            "meta_json": json.dumps(meta, ensure_ascii=False),
-        }
+        row = stamp_embed_model(
+            {
+                "chunk_id": uuid.uuid4().hex[:16],
+                "doc_id": FACT_DOC_ID,
+                "text": clean[:12_000],
+                "vector": vector,
+                "meta_json": json.dumps(meta, ensure_ascii=False),
+            }
+        )
         await run_under_uma_lock(self._ingest_rows_sync, [row])
         trace(
             f"Light RAG ✓ save_user_fact | node={meta['node_id']} "
@@ -361,6 +378,19 @@ class LightRAG:
 
     async def count_indexed_rows(self) -> int:
         return await run_under_uma_lock(self.count_indexed_rows_sync)
+
+
+def count_light_rag_rows_sync(table_name: str = LIGHT_RAG_TABLE) -> int:
+    """Row count without constructing the bi-encoder (API memory-status)."""
+    if not LANCE_DB_PATH.is_dir():
+        return 0
+    try:
+        db = lancedb.connect(str(LANCE_DB_PATH))
+        if table_name not in db.table_names():
+            return 0
+        return int(db.open_table(table_name).count_rows())
+    except Exception:
+        return 0
 
 
 def _user_profile_content_hash() -> str:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -143,6 +144,41 @@ def persist_figure_registry(
         f"FIG_REGISTRY ✓ | article={aid[:40]} entries={len(reg.entries)} " f"(pre-VLM)"
     )
     return reg
+
+
+def delete_figure_registry_for_urls(urls: list[str]) -> int:
+    """Удалить figure_registry-строки для URL — тот же матчинг article_id,
+    что и `article_diagram_store.delete_diagrams_for_urls` (обе таблицы
+    ключуются одинаковым `canonical_article_id(source_id, url)`). Без этого
+    VLM-разбор фигур не перезапускается при повторном clear+re-ingest ноды —
+    просто переиспользуется старая запись."""
+    from knowledge_engine.services.article_diagram_context import (
+        canonical_article_id,
+        normalize_source_url,
+    )
+
+    ensure_figure_registry_schema()
+    removed = 0
+    with db_session() as session:
+        for raw in urls:
+            u = (raw or "").strip()
+            if not u.startswith("http"):
+                continue
+            norm = normalize_source_url(u)
+            if not norm:
+                continue
+            aid_no_source = canonical_article_id("", u)
+            tag = hashlib.md5(norm.encode("utf-8")).hexdigest()[:8]
+            suffix = f":{tag}"
+            stmt = select(FigureRegistryRow).where(
+                (FigureRegistryRow.article_id == aid_no_source)
+                | (FigureRegistryRow.article_id.endswith(suffix))
+            )
+            rows = list(session.scalars(stmt).all())
+            for row in rows:
+                session.delete(row)
+                removed += 1
+    return removed
 
 
 def run_vlm_on_registry(

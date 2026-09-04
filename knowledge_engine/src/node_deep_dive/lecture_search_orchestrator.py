@@ -9,9 +9,15 @@ import re
 from dataclasses import dataclass
 
 from knowledge_engine.config import (
+    EXA_FAIR_ROUND_ROBIN_MAX_PER_DOMAIN,
+    EXA_FETCH_NUM_RESULTS,
+    EXA_MAX_CONCURRENT_SEARCH,
+    EXA_RECALL_MAX_PER_DOMAIN,
+    EXA_RERANK_LITE_THRESHOLD,
     LECTURE_EXTERNAL_SEARCH_ENABLED,
     LECTURE_EXTERNAL_SEARCH_HTTP_TIMEOUT_SEC,
     LECTURE_EXTERNAL_SEARCH_TOP_K,
+    LECTURE_PASSAGE_BACKFILL_MARGIN,
     MAX_EXTERNAL_SOURCES,
 )
 from knowledge_engine.services.blocking_pools import pool_net_sync, run_blocking_timed
@@ -22,14 +28,22 @@ from knowledge_engine.services.node_source_registry import is_disallowed_source_
 from knowledge_engine.services.search.exa_client import (
     ExaNotConfiguredError,
     ExaSearchClient,
+    ExaSearchHit,
 )
 from knowledge_engine.services.search.exa_transform import (
+    ExaQuerySpec,
+    _lite_rerank_exa_hits,
+    build_exa_query_plan,
+    fair_domain_round_robin,
+    fill_round_robin_tail,
+    merge_multi_vector_exa_hits,
     postprocess_exa_hits_for_external_recall,
 )
 from knowledge_engine.services.search.providers import (
     ConsensusSearchProvider,
     SemanticScholarProvider,
 )
+from knowledge_engine.src.curriculum.schemas import CurriculumSearchHit
 from knowledge_engine.src.node_deep_dive.schemas import NodeDataInput
 from knowledge_engine.ui.run_log import trace
 from knowledge_engine.utils.link_sanitizer import (
@@ -123,23 +137,10 @@ def translate_to_en_query(focus: str) -> str:
     return raw[:500]
 
 
-def _exa_sources_sync(query: str, limit: int) -> list[VerifiedExternalSource]:
-    client = ExaSearchClient()
-    if not client.is_configured():
-        return []
-    try:
-        resp = client.search(query, num_results=max(3, limit))
-    except (ExaNotConfiguredError, ValueError) as exc:
-        trace(f"LECTURE_EXA skip | {exc}")
-        return []
-    except Exception as exc:
-        trace(f"LECTURE_EXA error | {exc}")
-        return []
+def _processed_hits_to_sources(
+    processed: list[CurriculumSearchHit],
+) -> list[VerifiedExternalSource]:
     out: list[VerifiedExternalSource] = []
-    processed = postprocess_exa_hits_for_external_recall(
-        list(resp.hits),
-        cap=max(3, limit),
-    )
     for i, hit in enumerate(processed):
         exa_score = getattr(hit, "exa_relevance_score", None)
         if exa_score is None:
@@ -159,6 +160,312 @@ def _exa_sources_sync(query: str, limit: int) -> list[VerifiedExternalSource]:
             )
         )
     return out
+
+
+def _exa_search_call_sync(
+    client: ExaSearchClient,
+    query: str,
+    num_results: int,
+    highlight_query: str | None,
+    *,
+    include_domains: list[str],
+    category: str | None,
+) -> list[ExaSearchHit]:
+    """Один Exa-проход. include_domains=[] (не None!) отключает ограничение
+    по доменам — build_exa_search_kwargs при include_domains=None молча
+    подставляет APPROVED_SOURCES_WHITELIST, только пустой список реально
+    снимает его. Discovery (Pass 1 validated_domains / Pass 2 broader
+    category) собирается вызывающим кодом — см. _exa_sources_multi_vector."""
+    kwargs: dict = {
+        "num_results": num_results,
+        "include_domains": list(include_domains or []),
+        "category": category,
+    }
+    if highlight_query:
+        kwargs["highlight_query"] = highlight_query
+    resp = client.search(query, **kwargs)
+    return list(resp.hits)
+
+
+async def _exa_search_vector(
+    client: ExaSearchClient,
+    query: str,
+    num_results: int,
+    highlight_query: str | None,
+    *,
+    include_domains: list[str] | None = None,
+    category: str | None = None,
+) -> list[ExaSearchHit]:
+    try:
+        return await run_blocking_timed(
+            pool_net_sync(),
+            LECTURE_EXTERNAL_SEARCH_HTTP_TIMEOUT_SEC,
+            _exa_search_call_sync,
+            client,
+            query,
+            num_results,
+            highlight_query,
+            include_domains=include_domains or [],
+            category=category,
+        )
+    except asyncio.TimeoutError:
+        trace(
+            f"LECTURE_EXA vector skip | timeout {LECTURE_EXTERNAL_SEARCH_HTTP_TIMEOUT_SEC}s"
+        )
+        return []
+    except Exception as exc:
+        trace(f"LECTURE_EXA vector skip | {exc}")
+        return []
+
+
+async def _exa_sources_multi_vector(
+    context: str,
+    limit: int,
+    *,
+    anchor: str,
+) -> list[VerifiedExternalSource]:
+    """Fast & High-Quality lecture waterfall — те же дешёвые/быстрые этапы,
+    что и в DEEP (services.search.exa_transform,
+    services.search.exa_source_expand, src.curriculum.pre_flight_triage),
+    БЕЗ Map-Reduce (никаких генеративных LLM-проходов по каждому документу —
+    Gemma summarization и т.п.):
+
+    Domain Discovery (Flash Lite + DOMAIN_REGISTRY, Pass 1 validated / Pass 2
+    broader) → multi-vector Exa Search → URL/Slide Guard (practical filters,
+    уже внутри postprocess_exa_hits_for_external_recall) → Async Fetch
+    (httpx + Trafilatura, короткий таймаут на URL) → Passage Extraction
+    (BGE-M3 + greedy MMR, lecture_passage_fetch.py) → Flash Lite Content
+    Quality Gate по уже извлечённым абзацам (а не по 900-симв. Exa-хайлайту)
+    → финальный round-robin + cap.
+
+    Раньше единственный запрос к search_expanded с num_results=cap не
+    оставлял round-robin'у запаса кандидатов — если Exa отдавала все top-N
+    с одного домена (реальный баг: 3 версии postgresql.org docs вместо 1x PG
+    + 1x SQLite + 1x GitHub), диверсифицировать было не из чего. Recall
+    теперь берётся с тем же запасом (fetch_cap), что и в
+    fetch_exa_curriculum_hits_for_node."""
+    client = ExaSearchClient()
+    if not client.is_configured():
+        return []
+
+    cap = max(3, limit)
+    fetch_cap = max(cap + 8, cap * 2, EXA_FETCH_NUM_RESULTS)
+
+    # --- Domain Discovery (Pass 1 validated domains) — по аналогии с DEEP.
+    from knowledge_engine.services.search.exa_domain_validate import (
+        prepare_exa_pass1_domains,
+    )
+    from knowledge_engine.services.search.exa_source_expand import (
+        absorb_new_exa_hosts,
+        exa_pass2_categories,
+        expand_search_context_with_flash_lite,
+        filter_pass1_official_hosts,
+    )
+
+    expansion = None
+    validated_domains: list[str] = []
+    try:
+        expansion = await asyncio.to_thread(
+            expand_search_context_with_flash_lite, context
+        )
+        live_domains = await prepare_exa_pass1_domains(expansion.primary_domains)
+        validated_domains = filter_pass1_official_hosts(live_domains)
+        trace(
+            f"LECTURE_EXA discovery ✓ | primary={len(expansion.primary_domains)} "
+            f"live={len(live_domains)} validated={len(validated_domains)}"
+        )
+    except Exception as exc:
+        trace(f"LECTURE_EXA discovery skip | {exc}")
+
+    try:
+        qplan = await build_exa_query_plan(context, anchor=anchor)
+    except Exception as exc:
+        trace(f"LECTURE_EXA query_plan skip | {exc}")
+        qplan = None
+    specs: list[ExaQuerySpec] = list(qplan.specs) if qplan else []
+    if not specs:
+        # Фолбэк: Lite-план не построился (пустой контекст / ошибка) — один
+        # синтетический вектор тем же query-текстом, чтобы не дублировать
+        # Pass 1/2 логику отдельной веткой.
+        specs = [
+            ExaQuerySpec(
+                role="en_declarative",
+                query=(
+                    context[:400] if len(context) >= 8 else f"{context} overview"[:400]
+                ),
+                highlight_query="architecture, internals, trade-offs",
+            )
+        ]
+
+    per_vector = max(3, EXA_FETCH_NUM_RESULTS // max(1, len(specs)))
+    sem = asyncio.Semaphore(max(1, EXA_MAX_CONCURRENT_SEARCH))
+
+    async def _one(
+        spec: ExaQuerySpec, *, include_domains: list[str], category: str | None
+    ) -> list[ExaSearchHit]:
+        async with sem:
+            return await _exa_search_vector(
+                client,
+                spec.query,
+                per_vector,
+                spec.highlight_query or None,
+                include_domains=include_domains,
+                category=category,
+            )
+
+    batches = list(
+        await asyncio.gather(
+            *[_one(s, include_domains=validated_domains, category=None) for s in specs]
+        )
+    )
+    raw_total = sum(len(b) for b in batches)
+    trace(
+        f"LECTURE_EXA pass1 ✓ | vectors={len(specs)} domains={len(validated_domains)} "
+        f"hits={raw_total}"
+    )
+    merged = merge_multi_vector_exa_hits(batches, cap=fetch_cap)
+
+    # --- Pass 2 (broader, no domain restriction) — только если Pass 1 не
+    # набрал даже целевой cap.
+    if len(merged) < cap and expansion is not None:
+        for cat in exa_pass2_categories(expansion) or [None]:
+            extra_batches = list(
+                await asyncio.gather(
+                    *[_one(s, include_domains=[], category=cat) for s in specs]
+                )
+            )
+            extra_total = sum(len(b) for b in extra_batches)
+            trace(f"LECTURE_EXA pass2 ✓ | category={cat} hits={extra_total}")
+            if extra_total:
+                batches = batches + extra_batches
+                raw_total += extra_total
+                merged = merge_multi_vector_exa_hits(batches, cap=fetch_cap)
+                if len(merged) >= cap:
+                    break
+
+    capped = fair_domain_round_robin(
+        merged,
+        fetch_cap,
+        max_per_domain=EXA_RECALL_MAX_PER_DOMAIN,
+        get_url=lambda h: h.url,
+    )
+    if len(capped) < cap:
+        capped = fill_round_robin_tail(capped, merged, cap, get_url=lambda h: h.url)
+    trace(
+        f"LECTURE_EXA multi_vector ✓ | vectors={len(specs)} raw={raw_total} "
+        f"merged={len(merged)} diversified={len(capped)} cap={cap}"
+    )
+    if capped:
+        absorb_new_exa_hosts([h.url for h in capped])
+
+    # RU: postprocess ранжирует по composite score (URL-эвристика + Exa
+    # score), НЕ по домену — топ-N по score мог полностью схлопнуться на
+    # 1-2 доменах (реальный баг: 2/3 источника с Habr), даже если capped
+    # выше был честно диверсифицирован по доменам В ШИРОКОМ recall-пуле
+    # (fetch_cap, max_per_domain=EXA_RECALL_MAX_PER_DOMAIN=2 — рассчитан на
+    # DEEP-пайплайн с cap~4). round-robin здесь применяется ВТОРОЙ раз — уже
+    # на финальном срезе до cap, как в fetch_exa_curriculum_hits_for_node
+    # (_lite_rerank_exa_hits делает то же самое после Flash Lite approve) —
+    # но с более строгим EXA_FAIR_ROUND_ROBIN_MAX_PER_DOMAIN (=1): при
+    # лекционном cap~3 те же 2 источника с одного домена — это 2/3, а не
+    # 2/4, разбавлять нужно жёстче, чем в широком recall-пуле.
+    wide_cap = max(cap, EXA_RERANK_LITE_THRESHOLD + 1)
+    # RU: reserve_cap берёт wide_cap с запасом (LECTURE_PASSAGE_BACKFILL_
+    # MARGIN) специально для near-dup добора ниже — если BGE-кластеризация
+    # найдёт почти дубликат внутри processed, есть из чего заменить БЕЗ
+    # нового сетевого Exa-запроса (кандидаты уже получены и диверсифицированы
+    # round-robin'ом выше, просто ещё не фетчены/не прошли passage extraction).
+    reserve_cap = wide_cap + LECTURE_PASSAGE_BACKFILL_MARGIN
+    processed_all = postprocess_exa_hits_for_external_recall(capped, cap=reserve_cap)
+    processed = processed_all[:wide_cap]
+    reserve = processed_all[wide_cap:]
+
+    # --- Async Fetch + Passage Extraction (Trafilatura + BGE-M3 + MMR) —
+    # заменяет 900-симв. Exa-хайлайт на реально извлечённые, релевантные
+    # ядру темы и разнообразные между собой абзацы страницы. URL, для
+    # которых фетч не удался/текст оказался слишком тонким, остаются со
+    # своим Exa-snippet (graceful degradation, источник не теряется).
+    from knowledge_engine.src.node_deep_dive.lecture_passage_fetch import (
+        fetch_and_extract_passages,
+        find_near_duplicate_urls,
+    )
+
+    passages_by_url = await fetch_and_extract_passages(
+        [h.url for h in processed],
+        core_theme=context,
+    )
+
+    # --- Near-Duplicate Detection + добор из резерва. В отличие от DEEP
+    # (deduplicate_before_map_reduce помечает дубликат ALIAS и просто теряет
+    # слот — там нет MAP+REDUCE-бюджета для замены, но и резерва на этом
+    # этапе тоже нет, см. разбор), здесь дубликат ЗАМЕНЯЕТСЯ следующим по
+    # рангу источником из reserve, чтобы не тратить один из скудных
+    # финальных слотов на «ту же статью другой версии».
+    alias_of_url = await find_near_duplicate_urls(
+        passages_by_url, anchor=f"{anchor}:lecture_dedup"
+    )
+    if alias_of_url:
+        dropped = [h for h in processed if h.url in alias_of_url]
+        processed = [h for h in processed if h.url not in alias_of_url]
+        kept_urls = {h.url for h in processed}
+        backfill = [h for h in reserve if h.url not in kept_urls][: len(dropped)]
+        if backfill:
+            backfill_passages = await fetch_and_extract_passages(
+                [h.url for h in backfill], core_theme=context
+            )
+            passages_by_url.update(backfill_passages)
+            processed = processed + backfill
+        trace(
+            f"LECTURE_EXA dedup ✓ | dropped={len(dropped)} "
+            f"backfilled={len(backfill)} kept={len(processed)}"
+        )
+
+    if passages_by_url:
+        enriched: list[CurriculumSearchHit] = []
+        for h in processed:
+            passages = passages_by_url.get(h.url)
+            if passages:
+                enriched.append(
+                    h.model_copy(update={"snippet": " ".join(passages)[:1200]})
+                )
+            else:
+                enriched.append(h)
+        processed = enriched
+        trace(
+            f"LECTURE_EXA passages ✓ | sources_with_passages={len(passages_by_url)}"
+            f"/{len(processed)}"
+        )
+
+    threshold = max(1, EXA_RERANK_LITE_THRESHOLD)
+    final_max_per_domain = max(1, EXA_FAIR_ROUND_ROBIN_MAX_PER_DOMAIN)
+    if len(processed) > threshold:
+        # RU: тот же Flash Lite Content Quality Gate, что и в DEEP-пайплайне
+        # ноды (_BATCH_SYSTEM, lite_search_pipeline.py) — с явным критерием
+        # на слайд-деки/фрагментированный текст, теперь оценивает уже
+        # извлечённые абзацы (после passage extraction выше), а не сырой
+        # Exa-хайлайт — раньше в лекционном доборе этого гейта не было
+        # вообще.
+        final = await _lite_rerank_exa_hits(
+            processed,
+            context,
+            [],
+            anchor=anchor,
+            cap=cap,
+            max_per_domain=final_max_per_domain,
+        )
+    else:
+        final = fair_domain_round_robin(
+            processed,
+            cap,
+            max_per_domain=final_max_per_domain,
+            get_url=lambda h: h.url,
+        )
+        if len(final) < min(cap, len(processed)):
+            final = fill_round_robin_tail(
+                final, processed, min(cap, len(processed)), get_url=lambda h: h.url
+            )
+        final = final[:cap]
+    return _processed_hits_to_sources(final)
 
 
 async def _provider_sources(
@@ -247,17 +554,13 @@ async def fetch_verified_external_sources(
         return []
 
 
-async def _exa_batch(query: str, per_provider: int) -> list[VerifiedExternalSource]:
+async def _exa_batch(
+    query: str, per_provider: int, *, anchor: str = "lecture_search"
+) -> list[VerifiedExternalSource]:
     try:
-        return await run_blocking_timed(
-            pool_net_sync(),
-            LECTURE_EXTERNAL_SEARCH_HTTP_TIMEOUT_SEC,
-            _exa_sources_sync,
-            query,
-            per_provider,
-        )
-    except asyncio.TimeoutError:
-        trace(f"LECTURE_EXA skip | timeout {LECTURE_EXTERNAL_SEARCH_HTTP_TIMEOUT_SEC}s")
+        return await _exa_sources_multi_vector(query, per_provider, anchor=anchor)
+    except (ExaNotConfiguredError, ValueError) as exc:
+        trace(f"LECTURE_EXA skip | {exc}")
         return []
     except Exception as exc:
         trace(f"LECTURE_EXA skip | {exc}")
@@ -283,7 +586,7 @@ async def _fetch_verified_external_sources_impl(
     per_provider = max(2, cap)
 
     # --- Step 1: Exa (early exit) ---
-    exa_batch = await _exa_batch(query, per_provider)
+    exa_batch = await _exa_batch(query, per_provider, anchor=f"lecture:{node.node_id}")
     if len(exa_batch) >= cap:
         merged = _merge_sources([exa_batch], cap)
         logger.info(
@@ -325,6 +628,144 @@ async def _fetch_verified_external_sources_impl(
         f"exa={len(exa_batch)} ss={len(ss_batch)} cons={len(consensus_batch)}"
     )
     return merged
+
+
+async def persist_verified_external_sources_to_node(
+    curriculum_id: str,
+    node: NodeDataInput,
+    sources: list[VerifiedExternalSource],
+) -> int:
+    """Сохраняет найденные на лекции VERIFIED_EXTERNAL_SOURCES как материалы
+    ноды — иначе fetch_verified_external_sources ничего не оставляет после
+    себя, и КАЖДЫЙ повторный запрос лекции по этой же ноде заново гоняет весь
+    Exa/Gemini waterfall с нуля. Источники с пустым/слишком коротким
+    сниппетом (< 24 симв.) пропускаются — иначе воспроизводим тот же баг
+    stub-материалов, который уже чинили (see: изолированные R1/R2/R3,
+    cos=0.000).
+
+    Два слоя привязки, оба обязательны:
+    1. document_summaries (VectorStore) + node.resource_urls — чтобы
+       Retrieval нашёл материал повторно (см. _lecture_node_needs_retrieval).
+    2. curriculum_sources_registry + node.mapped_source_ids — БЕЗ этого
+       tutor_source_citations.coerce_references_to_registry видит пустой
+       registry и отбрасывает ВСЕ references/used_sources безусловно (см.
+       ``if not registry: return []``): лекция цитирует голыми [n] вместо
+       [Sn], в правой панели и под ответом — пусто, даже если текст лекции
+       реально содержит контент из этих источников (см. разбор реального
+       бага: curriculum=indexes_and_data_structures node=b_tree_indexes —
+       resource_urls сохранились, но mapped_source_ids остался пустым)."""
+    cid = (curriculum_id or "").strip()
+    valid = [
+        s
+        for s in sources
+        if (s.url or "").strip().startswith("http")
+        and len((s.snippet or "").strip()) >= 24
+    ]
+    if not cid or not valid:
+        return 0
+
+    from knowledge_engine.schemas import DocumentSummary
+    from knowledge_engine.services.vector_store import VectorStore
+
+    store = VectorStore()
+    saved: list[VerifiedExternalSource] = []
+    for s in valid:
+        url = s.url.strip()
+        ds = DocumentSummary(
+            title=(s.title or url).strip()[:400],
+            url=url,
+            key_takeaways=[s.snippet.strip()[:1200]],
+            failure_modes=[],
+            cs_concepts=[],
+            diagram_descriptions=[],
+        )
+        try:
+            ok = await store.save_summary(ds, skip_rag_ingest=True)
+        except Exception as exc:
+            trace(f"LECTURE_SEARCH persist ✗ | {url[:60]} | {exc}")
+            continue
+        if ok:
+            saved.append(s)
+
+    if saved:
+        await asyncio.to_thread(_attach_sources_to_node_graph, cid, node.node_id, saved)
+        trace(
+            f"LECTURE_SEARCH persist ✓ | node={node.node_id} "
+            f"saved={len(saved)}/{len(valid)} sources"
+        )
+    return len(saved)
+
+
+def _registry_entry_dict(source: VerifiedExternalSource) -> dict[str, str]:
+    url = source.url.strip()
+    return {
+        "title": (source.title or url)[:400],
+        "whitelist_domain": "",
+        "source_type": "verified_external",
+        "url": url[:2000],
+        "why_read": (source.snippet or "").strip()[:800],
+        "snippet": (source.snippet or "").strip()[:1200],
+        "key_extracts": [],
+        "source_tier": (source.provider or "exa")[:24],
+    }
+
+
+def _attach_sources_to_node_graph(
+    curriculum_id: str, node_id: str, sources: list[VerifiedExternalSource]
+) -> None:
+    from knowledge_engine.config import CURRICULUM_DEEP_NODE_MAX_HITS
+    from knowledge_engine.services.skill_tree_store import (
+        get_curriculum_graph,
+        patch_curriculum_graph_node,
+        patch_curriculum_sources_registry,
+    )
+
+    # 1) Регистрируем в curriculum_sources_registry (глобальная библиотека
+    # курса) — переиспользует существующий source_id, если URL уже там есть.
+    new_ids = patch_curriculum_sources_registry(
+        curriculum_id, [_registry_entry_dict(s) for s in sources]
+    )
+    if not new_ids:
+        return
+
+    graph = get_curriculum_graph(curriculum_id) or {}
+    existing_mapped: list[str] = []
+    existing_urls: list[str] = []
+    for raw in graph.get("nodes") or []:
+        if str(raw.get("node_id") or "") == node_id:
+            existing_mapped = list(raw.get("mapped_source_ids") or [])
+            existing_urls = list(raw.get("resource_urls") or [])
+            break
+
+    # 2) mapped_source_ids — то, что реально читает tutor_source_citations.
+    merged_mapped = list(existing_mapped)
+    seen_ids = set(merged_mapped)
+    for sid in new_ids:
+        if sid not in seen_ids:
+            seen_ids.add(sid)
+            merged_mapped.append(sid)
+
+    # 3) resource_urls — параллельно, для Retrieval (см. docstring выше).
+    merged_urls = list(existing_urls)
+    seen_urls = {(u or "").strip().rstrip("/").lower() for u in merged_urls}
+    for s in sources:
+        key = s.url.strip().rstrip("/").lower()
+        if key in seen_urls:
+            continue
+        seen_urls.add(key)
+        merged_urls.append(s.url.strip())
+
+    # RU: CurriculumNode.mapped_source_ids: max_length=CURRICULUM_DEEP_NODE_
+    # MAX_HITS, resource_urls: max_length=12 — те же границы, что и в
+    # остальной схеме графа.
+    patch_curriculum_graph_node(
+        curriculum_id,
+        node_id,
+        {
+            "mapped_source_ids": merged_mapped[:CURRICULUM_DEEP_NODE_MAX_HITS],
+            "resource_urls": merged_urls[:12],
+        },
+    )
 
 
 def format_verified_external_sources_block(

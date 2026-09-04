@@ -21,6 +21,8 @@ COL_DETAIL_INSTRUCTION = "detail_instruction"
 COL_TRUST_SCORE = "trust_score"
 # Dense MAP window summary (optional; filled when writing academic/blog MAP rows)
 COL_WINDOW_SUMMARY = "window_summary"
+# Integrity: skip/rebuild when EMBED_MODEL changes (nomic vs bge-m3).
+COL_EMBED_MODEL = "embed_model"
 
 
 def map_window_chunk_id(doc_id: str, window_index: int) -> str:

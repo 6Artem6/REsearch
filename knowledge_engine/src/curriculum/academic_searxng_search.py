@@ -1,15 +1,28 @@
-"""Академический поиск через SearXNG: category science (arXiv, Google Scholar)."""
+"""Академический поиск через SearXNG: category science + engines arxiv/scholar."""
 
 from __future__ import annotations
 
 from typing import Any
 from urllib.parse import urlparse
 
-from knowledge_engine.config import CURRICULUM_ACADEMIC_SEARXNG_LIMIT, SEARXNG_ENABLED
+from knowledge_engine.config import (
+    CURRICULUM_ACADEMIC_SEARXNG_CATEGORIES,
+    CURRICULUM_ACADEMIC_SEARXNG_ENGINES,
+    CURRICULUM_ACADEMIC_SEARXNG_LIMIT,
+    SEARXNG_ENABLED,
+)
 from knowledge_engine.services.searxng_client import searxng_search_json
 from knowledge_engine.ui.run_log import trace
 
-_ACADEMIC_SEARXNG_CATEGORIES: list[str] = ["science"]
+
+def _academic_categories() -> list[str]:
+    raw = (CURRICULUM_ACADEMIC_SEARXNG_CATEGORIES or "science").strip()
+    cats = [c.strip() for c in raw.split(",") if c.strip()]
+    return cats or ["science"]
+
+
+def _academic_engines() -> str:
+    return (CURRICULUM_ACADEMIC_SEARXNG_ENGINES or "arxiv,google scholar").strip()
 
 
 def _normalize_href(href: str) -> str:
@@ -55,7 +68,12 @@ async def collect_searxng_academic_rows(
     *,
     limit: int | None = None,
 ) -> list[dict[str, str]]:
-    """SearXNG academic: categories=science → arXiv / Google Scholar engines."""
+    """SearXNG academic: categories=science, engines=arxiv,google scholar.
+
+    Never falls back to bing/google (those pollute with non-academic hosts).
+    Category ``it`` (github/hn/stackoverflow) is intentionally not used here —
+    that belongs to practical/community search, not the academic track.
+    """
     if not SEARXNG_ENABLED:
         trace("CURRICULUM searxng academic ⊘ | SEARXNG_ENABLED=false")
         return []
@@ -65,21 +83,22 @@ async def collect_searxng_academic_rows(
         return []
 
     cap = limit if limit is not None else CURRICULUM_ACADEMIC_SEARXNG_LIMIT
-    categories = list(_ACADEMIC_SEARXNG_CATEGORIES)
+    categories = _academic_categories()
+    engines = _academic_engines()
     rows: list[dict[str, str]] = []
     seen: set[str] = set()
     rejected = 0
 
     trace(
         f"CURRICULUM searxng academic ▶ | query={q[:100]} "
-        f"categories={','.join(categories)} cap={cap}"
+        f"engines={engines} categories={','.join(categories)} cap={cap}"
     )
 
     raw: list[dict[str, Any]] = await searxng_search_json(
         q,
         limit=cap,
         categories=categories,
-        engines=None,
+        engines=engines,
     )
     for item in raw:
         if item.get("error"):

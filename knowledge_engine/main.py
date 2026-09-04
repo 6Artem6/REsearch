@@ -114,7 +114,7 @@ def test_search(
     ),
 ) -> None:
     """Проверить SearchRegistry: по умолчанию три горизонта с разными запросами."""
-    from knowledge_engine.config import OLLAMA_BASE_URL, SEARXNG_BASE_URL
+    from knowledge_engine.config import SEARXNG_BASE_URL
     from knowledge_engine.services.search.horizons import (
         HORIZON_LABELS,
         HORIZON_PROVIDERS,
@@ -133,7 +133,7 @@ def test_search(
         )
 
     console.print(
-        f"SEARXNG_BASE_URL={SEARXNG_BASE_URL}  OLLAMA_BASE_URL={OLLAMA_BASE_URL}"
+        f"SEARXNG_BASE_URL={SEARXNG_BASE_URL}  LLM=Gemma Cloud"
     )
     registry = default_registry()
 

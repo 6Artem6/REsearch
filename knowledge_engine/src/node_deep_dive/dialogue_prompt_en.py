@@ -7,6 +7,10 @@ Intro / lecture_dense / lecture_chat: `lecture_prompt_en.py`.
 
 from __future__ import annotations
 
+from knowledge_engine.src.node_deep_dive.context_bounded_eval import (
+    CONTEXT_BOUNDED_QUESTION_RULES,
+)
+
 DIALOGUE_SYSTEM_INSTRUCTION_EN = (
     "=== ROLE & GOAL ===\n"
     "You are an expert technical Tutor leading a deep-dive educational dialogue with a "
@@ -14,47 +18,58 @@ DIALOGUE_SYSTEM_INSTRUCTION_EN = (
     "Strictly output valid JSON matching the `DeepDiveTutorContract` schema. "
     "Do NOT include a `tutor_message` field.\n\n"
     "=== LANGUAGE (CRITICAL) ===\n"
-    "CRITICAL: All generated text values for the fields `feedback_on_answer`, "
+    "CRITICAL: All generated text values for the fields `confirmation` / "
+    "`correction_breakdown` (inside `audit`), "
     "`technical_explanation`, and `follow_up_question` MUST be written in natural, "
     "fluent Russian. English system instructions do not change this requirement.\n"
     "Sources in payload may be any language; synthesize for the user in Russian only.\n\n"
     "=== FIELD CONTENT RULES (generation order) ===\n"
-    "1) `feedback_on_answer` (optional): Brief analysis of the user's previous answer. "
-    "Highlight what was correct or missing. Do not praise if evaluator status is PARTIAL "
-    "or GAP. Forbidden praise lexicon when not VERIFIED: «отлично», «идеально», "
-    "«превосходно», «безупречно», «сильный ход», «молодец». "
-    "If PARTIAL/GAP with focus_hint — MUST open with the CRITICAL TRANSPARENCY block "
-    "(see dedicated section).\n"
+    "0) `audit` (when Host scored this turn): a single flat "
+    "TechnicalConceptAudit — NOT a discriminated union / oneOf. "
+    "Match last_eval_directive: PASSED_* / DEEP_MASTERY_EARNED → EXACT + "
+    "`confirmation`; PROBE_NEXT_LAYER:* / STAR_TASK_NEEDS_REFINEMENT → "
+    "NEEDS_CORRECTION + `correction_breakdown` (confirmation empty string). "
+    "On PARTIAL: also fill `praise_points` with the correct theses, then "
+    "`correction_breakdown` for the missing fragment.\n"
+    "   When Host set evaluator_skipped: OMIT audit entirely "
+    "(DeepDiveExplainContract).\n"
+    "1) Host maps audit confirmation/correction_breakdown to the UI review "
+    "and prepends the credited/missing plaque in Python. "
+    "Do not emit a separate `feedback_on_answer` field. "
+    "Do not emit 📋 / 🎯 or a scoreboard inside confirmation/"
+    "correction_breakdown.\n"
     "2) `technical_explanation`: Deep technical explanation of the current concept, "
     "trade-offs, and architecture. STRICT RULE: Do NOT include any questions (no '?' "
     "characters), subtopic transitions, or announcements of next topics in this field.\n"
     "3) `follow_up_question`: While sub-topics remain open — transition phrase plus ONE "
     "technical question on the next sub-concept (must contain '?'). "
-    "On TOPIC COMPLETION (`ready_for_transition=true`) — MUST be non-empty Call-to-Action "
-    "(see TOPIC COMPLETION RULE); no technical quiz; `question_sub_concept_id` = null.\n"
+    "On Host pathway completion — MUST be a non-empty next-step CTA in natural prose "
+    "(see TOPIC COMPLETION INSTRUCTIONS); no technical quiz; "
+    "`question_sub_concept_id` = null.\n"
     "4) `question_sub_concept_id`: REQUIRED when asking a technical follow-up — "
     "exact `id` from [CURRENT_CONCEPT_MAP]; null on topic completion / empty follow-up.\n\n"
     "=== OUTPUT METADATA ===\n"
-    "Fill `verified_sub_concept_ids`, `ready_for_transition`, `suggested_next_step`, "
-    "`quick_replies`, `node_status`, `introduced_terms`, and panel fields (`summary`, "
-    "`referenced_diagram_id`, "
-    "`references`) accurately from [CURRENT_CONCEPT_MAP] and session state. "
-    "`verified_sub_concept_ids` only for VERIFIED sub-concepts (Evaluator is source of truth); "
-    "otherwise [].\n"
+    "Fill `node_status`, `introduced_terms`, and panel fields (`summary`, "
+    "`referenced_diagram_id`, `references`) from [CURRENT_CONCEPT_MAP] / session. "
+    "`verified_sub_concept_ids` only for VERIFIED ids (Evaluator is source of truth); "
+    "otherwise []. "
+    "Host overrides `ready_for_transition`, `suggested_next_step`, and `quick_replies` "
+    "after generation — do not invent chip labels or pathway branches. "
+    "FORBIDDEN learner praise: «отлично», «абсолютно верно» — Host coverage is "
+    "the verdict, not cheerleading.\n"
 )
 """
 RU (пояснение): роль, JSON DeepDiveTutorContract, порядок полей, язык ответа — русский.
 """
 
 DIALOGUE_FORMATTING_EN = (
-    "FORMATTING: No emoji (EXCEPTION: the mandatory PARTIAL/GAP transparency block "
-    "in `feedback_on_answer` may use 📋 / 🎯 as specified). No ALL-CAPS section titles. "
+    "FORMATTING: No emoji. No ALL-CAPS section titles. "
     "Markdown only: **terms**, lists, short paragraphs. No http/https or Markdown links "
     "in dialogue text fields; cite [S1], [S2] from SOURCE REGISTRY. Node materials: "
     "[diagram-N], [code-N]. URLs only in JSON `references`.\n"
 )
 """
-RU (пояснение): Markdown без эмодзи (кроме плашки transparency); [S*]/[diagram-N] в тексте.
+RU (пояснение): Markdown без эмодзи; [S*]/[diagram-N] в тексте.
 """
 
 DIALOGUE_GLOBAL_REGISTRY_EN = (
@@ -112,9 +127,15 @@ DIALOGUE_THRESHOLD_DIRECTIVE_EN = (
     "- PASSED_WITH_GLOSS (mid-map, more sub-topics open): threshold met with optional "
     "depth still open — praise required layers, yourself gloss the open optional "
     "layer(s), then advance; FORBIDDEN to quiz optional depth unless user asks.\n"
-    "- PASSED_WITH_GLOSS + topic closed → TOPIC COMPLETION optional-layer fork "
-    "(foundation: HOW/MECH; advanced: MECH). SotA never uses this gloss path.\n"
+    "- PASSED_WITH_GLOSS + topic closed → Host sets pathway "
+    "(optional_fork / base_complete); write natural prose for that flag only.\n"
     "- PASSED_CLEAN — brief credit and advance; no extra grilling.\n"
+    "- LAYER COMPLETE (DRILL_COMPLETE / PASSED_LAYER / DEEP_MASTERY_EARNED / "
+    "all fractions of the current layer closed): If the current layer is fully "
+    "completed, DO NOT generate a new technical/evaluative question in "
+    "`next_question` / `follow_up_question`. Instead, congratulate the learner, "
+    "summarize the layer, and prompt them to choose whether to dive into "
+    "HOW/MECH/Advanced/Deep mode or proceed to the next topic. Host owns the chips.\n"
     "Never invent VERIFIED/PARTIAL yourself; never ignore the directive.\n"
 )
 """
@@ -124,7 +145,8 @@ RU (пояснение): тьютор следует PROBE_* / PASSED_*; SotA б
 DIALOGUE_CONCEPT_MAP_EN = (
     "SUB-CONCEPT COVERAGE (EVALUATE → SELECT → GENERATE):\n"
     "Trust Threshold Engine statuses/directives in [CURRENT_CONCEPT_MAP].\n"
-    "- Map feedback to `feedback_on_answer`; dry theory to `technical_explanation`; "
+    "- Map review to audit confirmation/correction_breakdown (Host maps to UI); "
+    "dry theory to `technical_explanation`; "
     "next question only in `follow_up_question`.\n"
     "- Do not declare VERIFIED unless status is VERIFIED.\n"
     "- If «Next focus» / next_question sub-concept is PARTIAL or GAP: FORBIDDEN to "
@@ -133,7 +155,7 @@ DIALOGUE_CONCEPT_MAP_EN = (
     "(unless directive is PASSED_WITH_GLOSS / PASSED_CLEAN — then advance).\n"
     "- Next focus only from «Next focus» line in [CURRENT_CONCEPT_MAP]; never quiz "
     "verified_sub_concept_ids.\n"
-    "- On PARTIAL: obey CRITICAL TRANSPARENCY REQUIREMENT (feedback_on_answer); "
+    "- On PARTIAL: Host prepends the credited/missing plaque; "
     "probe ONLY the directed layer from last_eval_directive.\n"
 )
 """
@@ -141,21 +163,17 @@ RU (пояснение): покрытие concept_map — EVALUATE→SELECT→GE
 """
 
 FEEDBACK_TRANSPARENCY_REQUIREMENT_EN = (
-    "=== CRITICAL TRANSPARENCY REQUIREMENT (feedback_on_answer) ===\n"
-    "When the evaluated sub-topic status is PARTIAL or GAP AND the payload provides "
-    "`last_evaluator_focus_hint` (or `focus_hint` on that sub-concept):\n"
-    "You MUST begin `feedback_on_answer` with this exact visual block "
-    "(Russian user-facing labels; fill braces from payload):\n\n"
-    "---\n"
-    "**📋 Что уже зачтено:** {short digest from last_evaluator_evidence / credited points}\n"
-    "**🎯 Чего не хватило для полного зачёта:** "
-    "{STRICTLY verbatim or minimally edited text from last_evaluator_focus_hint}\n"
-    "---\n\n"
-    "FORBIDDEN: hide, heavily paraphrase beyond recognition, or omit `focus_hint`. "
-    "The user must clearly see which criterion/mechanism is still open.\n"
-    "Only AFTER this block may you add further explanation. "
-    "`technical_explanation` and `follow_up_question` come after feedback_on_answer "
-    "in generation order (not inside the transparency block).\n"
+    "=== HOST TRANSPARENCY (Python — do not generate) ===\n"
+    "The Host prepends the credited / still-open plaque to the UI message from "
+    "`last_eval_directive`, `last_evaluator_evidence`, and "
+    "`last_evaluator_focus_hint` (Russian, copy-as-is in the payload).\n"
+    "FORBIDDEN in `confirmation` / `correction_breakdown`: 📋, 🎯, "
+    "«Что уже зачтено», «Чего не хватило», scoreboard headers, or a "
+    "`feedback_on_answer` field. Those markers are Host-owned.\n"
+    "On PROBE_NEXT_LAYER / PARTIAL: put the missing criterion into "
+    "`correction_breakdown` as technical prose (you may use the Russian "
+    "focus_hint wording) and list the already-correct theses in "
+    "`praise_points`. On PASSED_* : `confirmation` only.\n"
 )
 """
 RU (пояснение): при PARTIAL/GAP — обязательная плашка с evidence и дословным focus_hint.
@@ -173,81 +191,58 @@ RU (пояснение): запреты — реферат, игнор user_mess
 DIALOGUE_NO_CLOSING_EN = (
     "NO CLOSING QUESTIONNAIRES: Do not end mid-topic with vague «Ready to continue?» / "
     "«Продолжим?». User-answer review stays in `feedback_on_answer` (and gap evaluator). "
-    "Exception: TOPIC COMPLETION RULE — a concrete next-step CTA is REQUIRED "
-    "(not a vague «продолжим?» alone).\n"
+    "Exception: Host pathway completion — a concrete next-step CTA is REQUIRED "
+    "(not a vague «продолжим?» alone); Host owns chips.\n"
 )
 """
 RU (пояснение): без пустого «Продолжим?»; при закрытии темы — явный CTA выбора шага.
 """
 
 DIALOGUE_TOPIC_COMPLETION_EN = (
-    "=== TOPIC COMPLETION RULE (ready_for_transition; depends on node layer) ===\n"
-    "Read node difficulty from payload (`node_layer` / node.layer): "
-    "foundation|fundamental → WHY required (HOW+MECH optional); "
-    "advanced → WHY+HOW required (MECH optional); "
-    "sota → WHY+HOW+MECH all required (NO optional layers).\n"
-    "WHEN ready_for_transition=true (threshold met for this node layer):\n"
-    "1) GRAPH KNOWLEDGE LIMIT: Do NOT invent or name next curriculum nodes — UI picks them.\n"
-    "2) `follow_up_question` MUST NOT be empty. `question_sub_concept_id` = null "
-    "unless the user explicitly chose to push an optional layer.\n"
-    "3) SotA FORBIDDEN: never suggest skipping HOW/MECH; never set ready_for_transition "
-    "while any required layer is open (backend enforces this).\n\n"
-    "=== A) FULL DEPTH CLOSURE (all required + all optional closed, OR node is SotA) ===\n"
-    "Russian status highlight (close to):\n"
-    "«Нода полностью освоена на 100%! Мы готовы двигаться дальше по графу знаний. "
-    "Выбери следующее действие.»\n"
-    "JSON: ready_for_transition=true; suggested_next_step=next_node; "
-    "quick_replies=[] (UI shows next-node + clarify chips).\n"
-    "FORBIDDEN: technical quiz.\n\n"
-    "=== B) THRESHOLD MET + OPTIONAL LAYERS STILL OPEN ===\n"
-    "Applies to foundation (open HOW and/or MECH) and advanced (open MECH only). "
-    "Name the remaining optional layer(s) explicitly.\n"
-    "Russian status highlight (close to):\n"
-    "«Концептуальный минимум ноды освоен! Но у нас остался опциональный слой "
-    "[HOW / MECH / HOW и MECH]. Выбери одно из действий ниже, чтобы продолжить.»\n"
-    "Set JSON `quick_replies` to exact labels matching open layers, e.g.:\n"
-    '  ["Хочу Gloss", "Дожать HOW", "Идем дальше"]  — if HOW open (foundation)\n'
-    '  ["Хочу Gloss", "Дожать MECH", "Идем дальше"] — if only MECH open\n'
-    "Mirror the same options in `follow_up_question`.\n"
-    "USER CHOICE HANDLING (next turn):\n"
-    "  - Gloss: short Glossary of the open optional layer(s) with key formulas/patterns — "
-    "NO quiz; system auto-credits those layers; then invite UI node choice; "
-    "ready_for_transition=true.\n"
-    "  - Дожать HOW|MECH: enter Active Teaching / Deep Dive — "
-    "ready_for_transition=false; do NOT close the node on this turn. "
-    "For MECH: mandatory code/math artifacts + ONE edge-case question "
-    "(see DEEP DIVE & MECH EXTRACTION RULES). Evaluator scores only the user's "
-    "next answer to that question.\n"
-    "  - Идем дальше / next: no quiz; ready_for_transition=true; UI owns next node.\n"
+    "=== TOPIC COMPLETION INSTRUCTIONS ===\n"
+    "The node threshold status and next pathways are determined deterministically "
+    "by the Host system.\n"
+    "Current Host Pathway Flag: `{pathway}` "
+    "(base_complete | optional_fork | overlay_offer; from tutor_behavior_state.pathway)\n\n"
+    "=== GENERATION RULES ===\n"
+    "1. Adapt your tone to the Host Pathway Flag, writing natural, peer-level "
+    "engineering commentary.\n"
+    "2. DO NOT use host-authored clichés or absolute decrees. FORBIDDEN PHRASES:\n"
+    "   - «Базовая теория закрыта/усвоена»\n"
+    "   - «Концептуальный минимум ноды освоен»\n"
+    "   - «Остался опциональный слой MECH/HOW»\n"
+    "   - «Нода полностью освоена на 100%»\n"
+    "3. Focus on providing substantive feedback on the user's ideas and seamlessly "
+    "introducing the next step provided by the Host.\n"
+    "4. When [EVALUATOR_CRITIQUE_JSON] is present, build a pointwise STRONG/RISK/WEAK "
+    "review plus unaccounted_edge_cases — never invent orchestration menus.\n"
+    "Orchestration fields (`ready_for_transition`, `quick_replies`, `suggested_next_step`) "
+    "are Host-owned (Python) — do not invent chip labels or pathway branches.\n"
 )
 """
-RU (пояснение): completion по layer — 100% CTA vs fork; Gloss/Дожать/next.
+RU (пояснение): pathway — стиль речи; маршрутизация чипов/интентов — только Python-хост.
 """
 
 DIALOGUE_DEEP_DIVE_MECH_EN = (
-    "=== DEEP DIVE & MECH EXTRACTION RULES ===\n"
-    "1. WHEN USER REQUESTS «Дожать MECH» OR ENTERS MECHANIC LAYER DEEP DIVE:\n"
-    "   - You MUST deliver hands-on technical artifacts in `technical_explanation`: "
-    "Python/Pydantic schemas, asyncio architecture code snippets, "
-    "OR explicit mathematical consensus/weighting formulas ($LaTeX$).\n"
-    "   - DO NOT provide high-level summaries without code/math.\n"
-    "   - ALWAYS follow up with ONE targeted edge-case question in "
-    "`follow_up_question` based on the code/formula you just provided "
-    "(to verify true mastery).\n"
-    "2. DO NOT CLOSE THE NODE AUTOMATICALLY on «Дожать MECH» / «Дожать HOW»: "
-    "set ready_for_transition=false and wait for the user's response to your "
-    "practice question. The Evaluator scores that next answer before 100% closure.\n"
-    "3. Quick-reply control chips (Gloss / Дожать / next) are NOT scored by the "
-    "Evaluator — only substantive answers to your practice questions are.\n"
+    "=== DEEP DIVE & MECH CONTENT RULES ===\n"
+    "Chip processing («Хочу Gloss» / «Дожать MECH» / «Идем дальше» / [mode:…]) "
+    "is already done by the Python host before this turn. When Host next_action "
+    "already selects MECHANIC / HOW Active Teaching:\n"
+    "1. MECHANIC: deliver hands-on artifacts in `technical_explanation` "
+    "(Python/Pydantic, asyncio snippets, or $LaTeX$ consensus formulas). "
+    "No abstract summary without code/math. Then ONE edge-case practice "
+    "question in `follow_up_question`.\n"
+    "2. HOW: concrete architecture/invariants; ONE targeted HOW question.\n"
+    "3. Do not invent transition menus or quick-reply chips — Host owns those.\n"
 )
 """
-RU (пояснение): Deep Dive MECH — код/формулы + контрольный вопрос; без авто-закрытия.
+RU (пояснение): Deep Dive MECH/HOW — стиль контента после Python-роутинга чипа.
 """
 
 DIALOGUE_NO_DEAD_END_EN = (
     "NO-DEAD-END: While uncovered sub_concepts exist, follow_up_question must end with one "
-    "concrete engineering question (?). On topic completion: follow TOPIC COMPLETION RULE "
-    "(non-empty next-step CTA, still no technical quiz).\n"
+    "concrete engineering question (?). On Host pathway completion flags: non-empty "
+    "next-step CTA in natural prose (still no technical quiz); Host owns chips.\n"
 )
 """
 RU (пояснение): no-dead-end — тех. «?» пока есть GAP; при закрытии — CTA, не пустое поле.
@@ -289,31 +284,40 @@ RU (пояснение): цитирование [code-N: Title] / [diagram-N: Ti
 """
 
 DIALOGUE_JSON_CONTRACT_EN = (
-    "JSON OUTPUT (DeepDiveTutorContract): No tutor_message field. Fields: feedback_on_answer, "
-    "technical_explanation, follow_up_question, question_sub_concept_id (required with "
-    "technical follow-up; null on topic completion unless «Дожать MECH»), node_status, optional "
-    "summary/referenced_diagram_id/references, introduced_terms[], "
-    "verified_sub_concept_ids[], new_gap_to_record, ready_for_transition, suggested_next_step, "
-    "quick_replies[] (exact chip labels for the client; [] when not offering a fork).\n"
+    "JSON OUTPUT (DeepDiveTutorContract): No tutor_message field. Primary generation "
+    "fields in order: audit (single flat TechnicalConceptAudit FIRST — not oneOf: "
+    "EXACT confirmation XOR PARTIAL praise_points+correction_breakdown as "
+    "empty-string unused branch), then "
+    "technical_explanation, follow_up_question, "
+    "question_sub_concept_id (required with technical follow-up; null on Host pathway "
+    "completion), node_status, optional summary/referenced_diagram_id/references, "
+    "introduced_terms[], verified_sub_concept_ids[], new_gap_to_record. "
+    "Do not emit feedback_on_answer — Host derives it from audit and prepends "
+    "the transparency plaque in Python. "
+    "When Host skipped Evaluator: DeepDiveExplainContract (no audit). "
+    "Orchestration fields ready_for_transition / suggested_next_step / quick_replies "
+    "are Host-owned (Python); leave them inert or empty — Host overwrites.\n"
     "Until topic closed: one engineering question in follow_up_question. "
-    "When ready_for_transition=true: non-empty next-step CTA in follow_up_question "
-    "(never leave it blank). On PASSED_WITH_GLOSS fork fill quick_replies as specified.\n"
+    "On Host pathway completion: non-empty next-step CTA in follow_up_question "
+    "(never leave it blank); never invent chip menus.\n"
 )
 """
-RU (пояснение): список полей JSON DeepDiveTutorContract для dialogue (+ quick_replies).
+RU (пояснение): JSON DeepDiveTutorContract; оркестрация — Host.
 """
 
 DIALOGUE_RECENCY_REMINDERS_EN = (
     "Recency (dialogue_feedback): Analyze current_user_message in Russian; follow "
-    "tutor_behavior_state, last_eval_directive, and [CURRENT_CONCEPT_MAP]; one technical ? in "
-    "follow_up_question while sub_concepts remain (except PASSED_WITH_GLOSS gloss+advance); "
-    "PARTIAL → explicit expectation feedback in feedback_on_answer; "
-    "TOPIC COMPLETE → non-empty CTA; if PASSED_WITH_GLOSS / open MECH → gloss fork + "
-    "quick_replies [Хочу Gloss|Дожать MECH|Идем дальше]; honour chip replies next turn. "
+    "tutor_behavior_state.pathway / next_action, last_eval_directive, and "
+    "[CURRENT_CONCEPT_MAP]; one technical ? in follow_up_question while sub_concepts "
+    "remain; PARTIAL → explicit expectation feedback; Host pathway completion → "
+    "non-empty CTA matching pathway tone; if [EVALUATOR_CRITIQUE_JSON] present → "
+    "pointwise STRONG/RISK/WEAK + edges. Chip processing (Gloss / Дожать MECH / "
+    "Идем дальше / [mode:…]) is already done by the Python host before this turn "
+    "via tags or vector_intent_router — do not re-classify or invent transitions. "
     "No StructuredLectureResponse / lecture_body.\n"
 )
 """
-RU (пояснение): хвост recency — directive, CTA / gloss-fork, обработка chip-ответов.
+RU (пояснение): хвост recency — pathway/стиль; чипы уже разрешены Python-хостом.
 """
 
 DIALOGUE_INTERACTION_MODE_EN = (
@@ -348,14 +352,21 @@ def dialogue_module_parts() -> list[str]:
     from knowledge_engine.src.node_deep_dive.lecture_prompt_en import (
         DIAGRAM_SELECTION_RULES,
     )
+    from knowledge_engine.src.node_deep_dive.tutor_critique_prompt import (
+        ANTI_SYCOPHANCY_INVARIANTS,
+        TUTOR_CRITIQUE_REVIEW_RULES,
+    )
 
     return [
         DIALOGUE_INTERACTION_MODE_EN,
         DIALOGUE_DEPTH_EN,
         DIALOGUE_BEHAVIOR_GUARDRAILS_EN,
+        ANTI_SYCOPHANCY_INVARIANTS,
         DIALOGUE_DEPTH_AND_EVALUATION_RULES_EN,
+        CONTEXT_BOUNDED_QUESTION_RULES,
         DIALOGUE_THRESHOLD_DIRECTIVE_EN,
         FEEDBACK_TRANSPARENCY_REQUIREMENT_EN,
+        TUTOR_CRITIQUE_REVIEW_RULES,
         DIALOGUE_CONCEPT_INTRO_EN,
         DIALOGUE_CONCEPT_MAP_EN,
         DIAGRAM_SELECTION_RULES,

@@ -30,26 +30,20 @@ def is_lecture_request_message(text: str) -> bool:
     True for UI [mode:lecture] button / explicit dense-material ask.
 
     These turns must NOT run the sub-concept gap evaluator (only real answers do).
+    Long free-text answers are never treated as lecture requests via fuzzy stems.
     """
+    from knowledge_engine.src.node_deep_dive.control_intent import (
+        is_short_lecture_request,
+    )
+
     raw = (text or "").strip()
     if not raw:
         return False
-    if raw.lower().startswith("[mode:lecture]"):
+    if is_short_lecture_request(raw):
         return True
+    # Exact generic stubs (also covered by control_intent, kept for clarity).
     body = strip_mode_prefix(raw)
-    if is_generic_lecture_stub(body):
-        return True
-    low = body.lower()
-    return any(
-        k in low
-        for k in (
-            "дай лекцию",
-            "дай плотн",
-            "плотный материал",
-            "dense material",
-            "лекцию по",
-        )
-    )
+    return is_generic_lecture_stub(body)
 
 
 def _norm_stub(text: str) -> str:

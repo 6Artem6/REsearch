@@ -1,23 +1,13 @@
-"""Фоновая экстракция компетенций через локальную Ollama (fire-and-forget)."""
+"""Фоновая экстракция компетенций через Gemma Cloud (fire-and-forget)."""
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from typing import Any
 
-import httpx
 from pydantic import BaseModel, Field, field_validator
 
-from knowledge_engine.config import (
-    COMPETENCY_EXTRACT_NUM_PREDICT,
-    COMPETENCY_EXTRACT_OLLAMA_MODEL,
-    COMPETENCY_EXTRACT_TIMEOUT_SEC,
-    OLLAMA_BASE_URL,
-    OLLAMA_ROUTER_NUM_CTX,
-    SELECTION_PROMPTS_KEEP_ALIVE,
-)
-from knowledge_engine.services.ollama_runtime import ensure_ollama_server
+from knowledge_engine.llm import complete_structured_async
 from knowledge_engine.src.locks import uma_resource_lock
 from knowledge_engine.src.node_deep_dive.schemas import NodeDataInput
 from knowledge_engine.src.node_deep_dive.user_mastery_profile import (
@@ -39,7 +29,7 @@ _EXTRACT_SYSTEM = (
     "no percentages or numeric scores; output field strings in Russian.\n"
 )
 """
-RU (пояснение): Ollama sidecar — JSON дельта компетенций из шага диалога.
+RU (пояснение): Gemma Cloud sidecar — JSON дельта компетенций из шага диалога.
 """
 
 
@@ -74,48 +64,30 @@ def _delta_from_extract(model: _ExtractJson) -> CompetencyDelta:
     )
 
 
-async def _ollama_extract_delta(
+async def _gemma_extract_delta(
     user_message: str,
     tutor_preview: str,
     node: NodeDataInput,
 ) -> CompetencyDelta | None:
     concepts = ", ".join(str(c) for c in (node.core_concepts or [])[:6])
     user = (
-        f"Нода: {node.title}\n"
-        f"Концепты: {concepts}\n"
-        f"Реплика пользователя:\n{(user_message or '')[:1200]}\n\n"
-        f"Краткий ответ тьютора (начало):\n{(tutor_preview or '')[:800]}"
+        f"Node: {node.title}\n"
+        f"Concepts: {concepts}\n"
+        f"User turn:\n{(user_message or '')[:1200]}\n\n"
+        f"Tutor reply (start):\n{(tutor_preview or '')[:800]}"
     )
-    url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/chat"
-    payload: dict[str, Any] = {
-        "model": COMPETENCY_EXTRACT_OLLAMA_MODEL,
-        "messages": [
-            {"role": "system", "content": _EXTRACT_SYSTEM},
-            {"role": "user", "content": user},
-        ],
-        "stream": False,
-        "format": _ExtractJson.model_json_schema(),
-        "options": {
-            "temperature": 0.15,
-            "num_predict": COMPETENCY_EXTRACT_NUM_PREDICT,
-            "num_ctx": OLLAMA_ROUTER_NUM_CTX,
-        },
-        "keep_alive": SELECTION_PROMPTS_KEEP_ALIVE,
-    }
-    timeout = httpx.Timeout(COMPETENCY_EXTRACT_TIMEOUT_SEC)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(url, json=payload)
-        response.raise_for_status()
-        data = response.json()
-    message = data.get("message") or {}
-    content = message.get("content") if isinstance(message, dict) else ""
-    if not isinstance(content, str):
-        content = str(content or "")
     try:
-        model = _ExtractJson.model_validate_json(content)
-        return _delta_from_extract(model)
+        model = await complete_structured_async(
+            _ExtractJson,
+            _EXTRACT_SYSTEM,
+            user,
+            label="competency_extract",
+        )
     except Exception:
         return None
+    if model is None:
+        return None
+    return _delta_from_extract(model)
 
 
 async def _run_extract_with_uma_backoff(
@@ -128,9 +100,7 @@ async def _run_extract_with_uma_backoff(
     for attempt in range(15):
         if uma_resource_lock.acquire(blocking=False):
             try:
-                if not await ensure_ollama_server(wait_sec=8.0):
-                    return
-                delta = await _ollama_extract_delta(user_message, tutor_preview, node)
+                delta = await _gemma_extract_delta(user_message, tutor_preview, node)
                 if delta and delta.has_updates():
                     merge_competency_delta(curriculum_id, delta)
                     trace(

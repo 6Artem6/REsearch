@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from pydantic import BaseModel, Field, field_validator
 
 from knowledge_engine.schemas.extraction import (
@@ -10,8 +12,77 @@ from knowledge_engine.schemas.extraction import (
     attach_source_chunk_id,
     coerce_scope_type,
     normalize_knowledge_atoms,
-    tagged_takeaways_from_atoms,
 )
+
+_LOG = logging.getLogger(__name__)
+
+
+def _coerce_window_diagram_list(value: object) -> list[object]:
+    """Heal LLM list items: bare strings / partial dicts → WindowDiagramCheck payloads."""
+    if value is None:
+        return []
+    raw_items: list[object]
+    if isinstance(value, str):
+        raw_items = [value]
+    elif isinstance(value, (list, tuple)):
+        raw_items = list(value)
+    else:
+        raw_items = [value]
+    out: list[object] = []
+    for item in raw_items:
+        if item is None:
+            continue
+        if isinstance(item, WindowDiagramCheck):
+            out.append(item)
+            continue
+        if isinstance(item, str):
+            name = item.strip()
+            if not name:
+                continue
+            _LOG.warning(
+                "required_diagrams item is a bare string %r; "
+                "coercing to WindowDiagramCheck",
+                name,
+            )
+            out.append(
+                {
+                    "figure_id": name,
+                    "referenced_paragraphs": [],
+                    "reason": "",
+                }
+            )
+            continue
+        if isinstance(item, dict):
+            fid = str(
+                item.get("figure_id")
+                or item.get("diagram_id")
+                or item.get("id")
+                or item.get("name")
+                or ""
+            ).strip()
+            paras = (
+                item.get("referenced_paragraphs")
+                or item.get("relevant_paragraphs")
+                or []
+            )
+            if isinstance(paras, str):
+                paras = [paras] if paras.strip() else []
+            elif not isinstance(paras, list):
+                paras = []
+            reason = item.get("reason") or item.get("semantic_reason") or ""
+            out.append(
+                {
+                    "figure_id": fid or "unknown",
+                    "referenced_paragraphs": paras,
+                    "reason": str(reason or ""),
+                }
+            )
+            continue
+        _LOG.warning(
+            "required_diagrams item has unsupported type %s; dropping",
+            type(item).__name__,
+        )
+    return out
 
 
 class TargetDiagramLocation(BaseModel):
@@ -46,13 +117,22 @@ class BlogArticleSummaryResponse(BaseModel):
 
 
 class WindowDiagramCheck(BaseModel):
-    figure_id: str = Field(..., description="Exact figure id, e.g. 'FIG_1'")
+    figure_id: str = Field(
+        default="unknown",
+        min_length=1,
+        description=(
+            "Exact figure id from the window text, e.g. FIG_1. "
+            "FORBIDDEN: conceptual camelCase names as the list item itself; "
+            "each required_diagrams entry is this object, never a bare string."
+        ),
+    )
+    # RU: id фигуры окна (FIG_n); не имя придуманной схемы.
     referenced_paragraphs: list[str] = Field(
-        ...,
+        default_factory=list,
         description="Paragraphs in the current window that critically need the figure",
     )
     reason: str = Field(
-        ...,
+        default="",
         description="Architectural reason why the figure is needed here",
     )
 
@@ -77,8 +157,19 @@ class MapWindowResponse(BaseModel):
     )
     required_diagrams: list[WindowDiagramCheck] = Field(
         default_factory=list,
-        description="Figures needed to close gaps in this window",
+        description=(
+            "WindowDiagramCheck objects only: "
+            "{figure_id, referenced_paragraphs, reason}. "
+            "Prefer []. Never emit bare strings. "
+            "figure_id must be FIG_n from the window, not an invented name."
+        ),
     )
+    # RU: объекты диаграмм окна; строки от LLM приводятся к объекту, окно не падает.
+
+    @field_validator("required_diagrams", mode="before")
+    @classmethod
+    def _coerce_required_diagrams(cls, v: object) -> object:
+        return _coerce_window_diagram_list(v)
 
     def as_inspection(self) -> ParagraphInspectionResult:
         return ParagraphInspectionResult(atoms=list(self.knowledge_atoms or []))
@@ -107,9 +198,11 @@ class FinalArticleSummaryResponse(BaseModel):
     key_takeaways: list[str] = Field(
         ...,
         description=(
-            "8–12 takeaways prefixed with [SCOPE: PRINCIPLE|MECHANIC|INSTANCE]"
+            "Compressed synthesis takeaways (3–7 lines) prefixed with "
+            "[SCOPE: PRINCIPLE|MECHANIC|INSTANCE]; not the full knowledge_atoms catalog."
         ),
     )
+    """ RU: сжатые выводы фазы синтеза; полный каталог фактов — в knowledge_atoms. """
     knowledge_atoms: list[KnowledgeAtom] = Field(
         default_factory=list,
         max_length=32,
@@ -162,27 +255,17 @@ class FinalArticleSummaryResponse(BaseModel):
     @field_validator("target_diagrams_for_vlm", mode="before")
     @classmethod
     def _coerce_diagrams(cls, v: object) -> object:
-        return v if v is not None else []
+        return _coerce_window_diagram_list(v)
 
 
 def normalize_final_knowledge(
     final: FinalArticleSummaryResponse,
 ) -> FinalArticleSummaryResponse:
-    """Pydantic-нормализация: atoms ↔ tagged takeaways после Reduce."""
-    atoms = normalize_knowledge_atoms(
+    """Нормализация knowledge_atoms после Reduce; takeaways синтеза не затираются."""
+    final.knowledge_atoms = normalize_knowledge_atoms(
         final.knowledge_atoms or [],
-        fallback_lines=final.key_takeaways or [],
+        fallback_lines=[],
     )
-    final.knowledge_atoms = atoms
-    tagged = tagged_takeaways_from_atoms(atoms, max_items=12)
-    if tagged:
-        final.key_takeaways = tagged
-    elif final.key_takeaways:
-        # сохранить сырые строки, пометив как PRINCIPLE при отсутствии тега
-        final.key_takeaways = tagged_takeaways_from_atoms(
-            normalize_knowledge_atoms([], fallback_lines=final.key_takeaways),
-            max_items=12,
-        )
     return final
 
 

@@ -150,6 +150,16 @@ class CurriculumSearchHit(BaseModel):
         default=None,
         description="Exa neural relevance score (если API вернул score)",
     )
+    alias_of: str = Field(
+        default="",
+        max_length=2000,
+        description=(
+            "Pre-MAP Dedup: непусто, если этот URL признан дублем другого "
+            "источника (Union-Find + Flash Lite bulk gate) — key_extracts "
+            "заимствованы у canonical (alias_of), MAP+REDUCE для этого URL "
+            "не запускался повторно; сам URL сохранён для цитирования."
+        ),
+    )
 
 
 class LearningMaterials(BaseModel):

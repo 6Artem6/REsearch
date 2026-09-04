@@ -5,16 +5,7 @@ from __future__ import annotations
 import json
 import re
 
-import httpx
-
-from knowledge_engine.config import (
-    BLOG_SPATIAL_NUM_CTX,
-    BLOG_SPATIAL_NUM_PREDICT,
-    BLOG_SPATIAL_SUMMARIZER_MODEL,
-    BLOG_SPATIAL_TIMEOUT_SEC,
-    OLLAMA_BASE_URL,
-    SELECTION_PROMPTS_KEEP_ALIVE,
-)
+from knowledge_engine.llm import complete_structured_sync
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.services.article_ingestion.annotated_article_ops import (
     _norm_p,
@@ -114,47 +105,28 @@ class ArticleSectionPruner:
             return None
         prompt = (
             "Document TOC (compact). Return JSON TriageDecisionResponse.\n"
-            "keep_paragraph_ranges: pairs [start_P_id, end_P_id] for MAIN technical content "
-            "(intro, core, architecture, benchmarks, conclusion).\n"
+            "keep_paragraph_ranges: list of [start_P_id, end_P_id] pairs for MAIN "
+            "technical content (intro, core, architecture, benchmarks, conclusion).\n"
+            "pruned_sections_reason: list of strings; use [] if nothing was dropped.\n"
             "Exclude bibliography, appendices, index, legal boilerplate.\n\n"
             f"{json.dumps(compact, ensure_ascii=False)}"
         )
         system = (
             f"{RUSSIAN_OUTPUT_RULE}\n"
-            "Structural triage only. Use only P_ids from the TOC."
+            "Structural triage only. Use only P_ids from the TOC. "
+            "Both keep_paragraph_ranges and pruned_sections_reason are required keys; "
+            "pruned_sections_reason may be an empty array."
         )
-        api = f"{OLLAMA_BASE_URL.rstrip('/')}/api/generate"
-        payload = {
-            "model": BLOG_SPATIAL_SUMMARIZER_MODEL,
-            "system": system,
-            "prompt": prompt,
-            "stream": False,
-            "format": TriageDecisionResponse.model_json_schema(),
-            "keep_alive": SELECTION_PROMPTS_KEEP_ALIVE,
-            "options": {
-                "temperature": 0.05,
-                "num_ctx": min(BLOG_SPATIAL_NUM_CTX, 8192),
-                "num_predict": min(BLOG_SPATIAL_NUM_PREDICT, 2048),
-            },
-        }
         try:
-            timeout = httpx.Timeout(BLOG_SPATIAL_TIMEOUT_SEC)
-            with httpx.Client(timeout=timeout) as client:
-                resp = client.post(api, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
+            parsed = complete_structured_sync(
+                TriageDecisionResponse,
+                system,
+                prompt,
+                label="doc_triage",
+            )
         except Exception as exc:
             trace(f"DOC_TRIAGE llm ✗ | {exc}")
             return None
-        raw = str(data.get("response") or "").strip()
-        try:
-            parsed = TriageDecisionResponse.model_validate_json(raw)
-        except Exception:
-            try:
-                parsed = TriageDecisionResponse.model_validate(json.loads(raw))
-            except Exception:
-                trace("DOC_TRIAGE llm ✗ | invalid JSON")
-                return None
-        if not parsed.keep_paragraph_ranges:
+        if parsed is None or not parsed.keep_paragraph_ranges:
             return None
         return parsed
