@@ -1120,3 +1120,36 @@ export function tutorMarkdownToHtml(text) {
   }
   return out.join("");
 }
+
+const SOURCE_TAG_RE = /\[S(\d+)\]/g;
+
+/**
+ * Клиентский fallback-рендер (tutorMarkdownToHtml / structuredAnalysisToHtml)
+ * не знает про source registry — [Sn] от LLM остаётся голым текстом без
+ * <a href>, пока сообщение не перерисуется backend-HTML (после reload). Эта
+ * функция — тот же линкифай, что и backend linkify_source_anchors_html
+ * (src/processors/source_anchors.py), но на стороне клиента: применяется
+ * ТОЛЬКО к html без backend-ссылок, не трогает уже готовые <a> (не вызывать
+ * поверх tutorHtml из ответа сервера — там [Sn] уже обёрнут в <a>).
+ */
+export function linkifySourceAnchorsHtml(html, registry) {
+  const raw = String(html || "");
+  if (!raw || !Array.isArray(registry) || !registry.length) return raw;
+  const byId = {};
+  for (const e of registry) {
+    const sid = String(e?.id || e?.source_id || "").trim();
+    if (sid) byId[sid] = e;
+  }
+  if (!Object.keys(byId).length) return raw;
+  return raw.replace(SOURCE_TAG_RE, (m, num) => {
+    const sid = `S${num}`;
+    const ent = byId[sid];
+    const url = String(ent?.url || "").trim();
+    if (!ent || !url) return m;
+    const title = String(ent.title || sid).replace(/"/g, "&quot;");
+    return (
+      `<a href="${escapeHtml(url)}" class="source-anchor" target="_blank" ` +
+      `rel="noopener noreferrer" title="${title}">[${sid}]</a>`
+    );
+  });
+}

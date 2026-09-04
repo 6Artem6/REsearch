@@ -37747,6 +37747,7 @@ function NodeMasteryPanel({
       { className: "mastery-bridge muted" },
       dash.pathway_bridge
     ),
+    import_react6.default.createElement("h4", { className: "mastery-modes-label" }, "\u0420\u0435\u0436\u0438\u043C \u0440\u0430\u0431\u043E\u0442\u044B"),
     import_react6.default.createElement(
       "div",
       { className: "mastery-modes" },
@@ -39100,6 +39101,25 @@ function tutorMarkdownToHtml(text) {
   }
   return out.join("");
 }
+var SOURCE_TAG_RE = /\[S(\d+)\]/g;
+function linkifySourceAnchorsHtml(html, registry) {
+  const raw = String(html || "");
+  if (!raw || !Array.isArray(registry) || !registry.length) return raw;
+  const byId = {};
+  for (const e of registry) {
+    const sid = String(e?.id || e?.source_id || "").trim();
+    if (sid) byId[sid] = e;
+  }
+  if (!Object.keys(byId).length) return raw;
+  return raw.replace(SOURCE_TAG_RE, (m, num) => {
+    const sid = `S${num}`;
+    const ent = byId[sid];
+    const url = String(ent?.url || "").trim();
+    if (!ent || !url) return m;
+    const title = String(ent.title || sid).replace(/"/g, "&quot;");
+    return `<a href="${escapeHtml(url)}" class="source-anchor" target="_blank" rel="noopener noreferrer" title="${title}">[${sid}]</a>`;
+  });
+}
 
 // api.js
 var API = "/api/v1";
@@ -39249,9 +39269,10 @@ function tutorHtmlMatchesContent(content, html) {
   const c = (content || "").trim();
   const h = postprocessTutorHtml(String(html || "").trim());
   if (!c || !h) return Boolean(h);
+  const hText = h.replace(/<[^>]+>/g, "");
   const tail = c.slice(-120);
-  if (tail.includes("?") && !h.includes(tail.slice(-60))) return false;
-  return h.replace(/<[^>]+>/g, "").length + 40 >= c.length;
+  if (tail.includes("?") && !hText.includes(tail.slice(-60))) return false;
+  return hText.length + 40 >= c.length;
 }
 function tutorHtmlMatchesContentForMessage(content, contentHtml) {
   return tutorHtmlMatchesContent(content, contentHtml);
@@ -39452,18 +39473,6 @@ async function fetchNodeSourceRegistry(curriculumId, nodeId) {
   if (!r.ok) return { source_registry: [] };
   return r.json();
 }
-async function nodeInit(curriculumId, nodeData) {
-  const r = await fetch(`${API}/node/init`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ curriculum_id: curriculumId, node_data: nodeData })
-  });
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({}));
-    throw new Error(err.detail || r.statusText);
-  }
-  return resolveMaybeJobResponse(await r.json());
-}
 async function nodeRestart(curriculumId, nodeData) {
   const r = await fetch(`${API}/node/restart`, {
     method: "POST",
@@ -39515,6 +39524,13 @@ async function nodeChatStream(curriculumId, nodeData, userMessage, onEvent) {
       node_data: nodeData,
       user_message: userMessage
     },
+    onEvent
+  );
+}
+async function nodeInitStream(curriculumId, nodeData, onEvent) {
+  return readNodeSsePost(
+    `${API}/node/init-stream`,
+    { curriculum_id: curriculumId, node_data: nodeData },
     onEvent
   );
 }
@@ -41740,7 +41756,7 @@ function renderRouteCurriculumMaterials(selectedNode, curriculum, session) {
       import_react18.default.createElement(
         "h4",
         { className: "drawer-subtitle" },
-        "\u0410\u0434\u0440\u0435\u0441\u0430\u0446\u0438\u044F \u043D\u043E\u0434\u044B (mapped_source_ids)"
+        "\u0410\u0434\u0440\u0435\u0441\u0430\u0446\u0438\u044F \u043D\u043E\u0434\u044B"
       ),
       import_react18.default.createElement(
         "ul",
@@ -42102,7 +42118,10 @@ var HOST_CHIP_BY_LABEL = {
     id: "next",
     intent: QUICK_REPLY_INTENTS.nextNode
   },
-  "\u0418\u0434\u0451\u043C \u0434\u0430\u043B\u044C\u0448\u0435": { id: "next", intent: QUICK_REPLY_INTENTS.nextNode }
+  "\u0418\u0434\u0451\u043C \u0434\u0430\u043B\u044C\u0448\u0435": { id: "next", intent: QUICK_REPLY_INTENTS.nextNode },
+  \u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0430: { id: "practice", intent: "\u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0430" },
+  \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430: { id: "check", intent: "\u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430" },
+  \u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C: { id: "skip", intent: "\u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C" }
 };
 function chipsFromHostLabels(labels) {
   const out = [];
@@ -42241,8 +42260,10 @@ function isFullDepthClosure(session, nodeLayer) {
   return Boolean(why && how && mech);
 }
 function buildTransitionChips(session, nodeLayer) {
-  if (!session?.readyForTransition) return [];
   const host = chipsFromHostLabels(hostChipLabelsFromSession(session));
+  if (!session?.readyForTransition) {
+    return host;
+  }
   if (host.length) return host;
   const ly = normalizeNodeLayer(nodeLayer || session?.nodeLayer);
   const open = openOptionalLayers(session, ly);
@@ -42385,11 +42406,11 @@ var QUICK = [
   },
   {
     label: "\u0421\u0430\u043C\u043E\u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430",
-    text: "\u041E\u0434\u0438\u043D \u043A\u043E\u0440\u043E\u0442\u043A\u0438\u0439 \u0432\u043E\u043F\u0440\u043E\u0441 \u0441\u0430\u043C\u043E\u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u043F\u043E \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0443 \u0441\u043F\u0440\u0430\u0432\u0430."
+    text: "[mode:self_check] \u041E\u0434\u0438\u043D \u043A\u043E\u0440\u043E\u0442\u043A\u0438\u0439 \u0432\u043E\u043F\u0440\u043E\u0441 \u0441\u0430\u043C\u043E\u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u043F\u043E \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0443 \u0441\u043F\u0440\u0430\u0432\u0430."
   },
   {
     label: "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u043C\u043E\u0434\u0443\u043B\u044C",
-    text: "INTENT_FINALIZE: \u0447\u0442\u043E \u044F \u0443\u0441\u043E\u0432\u043E\u0438\u043B \u0438 \u043A\u0443\u0434\u0430 \u043B\u043E\u0433\u0438\u0447\u043D\u043E \u043F\u0435\u0440\u0435\u0439\u0442\u0438 \u0434\u0430\u043B\u044C\u0448\u0435?"
+    text: "[mode:next_module] \u0427\u0442\u043E \u044F \u0443\u0441\u0432\u043E\u0438\u043B \u0438 \u043A\u0443\u0434\u0430 \u043B\u043E\u0433\u0438\u0447\u043D\u043E \u043F\u0435\u0440\u0435\u0439\u0442\u0438 \u0434\u0430\u043B\u044C\u0448\u0435?"
   }
 ];
 function lastTutorMsgId(messages) {
@@ -42406,6 +42427,7 @@ function NodeTutorChat({
   onSend,
   disabled,
   generating,
+  stageMessage,
   curriculumId,
   nodeData,
   curriculum,
@@ -42420,7 +42442,8 @@ function NodeTutorChat({
   const composeLocked = Boolean(disabled);
   const explainEnabled = Boolean(curriculumId && nodeData);
   const tutorTurnKey = lastTutorMsgId(messages);
-  const showTransitionChips = Boolean(session?.readyForTransition) && !chipsDismissed && !generating && Boolean(tutorTurnKey);
+  const hostQuickCount = Array.isArray(session?.quickReplies) ? session.quickReplies.length : 0;
+  const showTransitionChips = (Boolean(session?.readyForTransition) || hostQuickCount > 0) && !chipsDismissed && !generating && Boolean(tutorTurnKey);
   (0, import_react22.useEffect)(() => {
     setChipsDismissed(false);
     setNodePickerOpen(false);
@@ -42470,7 +42493,10 @@ function NodeTutorChat({
     generating && import_react22.default.createElement(
       "div",
       { className: "tutor-busy-hint", "aria-live": "polite" },
-      "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043E\u0442\u0432\u0435\u0442\u0430\u2026 \u043C\u043E\u0436\u043D\u043E \u0447\u0438\u0442\u0430\u0442\u044C \u0438\u0441\u0442\u043E\u0440\u0438\u044E \u0432\u044B\u0448\u0435; \u043D\u043E\u0432\u044B\u0435 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B."
+      // stageMessage — последнее FSM stage-событие (см. schemas/fsm.py,
+      // api.js::nodeChatStream) с бэкенда; статичный текст — fallback,
+      // пока событий ещё не пришло или backend их не шлёт (non-stream путь).
+      stageMessage || "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043E\u0442\u0432\u0435\u0442\u0430\u2026 \u043C\u043E\u0436\u043D\u043E \u0447\u0438\u0442\u0430\u0442\u044C \u0438\u0441\u0442\u043E\u0440\u0438\u044E \u0432\u044B\u0448\u0435; \u043D\u043E\u0432\u044B\u0435 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B."
     ),
     import_react22.default.createElement(
       "div",
@@ -42487,7 +42513,10 @@ function NodeTutorChat({
           const msgKey = m.msg_id || `${m.role}-${dialogMsgId(m) ?? (m.content || "").slice(0, 40)}`;
           const tutorHtml = postprocessTutorHtml(m.contentHtml || "");
           const useTutorHtml = m.role === "tutor" && tutorHtml && tutorHtmlMatchesContentForMessage(m.content || "", tutorHtml);
-          const tutorMarkdownHtml = m.role === "tutor" ? tutorMarkdownToHtml(m.content || "") : "";
+          const tutorMarkdownHtml = m.role === "tutor" ? linkifySourceAnchorsHtml(
+            tutorMarkdownToHtml(m.content || ""),
+            session?.sourceRegistry
+          ) : "";
           const isLastTutor = m.role === "tutor" && msgKey === tutorTurnKey;
           return import_react22.default.createElement(
             "div",
@@ -42634,6 +42663,7 @@ function RoadmapDashboard() {
   const [genStatus, setGenStatus] = (0, import_react24.useState)("");
   const [genBusyAction, setGenBusyAction] = (0, import_react24.useState)(null);
   const [tutorBusyNodeId, setTutorBusyNodeId] = (0, import_react24.useState)(null);
+  const [tutorStageMessage, setTutorStageMessage] = (0, import_react24.useState)("");
   const [selectedMaterialId, setSelectedMaterialId] = (0, import_react24.useState)(null);
   const [materialViewMode, setMaterialViewMode] = (0, import_react24.useState)(() => {
     const v = localStorage.getItem(MATERIAL_VIEW_LS);
@@ -42843,6 +42873,20 @@ function RoadmapDashboard() {
       return;
     }
     setStatuses((prev) => ({ ...prev, [nodeId]: res.node_status }));
+    if (Array.isArray(res.mapped_source_ids)) {
+      const freshMapped = res.mapped_source_ids;
+      setSelectedNode(
+        (prev) => prev && prev.node_id === nodeId ? { ...prev, mapped_source_ids: freshMapped } : prev
+      );
+      setCurriculum((prev) => {
+        if (!prev || !Array.isArray(prev.nodes)) return prev;
+        const idx = prev.nodes.findIndex((n) => n.node_id === nodeId);
+        if (idx === -1) return prev;
+        const nodes = prev.nodes.slice();
+        nodes[idx] = { ...nodes[idx], mapped_source_ids: freshMapped };
+        return { ...prev, nodes };
+      });
+    }
     setSessions((prev) => {
       const old = prev[nodeId] || { messages: [] };
       const streamId = `stream-${nodeId}`;
@@ -42905,12 +42949,25 @@ function RoadmapDashboard() {
         return;
       }
       setTutorBusyNodeId(sid);
+      setTutorStageMessage("");
       try {
-        const res = await nodeInit(
+        let finalRes = null;
+        await nodeInitStream(
           curriculum.curriculum_id,
-          toNodeDataInput(node)
+          toNodeDataInput(node),
+          (evt) => {
+            if (evt.type === "stage" && evt.message) {
+              setTutorStageMessage(evt.message);
+            }
+            if (evt.type === "complete" && evt.result) {
+              finalRes = evt.result;
+            }
+            if (evt.type === "error") {
+              throw new Error(evt.detail || "init-stream error");
+            }
+          }
         );
-        applyNodeResponse(sid, res);
+        applyNodeResponse(sid, finalRes || {});
         const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
         if (freshGraph) {
           const freshNode = freshGraph.nodes.find((n) => n.node_id === sid);
@@ -42960,6 +43017,7 @@ function RoadmapDashboard() {
     if (!msg) return;
     const nid = selectedNode.node_id;
     setTutorBusyNodeId(nid);
+    setTutorStageMessage("");
     onTutorPendingUser(msg);
     try {
       let finalRes = null;
@@ -42969,6 +43027,9 @@ function RoadmapDashboard() {
         toNodeDataInput(selectedNode),
         msg,
         (evt) => {
+          if (evt.type === "stage" && evt.message) {
+            setTutorStageMessage(evt.message);
+          }
           if (evt.type === "token" && evt.text) {
             streamed += evt.text;
             setSessions((prev) => {
@@ -43015,6 +43076,7 @@ function RoadmapDashboard() {
       });
     } finally {
       setTutorBusyNodeId(null);
+      setTutorStageMessage("");
     }
   }
   async function runVerify() {
@@ -43032,6 +43094,7 @@ function RoadmapDashboard() {
       onVerifyResponse({ error: String(err.message || err) });
     } finally {
       setTutorBusyNodeId(null);
+      setTutorStageMessage("");
     }
   }
   function onTutorPendingUser(userMsg) {
@@ -43103,6 +43166,7 @@ function RoadmapDashboard() {
       setError(String(err.message || err));
     } finally {
       setTutorBusyNodeId(null);
+      setTutorStageMessage("");
     }
   }
   const session = selectedNode ? sessions[selectedNode.node_id] : null;
@@ -43248,6 +43312,7 @@ function RoadmapDashboard() {
           onSend: sendTutorMessage,
           disabled: composeLocked,
           generating: nodeGenerating,
+          stageMessage: tutorStageMessage,
           curriculumId: curriculum.curriculum_id,
           nodeData: toNodeDataInput(selectedNode),
           curriculum,

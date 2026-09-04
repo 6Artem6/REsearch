@@ -269,6 +269,7 @@ export function NodeMasteryPanel({
         { className: "mastery-bridge muted" },
         dash.pathway_bridge,
       ),
+    React.createElement("h4", { className: "mastery-modes-label" }, "Режим работы"),
     React.createElement(
       "div",
       { className: "mastery-modes" },

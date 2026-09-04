@@ -258,7 +258,7 @@ function renderRouteCurriculumMaterials(selectedNode, curriculum, session) {
         React.createElement(
           "h4",
           { className: "drawer-subtitle" },
-          "Адресация ноды (mapped_source_ids)",
+          "Адресация ноды",
         ),
         React.createElement(
           "ul",
