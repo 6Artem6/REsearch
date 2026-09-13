@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Iterable, TypeVar
 from urllib.parse import urlparse
 
-from knowledge_engine.config import SOURCE_ARCHIVE_ENABLED
-from knowledge_engine.services.search.url_filter import is_blocked_url
+from knowledge_engine.src.config.settings import SOURCE_ARCHIVE_ENABLED
+from knowledge_engine.src.core.run_log import trace
+from knowledge_engine.src.domains.curriculum.url_filter import is_blocked_url
 from knowledge_engine.src.source_evaluator.evaluator import match_whitelist
-from knowledge_engine.ui.run_log import trace
 
 _ARCHIVE_TRUST_REUSE = 0.72
 _ARCHIVE_TRUST_REGISTER = 0.86
@@ -103,7 +103,7 @@ def archive_trust_for_url(url: str) -> float:
     if not SOURCE_ARCHIVE_ENABLED:
         return 0.0
     try:
-        from knowledge_engine.db.source_links import get_source_link_archive
+        from knowledge_engine.src.shared.source_links import get_source_link_archive
 
         return get_source_link_archive().get_url_trust(url)
     except Exception:
@@ -158,9 +158,11 @@ def register_curriculum_source(
     else:
         trust = trust_score if trust_score is not None else _ARCHIVE_TRUST_REGISTER
     try:
-        from knowledge_engine.config import SOURCE_ARCHIVE_DB_PATH
-        from knowledge_engine.db.source_links import SourceLinkArchive
-        from knowledge_engine.services.domain_profiler import normalize_domain
+        from knowledge_engine.src.config.settings import SOURCE_ARCHIVE_DB_PATH
+        from knowledge_engine.src.domains.curriculum.domain_profiler import (
+            normalize_domain,
+        )
+        from knowledge_engine.src.shared.source_links import SourceLinkArchive
 
         archive = SourceLinkArchive(SOURCE_ARCHIVE_DB_PATH)
         archive.upsert(

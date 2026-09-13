@@ -14,7 +14,10 @@ import threading
 import time
 from pathlib import Path
 
-from knowledge_engine.config import PACKAGE_ROOT, SEMANTIC_SCHOLAR_MIN_INTERVAL_SEC
+from knowledge_engine.src.config.settings import (
+    PACKAGE_ROOT,
+    SEMANTIC_SCHOLAR_MIN_INTERVAL_SEC,
+)
 
 _LOCK_PATH: Path = (PACKAGE_ROOT / ".runs" / "semantic_scholar_rate_lock").resolve()
 

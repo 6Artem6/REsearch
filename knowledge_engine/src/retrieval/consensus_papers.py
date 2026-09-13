@@ -9,17 +9,17 @@ from urllib.parse import unquote
 
 from playwright.async_api import Page
 
-from knowledge_engine.config import (
+from knowledge_engine.src.config.settings import (
     CURRICULUM_ACADEMIC_ABSTRACT_MIN_CHARS,
     SEMANTIC_SCHOLAR_ENABLED,
     SEMANTIC_SCHOLAR_ENRICH_TIMEOUT_SEC,
 )
+from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.retrieval.consensus_capture import (
     is_generic_consensus_url,
     normalize_paper_urls,
 )
 from knowledge_engine.src.retrieval.semantic_scholar import ScholarPaper
-from knowledge_engine.ui.run_log import trace
 
 _URL_RE = re.compile(r"https?://[^\s\]<\"')]+")
 _ACADEMIC_HOST = re.compile(
@@ -285,7 +285,7 @@ async def enrich_papers_metadata(
             trace(f"Consensus enrich ⊘ SS skip | abstract_ok={skip_n}/{len(papers)}")
         if need > 0:
             if ignore_enabled_flag:
-                from knowledge_engine.services.curriculum_api_quota_store import (
+                from knowledge_engine.src.domains.curriculum.curriculum_api_quota_store import (
                     can_use_semantic_scholar,
                 )
 

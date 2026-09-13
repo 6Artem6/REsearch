@@ -9,14 +9,14 @@ from typing import List, Optional
 import lancedb
 import numpy as np
 
-from knowledge_engine.config import LANCE_DB_PATH
-from knowledge_engine.db.embed_model_guard import (
+from knowledge_engine.src.adapters.db.embed_model_guard import (
     drop_if_embed_space_mismatch,
     row_matches_embed_model,
     stamp_embed_model,
 )
-from knowledge_engine.services.search.bge_m3_embed import BgeM3Embeddings
+from knowledge_engine.src.config.settings import LANCE_DB_PATH
 from knowledge_engine.src.locks import run_under_uma_lock
+from knowledge_engine.src.shared.ml_runtime.bge_m3_embed import BgeM3Embeddings
 from knowledge_engine.src.state import StructuredChunk
 
 V07_CHUNKS_TABLE = "v07_chunks"

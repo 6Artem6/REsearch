@@ -7,8 +7,8 @@ import re
 from typing import Any, List
 from urllib.parse import urlparse
 
+from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.retrieval.semantic_scholar import ScholarPaper
-from knowledge_engine.ui.run_log import trace
 
 _URL_RE = re.compile(r"https?://[^\s\"'<>]+")
 _DOI_RE = re.compile(r"(10\.\d{4,9}/[^\s\"'<>]+)", re.I)

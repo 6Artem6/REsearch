@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from knowledge_engine.schemas.llm_contracts.consensus import (
-    AcademicQueryContract,
-    RefinementSanitizeContract,
-    ValidationResultContract,
-)
 from knowledge_engine.src.retrieval.semantic_scholar import (
     ScholarPaper,
     format_papers_block,
+)
+from knowledge_engine.src.shared.consensus import (
+    AcademicQueryContract,
+    RefinementSanitizeContract,
+    ValidationResultContract,
 )
 
 ValidationResult = ValidationResultContract

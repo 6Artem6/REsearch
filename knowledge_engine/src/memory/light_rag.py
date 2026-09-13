@@ -11,21 +11,21 @@ from typing import List
 import lancedb
 import numpy as np
 
-from knowledge_engine.config import (
+from knowledge_engine.src.adapters.db.embed_model_guard import (
+    drop_if_embed_space_mismatch,
+    row_matches_embed_model,
+    stamp_embed_model,
+)
+from knowledge_engine.src.config.settings import (
     LANCE_DB_PATH,
     LIGHT_RAG_MIN_COSINE_SIM,
     LIGHT_RAG_PROFILE_LIMIT,
     USER_PROFILE_PATH,
 )
-from knowledge_engine.db.embed_model_guard import (
-    drop_if_embed_space_mismatch,
-    row_matches_embed_model,
-    stamp_embed_model,
-)
-from knowledge_engine.services.search.bge_m3_embed import BgeM3Embeddings
+from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.locks import run_under_uma_lock
 from knowledge_engine.src.processors.source_anchors import strip_source_anchor_tags_list
-from knowledge_engine.ui.run_log import trace
+from knowledge_engine.src.shared.ml_runtime.bge_m3_embed import BgeM3Embeddings
 
 LIGHT_RAG_TABLE = "light_rag_facts"
 PROFILE_DOC_PREFIX = "profile_segment"

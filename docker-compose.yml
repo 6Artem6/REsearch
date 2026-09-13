@@ -155,7 +155,7 @@ services:
     volumes: *ke-app-volumes
     ports:
       - "${KE_API_PORT:-8765}:8765"
-    command: ["python", "-m", "knowledge_engine.api"]
+    command: ["python", "-m", "knowledge_engine.src.entrypoints.api"]
     profiles:
       - api
     restart: unless-stopped

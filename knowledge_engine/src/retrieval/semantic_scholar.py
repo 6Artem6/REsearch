@@ -7,7 +7,11 @@ from typing import Any, List, Optional
 import httpx
 from pydantic import BaseModel, Field
 
-from knowledge_engine.config import (
+from knowledge_engine.src.adapters.search_providers.arxiv_client import (
+    get_arxiv_client,
+    normalize_arxiv_id,
+)
+from knowledge_engine.src.config.settings import (
     SEMANTIC_SCHOLAR_429_BACKOFF_SEC,
     SEMANTIC_SCHOLAR_API_KEY,
     SEMANTIC_SCHOLAR_ENABLED,
@@ -15,15 +19,11 @@ from knowledge_engine.config import (
     SEMANTIC_SCHOLAR_MIN_INTERVAL_SEC,
     SEMANTIC_SCHOLAR_TIMEOUT_SEC,
 )
-from knowledge_engine.services.search.arxiv_client import (
-    get_arxiv_client,
-    normalize_arxiv_id,
-)
+from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.retrieval.semantic_scholar_rate_limit import (
     acquire_semantic_scholar_slot_async,
     semantic_scholar_pause_before_retry_async,
 )
-from knowledge_engine.ui.run_log import trace
 
 _SS_SEARCH_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 _SS_PAPER_URL = "https://api.semanticscholar.org/graph/v1/paper"
@@ -106,7 +106,7 @@ async def search_semantic_scholar(
         trace("Semantic Scholar ⊘ disabled (SEMANTIC_SCHOLAR_ENABLED=false)")
         return []
     if ignore_enabled_flag:
-        from knowledge_engine.services.curriculum_api_quota_store import (
+        from knowledge_engine.src.domains.curriculum.curriculum_api_quota_store import (
             can_use_semantic_scholar,
         )
 
@@ -126,7 +126,7 @@ async def search_semantic_scholar(
         async with httpx.AsyncClient(timeout=timeout, headers=_ss_headers()) as client:
             resp = await _ss_http_get(client, _SS_SEARCH_URL, params=params)
             if ignore_enabled_flag and resp.status_code in (429, 503):
-                from knowledge_engine.services.curriculum_api_quota_store import (
+                from knowledge_engine.src.domains.curriculum.curriculum_api_quota_store import (
                     record_semantic_scholar_result,
                 )
 
@@ -140,7 +140,7 @@ async def search_semantic_scholar(
     except Exception as exc:
         trace(f"Semantic Scholar ✗ {exc}")
         if ignore_enabled_flag:
-            from knowledge_engine.services.curriculum_api_quota_store import (
+            from knowledge_engine.src.domains.curriculum.curriculum_api_quota_store import (
                 record_semantic_scholar_result,
             )
 
@@ -148,7 +148,7 @@ async def search_semantic_scholar(
         return []
 
     if ignore_enabled_flag:
-        from knowledge_engine.services.curriculum_api_quota_store import (
+        from knowledge_engine.src.domains.curriculum.curriculum_api_quota_store import (
             record_semantic_scholar_result,
         )
 
@@ -207,7 +207,7 @@ async def search_arxiv_fallback(
     sort_by: str | None = None,
     sort_order: str | None = None,
 ) -> List[ScholarPaper]:
-    from knowledge_engine.services.search.arxiv_query_builder import (
+    from knowledge_engine.src.adapters.search_providers.arxiv_query_builder import (
         ArxivQueryBuilder,
         ArxivQueryParams,
     )

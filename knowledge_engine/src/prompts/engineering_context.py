@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from knowledge_engine.config import (
+from knowledge_engine.src.config.settings import (
     KE_PROMPT_CONTEXT_OVERRIDE_FULLSTACK,
     KE_PROMPT_CONTEXT_OVERRIDE_LOCAL_MAC,
 )

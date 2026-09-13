@@ -14,6 +14,7 @@ from knowledge_engine.src.analytics.profiler import (
     build_profile_gap_map,
     build_tradeoff_matrix,
 )
+from knowledge_engine.src.core.run_log import node_end, node_start, trace
 from knowledge_engine.src.dedup import (
     ChunkDedupStore,
     compute_density_delta,
@@ -28,7 +29,6 @@ from knowledge_engine.src.state import (
     ScrapedDocument,
     StructuredChunk,
 )
-from knowledge_engine.ui.run_log import node_end, node_start, trace
 
 
 def _personal_context_from_state(state: KnowledgeEngineState) -> PersonalContext | None:

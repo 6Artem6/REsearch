@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from knowledge_engine.config import GUARDRAILS_MODEL
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
-from knowledge_engine.services.local_llm_stateless import run_local_structured
+from knowledge_engine.src.adapters.llm_providers.local_llm_stateless import (
+    run_local_structured,
+)
+from knowledge_engine.src.config.settings import GUARDRAILS_MODEL
+from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.guardrails.term_guard import extract_user_acronyms
 from knowledge_engine.src.locks import run_under_uma_lock
 from knowledge_engine.src.state import ValidatedQuerySpec
-from knowledge_engine.ui.run_log import trace
 
 _DEFAULT_MODEL = GUARDRAILS_MODEL
 

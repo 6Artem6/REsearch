@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import re
 
-from knowledge_engine.schemas.llm_contracts.consensus import (
+from knowledge_engine.src.guardrails.term_guard import extract_user_acronyms
+from knowledge_engine.src.shared.consensus import (
     ProfileApplicabilityContract,
 )
-from knowledge_engine.src.guardrails.term_guard import extract_user_acronyms
 
 _EXTRA_TERM_RULES: tuple[tuple[str, str], ...] = (
     (r"\brpg\b", "RPG"),

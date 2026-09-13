@@ -10,7 +10,7 @@ import hashlib
 
 import numpy as np
 
-from knowledge_engine.src.node_deep_dive.intent_definitions import (
+from knowledge_engine.src.domains.grounding.intent_definitions import (
     INTENT_NAMES,
     INTENT_RULES,
     PROBE_WHOLE_MESSAGE_FALLBACK,
@@ -79,7 +79,9 @@ def lexical_probe_embed(text: str) -> list[float]:
     matched = False
     for rule in INTENT_RULES:
         if any(c in t for c in probe_cues(rule)):
-            magnitude = _intent_magnitude(len(words), has_explicit_mode=has_explicit_mode)
+            magnitude = _intent_magnitude(
+                len(words), has_explicit_mode=has_explicit_mode
+            )
             v += magnitude * _axis(rule.intent)
             matched = True
             break
