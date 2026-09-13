@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from knowledge_engine.src.adapters.llm_providers.gemini_json_stream import (
     DRILL_ACTIVE_STREAM_FIELDS,
+    TOPIC_QNA_EXPLAIN_STREAM_FIELDS,
+    TOPIC_QNA_TUTOR_STREAM_FIELDS,
     TUTOR_DIALOGUE_STREAM_FIELDS,
     TutorDialogueFieldsStreamFilter,
 )
@@ -20,6 +22,34 @@ def test_tutor_dialogue_stream_filter_composes_in_order():
     filt.flush()
     assert "".join(chunks) == "Hi\n\nBody\n\nNext?"
     assert TUTOR_DIALOGUE_STREAM_FIELDS[0] == "confirmation"
+
+
+def test_topic_qna_tutor_stream_filter_matches_field_by_field_dispatch():
+    """Regression: Topic Q&A dialogue turns streamed as a raw, growing JSON
+
+    blob instead of clean text — TopicQnaTutorContract/TopicQnaExplainContract
+    (tutor.py) had no matching schema_name branch in
+    ChatSessionManager.send_chat_message_stream, so the field-extraction
+    filter used everywhere else (regex-based partial JSON field decode,
+    same mechanism as TUTOR_DIALOGUE_STREAM_FIELDS) never engaged for them.
+    Field sets mirror the non-topic_qna ones minus follow_up_question,
+    which does not exist on either schema."""
+    chunks: list[str] = []
+    filt = TutorDialogueFieldsStreamFilter(
+        chunks.append, fields=TOPIC_QNA_TUTOR_STREAM_FIELDS
+    )
+    raw = '{"confirmation":"Верно.","technical_explanation":"Разбор темы."}'
+    filt.feed(raw)
+    filt.flush()
+    assert "".join(chunks) == "Верно.\n\nРазбор темы."
+
+    chunks2: list[str] = []
+    filt2 = TutorDialogueFieldsStreamFilter(
+        chunks2.append, fields=TOPIC_QNA_EXPLAIN_STREAM_FIELDS
+    )
+    filt2.feed('{"technical_explanation":"Ответ на вопрос пользователя."}')
+    filt2.flush()
+    assert "".join(chunks2) == "Ответ на вопрос пользователя."
 
 
 def test_drill_stream_waits_for_status_header_before_audit_confirmation():

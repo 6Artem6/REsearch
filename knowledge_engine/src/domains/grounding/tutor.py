@@ -96,7 +96,22 @@ class VerifiedSourceReference(BaseModel):
     )
 
 
-class StructuredLectureResponse(BaseModel):
+class _DenseLectureFieldsBase(BaseModel):
+    """Поля, общие для lecture_self_check и Topic Q&A dense-ответов.
+
+    checkpoint_prompt сознательно НЕ здесь: он существует только в
+    StructuredLectureResponse (lecture_self_check). Topic Q&A использует
+    TopicQnaLectureResponse — без этого поля в JSON Schema, которую видит
+    Gemini structured output, так что self-check вопрос физически
+    невозможно записать, а не просто "не рекомендуется текстом". Раньше
+    checkpoint_prompt был общим полем с условным Field(description=...)
+    ("оставь пустым для Topic Q&A") — Gemini всё равно заполнял его вопреки
+    инструкции (подтверждено live-тестом на ноде sql_cte, prompt.log):
+    описание поля — не менее сильный канал для модели, чем system prompt,
+    и условность в нём так же ненадёжна. Известный инвариант (это поле
+    вообще не существует в этом режиме) должен быть закодирован в схеме,
+    а не в тексте инструкции."""
+
     lecture_body: str = Field(
         ...,
         max_length=SCHEMA_LECTURE_BODY_MAX,
@@ -153,25 +168,33 @@ class StructuredLectureResponse(BaseModel):
         max_length=4,
         description="Code blocks",
     )
-    checkpoint_prompt: str = Field(
-        default="",
-        max_length=SCHEMA_CHECKPOINT_PROMPT_MAX,
-        description=(
-            "Single self-check question (must contain «?») ONLY when the "
-            "system instructions for this session call for one — leave this "
-            "field EMPTY when they say the session has no self-check "
-            "question (e.g. a Topic Q&A / expert-consultant session). Do not "
-            "duplicate it in lecture_body. When used, every scored criterion "
-            "MUST be named here and introduced in lecture_body first. "
-            "FORBIDDEN: a surface question whose hidden rubric is a deeper "
-            "unasked layer."
-        ),
-    )
     bridge_to_next: str = Field(
         default="",
         max_length=SCHEMA_BRIDGE_TO_NEXT_MAX,
         description="Следующий шаг без риторических вопросов",
     )
+
+
+class StructuredLectureResponse(_DenseLectureFieldsBase):
+    checkpoint_prompt: str = Field(
+        default="",
+        max_length=SCHEMA_CHECKPOINT_PROMPT_MAX,
+        description=(
+            "The ONLY field for the single self-check question "
+            "(must contain «?»). Do not duplicate it in lecture_body. "
+            "Every scored criterion MUST be named here and introduced in "
+            "lecture_body first. FORBIDDEN: a surface question whose hidden "
+            "rubric is a deeper unasked layer."
+        ),
+    )
+
+
+class TopicQnaLectureResponse(_DenseLectureFieldsBase):
+    """dense_material для interaction_axis="topic_qna" (expert-consultant).
+
+    Идентична StructuredLectureResponse минус checkpoint_prompt — само
+    поле отсутствует в схеме, так что self-check/follow-up вопрос
+    структурно невозможен, а не просто запрещён текстом промпта."""
 
 
 class IntroAssessmentContract(BaseModel):
@@ -192,7 +215,17 @@ class IntroAssessmentContract(BaseModel):
     )
 
 
-class DeepDiveTutorContract(BaseModel):
+class _TutorFieldsBase(BaseModel):
+    """Общие поля диалогового контракта тьютора (audit + Host-owned поля).
+
+    follow_up_question / question_sub_concept_id сознательно НЕ здесь — тот
+    же принцип, что у _DenseLectureFieldsBase/_ExplainFieldsBase: в Topic
+    Q&A вопрос после оценки self-check ответа запрещён категорически (пока
+    пользователь сам не нажмёт «Самопроверка» снова), а условная текстовая
+    инструкция для этого поля уже дважды подряд не сработала на живых
+    тестах. TopicQnaTutorContract просто не добавляет поле — Gemini не
+    может в него написать."""
+
     audit: TechnicalConceptAudit = Field(
         ...,
         description=(
@@ -233,29 +266,6 @@ class DeepDiveTutorContract(BaseModel):
         description=(
             "Сухой инженерный разбор темы: без «?», без follow-up и без анонса следующих подтем. "
             "В [mode:deep_analysis] — длинный многосекционный Deep Material Analysis."
-        ),
-    )
-    follow_up_question: str = Field(
-        default="",
-        max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX,
-        description=(
-            "Lead-in plus ONE question on the next sub-topic (must contain "
-            "«?») ONLY when the system instructions for this session call "
-            "for one — leave this field EMPTY when they say the session has "
-            "no follow-up/self-check question (e.g. a Topic Q&A / "
-            "expert-consultant session). "
-            f"Target ≤{PROMPT_FOLLOW_UP_MAX_CHARS} characters. When used, "
-            "every criterion the Evaluator may require MUST be named or "
-            "scope-locked here and introduced in technical_explanation on "
-            "first mention."
-        ),
-    )
-    question_sub_concept_id: str | None = Field(
-        default=None,
-        max_length=64,
-        description=(
-            "Точный id подконцепта из concept_map, по которому задан follow_up_question. "
-            "null если вопрос не задаётся."
         ),
     )
     new_gap_to_record: str | None = Field(
@@ -303,13 +313,60 @@ class DeepDiveTutorContract(BaseModel):
         return audit_feedback_text(self.audit)
 
     @model_validator(mode="after")
-    def validate_audit_branch_consistency(self) -> DeepDiveTutorContract:
+    def validate_audit_branch_consistency(self) -> _TutorFieldsBase:
         validate_grade_matches_errors(self.audit)
         return self
 
 
-class DeepDiveExplainContract(BaseModel):
-    """Tutor turn when Host skipped Evaluator — no TechnicalConceptAudit."""
+class DeepDiveTutorContract(_TutorFieldsBase):
+    follow_up_question: str = Field(
+        default="",
+        max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX,
+        description=(
+            "Lead-in plus ONE question on the next sub-topic (must contain "
+            "«?») ONLY when the system instructions for this session call "
+            "for one — leave this field EMPTY when they say the session has "
+            "no follow-up/self-check question. "
+            f"Target ≤{PROMPT_FOLLOW_UP_MAX_CHARS} characters. When used, "
+            "every criterion the Evaluator may require MUST be named or "
+            "scope-locked here and introduced in technical_explanation on "
+            "first mention."
+        ),
+    )
+    question_sub_concept_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Точный id подконцепта из concept_map, по которому задан follow_up_question. "
+            "null если вопрос не задаётся."
+        ),
+    )
+
+
+class TopicQnaTutorContract(_TutorFieldsBase):
+    """Audited dialogue turn (Evaluator ran, grading a Self-Check answer)
+
+    for interaction_axis="topic_qna". No follow_up_question /
+    question_sub_concept_id field: after grading, the expert-consultant
+    gives feedback and stops — no new question until the learner explicitly
+    presses "Самопроверка" again. Auto-advance to the next module stays
+    driven by the Host-owned ready_for_transition / suggested_next_step /
+    quick_replies fields, unaffected by this split."""
+
+
+class _ExplainFieldsBase(BaseModel):
+    """Общие поля Explain-контракта (Evaluator пропущен) для
+
+    lecture_self_check/прочих skip-причин и Topic Q&A. follow_up_question /
+    question_sub_concept_id сознательно НЕ здесь: DeepDiveExplainContract
+    (обычный skip: пустое сообщение / явный lecture request / нет pending)
+    добавляет их как ОПЦИОНАЛЬНОЕ поле — там follow-up на суждение модели
+    приемлем. TopicQnaExplainContract НЕ добавляет их вовсе: в Topic Q&A
+    follow-up/self-check вопрос запрещён категорически (эксперт-консультант
+    отвечает, не спрашивает), а "Optional... if set" без axis-условия — тот
+    же класс бага, что уже был у checkpoint_prompt (см.
+    StructuredLectureResponse/TopicQnaLectureResponse): текстовая
+    инструкция ненадёжна, известный инвариант должен быть в схеме."""
 
     node_status: NodeStatus = Field(
         default="in_progress",
@@ -343,19 +400,6 @@ class DeepDiveExplainContract(BaseModel):
             "No questions (no '?') in this field."
         ),
     )
-    follow_up_question: str = Field(
-        default="",
-        max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX,
-        description=(
-            f"Optional one follow-up question (must contain «?» if set); "
-            f"target ≤{PROMPT_FOLLOW_UP_MAX_CHARS} characters"
-        ),
-    )
-    question_sub_concept_id: str | None = Field(
-        default=None,
-        max_length=64,
-        description="Map id for follow_up_question, or null.",
-    )
     introduced_terms: list[str] = Field(
         default_factory=list,
         max_length=16,
@@ -386,6 +430,35 @@ class DeepDiveExplainContract(BaseModel):
         return ""
 
     # RU: оценка пропущена — вердикта нет.
+
+
+class DeepDiveExplainContract(_ExplainFieldsBase):
+    """Tutor turn when Host skipped Evaluator for a non-Topic-Q&A reason
+
+    (empty message / explicit lecture request / no pending target) — see
+    TopicQnaExplainContract for the Topic Q&A variant."""
+
+    follow_up_question: str = Field(
+        default="",
+        max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX,
+        description=(
+            f"Optional one follow-up question (must contain «?» if set); "
+            f"target ≤{PROMPT_FOLLOW_UP_MAX_CHARS} characters"
+        ),
+    )
+    question_sub_concept_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Map id for follow_up_question, or null.",
+    )
+
+
+class TopicQnaExplainContract(_ExplainFieldsBase):
+    """Tutor chat turn for interaction_axis="topic_qna" (expert-consultant).
+
+    No follow_up_question / question_sub_concept_id field — Gemini
+    structured output cannot write a self-check/follow-up question, since
+    there is no slot for it in this schema."""
 
 
 class DeepDiveDeepAnalysisContract(DeepDiveTutorContract):
@@ -593,7 +666,7 @@ class DialogueFactManifestContract(BaseModel):
 
 
 def structured_lecture_to_dense(
-    out: StructuredLectureResponse,
+    out: StructuredLectureResponse | TopicQnaLectureResponse,
     *,
     allowed_urls: set[str] | None = None,
 ) -> DenseMaterialOutput:
@@ -639,7 +712,7 @@ def structured_lecture_to_dense(
         references=refs[:6],
         code_snippets=snippets[:4],
         bridge_to_next=(out.bridge_to_next or "").strip(),
-        checkpoint_prompt=(out.checkpoint_prompt or "").strip(),
+        checkpoint_prompt=(getattr(out, "checkpoint_prompt", "") or "").strip(),
         extracted_concepts=list(out.extracted_concepts or [])[:5],
         introduced_terms=list(out.introduced_terms or [])[:24],
     )

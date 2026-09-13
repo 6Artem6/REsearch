@@ -882,6 +882,8 @@ class ChatSessionManager:
         from knowledge_engine.src.adapters.llm_providers.gemini_json_stream import (
             DRILL_ACTIVE_STREAM_FIELDS,
             DRILL_COMPLETE_STREAM_FIELDS,
+            TOPIC_QNA_EXPLAIN_STREAM_FIELDS,
+            TOPIC_QNA_TUTOR_STREAM_FIELDS,
             TUTOR_EXPLAIN_STREAM_FIELDS,
             JsonFieldStreamFilter,
             wrap_stream_callback_for_json_field,
@@ -901,6 +903,14 @@ class ChatSessionManager:
         elif schema_name == "DeepDiveExplainContract" and stream_callback is not None:
             field_filter = wrap_stream_callback_for_tutor_dialogue_fields(
                 stream_callback, fields=TUTOR_EXPLAIN_STREAM_FIELDS
+            )
+        elif schema_name == "TopicQnaTutorContract" and stream_callback is not None:
+            field_filter = wrap_stream_callback_for_tutor_dialogue_fields(
+                stream_callback, fields=TOPIC_QNA_TUTOR_STREAM_FIELDS
+            )
+        elif schema_name == "TopicQnaExplainContract" and stream_callback is not None:
+            field_filter = wrap_stream_callback_for_tutor_dialogue_fields(
+                stream_callback, fields=TOPIC_QNA_EXPLAIN_STREAM_FIELDS
             )
         elif schema_name == "ActiveDrillStepResponse" and stream_callback is not None:
             field_filter = wrap_stream_callback_for_tutor_dialogue_fields(
