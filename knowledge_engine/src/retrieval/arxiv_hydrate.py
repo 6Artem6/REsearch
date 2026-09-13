@@ -5,18 +5,20 @@ from __future__ import annotations
 import re
 from typing import List, Sequence
 
-from knowledge_engine.config import (
-    ARXIV_ID_LIST_CHUNK,
-    CURRICULUM_ACADEMIC_ABSTRACT_MIN_CHARS,
-)
-from knowledge_engine.services.search.arxiv_client import (
+from knowledge_engine.src.adapters.search_providers.arxiv_client import (
     ArxivEntry,
     get_arxiv_client,
     normalize_arxiv_id,
 )
-from knowledge_engine.src.curriculum.academic_url_canonicalizer import arxiv_id_from_url
+from knowledge_engine.src.config.settings import (
+    ARXIV_ID_LIST_CHUNK,
+    CURRICULUM_ACADEMIC_ABSTRACT_MIN_CHARS,
+)
+from knowledge_engine.src.core.run_log import trace
+from knowledge_engine.src.domains.curriculum.academic_url_canonicalizer import (
+    arxiv_id_from_url,
+)
 from knowledge_engine.src.retrieval.semantic_scholar import ScholarPaper
-from knowledge_engine.ui.run_log import trace
 
 _ARXIV_ID_BARE = re.compile(
     r"^(?:arxiv:)?(\d{4}\.\d{4,5}(?:v\d+)?|[a-z\-]+/\d{7}(?:v\d+)?)$",

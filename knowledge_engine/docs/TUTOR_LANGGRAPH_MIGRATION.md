@@ -8,7 +8,7 @@
 
 ## Context
 
-Оркестрация тьютора сосредоточена в `knowledge_engine/src/node_deep_dive/engine.py` (~1.7k строк): императивный пайплайн `run_node_deep_dive` → `process_user_message_pipeline` → ветки dense / `_invoke_tutor` → `_finalize_node_deep_dive`.
+Оркестрация тьютора сосредоточена в `knowledge_engine/src/domains/grounding/engine.py` (~1.7k строк): императивный пайплайн `run_node_deep_dive` → `process_user_message_pipeline` → ветки dense / `_invoke_tutor` → `_finalize_node_deep_dive`.
 
 Проблемы:
 
@@ -17,7 +17,7 @@
 - **Слабая привязка eval к вопросу** (исторически — infer по тексту; исправлено stored `pending_evaluation_concept_id`, но оркестрация остаётся размазанной).
 - **Checkpoint отсутствует** между eval и генерацией тьютора; mid-turn `persist_session_memory` до ответа LLM.
 
-В репозитории LangGraph уже используется для research-пайплайна (`knowledge_engine/graph/v04.py`, `knowledge_engine/src/graph.py`, `EngineGraphState` в `knowledge_engine/schemas.py`). Node Deep-Dive — отдельный домен; граф размещается под `src/node_deep_dive/graph/`.
+В репозитории LangGraph уже используется для research-пайплайна (`knowledge_engine/src/legacy/graph/v04.py`, `knowledge_engine/src/graph.py`, `EngineGraphState` в `knowledge_engine/src/shared/schemas_legacy.py`). Node Deep-Dive — отдельный домен; граф размещается под `src/node_deep_dive/graph/`.
 
 ## Decision
 
@@ -59,7 +59,7 @@
 ## File structure
 
 ```text
-knowledge_engine/src/node_deep_dive/
+knowledge_engine/src/domains/grounding/
   graph/
     __init__.py           # build_tutor_graph(), get_compiled_graph()
     state.py              # TutorGraphState
@@ -155,7 +155,7 @@ await graph.ainvoke(
 
 ## References
 
-- `knowledge_engine/graph/v04.py` — образец `StateGraph` + `conditional_edges`
-- `knowledge_engine/schemas.py` — `EngineGraphState` (TypedDict + NotRequired)
-- `knowledge_engine/src/node_deep_dive/concept_map.py` — coverage domain
-- `knowledge_engine/src/node_deep_dive/graph/` — scaffolding (`state.py`, `routing.py`, `nodes/`, `build_tutor_graph`)
+- `knowledge_engine/src/legacy/graph/v04.py` — образец `StateGraph` + `conditional_edges`
+- `knowledge_engine/src/shared/schemas_legacy.py` — `EngineGraphState` (TypedDict + NotRequired)
+- `knowledge_engine/src/domains/grounding/concept_map.py` — coverage domain
+- `knowledge_engine/src/domains/grounding/graph/` — scaffolding (`state.py`, `routing.py`, `nodes/`, `build_tutor_graph`)

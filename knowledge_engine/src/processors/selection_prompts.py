@@ -10,10 +10,10 @@ from pydantic import BaseModel, Field, field_validator
 
 from knowledge_engine.llm import complete_structured_async
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
+from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.processors.question_formation_rules import (
     QUESTION_FORMATION_RULES,
 )
-from knowledge_engine.ui.run_log import trace
 
 SELECTION_PROMPT_SYSTEM = (
     f"{RUSSIAN_OUTPUT_RULE}\n"

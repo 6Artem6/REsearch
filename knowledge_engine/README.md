@@ -63,7 +63,7 @@ docker compose --profile api up -d knowledge-api
 
 ## REST API (FastAPI)
 
-Нативно (после `dev-native.sh` или `python -m knowledge_engine.api`):
+Нативно (после `dev-native.sh` или `python -m knowledge_engine.src.entrypoints.api`):
 
 ```bash
 open http://127.0.0.1:8765/docs
@@ -111,7 +111,7 @@ tail -f knowledge_engine/.runs/*.log
 
 ## Конфигурация
 
-`config.py`:
+`src/config/settings.py`:
 
 - `OLLAMA_BASE_URL` — по умолчанию `http://localhost:11434`
 - `ROUTER_MODEL` — `qwen2.5-coder:1.5b`
@@ -140,7 +140,7 @@ tail -f knowledge_engine/.runs/*.log
 5. Пауза (interrupt) — выбор ID в CLI
 6. **unraveling** — детальный разбор (7B)
 
-Перед Gemini в CLI: `python -m knowledge_engine.main browser-login`.
+Перед Gemini в CLI: `python -m knowledge_engine.src.app.main browser-login`.
 **v0.8:** Consensus login — `./knowledge_engine/scripts/consensus-login.sh` ([V0_8_CONSENSUS_AGENT.md](docs/V0_8_CONSENSUS_AGENT.md)).
 
 ## Поток v0.8 (`GRAPH_VERSION=0.8`)

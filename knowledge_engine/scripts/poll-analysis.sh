@@ -38,7 +38,7 @@ while true; do
     matrix_ready|completed|failed)
       echo ""
       if [ -x "${ROOT}/.venv/bin/python" ]; then
-        echo "$RESP" | "${ROOT}/.venv/bin/python" -m knowledge_engine.cli.job_view --no-interactive
+        echo "$RESP" | "${ROOT}/.venv/bin/python" -m knowledge_engine.src.app.cli --no-interactive
       else
         echo "$RESP" | jq .
       fi

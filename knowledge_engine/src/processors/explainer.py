@@ -8,8 +8,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
-from knowledge_engine.services.v07_run_store import v07_run_store
-from knowledge_engine.src.node_deep_dive.interaction_prompt_layout import (
+from knowledge_engine.src.domains.curriculum.v07_run_store import v07_run_store
+from knowledge_engine.src.domains.grounding.interaction_prompt_layout import (
     BLOCK_STATIC_PRESET_HEADER,
     LAYOUT_AND_TYPOGRAPHY_RULES,
 )
@@ -400,8 +400,8 @@ def run_contextual_explain(
     )
     chunk_label = source_ref.source_id or chunk.get("source_anchor") or "Sx"
 
-    from knowledge_engine.schemas.llm_contracts.tutor import NodeExplainContract
     from knowledge_engine.src.analytics.gemini_v07 import run_gemini_lite_structured
+    from knowledge_engine.src.domains.grounding.tutor import NodeExplainContract
 
     user_payload = (
         f"Highlighted Text:\n{selected}\n\n"

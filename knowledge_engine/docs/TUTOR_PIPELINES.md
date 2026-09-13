@@ -45,7 +45,7 @@ flowchart TB
     WJ["GET /work-jobs/id/wait"]
   end
 
-  subgraph Worker["knowledge_engine.worker"]
+  subgraph Worker["knowledge_engine.src.app.worker"]
     WH["work_handlers"]
     Gen["generate_curriculum_graph"]
     Exp["expand_curriculum"]
@@ -144,6 +144,15 @@ flowchart TD
 ```
 
 Worker: `services/work_handlers.py` → `_run_curriculum_generate` → `generate_curriculum_graph`.
+
+**Четвёртый вход — Штурвал** (`POST /curriculum/steering/generate`,
+`api/routes/steering.py`, отдельно от `generator.py`): `Mode 1` (`per_node`,
+дефолт) — тонкий алиас, реально уходит в ТОТ ЖЕ роутинг выше (тот же
+`WorkJobKind.CURRICULUM_GENERATE`), без собственных гейтов на уровне курса.
+`Mode 2` (`standalone_digest`) в этот роутинг не заходит вовсе — строит
+ровно одну ноду через `steering_topic_node_service.py` после 2-gate
+одобрения источников пользователем. Подробности и история:
+[STEERING_AND_TOPIC_QNA_ROADMAP.md](STEERING_AND_TOPIC_QNA_ROADMAP.md).
 
 ---
 

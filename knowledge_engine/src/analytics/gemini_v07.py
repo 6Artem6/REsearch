@@ -8,17 +8,17 @@ from typing import Type, TypeVar
 
 from pydantic import BaseModel
 
-from knowledge_engine.config import (
-    GEMINI_FLASH_MODEL,
-    GEMINI_LITE_MODEL,
-    GEMINI_RPM_PAUSE_SEC,
-)
-from knowledge_engine.services.gemini_stateless import (
+from knowledge_engine.src.adapters.llm_providers.gemini_stateless import (
     GeminiUnavailableError,
     gemini_lite_model_chain,
     is_gemini_available,
     run_gemini_structured_with_chain,
     run_gemini_text_with_chain,
+)
+from knowledge_engine.src.config.settings import (
+    GEMINI_FLASH_MODEL,
+    GEMINI_LITE_MODEL,
+    GEMINI_RPM_PAUSE_SEC,
 )
 
 T = TypeVar("T", bound=BaseModel)

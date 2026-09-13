@@ -28,6 +28,7 @@ MANIFEST
 
 # Инструменты и IDE
 .cursor/
+.claude/
 .vscode/
 .idea/
 .pytest_cache/
@@ -51,7 +52,6 @@ Thumbs.db
 # Логи и локальные данные runtime
 *.log
 *.log.*
-*.txt
 **/.runs/
 **/.lancedb/
 **/.lancedb.bak*/
@@ -69,6 +69,11 @@ consensus_storage_state.json
 
 **/skill-tree/node_modules/
 
+# esbuild-собранный бандл (npm run build в knowledge_engine/web/static/skill-tree)
+# — единственный build-артефакт там; package.json/package-lock.json/*.css/*.js
+# исходники и index.html остаются версионируемыми.
+**/skill-tree/skill-tree.bundle.js
+
 # Docker локальные override (не секреты, но часто персональные)
 docker-compose.override.yml
 
@@ -77,6 +82,7 @@ lancedb_data/
 knowledge_engine/tmp/
 knowledge_engine/scripts/output/
 logs/session_traces/
+knowledge_engine/src/logs/
 
 # Offline tokenizer vocab (~26 MB; see tokenizers_cache/README.md)
 knowledge_engine/src/utils/tokenizers_cache/qwen.tiktoken

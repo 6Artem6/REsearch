@@ -4,15 +4,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from knowledge_engine.config import GEMINI_REASONER_MODEL, GEMINI_RPM_PAUSE_SEC
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
-from knowledge_engine.schemas.llm_contracts.reasoner import FinalResponseContract
-from knowledge_engine.services.context_manager import load_personal_orchestrator_focus
-from knowledge_engine.services.gemini_stateless import (
+from knowledge_engine.src.adapters.llm_providers.gemini_stateless import (
     GeminiUnavailableError,
     gemini_reasoner_model_chain,
     is_gemini_available,
     run_gemini_structured_with_chain,
+)
+from knowledge_engine.src.config.settings import (
+    GEMINI_REASONER_MODEL,
+    GEMINI_RPM_PAUSE_SEC,
+)
+from knowledge_engine.src.core.run_log import trace
+from knowledge_engine.src.legacy.services.context_manager import (
+    load_personal_orchestrator_focus,
 )
 from knowledge_engine.src.processors.question_formation_rules import (
     QUESTION_FORMATION_RULES,
@@ -27,10 +32,10 @@ from knowledge_engine.src.processors.source_evaluator import (
     audit_answer_sources_react,
 )
 from knowledge_engine.src.prompts.engineering_context import GLOBAL_ENGINEERING_CRITERIA
+from knowledge_engine.src.shared.reasoner import FinalResponseContract
 from knowledge_engine.src.source_evaluator.evaluator import (
     format_whitelist_for_reasoner_prompt,
 )
-from knowledge_engine.ui.run_log import trace
 
 FOLLOW_UP_RULES = (
     """

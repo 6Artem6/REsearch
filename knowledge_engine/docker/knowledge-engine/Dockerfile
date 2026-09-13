@@ -18,4 +18,4 @@ RUN chmod +x /entrypoint.sh
 
 # Код и pip-пакеты — с хоста: volume ./ → /app, общий .venv
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python", "-m", "knowledge_engine.main"]
+CMD ["python", "-m", "knowledge_engine.src.app.main"]

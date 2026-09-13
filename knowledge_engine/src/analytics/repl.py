@@ -6,8 +6,10 @@ import json
 from typing import Any, Dict, List
 
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
-from knowledge_engine.schemas.research_schemas import ReplFollowUpResponse
 from knowledge_engine.src.analytics.gemini_v07 import run_gemini_flash_structured
+from knowledge_engine.src.domains.curriculum.research_schemas import (
+    ReplFollowUpResponse,
+)
 
 _MAX_CONTEXT_CHARS = 48_000
 

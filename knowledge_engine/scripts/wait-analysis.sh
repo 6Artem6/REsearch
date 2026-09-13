@@ -9,7 +9,7 @@ PROBLEM="${1:?usage: wait-analysis.sh \"вопрос\" [constraints] [timeout_se
 CONSTRAINTS="${2:-}"
 TIMEOUT="${3:-600}"
 PYTHON="${ROOT}/.venv/bin/python"
-VIEW="${PYTHON} -m knowledge_engine.cli.job_view"
+VIEW="${PYTHON} -m knowledge_engine.src.app.cli"
 
 INTERACTIVE="${KE_JOB_INTERACTIVE:-1}"
 JSON_ONLY="${KE_JOB_JSON:-0}"
@@ -38,12 +38,12 @@ if [ ! -x "$PYTHON" ]; then
 fi
 
 if [ "$JSON_ONLY" = "1" ]; then
-  "$PYTHON" -m knowledge_engine.cli.job_view -f "$LAST" --json --no-interactive
+  "$PYTHON" -m knowledge_engine.src.app.cli -f "$LAST" --json --no-interactive
   exit 0
 fi
 
 if [ "$INTERACTIVE" = "1" ]; then
-  "$PYTHON" -m knowledge_engine.cli.job_view -f "$LAST" --interactive
+  "$PYTHON" -m knowledge_engine.src.app.cli -f "$LAST" --interactive
 else
-  "$PYTHON" -m knowledge_engine.cli.job_view -f "$LAST" --no-interactive
+  "$PYTHON" -m knowledge_engine.src.app.cli -f "$LAST" --no-interactive
 fi

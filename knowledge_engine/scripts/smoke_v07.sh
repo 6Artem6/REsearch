@@ -22,7 +22,7 @@ fi
 
 echo "Full v0.7 graph | thread=${THREAD}"
 echo "query: ${QUERY}"
-"${ROOT}/.venv/bin/python" -m knowledge_engine.scripts.smoke_v07 \
+"${ROOT}/.venv/bin/python" -m knowledge_engine.scripts.legacy_research.smoke_v07 \
   --query "${QUERY}" \
   --profile "${PROFILE}" \
   --thread-id "${THREAD}"

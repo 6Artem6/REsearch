@@ -106,7 +106,7 @@ flowchart LR
 
 ## Таблица ответственности узлов
 
-Путь: `knowledge_engine/src/node_deep_dive/graph/nodes/` (+ `subgraphs/init.py`).
+Путь: `knowledge_engine/src/domains/grounding/graph/nodes/` (+ `subgraphs/init.py`).
 
 Состояние: `TutorGraphState` (`graph/state.py`). Персистентное ядро — только `memory: SessionMemory`.
 

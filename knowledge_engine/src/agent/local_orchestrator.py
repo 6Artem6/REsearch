@@ -5,15 +5,18 @@ from __future__ import annotations
 import asyncio
 from typing import Any, List
 
-from knowledge_engine.config import CONSENSUS_MAX_RETRIES
-from knowledge_engine.services.v07_run_progress import publish_web_run_progress
 from knowledge_engine.src.analytics.chunker import extract_structured_chunks
 from knowledge_engine.src.analytics.profiler import (
     build_concept_graph,
     build_profile_gap_map,
     build_tradeoff_matrix,
 )
+from knowledge_engine.src.config.settings import CONSENSUS_MAX_RETRIES
+from knowledge_engine.src.core.run_log import node_end, node_start, trace
 from knowledge_engine.src.dedup import ChunkDedupStore, ingest_document_chunks
+from knowledge_engine.src.domains.curriculum.v07_run_progress import (
+    publish_web_run_progress,
+)
 from knowledge_engine.src.guardrails.fast_grounding import get_term_grounding_context
 from knowledge_engine.src.memory.light_rag import LightRAG
 from knowledge_engine.src.processors.consensus_query_prep import (
@@ -50,7 +53,6 @@ from knowledge_engine.src.state import (
     StructuredChunk,
     empty_v08_state,
 )
-from knowledge_engine.ui.run_log import node_end, node_start, trace
 
 
 def _emit_progress(
@@ -557,7 +559,7 @@ async def run_consensus_pipeline(
                 "validation_status": "REJECT",
                 "user_final_answer": (
                     "Consensus просит войти. Остановите API и выполните один раз: "
-                    "`python -m knowledge_engine.main consensus-login` "
+                    "`python -m knowledge_engine.src.app.main consensus-login` "
                     "(Google/email). Профиль: knowledge_engine/.browser_state. "
                     "browser-login — только Gemini, не Consensus. "
                     f"Детали: {exc}"

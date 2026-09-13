@@ -6,7 +6,7 @@ import hashlib
 
 import numpy as np
 
-from knowledge_engine.src.node_deep_dive.edge_case_lexicon import (
+from knowledge_engine.src.domains.grounding.edge_case_lexicon import (
     EDGE_CASE_REFERENCE_PHRASES,
 )
 

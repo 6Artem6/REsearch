@@ -6,7 +6,7 @@
 
 - **Test:** `PYTHONPATH=. ./.venv/bin/python -m pytest knowledge_engine/tests`
 - **Lint:** `make check`
-- **Config source of truth:** `knowledge_engine/config.py`
+- **Config source of truth:** `knowledge_engine/src/config/settings.py`
 
 Перед изменениями сначала прочитай документацию в указанном порядке. Не пытайся
 загружать все документы сразу: начни с обзорного маршрута, затем открой только
@@ -66,8 +66,8 @@
   `V0_7_ARCHITECTURE.md`, `FRUGAL_ROUTING.md` и ранние фазы
   `TUTOR_LANGGRAPH_MIGRATION.md` являются legacy/историческими материалами.
 - Документация ускоряет навигацию, но перед изменением поведения проверяй
-  фактические call sites, `knowledge_engine/config.py`, Pydantic schemas и тесты.
-- Не копируй старые defaults из docs без сверки с `config.py` и `.env.example`.
+  фактические call sites, `knowledge_engine/src/config/settings.py`, Pydantic schemas и тесты.
+- Не копируй старые defaults из docs без сверки с `knowledge_engine/src/config/settings.py` и `.env.example`.
 - Destructive-скрипты запускай только после чтения предупреждений в
   [SCRIPTS.md](knowledge_engine/docs/SCRIPTS.md); сначала используй dry-run.
 
@@ -97,7 +97,7 @@
 
 2. **Точечный прогон тестов (Targeted Testing Only):**
    - Никогда не запускай весь `pytest` целиком на весь проект (`pytest knowledge_engine/tests`).
-   - Запускай строго 1-2 конкретных файла тестов, относящихся к текущей правке (например: `PYTHONPATH=. ./.venv/bin/python -m pytest knowledge_engine/tests/test_prompt_factory.py -v`).
+   - Запускай строго 1-2 конкретных файла тестов, относящихся к текущей правке (например: `PYTHONPATH=. ./.venv/bin/python -m pytest knowledge_engine/tests/src/node_deep_dive/test_prompt_factory.py -v`). Тесты сгруппированы в поддиректориях `knowledge_engine/tests/`, зеркалящих структуру исходников (`services/`, `src/curriculum/`, `src/node_deep_dive/` и т.д.) — при поиске нужного файла ориентируйся на путь тестируемого модуля.
 
 3. **Локальный контекст:**
    - Для выполнения задач опирайся на Раздел 4 («Минимальный маршрут по типу задачи») и читай только целевую документацию.

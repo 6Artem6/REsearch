@@ -28,6 +28,15 @@ import {
   nodeVerify,
   fetchNodeSourceRegistry,
   toNodeDataInput,
+  steeringGenerate,
+  steeringApproveGate1,
+  steeringApproveGate2,
+  waitWorkJob,
+  nodeGroundingDiscover,
+  nodeGroundingDigest,
+  nodeGroundingFinalize,
+  steeringGetStatus,
+  ensureSteeringSourcesIngested,
 } from "./api.js";
 import { MATERIAL_VIEW_LS } from "./materialAssets.js";
 
@@ -44,6 +53,8 @@ function replaceSkillTreeSearchParams(patch) {
 export function RoadmapDashboard() {
   const [goal, setGoal] = useState("");
   const [sourcePolicy, setSourcePolicy] = useState("practical_only");
+  const [controlAxis, setControlAxis] = useState("autopilot");
+  const [steeringMode, setSteeringMode] = useState("per_node");
   const [ragStatus, setRagStatus] = useState(null);
   const [curriculum, setCurriculum] = useState(null);
   const [curriculaList, setCurriculaList] = useState([]);
@@ -52,6 +63,14 @@ export function RoadmapDashboard() {
   const [sessions, setSessions] = useState({});
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [genStatus, setGenStatus] = useState("");
+  // RU (prompt.log, "Убрать жёсткий таймаут ожидания..."): waitWorkJob
+  // больше не падает по истечении 10 минут — ждёт сколько нужно. Этот
+  // текст — мягкое дополнительное уведомление (не блокирует genStatus/
+  // индикатор), показывается один раз, когда суммарное ожидание одной
+  // операции превысило 5 минут (см. onLongWait в api.js::waitWorkJob).
+  const [longWaitNotice, setLongWaitNotice] = useState("");
+  const LONG_WAIT_MESSAGE =
+    "Запрос идёт чуть дольше обычного. Пожалуйста, подождите, идёт глубокий аналитический сбор…";
   /** expand | create — какая кнопка запустила busy */
   const [genBusyAction, setGenBusyAction] = useState(null);
   /** Нода, для которой сейчас ждём init/chat/verify; null — нет активной генерации. */
@@ -136,6 +155,91 @@ export function RoadmapDashboard() {
     }
   }, []);
 
+  /** Восстановление Штурвал-сессии после обновления страницы —
+
+   * curriculum_id="steering-<jobId>" никогда не сохраняется в обычный
+   * skill_tree_store (см. api/routes/steering.py::get_steering_status),
+   * поэтому обычный loadWorkspace() для него всегда отвечал 404 "Маршрут
+   * не найден". Строит ту же виртуальную ноду-гейт/session, что
+   * handleGenerate/handleGateApprove — с точки зрения остального UI это
+   * неотличимо от "только что сгенерированной" Штурвал-сессии. */
+  const resumeSteeringSession = useCallback(async (jobId) => {
+    setError("");
+    setWorkspaceBusy(true);
+    try {
+      const res = await steeringGetStatus(jobId);
+      if (res.status === "awaiting_gate_1" || res.status === "awaiting_gate_2") {
+        const gateNode = {
+          node_id: "steering-gate-node",
+          title:
+            res.status === "awaiting_gate_1"
+              ? "🎯 Согласование источников (Gate 1)"
+              : "📦 Обзор выжимок (Gate 2)",
+          layer: "foundation",
+          category: "Штурвал",
+          prerequisites: [],
+        };
+        const virtualCurriculumId = `steering-${jobId}`;
+        setGoal(res.target_goal || "");
+        setCurriculum({ curriculum_id: virtualCurriculumId, nodes: [gateNode] });
+        setStatuses({ [gateNode.node_id]: "in_progress" });
+        setSelectedNode(gateNode);
+        setSelectedMaterialId(null);
+        setSessions({
+          [gateNode.node_id]: {
+            initialized: true,
+            messages: [],
+            steeringWorkJobId: jobId,
+            steeringStatus: res.status,
+            steeringCandidates: res.taxonomy_discovery?.candidate_articles || [],
+            steeringDigests: res.surface_digests?.digests || [],
+            steeringApprovedCount: (res.approved_gate1_urls || []).length,
+          },
+        });
+        replaceSkillTreeSearchParams({
+          curriculum: virtualCurriculumId,
+          node: gateNode.node_id,
+          material: "",
+        });
+        return;
+      }
+      if (res.status === "completed") {
+        const genJobId = res.result?.generation_job_id;
+        if (!genJobId) {
+          setError(
+            "Сессия Штурвала завершена, но задача генерации курса не найдена.",
+          );
+          return;
+        }
+        setGenBusyAction("create");
+        setGenStatus("Штурвал: ожидаем завершения Map-Reduce…");
+        const job = await waitWorkJob(genJobId, {
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+        });
+        if (job?.result?.curriculum_id) {
+          await loadWorkspace(job.result.curriculum_id);
+        } else if (job?.status === "failed") {
+          setError(`Генерация курса Штурвала завершилась ошибкой: ${job.error || ""}`);
+        } else {
+          setError(
+            "Генерация курса Штурвала ещё не завершена — попробуйте обновить страницу позже.",
+          );
+        }
+        return;
+      }
+      setError(
+        `Сессия Штурвала не может быть восстановлена (status=${res.status}).`,
+      );
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setWorkspaceBusy(false);
+      setGenBusyAction(null);
+      setGenStatus("");
+      setLongWaitNotice("");
+    }
+  }, [loadWorkspace]);
+
   useEffect(() => {
     fetchRagStatus()
       .then(setRagStatus)
@@ -159,12 +263,16 @@ export function RoadmapDashboard() {
           fromUrl ||
           list.active_curriculum_id ||
           readActiveCurriculumId();
-        if (active) await loadWorkspace(active);
+        if (active && active.startsWith("steering-")) {
+          await resumeSteeringSession(active.slice("steering-".length));
+        } else if (active) {
+          await loadWorkspace(active);
+        }
       } catch (err) {
         setError(String(err.message || err));
       }
     })();
-  }, [loadWorkspace]);
+  }, [loadWorkspace, resumeSteeringSession]);
 
   function clearCanvasForNewRoute() {
     setCurriculum(null);
@@ -180,6 +288,10 @@ export function RoadmapDashboard() {
   }
 
   async function runCreatePath(text) {
+    if (controlAxis === "steering") {
+      await runSteeringCreatePath(text);
+      return;
+    }
     setError("");
     setWorkspaceBusy(true);
     setGenBusyAction("create");
@@ -211,7 +323,9 @@ export function RoadmapDashboard() {
       setGenStatus(phases[phaseIdx]);
     }, 12000);
     try {
-      const graph = await createCurriculum(text, sourcePolicy);
+      const graph = await createCurriculum(text, sourcePolicy, {
+        onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+      });
       setGoal(text);
       await loadWorkspace(graph.curriculum_id);
     } catch (err) {
@@ -219,9 +333,215 @@ export function RoadmapDashboard() {
     } finally {
       if (phaseTimer) clearInterval(phaseTimer);
       setGenStatus("");
+      setLongWaitNotice("");
       setGenBusyAction(null);
       setWorkspaceBusy(false);
     }
+  }
+
+  /** Штурвал (control_axis="steering") — разводится по steeringMode (см.
+
+   * docs/STEERING_AND_TOPIC_QNA_ROADMAP.md, "Разделение на Mode 1/Mode 2"):
+   * per_node — граф строится сразу (Model-First, без предв. поиска), никакого
+   * Gate 1/2 на уровне курса нет, точечное заземление нод — при их открытии
+   * (Node Grounding Gate); standalone_digest — прежний путь: TaxonomyService
+   * + Light Discovery → Gate 1, показанный как виртуальная нода-интерцептор
+   * на канвасе, итог — не граф, а единый документ (Gate 2 → см.
+   * handleGateApprove). */
+  async function runSteeringCreatePath(text) {
+    if (steeringMode === "per_node") {
+      await runSteeringCreatePerNode(text);
+      return;
+    }
+    await runSteeringCreateStandaloneDigest(text);
+  }
+
+  /** Mode 1: тонкий алиас поверх того же WorkJobKind.CURRICULUM_GENERATE,
+
+   * что обычный Autopilot (см. api/routes/steering.py::
+   * _post_steering_generate_per_node) — граф без гейтов, ждём тот же job,
+   * что и runCreatePath. */
+  async function runSteeringCreatePerNode(text) {
+    setError("");
+    setWorkspaceBusy(true);
+    setGenBusyAction("create");
+    setGenStatus("Штурвал (по нодам): Model-First строит граф…");
+    const policy = sourcePolicy || "practical_only";
+    const depth =
+      policy === "hybrid" || policy === "academic_only"
+        ? "Deep Mechanics"
+        : "Standard";
+    try {
+      const res = await steeringGenerate({
+        target_goal: text,
+        user_level: "Intermediate/Advanced",
+        depth_level: depth,
+        source_policy: policy,
+        generation_mode: policy === "academic_only" ? "consensus" : "fast",
+        control_axis: "steering",
+        steering_mode: "per_node",
+      });
+      setGoal(text);
+      let graph = res.graph;
+      if (!graph) {
+        setGenStatus("Штурвал (по нодам): ожидаем worker…");
+        const job = await waitWorkJob(res.work_job_id, {
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+        });
+        graph = job.result;
+      }
+      if (graph?.curriculum_id) {
+        await loadWorkspace(graph.curriculum_id);
+      } else {
+        setError("Штурвал: граф сгенерирован, но curriculum_id не найден.");
+      }
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setGenStatus("");
+      setLongWaitNotice("");
+      setGenBusyAction(null);
+      setWorkspaceBusy(false);
+    }
+  }
+
+  /** Mode 2: прежний Gate 1/2 поток; после Gate 2 approve (handleGateApprove)
+
+   * идёт РЕАЛЬНЫЙ тяжёлый Map-Reduce по ВСЕМ approved-статьям сразу →
+   * CurriculumGraph из ОДНОЙ сфокусированной ноды (node_kind=
+   * "steering_standalone", см. steering_topic_node_service.py) — дальше как
+   * обычный курс, через loadWorkspace, тем же путём, что Mode 1. */
+  async function runSteeringCreateStandaloneDigest(text) {
+    setError("");
+    setWorkspaceBusy(true);
+    setGenBusyAction("create");
+    setGenStatus("Штурвал (обзор темы): TaxonomyService + Light Discovery…");
+    const policy = sourcePolicy || "practical_only";
+    const depth =
+      policy === "hybrid" || policy === "academic_only"
+        ? "Deep Mechanics"
+        : "Standard";
+    try {
+      const res = await steeringGenerate({
+        target_goal: text,
+        user_level: "Intermediate/Advanced",
+        depth_level: depth,
+        source_policy: policy,
+        generation_mode: policy === "academic_only" ? "consensus" : "fast",
+        control_axis: "steering",
+        steering_mode: "standalone_digest",
+      });
+      setGoal(text);
+      const gateNode = {
+        node_id: "steering-gate-node",
+        title: "🎯 Согласование источников (Gate 1)",
+        layer: "foundation",
+        category: "Штурвал",
+        prerequisites: [],
+      };
+      const virtualCurriculumId = `steering-${res.work_job_id}`;
+      setCurriculum({ curriculum_id: virtualCurriculumId, nodes: [gateNode] });
+      setStatuses({ [gateNode.node_id]: "in_progress" });
+      setSelectedNode(gateNode);
+      setSelectedMaterialId(null);
+      replaceSkillTreeSearchParams({
+        curriculum: virtualCurriculumId,
+        node: gateNode.node_id,
+        material: "",
+      });
+      setSessions((prev) => ({
+        ...prev,
+        [gateNode.node_id]: {
+          initialized: true,
+          messages: [],
+          steeringWorkJobId: res.work_job_id,
+          steeringStatus: res.status,
+          steeringCandidates: res.taxonomy_discovery?.candidate_articles || [],
+          steeringDigests: [],
+        },
+      }));
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setGenStatus("");
+      setLongWaitNotice("");
+      setGenBusyAction(null);
+      setWorkspaceBusy(false);
+    }
+  }
+
+  /** Gate 1/2 approve из SteeringGatePanel (виртуальная нода-гейт). Gate 1 →
+
+   * Batch Digest Generator (следующая пауза Gate 2, тот же гейт-узел). Gate
+   * 2 → node_finalize_steering + постановка тяжёлого Map-Reduce в очередь
+   * (generation_job_id); дожидаемся worker'а и заменяем виртуальную ноду
+   * настоящим сгенерированным графом через loadWorkspace (тот же путь, что
+   * обычный createCurriculum, см. work_handlers._run_steering_topic_digest —
+   * он тоже вызывает save_curriculum_record). */
+  async function handleGateApprove(selectedUrls) {
+    const node = selectedNode;
+    if (!node || node.node_id !== "steering-gate-node") return;
+    const sess = sessions[node.node_id];
+    if (!sess) return;
+    const jobId = sess.steeringWorkJobId;
+    setTutorBusyNodeId(node.node_id);
+    setError("");
+    try {
+      if (sess.steeringStatus === "awaiting_gate_1") {
+        const res = await steeringApproveGate1(jobId, selectedUrls);
+        setSessions((prev) => ({
+          ...prev,
+          [node.node_id]: {
+            ...prev[node.node_id],
+            steeringStatus: res.status,
+            steeringDigests: res.surface_digests?.digests || [],
+            steeringApprovedCount: selectedUrls.length,
+          },
+        }));
+        setSelectedNode((prev) =>
+          prev && prev.node_id === node.node_id
+            ? { ...prev, title: "📦 Обзор выжимок (Gate 2)" }
+            : prev,
+        );
+      } else if (sess.steeringStatus === "awaiting_gate_2") {
+        const res = await steeringApproveGate2(jobId, selectedUrls);
+        setSessions((prev) => ({
+          ...prev,
+          [node.node_id]: {
+            ...prev[node.node_id],
+            steeringStatus: res.status,
+            steeringGenerationJobId: res.generation_job_id,
+          },
+        }));
+        setGenBusyAction("create");
+        setGenStatus("Штурвал: тяжёлый Map-Reduce по утверждённым источникам…");
+        const job = await waitWorkJob(res.generation_job_id, {
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+        });
+        if (job?.result?.curriculum_id) {
+          await loadWorkspace(job.result.curriculum_id);
+        }
+      }
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setTutorBusyNodeId(null);
+      setGenStatus("");
+      setLongWaitNotice("");
+      setGenBusyAction(null);
+    }
+  }
+
+  /** Interaction Axis (per-node): пока только хранит выбор в сессии ноды —
+
+   * фактическая отправка в NodeDeepDiveRequest/TopicQnaNodeDeepDiveRequest
+   * — отдельный, ещё не начатый шаг (см. roadmap, Этап 4 backend
+   * scaffolding). */
+  function setNodeInteractionAxis(nodeId, axis) {
+    setSessions((prev) => ({
+      ...prev,
+      [nodeId]: { ...(prev[nodeId] || { messages: [] }), interactionAxis: axis },
+    }));
   }
 
   async function runExpandBranch(text) {
@@ -247,6 +567,7 @@ export function RoadmapDashboard() {
         curriculum.curriculum_id,
         text,
         sourcePolicy,
+        { onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE) },
       );
       setGoal("");
       setLayoutEpoch((n) => n + 1);
@@ -256,6 +577,7 @@ export function RoadmapDashboard() {
     } finally {
       clearInterval(phaseTimer);
       setGenStatus("");
+      setLongWaitNotice("");
       setGenBusyAction(null);
       setWorkspaceBusy(false);
     }
@@ -319,6 +641,12 @@ export function RoadmapDashboard() {
       return {
         ...prev,
         [nodeId]: {
+          // ...old сохраняет поля, которыми эта функция не управляет
+          // (interactionAxis и т.п.) — раньше объект сессии пересобирался
+          // ПОЛНОСТЬЮ по фиксированному списку ниже, и любое поле не из
+          // этого списка (например Interaction Axis, выставленный в
+          // NodeMasteryPanel) стиралось на первом же ответе тьютора.
+          ...old,
           initialized: true,
           prepared: messages.length === 0 && Boolean(res.rag_facts_count || old.prepared),
           content: res.content,
@@ -384,7 +712,71 @@ export function RoadmapDashboard() {
         return;
       }
 
+      // Повторный клик по ноде, для которой Gate 1/2 уже идёт (например,
+      // пользователь ещё не одобрил и снова кликнул по той же ноде на
+      // канвасе) — просто показываем текущее состояние гейта, НЕ запускаем
+      // discover заново (иначе слетел бы прогресс с Gate 2 обратно на Gate 1).
+      const existingGateStatus = sessions[sid]?.nodeGateStatus;
+      if (
+        existingGateStatus === "awaiting_gate_1" ||
+        existingGateStatus === "awaiting_gate_2"
+      ) {
+        return;
+      }
+
+      // Node Grounding Gate: перехватываем ТОЛЬКО ещё не прогруженные
+      // DEEP-ноды — safety-гейт против неконтролируемого SOTA-override
+      // харвеста (см. docs/STEERING_AND_TOPIC_QNA_ROADMAP.md, Node
+      // Grounding Gate). BASE-ноды и уже grounded DEEP-ноды идут прежним
+      // путём без единого лишнего запроса.
+      const needsNodeGate =
+        node.node_risk_kind === "DEEP" && node.grounding_status !== "grounded";
+      if (needsNodeGate) {
+        setTutorBusyNodeId(sid);
+        setError("");
+        try {
+          const disc = await nodeGroundingDiscover(
+            curriculum.curriculum_id,
+            toNodeDataInput(node),
+          );
+          if ((disc.candidates || []).length > 0) {
+            setSessions((prev) => ({
+              ...prev,
+              [sid]: {
+                ...(prev[sid] || { messages: [] }),
+                initialized: false,
+                nodeGateStatus: "awaiting_gate_1",
+                nodeGateCandidates: disc.candidates,
+                nodeGateDigests: [],
+              },
+            }));
+            return; // ждём Gate 1 — nodeInitStream ниже пока не вызывается
+          }
+        } catch (err) {
+          // discover сам по себе fail-open на бэкенде; если и сетевой вызов
+          // сломался — не блокируем ноду навсегда, идём обычным путём ниже.
+          setError(String(err.message || err));
+        } finally {
+          setTutorBusyNodeId(null);
+        }
+      }
+
       setTutorBusyNodeId(sid);
+      setTutorStageMessage("Проверяем материалы источника…");
+      // Штурвал-сгенерированные ноды изначально несут только лёгкий Gate-2
+      // дайджест (2-3 предложения Flash Lite), а не полноценный ingest —
+      // см. docs/STEERING_AND_TOPIC_QNA_ROADMAP.md. Для любой другой ноды
+      // (Autopilot, уже доингещенная Штурвал-нода) это мгновенный no-op на
+      // бэкенде — ни одного лишнего сетевого вызова внутри самого запроса.
+      // Fail-open: сбой здесь не должен блокировать открытие ноды.
+      try {
+        await ensureSteeringSourcesIngested(
+          curriculum.curriculum_id,
+          toNodeDataInput(node),
+        );
+      } catch {
+        /* fail-open — идём в nodeInitStream с тем контентом, что есть */
+      }
       setTutorStageMessage("");
       try {
         // nodeInitStream (не nodeInit) — та же SSE-инфраструктура, что чат
@@ -405,6 +797,7 @@ export function RoadmapDashboard() {
               throw new Error(evt.detail || "init-stream error");
             }
           },
+          sessions[sid]?.interactionAxis || "lecture_self_check",
         );
         applyNodeResponse(sid, finalRes || {});
         const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
@@ -426,6 +819,69 @@ export function RoadmapDashboard() {
       refreshCurriculumGraph,
     ],
   );
+
+  /** Gate 1/2 approve из SteeringGatePanel (kind: "node") — Node Grounding
+
+   * Gate для ОДНОЙ реальной ноды (в отличие от handleGateApprove/Штурвала,
+   * тут нет виртуальной ноды-курса: session хранится под настоящим
+   * node_id). Gate 1 -> nodeGroundingDigest (Этап 2, BGE+Reranker+Gemma) ->
+   * Gate 2 -> nodeGroundingFinalize (Этап 3, реальный Map-Reduce — тот же,
+   * что уже используется lazy-grounding'ом) -> узел становится grounded,
+   * дальше как обычно через nodeInitStream (existing
+   * _apply_lazy_grounding_for_init в engine.py при grounded+source_ref
+   * сам ничего не ищет, только refresh диаграмм). */
+  async function handleNodeGateApprove(selectedUrls) {
+    const node = selectedNode;
+    if (!node) return;
+    const sess = sessions[node.node_id];
+    if (!sess || !sess.nodeGateStatus) return;
+    setTutorBusyNodeId(node.node_id);
+    setError("");
+    try {
+      if (sess.nodeGateStatus === "awaiting_gate_1") {
+        const res = await nodeGroundingDigest(
+          curriculum.curriculum_id,
+          node.node_id,
+          selectedUrls,
+        );
+        setSessions((prev) => ({
+          ...prev,
+          [node.node_id]: {
+            ...prev[node.node_id],
+            nodeGateStatus: "awaiting_gate_2",
+            nodeGateDigests: res.digests || [],
+            nodeGateApprovedCount: selectedUrls.length,
+          },
+        }));
+      } else if (sess.nodeGateStatus === "awaiting_gate_2") {
+        setTutorStageMessage("Загружаем материалы в ноду (Map-Reduce)…");
+        await nodeGroundingFinalize(
+          curriculum.curriculum_id,
+          node.node_id,
+          selectedUrls,
+        );
+        setSessions((prev) => {
+          const next = { ...prev };
+          delete next[node.node_id];
+          return next;
+        });
+        const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
+        const freshNode =
+          (freshGraph?.nodes || []).find((n) => n.node_id === node.node_id) ||
+          node;
+        setSelectedNode(freshNode);
+        setTutorBusyNodeId(null);
+        setTutorStageMessage("");
+        await openNode(freshNode);
+        return;
+      }
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setTutorBusyNodeId(null);
+      setTutorStageMessage("");
+    }
+  }
 
   useEffect(() => {
     if (!curriculum?.nodes?.length || workspaceBusy) return;
@@ -500,6 +956,7 @@ export function RoadmapDashboard() {
             throw new Error(evt.detail || "chat-stream error");
           }
         },
+        sessions[nid]?.interactionAxis || "lecture_self_check",
       );
       if (finalRes) {
         applyNodeResponse(nid, finalRes, msg);
@@ -610,6 +1067,7 @@ export function RoadmapDashboard() {
       const res = await nodeRestart(
         curriculum.curriculum_id,
         toNodeDataInput(selectedNode),
+        { onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE) },
       );
       applyNodeResponse(nid, res);
       const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
@@ -622,6 +1080,7 @@ export function RoadmapDashboard() {
     } finally {
       setTutorBusyNodeId(null);
       setTutorStageMessage("");
+      setLongWaitNotice("");
     }
   }
 
@@ -724,9 +1183,14 @@ export function RoadmapDashboard() {
         onGoalChange: setGoal,
         sourcePolicy,
         onSourcePolicyChange: setSourcePolicy,
+        controlAxis,
+        onControlAxisChange: setControlAxis,
+        steeringMode,
+        onSteeringModeChange: setSteeringMode,
         activeCurriculumId: activeId,
         workspaceBusy,
         genStatus,
+        longWaitNotice,
         busyAction: genBusyAction,
         onCreatePath: runCreatePath,
         onExpandBranch: runExpandBranch,
@@ -794,7 +1258,7 @@ export function RoadmapDashboard() {
                 "p",
                 { className: "muted" },
                 curriculum
-                  ? "Выберите ноду на карте — диалог откроется здесь (как в Cursor)."
+                  ? "Выберите ноду на карте — диалог откроется здесь."
                   : "Создайте или выберите маршрут, затем откройте ноду на графе.",
               ),
             ),
@@ -829,6 +1293,9 @@ export function RoadmapDashboard() {
             selectedMaterialId,
             materialViewMode,
             onMaterialViewModeChange: setMaterialViewMode,
+            onInteractionAxisChange: setNodeInteractionAxis,
+            onGateApprove: handleGateApprove,
+            onNodeGateApprove: handleNodeGateApprove,
           })
         : React.createElement("aside", { className: "node-drawer empty" }),
     ),

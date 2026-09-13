@@ -1,6 +1,6 @@
 # LLM Contracts — реестр Pydantic-схем
 
-Единый каталог structured JSON для Gemini. Код: `knowledge_engine/schemas/llm_contracts/`.  
+Единый каталог structured JSON для Gemini. Код: `knowledge_engine/src/shared/schemas/llm_contracts/`.  
 Runtime-реестр label → тип: `GEMINI_STRUCTURED_CONTRACTS` в `__init__.py`.
 
 **Инвариант:** system prompt + `response_schema` задают контракт; UI/API не парсят произвольный prose как источник истины (кроме display-склейки).
@@ -20,8 +20,11 @@ Runtime-реестр label → тип: `GEMINI_STRUCTURED_CONTRACTS` в `__init_
 | Контракт | Назначение | Ключевые поля | Labels (`GEMINI_STRUCTURED_CONTRACTS`) |
 |----------|------------|---------------|----------------------------------------|
 | `DeepDiveTutorContract` | Chat / verify dialogue + lecture_chat | `feedback_on_answer`, `technical_explanation`, `follow_up_question`, `question_sub_concept_id`, `referenced_diagram_id` (catalog id only; **нет** raw Mermaid / **нет** `tutor_message`) | `node_deep_dive/tutor` |
+| `DeepDiveExplainContract` | Chat/verify, когда Evaluator пропущен (host-owned skip — пустое сообщение / явный lecture request / нет pending) | Те же поля минус `audit`; `follow_up_question` опционален | `node_deep_dive/tutor` (тот же label, схема выбирается динамически в `_invoke_tutor` по `evaluator_skipped`) |
+| `TopicQnaTutorContract` / `TopicQnaExplainContract` | Аудированный / explain-ход для `interaction_axis="topic_qna"` | Те же поля, что у `DeepDiveTutorContract`/`DeepDiveExplainContract`, **МИНУС** `follow_up_question`/`question_sub_concept_id` — поля вопроса в схеме нет вовсе (не запрещено текстом, физически отсутствует) | `node_deep_dive/tutor` (выбор по оси + состоянию self-check — см. `engine.py::_resolve_tutor_response_schema`, [STEERING_AND_TOPIC_QNA_ROADMAP.md](STEERING_AND_TOPIC_QNA_ROADMAP.md)) |
 | `IntroAssessmentContract` | Intro / lazy intro | `tutor_message`, `node_status` | `node_deep_dive / intro_assessment` |
 | `StructuredLectureResponse` | Dense lecture | `lecture_body`, `extracted_concepts`, `used_sources`, `referenced_diagram_id` (catalog id only), … | `node_deep_dive / dense_material` |
+| `TopicQnaLectureResponse` | Dense lecture для `interaction_axis="topic_qna"` | Те же поля, что у `StructuredLectureResponse`, **МИНУС** `checkpoint_prompt` | `node_deep_dive / dense_material` (выбор по оси в `generate_dense_material`) |
 | `StepAnalysisContract` | Intent + mastery patch | `intent`, `concept_updates`, `critical_gap` | `node_deep_dive / step_analysis` |
 | `SubConceptGapEvalContract` | Gap eval одного pending id | `updates[]` (0–1 × `SubConceptStatusUpdate`) | `node_deep_dive / sub_concept_gap` |
 | `DialogueFactManifestContract` | Extract при ротации окна | `agreed_concepts`, `open_bottlenecks`, … | `node_deep_dive / fact_manifest` |
@@ -177,8 +180,11 @@ KEEP (`OFFICIAL_DOCS`, `VENDOR_BLOG`, `ACADEMIC_OR_PAPER`) пишется в Lan
 | Schema | Stream filter | UI видит |
 |--------|---------------|----------|
 | `DeepDiveTutorContract` | `TutorDialogueFieldsStreamFilter` | склейка `feedback` → `technical` → `follow_up` |
+| `DeepDiveExplainContract` | `TutorDialogueFieldsStreamFilter` (`TUTOR_EXPLAIN_STREAM_FIELDS`) | `technical_explanation` → `follow_up_question` |
+| `TopicQnaTutorContract` | `TutorDialogueFieldsStreamFilter` (`TOPIC_QNA_TUTOR_STREAM_FIELDS`) | `confirmation`/`correction_breakdown` → `technical_explanation` (нет `follow_up`) |
+| `TopicQnaExplainContract` | `TutorDialogueFieldsStreamFilter` (`TOPIC_QNA_EXPLAIN_STREAM_FIELDS`) | только `technical_explanation` |
 | `NodeExplainContract` | `JsonFieldStreamFilter("explanation")` | дельты `explanation` |
-| `StructuredLectureResponse` | `JsonFieldStreamFilter("lecture_body")` | дельты `lecture_body` |
+| `StructuredLectureResponse` / `TopicQnaLectureResponse` | `JsonFieldStreamFilter("lecture_body")` | дельты `lecture_body` |
 | `IntroAssessmentContract` | `tutor_message` (via `structured_stream_text_field`) | дельты intro |
 | `ActiveDrillStepResponse` | `TutorDialogueFieldsStreamFilter` | header → audit → theory → **Вопрос:** |
 | `LayerCompletionTutorOutput` | `TutorDialogueFieldsStreamFilter` | praise → layer_summary → transition_framing |

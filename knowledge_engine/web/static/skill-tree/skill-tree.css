@@ -2204,3 +2204,224 @@ body.skill-col-resizing .tutor-selectable {
 .chat-md a.ke-material-anchor:hover {
   color: var(--ke-primary);
 }
+
+
+/* ==========================================================================
+   Standalone-режимы: Штурвал Studio (?mode=studio) и Topic Focus
+   (?mode=topic&id=...&curriculum=...). Вторая фаза UI Штурвала, см.
+   docs/STEERING_AND_TOPIC_QNA_ROADMAP.md.
+   ========================================================================== */
+
+.steering-studio-container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.steering-studio-header h1 {
+  font-size: 1.4rem;
+  margin: 0 0 0.35rem;
+}
+
+.steering-studio-header .muted {
+  font-size: 0.9rem;
+}
+
+.steering-studio-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 1.25rem 0 1.75rem;
+}
+
+.steering-studio-step-chip {
+  font-size: 0.72rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--ke-radius-pill);
+  border: 1px solid var(--ke-border-subtle);
+  background: var(--ke-surface-elevated);
+  color: var(--ke-text-subtle);
+}
+
+.steering-studio-step-chip.active {
+  border-color: var(--ke-primary);
+  background: var(--ke-accent-soft);
+  color: var(--ke-body-color);
+  font-weight: 600;
+}
+
+.steering-studio-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.steering-studio-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 480px;
+}
+
+.steering-studio-input label {
+  font-size: 0.78rem;
+  color: var(--ke-text-subtle);
+  margin-top: 0.5rem;
+}
+
+.steering-studio-input input,
+.steering-studio-input select {
+  border-radius: var(--ke-radius-sm);
+  border: 1px solid var(--ke-input-border);
+  background: var(--ke-surface-elevated);
+  color: var(--ke-body-color);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.9rem;
+}
+
+.steering-studio-input button {
+  margin-top: 0.75rem;
+  align-self: flex-start;
+}
+
+.steering-studio-generating {
+  align-items: center;
+  padding: 3rem 0;
+  color: var(--ke-text-subtle);
+}
+
+/* Topic Focus: чтение слева (60-70%), облегчённый чат справа. */
+.topic-focus-container {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 34%);
+  gap: 0;
+  height: 100vh;
+  box-sizing: border-box;
+  background: var(--ke-body-bg);
+  color: var(--ke-body-color);
+}
+
+.topic-focus-reading {
+  overflow-y: auto;
+  padding: 2rem 2.25rem;
+  min-width: 0;
+}
+
+.topic-focus-reading h1 {
+  font-size: 1.35rem;
+  margin: 0 0 1rem;
+}
+
+.topic-focus-busy-hint {
+  font-size: 0.85rem;
+}
+
+.topic-focus-chat {
+  border-left: 1px solid var(--ke-border-color);
+  background: var(--ke-sidebar-bg);
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.topic-focus-chat .tutor-panel {
+  height: 100%;
+}
+
+.topic-focus-error,
+.topic-focus-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  padding: 2rem;
+  text-align: center;
+  color: var(--ke-text-subtle);
+}
+
+@media (max-width: 860px) {
+  .topic-focus-container {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(280px, 40%);
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .topic-focus-chat {
+    border-left: none;
+    border-top: 1px solid var(--ke-border-color);
+  }
+}
+
+/* SteeringGatePanel: используется и внутри NodeDrawer (боковая панель), и
+   на весь экран в SteeringStudio — не задаём фиксированную ширину, только
+   внутреннюю раскладку карточек. */
+.steering-gate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+}
+
+.steering-gate-card {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  border: 1px solid var(--ke-border-subtle);
+  border-radius: var(--ke-radius-sm);
+  background: var(--ke-surface-elevated);
+  padding: 0.65rem 0.75rem;
+  cursor: pointer;
+}
+
+.steering-gate-card input[type="checkbox"] {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.steering-gate-card-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.steering-gate-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.steering-gate-card-title {
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.steering-gate-approve-btn {
+  align-self: flex-start;
+}
+
+.mastery-axis-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+}
+
+.mastery-axis-select {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.78rem;
+}
+
+.steering-gate-card-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.steering-gate-cap-hint {
+  margin: 0.35rem 0;
+}

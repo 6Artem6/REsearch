@@ -10,14 +10,14 @@ from typing import List
 
 import numpy as np
 
-from knowledge_engine.config import (
+from knowledge_engine.src.config.settings import (
     RAG_CE_AUTO_UNLOAD,
     RAG_CE_AUTO_UNLOAD_IDLE_SEC,
     RAG_CE_TORCH_DTYPE,
     RAG_CROSS_ENCODER_MODEL,
     RAG_CROSS_ENCODER_REVISION,
 )
-from knowledge_engine.ui.run_log import trace
+from knowledge_engine.src.core.run_log import trace
 
 _lock = threading.Lock()
 _cross_encoder: object | None = None
@@ -128,7 +128,9 @@ def _identity_activation() -> object:
 
 
 def _create_cross_encoder() -> object:
-    from knowledge_engine.services.ml_runtime import assert_ml_weights_allowed
+    from knowledge_engine.src.shared.ml_runtime.ml_runtime import (
+        assert_ml_weights_allowed,
+    )
 
     assert_ml_weights_allowed("Cross-Encoder reranker")
     import torch
@@ -136,7 +138,9 @@ def _create_cross_encoder() -> object:
 
     device = _resolve_torch_device()
     dtype = _resolve_torch_dtype(device)
-    from knowledge_engine.services.hf_model_cache import resolve_hf_snapshot
+    from knowledge_engine.src.shared.ml_runtime.hf_model_cache import (
+        resolve_hf_snapshot,
+    )
 
     local = resolve_hf_snapshot(
         RAG_CROSS_ENCODER_MODEL,
@@ -186,7 +190,9 @@ def _load_cross_encoder() -> object | None:
             return _cross_encoder
         try:
             _cross_encoder = _create_cross_encoder()
-            from knowledge_engine.services.ml_memory_guard import register_model
+            from knowledge_engine.src.shared.ml_runtime.ml_memory_guard import (
+                register_model,
+            )
 
             register_model("cross_encoder", unload_cross_encoder)
             return _cross_encoder
@@ -198,7 +204,7 @@ def _load_cross_encoder() -> object | None:
 
 def _cosine_fallback_scores(criterion: str, texts: List[str]) -> List[float]:
     """Deterministic fallback: BGE-M3 cosine mapped to [0, 1] (not Cross-Encoder)."""
-    from knowledge_engine.services.search.bge_m3_embed import embed_texts_bge_m3
+    from knowledge_engine.src.shared.ml_runtime.bge_m3_embed import embed_texts_bge_m3
 
     payload = [criterion[:8000], *[t[:8000] for t in texts]]
     vecs = embed_texts_bge_m3(payload)
@@ -253,7 +259,9 @@ def score_relevance_pairs(criterion: str, texts: List[str]) -> List[float]:
         for r in raw:
             out.append(max(0.0, min(1.0, _sigmoid(float(r)))))
         _touch_ce_use()
-        from knowledge_engine.services.ml_memory_guard import guard_after_use
+        from knowledge_engine.src.shared.ml_runtime.ml_memory_guard import (
+            guard_after_use,
+        )
 
         guard_after_use("cross_encoder")
         return out

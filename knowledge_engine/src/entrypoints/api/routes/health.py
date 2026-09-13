@@ -1,0 +1,44 @@
+"""Health и конфигурация."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+import knowledge_engine.src.config.settings as cfg
+from knowledge_engine.src.adapters.llm_providers.gemini_stateless import (
+    is_gemini_available,
+)
+from knowledge_engine.src.adapters.search_providers.search_service import searxng_health
+from knowledge_engine.src.entrypoints.api.schemas.responses import (
+    ConfigResponse,
+    HealthResponse,
+)
+from knowledge_engine.src.shared.job_queue.redis_client import redis_ping
+from knowledge_engine.src.shared.job_queue.work_job_store import worker_is_alive
+
+router = APIRouter(tags=["health"])
+
+
+@router.get("/health", response_model=HealthResponse)
+def health() -> HealthResponse:
+    ok, msg = searxng_health()
+    return HealthResponse(
+        status="ok",
+        searxng_ok=ok,
+        searxng_message=msg,
+        worker_ok=worker_is_alive(),
+        redis_ok=redis_ping(),
+    )
+
+
+@router.get("/config", response_model=ConfigResponse)
+def runtime_config() -> ConfigResponse:
+    return ConfigResponse(
+        graph_version=(cfg.GRAPH_VERSION or "0.4").strip(),
+        gemini_model=cfg.GEMINI_MODEL,
+        gemini_configured=is_gemini_available(),
+        ollama_base_url="",
+        searxng_base_url=cfg.SEARXNG_BASE_URL,
+        local_heavy_model=cfg.GEMMA_PRIMARY_MODEL,
+        local_router_model=cfg.GEMMA_FALLBACK_MODEL,
+    )

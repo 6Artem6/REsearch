@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from knowledge_engine.ui.run_log import trace
+from knowledge_engine.src.core.run_log import trace
 
 _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
 _SOURCE_TAG_RE = re.compile(r"\[S(\d+)\]", re.I)
@@ -111,7 +111,7 @@ def evaluate_source(
     global_anchor: str,
 ) -> SourceEvaluationResult:
     """Один источник (legacy); для Re-Act используйте build_react_feedback (batch)."""
-    from knowledge_engine.src.curriculum.lite_search_pipeline import (
+    from knowledge_engine.src.domains.curriculum.lite_search_pipeline import (
         batch_evaluate_sources_sync,
     )
 
@@ -160,7 +160,7 @@ def build_react_feedback(
 ) -> str:
     if not candidates:
         return ""
-    from knowledge_engine.src.curriculum.lite_search_pipeline import (
+    from knowledge_engine.src.domains.curriculum.lite_search_pipeline import (
         batch_evaluate_sources_sync,
     )
 

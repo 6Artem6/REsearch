@@ -15,9 +15,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# DSN не хардкодится в alembic.ini (креды) — берём из knowledge_engine.config
+# DSN не хардкодится в alembic.ini (креды) — берём из knowledge_engine.src.config.settings
 # (Pydantic Settings в db/pg_settings.py, читает POSTGRES_DSN из .env).
-from knowledge_engine.config import POSTGRES_SQLALCHEMY_ASYNC_DSN  # noqa: E402
+from knowledge_engine.src.config.settings import (  # noqa: E402
+    POSTGRES_SQLALCHEMY_ASYNC_DSN,
+)
 
 config.set_main_option("sqlalchemy.url", POSTGRES_SQLALCHEMY_ASYNC_DSN)
 

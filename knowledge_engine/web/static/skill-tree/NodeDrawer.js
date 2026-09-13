@@ -5,6 +5,8 @@ import { NodeMasteryPanel } from "./NodeMasteryPanel.js";
 import { SourceRegistryList } from "./SourceRegistryList.js";
 import { NodeSelectionExplain } from "./NodeSelectionExplain.js";
 import { NodeMaterialsPanel } from "./NodeMaterialsPanel.js";
+import { ResourceCard } from "./ResourceCard.js";
+import { SteeringGatePanel } from "./SteeringGatePanel.js";
 import { flattenMaterials, normalizeNodeMaterials } from "./materialAssets.js";
 import { structuredAnalysisToHtml } from "./llmTextRepair.js";
 
@@ -335,6 +337,9 @@ export function NodeDrawer({
   selectedMaterialId,
   materialViewMode,
   onMaterialViewModeChange,
+  onInteractionAxisChange,
+  onGateApprove,
+  onNodeGateApprove,
 }) {
   const materialRef = useRef(null);
 
@@ -380,7 +385,31 @@ export function NodeDrawer({
           lastEvalDirective: session?.lastEvalDirective,
           onModeSelect: onModeSelect,
           disabled: composeLocked,
+          interactionAxis: session?.interactionAxis,
+          onInteractionAxisChange: onInteractionAxisChange
+            ? (axis) => onInteractionAxisChange(selectedNode.node_id, axis)
+            : undefined,
         }),
+        session?.steeringStatus &&
+          React.createElement(SteeringGatePanel, {
+            status: session.steeringStatus,
+            candidates: session.steeringCandidates,
+            digests: session.steeringDigests,
+            busy: composeLocked || nodeGenerating,
+            approvedCount: session.steeringApprovedCount,
+            onApprove: onGateApprove,
+          }),
+        session?.nodeGateStatus &&
+          React.createElement(SteeringGatePanel, {
+            kind: "node",
+            status: session.nodeGateStatus,
+            candidates: session.nodeGateCandidates,
+            digests: session.nodeGateDigests,
+            busy: composeLocked || nodeGenerating,
+            maxApproved: 4,
+            approvedCount: session.nodeGateApprovedCount,
+            onApprove: onNodeGateApprove,
+          }),
         React.createElement(
           "div",
           { className: "drawer-meta" },

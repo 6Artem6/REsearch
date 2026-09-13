@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
-from knowledge_engine.services.context_manager import load_personal_orchestrator_focus
 from knowledge_engine.src.analytics.gemini_v07 import run_gemini_flash_structured
 from knowledge_engine.src.analytics.prompts import (
     build_architect_system_instruction,
@@ -15,6 +14,9 @@ from knowledge_engine.src.analytics.schemas import (
     ConceptGraph,
     ProfileGapMap,
     TradeoffMatrixResult,
+)
+from knowledge_engine.src.legacy.services.context_manager import (
+    load_personal_orchestrator_focus,
 )
 from knowledge_engine.src.processors.source_anchors import (
     SOURCE_ANCHOR_RETENTION_PROMPT,

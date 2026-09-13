@@ -1085,7 +1085,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher.useContext(Context);
         }
-        function useState8(initialState) {
+        function useState11(initialState) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useState(initialState);
         }
@@ -1097,7 +1097,7 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useRef(initialValue);
         }
-        function useEffect11(create2, deps) {
+        function useEffect13(create2, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useEffect(create2, deps);
         }
@@ -1113,7 +1113,7 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useCallback(callback, deps);
         }
-        function useMemo7(create2, deps) {
+        function useMemo8(create2, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useMemo(create2, deps);
         }
@@ -1880,15 +1880,15 @@ var require_react_development = __commonJS({
         exports.useContext = useContext2;
         exports.useDebugValue = useDebugValue2;
         exports.useDeferredValue = useDeferredValue;
-        exports.useEffect = useEffect11;
+        exports.useEffect = useEffect13;
         exports.useId = useId;
         exports.useImperativeHandle = useImperativeHandle;
         exports.useInsertionEffect = useInsertionEffect;
         exports.useLayoutEffect = useLayoutEffect2;
-        exports.useMemo = useMemo7;
+        exports.useMemo = useMemo8;
         exports.useReducer = useReducer;
         exports.useRef = useRef10;
-        exports.useState = useState8;
+        exports.useState = useState11;
         exports.useSyncExternalStore = useSyncExternalStore;
         exports.useTransition = useTransition;
         exports.version = ReactVersion;
@@ -2384,9 +2384,9 @@ var require_react_dom_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var React22 = require_react();
+        var React25 = require_react();
         var Scheduler = require_scheduler();
-        var ReactSharedInternals = React22.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React25.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         var suppressWarning = false;
         function setSuppressWarning(newSuppressWarning) {
           {
@@ -3993,7 +3993,7 @@ var require_react_dom_development = __commonJS({
           {
             if (props.value == null) {
               if (typeof props.children === "object" && props.children !== null) {
-                React22.Children.forEach(props.children, function(child) {
+                React25.Children.forEach(props.children, function(child) {
                   if (child == null) {
                     return;
                   }
@@ -17092,18 +17092,18 @@ var require_react_dom_development = __commonJS({
           }
         }
         function mountSuspensePrimaryChildren(workInProgress2, primaryChildren, renderLanes2) {
-          var mode = workInProgress2.mode;
+          var mode2 = workInProgress2.mode;
           var primaryChildProps = {
             mode: "visible",
             children: primaryChildren
           };
-          var primaryChildFragment = mountWorkInProgressOffscreenFiber(primaryChildProps, mode);
+          var primaryChildFragment = mountWorkInProgressOffscreenFiber(primaryChildProps, mode2);
           primaryChildFragment.return = workInProgress2;
           workInProgress2.child = primaryChildFragment;
           return primaryChildFragment;
         }
         function mountSuspenseFallbackChildren(workInProgress2, primaryChildren, fallbackChildren, renderLanes2) {
-          var mode = workInProgress2.mode;
+          var mode2 = workInProgress2.mode;
           var progressedPrimaryFragment = workInProgress2.child;
           var primaryChildProps = {
             mode: "hidden",
@@ -17111,7 +17111,7 @@ var require_react_dom_development = __commonJS({
           };
           var primaryChildFragment;
           var fallbackChildFragment;
-          if ((mode & ConcurrentMode) === NoMode && progressedPrimaryFragment !== null) {
+          if ((mode2 & ConcurrentMode) === NoMode && progressedPrimaryFragment !== null) {
             primaryChildFragment = progressedPrimaryFragment;
             primaryChildFragment.childLanes = NoLanes;
             primaryChildFragment.pendingProps = primaryChildProps;
@@ -17121,10 +17121,10 @@ var require_react_dom_development = __commonJS({
               primaryChildFragment.selfBaseDuration = 0;
               primaryChildFragment.treeBaseDuration = 0;
             }
-            fallbackChildFragment = createFiberFromFragment(fallbackChildren, mode, renderLanes2, null);
+            fallbackChildFragment = createFiberFromFragment(fallbackChildren, mode2, renderLanes2, null);
           } else {
-            primaryChildFragment = mountWorkInProgressOffscreenFiber(primaryChildProps, mode);
-            fallbackChildFragment = createFiberFromFragment(fallbackChildren, mode, renderLanes2, null);
+            primaryChildFragment = mountWorkInProgressOffscreenFiber(primaryChildProps, mode2);
+            fallbackChildFragment = createFiberFromFragment(fallbackChildren, mode2, renderLanes2, null);
           }
           primaryChildFragment.return = workInProgress2;
           fallbackChildFragment.return = workInProgress2;
@@ -17132,8 +17132,8 @@ var require_react_dom_development = __commonJS({
           workInProgress2.child = primaryChildFragment;
           return fallbackChildFragment;
         }
-        function mountWorkInProgressOffscreenFiber(offscreenProps, mode, renderLanes2) {
-          return createFiberFromOffscreen(offscreenProps, mode, NoLanes, null);
+        function mountWorkInProgressOffscreenFiber(offscreenProps, mode2, renderLanes2) {
+          return createFiberFromOffscreen(offscreenProps, mode2, NoLanes, null);
         }
         function updateWorkInProgressOffscreenFiber(current2, offscreenProps) {
           return createWorkInProgress(current2, offscreenProps);
@@ -17163,7 +17163,7 @@ var require_react_dom_development = __commonJS({
           return primaryChildFragment;
         }
         function updateSuspenseFallbackChildren(current2, workInProgress2, primaryChildren, fallbackChildren, renderLanes2) {
-          var mode = workInProgress2.mode;
+          var mode2 = workInProgress2.mode;
           var currentPrimaryChildFragment = current2.child;
           var currentFallbackChildFragment = currentPrimaryChildFragment.sibling;
           var primaryChildProps = {
@@ -17174,7 +17174,7 @@ var require_react_dom_development = __commonJS({
           if (
             // In legacy mode, we commit the primary tree as if it successfully
             // completed, even though it's in an inconsistent state.
-            (mode & ConcurrentMode) === NoMode && // Make sure we're on the second pass, i.e. the primary child fragment was
+            (mode2 & ConcurrentMode) === NoMode && // Make sure we're on the second pass, i.e. the primary child fragment was
             // already cloned. In legacy mode, the only case where this isn't true is
             // when DevTools forces us to display a fallback; we skip the first render
             // pass entirely and go straight to rendering the fallback. (In Concurrent
@@ -17201,7 +17201,7 @@ var require_react_dom_development = __commonJS({
           if (currentFallbackChildFragment !== null) {
             fallbackChildFragment = createWorkInProgress(currentFallbackChildFragment, fallbackChildren);
           } else {
-            fallbackChildFragment = createFiberFromFragment(fallbackChildren, mode, renderLanes2, null);
+            fallbackChildFragment = createFiberFromFragment(fallbackChildren, mode2, renderLanes2, null);
             fallbackChildFragment.flags |= Placement;
           }
           fallbackChildFragment.return = workInProgress2;
@@ -20452,8 +20452,8 @@ var require_react_dom_development = __commonJS({
           return currentEventTime;
         }
         function requestUpdateLane(fiber) {
-          var mode = fiber.mode;
-          if ((mode & ConcurrentMode) === NoMode) {
+          var mode2 = fiber.mode;
+          if ((mode2 & ConcurrentMode) === NoMode) {
             return SyncLane;
           } else if ((executionContext & RenderContext) !== NoContext && workInProgressRootRenderLanes !== NoLanes) {
             return pickArbitraryLane(workInProgressRootRenderLanes);
@@ -20480,8 +20480,8 @@ var require_react_dom_development = __commonJS({
           return eventLane;
         }
         function requestRetryLane(fiber) {
-          var mode = fiber.mode;
-          if ((mode & ConcurrentMode) === NoMode) {
+          var mode2 = fiber.mode;
+          if ((mode2 & ConcurrentMode) === NoMode) {
             return SyncLane;
           }
           return claimNextRetryLane();
@@ -22139,7 +22139,7 @@ var require_react_dom_development = __commonJS({
             hasBadMapPolyfill = true;
           }
         }
-        function FiberNode(tag, pendingProps, key, mode) {
+        function FiberNode(tag, pendingProps, key, mode2) {
           this.tag = tag;
           this.key = key;
           this.elementType = null;
@@ -22155,7 +22155,7 @@ var require_react_dom_development = __commonJS({
           this.updateQueue = null;
           this.memoizedState = null;
           this.dependencies = null;
-          this.mode = mode;
+          this.mode = mode2;
           this.flags = NoFlags;
           this.subtreeFlags = NoFlags;
           this.deletions = null;
@@ -22182,8 +22182,8 @@ var require_react_dom_development = __commonJS({
             }
           }
         }
-        var createFiber = function(tag, pendingProps, key, mode) {
-          return new FiberNode(tag, pendingProps, key, mode);
+        var createFiber = function(tag, pendingProps, key, mode2) {
+          return new FiberNode(tag, pendingProps, key, mode2);
         };
         function shouldConstruct$1(Component) {
           var prototype = Component.prototype;
@@ -22308,24 +22308,24 @@ var require_react_dom_development = __commonJS({
           return workInProgress2;
         }
         function createHostRootFiber(tag, isStrictMode, concurrentUpdatesByDefaultOverride) {
-          var mode;
+          var mode2;
           if (tag === ConcurrentRoot) {
-            mode = ConcurrentMode;
+            mode2 = ConcurrentMode;
             if (isStrictMode === true) {
-              mode |= StrictLegacyMode;
+              mode2 |= StrictLegacyMode;
               {
-                mode |= StrictEffectsMode;
+                mode2 |= StrictEffectsMode;
               }
             }
           } else {
-            mode = NoMode;
+            mode2 = NoMode;
           }
           if (isDevToolsPresent) {
-            mode |= ProfileMode;
+            mode2 |= ProfileMode;
           }
-          return createFiber(HostRoot, null, null, mode);
+          return createFiber(HostRoot, null, null, mode2);
         }
-        function createFiberFromTypeAndProps(type, key, pendingProps, owner, mode, lanes) {
+        function createFiberFromTypeAndProps(type, key, pendingProps, owner, mode2, lanes) {
           var fiberTag = IndeterminateComponent;
           var resolvedType = type;
           if (typeof type === "function") {
@@ -22344,22 +22344,22 @@ var require_react_dom_development = __commonJS({
           } else {
             getTag: switch (type) {
               case REACT_FRAGMENT_TYPE:
-                return createFiberFromFragment(pendingProps.children, mode, lanes, key);
+                return createFiberFromFragment(pendingProps.children, mode2, lanes, key);
               case REACT_STRICT_MODE_TYPE:
                 fiberTag = Mode;
-                mode |= StrictLegacyMode;
-                if ((mode & ConcurrentMode) !== NoMode) {
-                  mode |= StrictEffectsMode;
+                mode2 |= StrictLegacyMode;
+                if ((mode2 & ConcurrentMode) !== NoMode) {
+                  mode2 |= StrictEffectsMode;
                 }
                 break;
               case REACT_PROFILER_TYPE:
-                return createFiberFromProfiler(pendingProps, mode, lanes, key);
+                return createFiberFromProfiler(pendingProps, mode2, lanes, key);
               case REACT_SUSPENSE_TYPE:
-                return createFiberFromSuspense(pendingProps, mode, lanes, key);
+                return createFiberFromSuspense(pendingProps, mode2, lanes, key);
               case REACT_SUSPENSE_LIST_TYPE:
-                return createFiberFromSuspenseList(pendingProps, mode, lanes, key);
+                return createFiberFromSuspenseList(pendingProps, mode2, lanes, key);
               case REACT_OFFSCREEN_TYPE:
-                return createFiberFromOffscreen(pendingProps, mode, lanes, key);
+                return createFiberFromOffscreen(pendingProps, mode2, lanes, key);
               case REACT_LEGACY_HIDDEN_TYPE:
               // eslint-disable-next-line no-fallthrough
               case REACT_SCOPE_TYPE:
@@ -22408,7 +22408,7 @@ var require_react_dom_development = __commonJS({
               }
             }
           }
-          var fiber = createFiber(fiberTag, pendingProps, key, mode);
+          var fiber = createFiber(fiberTag, pendingProps, key, mode2);
           fiber.elementType = type;
           fiber.type = resolvedType;
           fiber.lanes = lanes;
@@ -22417,7 +22417,7 @@ var require_react_dom_development = __commonJS({
           }
           return fiber;
         }
-        function createFiberFromElement(element, mode, lanes) {
+        function createFiberFromElement(element, mode2, lanes) {
           var owner = null;
           {
             owner = element._owner;
@@ -22425,25 +22425,25 @@ var require_react_dom_development = __commonJS({
           var type = element.type;
           var key = element.key;
           var pendingProps = element.props;
-          var fiber = createFiberFromTypeAndProps(type, key, pendingProps, owner, mode, lanes);
+          var fiber = createFiberFromTypeAndProps(type, key, pendingProps, owner, mode2, lanes);
           {
             fiber._debugSource = element._source;
             fiber._debugOwner = element._owner;
           }
           return fiber;
         }
-        function createFiberFromFragment(elements, mode, lanes, key) {
-          var fiber = createFiber(Fragment2, elements, key, mode);
+        function createFiberFromFragment(elements, mode2, lanes, key) {
+          var fiber = createFiber(Fragment2, elements, key, mode2);
           fiber.lanes = lanes;
           return fiber;
         }
-        function createFiberFromProfiler(pendingProps, mode, lanes, key) {
+        function createFiberFromProfiler(pendingProps, mode2, lanes, key) {
           {
             if (typeof pendingProps.id !== "string") {
               error('Profiler must specify an "id" of type `string` as a prop. Received the type `%s` instead.', typeof pendingProps.id);
             }
           }
-          var fiber = createFiber(Profiler, pendingProps, key, mode | ProfileMode);
+          var fiber = createFiber(Profiler, pendingProps, key, mode2 | ProfileMode);
           fiber.elementType = REACT_PROFILER_TYPE;
           fiber.lanes = lanes;
           {
@@ -22454,20 +22454,20 @@ var require_react_dom_development = __commonJS({
           }
           return fiber;
         }
-        function createFiberFromSuspense(pendingProps, mode, lanes, key) {
-          var fiber = createFiber(SuspenseComponent, pendingProps, key, mode);
+        function createFiberFromSuspense(pendingProps, mode2, lanes, key) {
+          var fiber = createFiber(SuspenseComponent, pendingProps, key, mode2);
           fiber.elementType = REACT_SUSPENSE_TYPE;
           fiber.lanes = lanes;
           return fiber;
         }
-        function createFiberFromSuspenseList(pendingProps, mode, lanes, key) {
-          var fiber = createFiber(SuspenseListComponent, pendingProps, key, mode);
+        function createFiberFromSuspenseList(pendingProps, mode2, lanes, key) {
+          var fiber = createFiber(SuspenseListComponent, pendingProps, key, mode2);
           fiber.elementType = REACT_SUSPENSE_LIST_TYPE;
           fiber.lanes = lanes;
           return fiber;
         }
-        function createFiberFromOffscreen(pendingProps, mode, lanes, key) {
-          var fiber = createFiber(OffscreenComponent, pendingProps, key, mode);
+        function createFiberFromOffscreen(pendingProps, mode2, lanes, key) {
+          var fiber = createFiber(OffscreenComponent, pendingProps, key, mode2);
           fiber.elementType = REACT_OFFSCREEN_TYPE;
           fiber.lanes = lanes;
           var primaryChildInstance = {
@@ -22476,8 +22476,8 @@ var require_react_dom_development = __commonJS({
           fiber.stateNode = primaryChildInstance;
           return fiber;
         }
-        function createFiberFromText(content, mode, lanes) {
-          var fiber = createFiber(HostText, content, null, mode);
+        function createFiberFromText(content, mode2, lanes) {
+          var fiber = createFiber(HostText, content, null, mode2);
           fiber.lanes = lanes;
           return fiber;
         }
@@ -22491,9 +22491,9 @@ var require_react_dom_development = __commonJS({
           fiber.stateNode = dehydratedNode;
           return fiber;
         }
-        function createFiberFromPortal(portal, mode, lanes) {
+        function createFiberFromPortal(portal, mode2, lanes) {
           var pendingProps = portal.children !== null ? portal.children : [];
-          var fiber = createFiber(HostPortal, pendingProps, portal.key, mode);
+          var fiber = createFiber(HostPortal, pendingProps, portal.key, mode2);
           fiber.lanes = lanes;
           fiber.stateNode = {
             containerInfo: portal.containerInfo,
@@ -23589,7 +23589,7 @@ var require_react_jsx_runtime_development = __commonJS({
     if (true) {
       (function() {
         "use strict";
-        var React22 = require_react();
+        var React25 = require_react();
         var REACT_ELEMENT_TYPE = Symbol.for("react.element");
         var REACT_PORTAL_TYPE = Symbol.for("react.portal");
         var REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
@@ -23615,7 +23615,7 @@ var require_react_jsx_runtime_development = __commonJS({
           }
           return null;
         }
-        var ReactSharedInternals = React22.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React25.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function error(format) {
           {
             {
@@ -24496,7 +24496,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
         return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
       }
       function useSyncExternalStore$2(subscribe, getSnapshot) {
-        didWarnOld18Alpha || void 0 === React22.startTransition || (didWarnOld18Alpha = true, console.error(
+        didWarnOld18Alpha || void 0 === React25.startTransition || (didWarnOld18Alpha = true, console.error(
           "You are using an outdated, pre-release alpha of React 18 that does not support useSyncExternalStore. The use-sync-external-store shim will not work correctly. Upgrade to a newer pre-release."
         ));
         var value = getSnapshot();
@@ -24506,7 +24506,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
             "The result of getSnapshot should be cached to avoid an infinite loop"
           ), didWarnUncachedGetSnapshot = true);
         }
-        cachedValue = useState8({
+        cachedValue = useState11({
           inst: { value, getSnapshot }
         });
         var inst = cachedValue[0].inst, forceUpdate = cachedValue[1];
@@ -24518,7 +24518,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
           },
           [subscribe, value, getSnapshot]
         );
-        useEffect11(
+        useEffect13(
           function() {
             checkIfSnapshotChanged(inst) && forceUpdate({ inst });
             return subscribe(function() {
@@ -24544,8 +24544,8 @@ var require_use_sync_external_store_shim_development = __commonJS({
         return getSnapshot();
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React22 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is, useState8 = React22.useState, useEffect11 = React22.useEffect, useLayoutEffect2 = React22.useLayoutEffect, useDebugValue2 = React22.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
-      exports.useSyncExternalStore = void 0 !== React22.useSyncExternalStore ? React22.useSyncExternalStore : shim;
+      var React25 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is, useState11 = React25.useState, useEffect13 = React25.useEffect, useLayoutEffect2 = React25.useLayoutEffect, useDebugValue2 = React25.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
+      exports.useSyncExternalStore = void 0 !== React25.useSyncExternalStore ? React25.useSyncExternalStore : shim;
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
     })();
   }
@@ -24572,14 +24572,14 @@ var require_with_selector_development = __commonJS({
         return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React22 = require_react(), shim = require_shim(), objectIs = "function" === typeof Object.is ? Object.is : is, useSyncExternalStore = shim.useSyncExternalStore, useRef10 = React22.useRef, useEffect11 = React22.useEffect, useMemo7 = React22.useMemo, useDebugValue2 = React22.useDebugValue;
+      var React25 = require_react(), shim = require_shim(), objectIs = "function" === typeof Object.is ? Object.is : is, useSyncExternalStore = shim.useSyncExternalStore, useRef10 = React25.useRef, useEffect13 = React25.useEffect, useMemo8 = React25.useMemo, useDebugValue2 = React25.useDebugValue;
       exports.useSyncExternalStoreWithSelector = function(subscribe, getSnapshot, getServerSnapshot, selector, isEqual) {
         var instRef = useRef10(null);
         if (null === instRef.current) {
           var inst = { hasValue: false, value: null };
           instRef.current = inst;
         } else inst = instRef.current;
-        instRef = useMemo7(
+        instRef = useMemo8(
           function() {
             function memoizedSelector(nextSnapshot) {
               if (!hasMemo) {
@@ -24615,7 +24615,7 @@ var require_with_selector_development = __commonJS({
           [getSnapshot, getServerSnapshot, selector, isEqual]
         );
         var value = useSyncExternalStore(subscribe, instRef[0], instRef[1]);
-        useEffect11(
+        useEffect13(
           function() {
             inst.hasValue = true;
             inst.value = value;
@@ -28144,7 +28144,7 @@ var require_dagre = __commonJS({
 });
 
 // main.js
-var import_react25 = __toESM(require_react(), 1);
+var import_react28 = __toESM(require_react(), 1);
 var import_client = __toESM(require_client(), 1);
 
 // mermaidRuntime.js
@@ -28243,7 +28243,7 @@ function waitForElementSize(el, minW = 32, minH = 32, maxFrames = 48) {
 }
 
 // RoadmapDashboard.js
-var import_react24 = __toESM(require_react(), 1);
+var import_react25 = __toESM(require_react(), 1);
 
 // RoadmapCanvas.js
 var import_react7 = __toESM(require_react(), 1);
@@ -29037,29 +29037,29 @@ function on_default(typename, value, options) {
 }
 
 // node_modules/d3-selection/src/selection/dispatch.js
-function dispatchEvent(node, type, params) {
+function dispatchEvent(node, type, params2) {
   var window2 = window_default(node), event = window2.CustomEvent;
   if (typeof event === "function") {
-    event = new event(type, params);
+    event = new event(type, params2);
   } else {
     event = window2.document.createEvent("Event");
-    if (params) event.initEvent(type, params.bubbles, params.cancelable), event.detail = params.detail;
+    if (params2) event.initEvent(type, params2.bubbles, params2.cancelable), event.detail = params2.detail;
     else event.initEvent(type, false, false);
   }
   node.dispatchEvent(event);
 }
-function dispatchConstant(type, params) {
+function dispatchConstant(type, params2) {
   return function() {
-    return dispatchEvent(this, type, params);
+    return dispatchEvent(this, type, params2);
   };
 }
-function dispatchFunction(type, params) {
+function dispatchFunction(type, params2) {
   return function() {
-    return dispatchEvent(this, type, params.apply(this, arguments));
+    return dispatchEvent(this, type, params2.apply(this, arguments));
   };
 }
-function dispatch_default2(type, params) {
-  return this.each((typeof params === "function" ? dispatchFunction : dispatchConstant)(type, params));
+function dispatch_default2(type, params2) {
+  return this.each((typeof params2 === "function" ? dispatchFunction : dispatchConstant)(type, params2));
 }
 
 // node_modules/d3-selection/src/selection/iterator.js
@@ -31359,8 +31359,8 @@ var getNodePositionWithOrigin = (node, nodeOrigin = [0, 0]) => {
     y: node.position.y - offsetY
   };
 };
-var getNodesBounds = (nodes, params = { nodeOrigin: [0, 0] }) => {
-  if (!params.nodeLookup) {
+var getNodesBounds = (nodes, params2 = { nodeOrigin: [0, 0] }) => {
+  if (!params2.nodeLookup) {
     console.warn("Please use `getNodesBounds` from `useReactFlow`/`useSvelteFlow` hook to ensure correct values for sub flows. If not possible, you have to provide a nodeLookup to support sub flows.");
   }
   if (nodes.length === 0) {
@@ -31368,20 +31368,20 @@ var getNodesBounds = (nodes, params = { nodeOrigin: [0, 0] }) => {
   }
   const box = nodes.reduce((currBox, nodeOrId) => {
     const isId = typeof nodeOrId === "string";
-    let currentNode = !params.nodeLookup && !isId ? nodeOrId : void 0;
-    if (params.nodeLookup) {
-      currentNode = isId ? params.nodeLookup.get(nodeOrId) : !isInternalNodeBase(nodeOrId) ? params.nodeLookup.get(nodeOrId.id) : nodeOrId;
+    let currentNode = !params2.nodeLookup && !isId ? nodeOrId : void 0;
+    if (params2.nodeLookup) {
+      currentNode = isId ? params2.nodeLookup.get(nodeOrId) : !isInternalNodeBase(nodeOrId) ? params2.nodeLookup.get(nodeOrId.id) : nodeOrId;
     }
-    const nodeBox = currentNode ? nodeToBox(currentNode, params.nodeOrigin) : { x: 0, y: 0, x2: 0, y2: 0 };
+    const nodeBox = currentNode ? nodeToBox(currentNode, params2.nodeOrigin) : { x: 0, y: 0, x2: 0, y2: 0 };
     return getBoundsOfBoxes(currBox, nodeBox);
   }, { x: Infinity, y: Infinity, x2: -Infinity, y2: -Infinity });
   return boxToRect(box);
 };
-var getInternalNodesBounds = (nodeLookup, params = {}) => {
+var getInternalNodesBounds = (nodeLookup, params2 = {}) => {
   let box = { x: Infinity, y: Infinity, x2: -Infinity, y2: -Infinity };
   let hasVisibleNodes = false;
   nodeLookup.forEach((node) => {
-    if (params.filter === void 0 || params.filter(node)) {
+    if (params2.filter === void 0 || params2.filter(node)) {
       box = getBoundsOfBoxes(box, nodeToBox(node));
       hasVisibleNodes = true;
     }
@@ -32068,24 +32068,24 @@ function getSmoothStepPath({ sourceX, sourceY, sourcePosition = Position.Bottom,
 function isNodeInitialized(node) {
   return node && !!(node.internals.handleBounds || node.handles?.length) && !!(node.measured.width || node.width || node.initialWidth);
 }
-function getEdgePosition(params) {
-  const { sourceNode, targetNode } = params;
+function getEdgePosition(params2) {
+  const { sourceNode, targetNode } = params2;
   if (!isNodeInitialized(sourceNode) || !isNodeInitialized(targetNode)) {
     return null;
   }
   const sourceHandleBounds = sourceNode.internals.handleBounds || toHandleBounds(sourceNode.handles);
   const targetHandleBounds = targetNode.internals.handleBounds || toHandleBounds(targetNode.handles);
-  const sourceHandle = getHandle$1(sourceHandleBounds?.source ?? [], params.sourceHandle);
+  const sourceHandle = getHandle$1(sourceHandleBounds?.source ?? [], params2.sourceHandle);
   const targetHandle = getHandle$1(
     // when connection type is loose we can define all handles as sources and connect source -> source
-    params.connectionMode === ConnectionMode.Strict ? targetHandleBounds?.target ?? [] : (targetHandleBounds?.target ?? []).concat(targetHandleBounds?.source ?? []),
-    params.targetHandle
+    params2.connectionMode === ConnectionMode.Strict ? targetHandleBounds?.target ?? [] : (targetHandleBounds?.target ?? []).concat(targetHandleBounds?.source ?? []),
+    params2.targetHandle
   );
   if (!sourceHandle || !targetHandle) {
-    params.onError?.("008", errorMessages["error008"](!sourceHandle ? "source" : "target", {
-      id: params.id,
-      sourceHandle: params.sourceHandle,
-      targetHandle: params.targetHandle
+    params2.onError?.("008", errorMessages["error008"](!sourceHandle ? "source" : "target", {
+      id: params2.id,
+      sourceHandle: params2.sourceHandle,
+      targetHandle: params2.targetHandle
     }));
     return null;
   }
@@ -33695,7 +33695,7 @@ function nodeToChildExtent(child, parent, nodeOrigin) {
 }
 function XYResizer({ domNode, nodeId, getStoreItems, onChange, onEnd }) {
   const selection2 = select_default2(domNode);
-  let params = {
+  let params2 = {
     controlDirection: getControlDirection("bottom-right"),
     boundaries: {
       minWidth: 0,
@@ -33709,7 +33709,7 @@ function XYResizer({ domNode, nodeId, getStoreItems, onChange, onEnd }) {
   function update({ controlPosition, boundaries, keepAspectRatio, resizeDirection, onResizeStart, onResize, onResizeEnd, shouldResize }) {
     let prevValues = { ...initPrevValues };
     let startValues = { ...initStartValues };
-    params = {
+    params2 = {
       boundaries,
       resizeDirection,
       keepAspectRatio,
@@ -33796,7 +33796,7 @@ function XYResizer({ domNode, nodeId, getStoreItems, onChange, onEnd }) {
       const { x: prevX, y: prevY, width: prevWidth, height: prevHeight } = prevValues;
       const change = {};
       const nodeOrigin = node.origin ?? storeNodeOrigin;
-      const { width, height, x, y } = getDimensionsAfterResize(startValues, params.controlDirection, pointerPosition, params.boundaries, params.keepAspectRatio, nodeOrigin, nodeExtent, childExtent);
+      const { width, height, x, y } = getDimensionsAfterResize(startValues, params2.controlDirection, pointerPosition, params2.boundaries, params2.keepAspectRatio, nodeOrigin, nodeExtent, childExtent);
       const isWidthChange = width !== prevWidth;
       const isHeightChange = height !== prevHeight;
       const isXPosChange = x !== prevX && isWidthChange;
@@ -33822,8 +33822,8 @@ function XYResizer({ domNode, nodeId, getStoreItems, onChange, onEnd }) {
         }
       }
       if (isWidthChange || isHeightChange) {
-        change.width = isWidthChange && (!params.resizeDirection || params.resizeDirection === "horizontal") ? width : prevValues.width;
-        change.height = isHeightChange && (!params.resizeDirection || params.resizeDirection === "vertical") ? height : prevValues.height;
+        change.width = isWidthChange && (!params2.resizeDirection || params2.resizeDirection === "horizontal") ? width : prevValues.width;
+        change.height = isHeightChange && (!params2.resizeDirection || params2.resizeDirection === "vertical") ? height : prevValues.height;
         prevValues.width = change.width;
         prevValues.height = change.height;
       }
@@ -33844,8 +33844,8 @@ function XYResizer({ domNode, nodeId, getStoreItems, onChange, onEnd }) {
         prevWidth,
         height: prevValues.height,
         prevHeight,
-        affectsX: params.controlDirection.affectsX,
-        affectsY: params.controlDirection.affectsY
+        affectsX: params2.controlDirection.affectsX,
+        affectsY: params2.controlDirection.affectsY
       });
       const nextValues = { ...prevValues, direction };
       const callResize = shouldResize?.(event, nextValues);
@@ -34054,9 +34054,9 @@ function SelectionListenerInner({ onSelectionChange }) {
   const store = useStoreApi();
   const { selectedNodes, selectedEdges } = useStore(selector$l, areEqual$1);
   (0, import_react2.useEffect)(() => {
-    const params = { nodes: selectedNodes, edges: selectedEdges };
-    onSelectionChange?.(params);
-    store.getState().onSelectionChangeHandlers.forEach((fn) => fn(params));
+    const params2 = { nodes: selectedNodes, edges: selectedEdges };
+    onSelectionChange?.(params2);
+    store.getState().onSelectionChangeHandlers.forEach((fn) => fn(params2));
   }, [selectedNodes, selectedEdges, onSelectionChange]);
   return null;
 }
@@ -35215,14 +35215,14 @@ function useDrag({ nodeRef, disabled = false, noDragClassName, handleSelector, n
 var selectedAndDraggable = (nodesDraggable) => (n) => n.selected && (n.draggable || nodesDraggable && typeof n.draggable === "undefined");
 function useMoveSelectedNodes() {
   const store = useStoreApi();
-  const moveSelectedNodes = (0, import_react2.useCallback)((params) => {
+  const moveSelectedNodes = (0, import_react2.useCallback)((params2) => {
     const { nodeExtent, snapToGrid, snapGrid, nodesDraggable, onError, updateNodePositions, nodeLookup, nodeOrigin } = store.getState();
     const nodeUpdates = /* @__PURE__ */ new Map();
     const isSelected = selectedAndDraggable(nodesDraggable);
     const xVelo = snapToGrid ? snapGrid[0] : 5;
     const yVelo = snapToGrid ? snapGrid[1] : 5;
-    const xDiff = params.direction.x * xVelo * params.factor;
-    const yDiff = params.direction.y * yVelo * params.factor;
+    const xDiff = params2.direction.x * xVelo * params2.factor;
+    const yDiff = params2.direction.y * yVelo * params2.factor;
     for (const [, node] of nodeLookup) {
       if (!isSelected(node)) {
         continue;
@@ -35310,11 +35310,11 @@ function HandleComponent({ type = "source", position = Position.Top, isValidConn
   if (!nodeId) {
     store.getState().onError?.("010", errorMessages["error010"]());
   }
-  const onConnectExtended = (params) => {
+  const onConnectExtended = (params2) => {
     const { defaultEdgeOptions, onConnect: onConnectAction, hasDefaultEdges } = store.getState();
     const edgeParams = {
       ...defaultEdgeOptions,
-      ...params
+      ...params2
     };
     if (hasDefaultEdges) {
       const { edges, setEdges, onError } = store.getState();
@@ -35915,7 +35915,7 @@ function getSimpleBezierPath({ sourceX, sourceY, sourcePosition = Position.Botto
     offsetY
   ];
 }
-function createSimpleBezierEdge(params) {
+function createSimpleBezierEdge(params2) {
   return (0, import_react2.memo)(({ id: id2, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth }) => {
     const [path, labelX, labelY] = getSimpleBezierPath({
       sourceX,
@@ -35925,7 +35925,7 @@ function createSimpleBezierEdge(params) {
       targetY,
       targetPosition
     });
-    const _id = params.isInternal ? void 0 : id2;
+    const _id = params2.isInternal ? void 0 : id2;
     return (0, import_jsx_runtime.jsx)(BaseEdge, { id: _id, path, labelX, labelY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth });
   });
 }
@@ -35933,7 +35933,7 @@ var SimpleBezierEdge = createSimpleBezierEdge({ isInternal: false });
 var SimpleBezierEdgeInternal = createSimpleBezierEdge({ isInternal: true });
 SimpleBezierEdge.displayName = "SimpleBezierEdge";
 SimpleBezierEdgeInternal.displayName = "SimpleBezierEdgeInternal";
-function createSmoothStepEdge(params) {
+function createSmoothStepEdge(params2) {
   return (0, import_react2.memo)(({ id: id2, sourceX, sourceY, targetX, targetY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, sourcePosition = Position.Bottom, targetPosition = Position.Top, markerEnd, markerStart, pathOptions, interactionWidth }) => {
     const [path, labelX, labelY] = getSmoothStepPath({
       sourceX,
@@ -35946,7 +35946,7 @@ function createSmoothStepEdge(params) {
       offset: pathOptions?.offset,
       stepPosition: pathOptions?.stepPosition
     });
-    const _id = params.isInternal ? void 0 : id2;
+    const _id = params2.isInternal ? void 0 : id2;
     return (0, import_jsx_runtime.jsx)(BaseEdge, { id: _id, path, labelX, labelY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth });
   });
 }
@@ -35954,9 +35954,9 @@ var SmoothStepEdge = createSmoothStepEdge({ isInternal: false });
 var SmoothStepEdgeInternal = createSmoothStepEdge({ isInternal: true });
 SmoothStepEdge.displayName = "SmoothStepEdge";
 SmoothStepEdgeInternal.displayName = "SmoothStepEdgeInternal";
-function createStepEdge(params) {
+function createStepEdge(params2) {
   return (0, import_react2.memo)(({ id: id2, ...props }) => {
-    const _id = params.isInternal ? void 0 : id2;
+    const _id = params2.isInternal ? void 0 : id2;
     return (0, import_jsx_runtime.jsx)(SmoothStepEdge, { ...props, id: _id, pathOptions: (0, import_react2.useMemo)(() => ({ borderRadius: 0, offset: props.pathOptions?.offset }), [props.pathOptions?.offset]) });
   });
 }
@@ -35964,10 +35964,10 @@ var StepEdge = createStepEdge({ isInternal: false });
 var StepEdgeInternal = createStepEdge({ isInternal: true });
 StepEdge.displayName = "StepEdge";
 StepEdgeInternal.displayName = "StepEdgeInternal";
-function createStraightEdge(params) {
+function createStraightEdge(params2) {
   return (0, import_react2.memo)(({ id: id2, sourceX, sourceY, targetX, targetY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth }) => {
     const [path, labelX, labelY] = getStraightPath({ sourceX, sourceY, targetX, targetY });
-    const _id = params.isInternal ? void 0 : id2;
+    const _id = params2.isInternal ? void 0 : id2;
     return (0, import_jsx_runtime.jsx)(BaseEdge, { id: _id, path, labelX, labelY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth });
   });
 }
@@ -35975,7 +35975,7 @@ var StraightEdge = createStraightEdge({ isInternal: false });
 var StraightEdgeInternal = createStraightEdge({ isInternal: true });
 StraightEdge.displayName = "StraightEdge";
 StraightEdgeInternal.displayName = "StraightEdgeInternal";
-function createBezierEdge(params) {
+function createBezierEdge(params2) {
   return (0, import_react2.memo)(({ id: id2, sourceX, sourceY, targetX, targetY, sourcePosition = Position.Bottom, targetPosition = Position.Top, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, pathOptions, interactionWidth }) => {
     const [path, labelX, labelY] = getBezierPath({
       sourceX,
@@ -35986,7 +35986,7 @@ function createBezierEdge(params) {
       targetPosition,
       curvature: pathOptions?.curvature
     });
-    const _id = params.isInternal ? void 0 : id2;
+    const _id = params2.isInternal ? void 0 : id2;
     return (0, import_jsx_runtime.jsx)(BaseEdge, { id: _id, path, labelX, labelY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth });
   });
 }
@@ -36041,10 +36041,10 @@ function EdgeUpdateAnchors({ isReconnectable, reconnectRadius, edge, sourceX, so
       onReconnectEnd?.(evt, edge, oppositeHandle.type, connectionState);
     };
     const onConnectEdge = (connection) => onReconnect?.(edge, connection);
-    const _onConnectStart = (_event, params) => {
+    const _onConnectStart = (_event, params2) => {
       setReconnecting(true);
       onReconnectStart?.(event, edge, oppositeHandle.type);
-      onConnectStart?.(_event, params);
+      onConnectStart?.(_event, params2);
     };
     XYHandle.onPointerDown(event.nativeEvent, {
       autoPanOnConnect,
@@ -37651,7 +37651,9 @@ function NodeMasteryPanel({
   topicMasteryScore,
   lastEvalDirective,
   onModeSelect,
-  disabled
+  disabled,
+  interactionAxis,
+  onInteractionAxisChange
 }) {
   const dash = masteryDashboard || {};
   const { coverage, score } = resolveMasteryScore(
@@ -37660,14 +37662,14 @@ function NodeMasteryPanel({
   );
   const barPct = score > 0 ? Math.max(score, 4) : 0;
   const phase = dash.learning_phase || "intro_assessment";
-  const mode = dash.learning_mode || "lecture";
+  const mode2 = dash.learning_mode || "lecture";
   const st = dash.node_status || status || "unexplored";
   function modeBtn(id2, label, prefix) {
     return import_react6.default.createElement(
       "button",
       {
         type: "button",
-        className: `mastery-mode-btn${mode === id2 ? " active" : ""}`,
+        className: `mastery-mode-btn${mode2 === id2 ? " active" : ""}`,
         disabled,
         title: disabled ? "\u0414\u043E\u0436\u0434\u0438\u0442\u0435\u0441\u044C \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u043D\u043E\u0434\u044B" : void 0,
         onClick: () => {
@@ -37703,7 +37705,7 @@ function NodeMasteryPanel({
       { className: "mastery-phase" },
       PHASE_LABELS[phase] || phase,
       " \xB7 ",
-      MODE_LABELS[mode] || mode
+      MODE_LABELS[mode2] || mode2
     ),
     import_react6.default.createElement(CoverageWidget, {
       coverage,
@@ -37746,6 +37748,31 @@ function NodeMasteryPanel({
       "p",
       { className: "mastery-bridge muted" },
       dash.pathway_bridge
+    ),
+    onInteractionAxisChange && import_react6.default.createElement(
+      "div",
+      { className: "mastery-axis-row" },
+      import_react6.default.createElement("span", { className: "muted small" }, "\u0424\u043E\u0440\u043C\u0430\u0442: "),
+      import_react6.default.createElement(
+        "select",
+        {
+          className: "skill-mode-select mastery-axis-select",
+          value: interactionAxis || "lecture_self_check",
+          onChange: (e) => onInteractionAxisChange(e.target.value),
+          "aria-label": "\u041E\u0441\u044C \u0432\u0437\u0430\u0438\u043C\u043E\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F",
+          disabled
+        },
+        import_react6.default.createElement(
+          "option",
+          { value: "lecture_self_check" },
+          "\u{1F4D6} \u041B\u0435\u043A\u0446\u0438\u044F"
+        ),
+        import_react6.default.createElement(
+          "option",
+          { value: "topic_qna" },
+          "\u{1F4AC} Topic Q&A"
+        )
+      )
     ),
     import_react6.default.createElement("h4", { className: "mastery-modes-label" }, "\u0420\u0435\u0436\u0438\u043C \u0440\u0430\u0431\u043E\u0442\u044B"),
     import_react6.default.createElement(
@@ -37975,9 +38002,14 @@ function CurriculumInputBar({
   onGoalChange,
   sourcePolicy,
   onSourcePolicyChange,
+  controlAxis,
+  onControlAxisChange,
+  steeringMode,
+  onSteeringModeChange,
   activeCurriculumId,
   workspaceBusy,
   genStatus,
+  longWaitNotice,
   busyAction,
   onCreatePath,
   onExpandBranch,
@@ -37990,7 +38022,9 @@ function CurriculumInputBar({
     e.preventDefault();
     const text = (goal || "").trim();
     if (text.length < 8) return;
-    if (hasGraph) {
+    if (hasGraph && controlAxis === "steering") {
+      onCreateNew(text);
+    } else if (hasGraph) {
       onExpandBranch(text);
     } else {
       onCreatePath(text);
@@ -38035,15 +38069,77 @@ function CurriculumInputBar({
           "\u{1F9E0} \u041F\u043E\u043B\u043D\u044B\u0439 \u2014 \u043D\u0430\u0443\u043A\u0430 + \u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0430"
         )
       ),
+      import_react9.default.createElement(
+        "select",
+        {
+          className: "skill-mode-select",
+          value: controlAxis || "autopilot",
+          onChange: (e) => onControlAxisChange(e.target.value),
+          "aria-label": "\u041E\u0441\u044C \u0443\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u044F",
+          // БАГФИКС: раньше здесь стояло `|| hasGraph`, из-за чего селектор
+          // был заблокирован почти всегда — RoadmapDashboard на маунте сам
+          // подгружает последний активный курс из localStorage
+          // (readActiveCurriculumId), поэтому hasGraph чаще всего true уже
+          // на старте, а не только "после создания". control_axis нужен не
+          // только для формы при hasGraph===false, но и для кнопки
+          // "Создать новый" (onCreateNew -> runCreateNewWhileLoaded ->
+          // runCreatePath), которая доступна ИМЕННО при hasGraph===true —
+          // блокировка отсюда убивала Steering именно в этом, самом частом
+          // сценарии. sourcePolicy рядом (см. выше) блокируется только по
+          // workspaceBusy — делаем control_axis симметрично.
+          disabled: workspaceBusy
+        },
+        import_react9.default.createElement("option", { value: "autopilot" }, "\u{1F916} \u0410\u0432\u0442\u043E\u043F\u0438\u043B\u043E\u0442"),
+        import_react9.default.createElement(
+          "option",
+          { value: "steering" },
+          "\u{1F3AF} \u0428\u0442\u0443\u0440\u0432\u0430\u043B (HITL)"
+        )
+      ),
+      // Разделение Штурвала на Mode 1 (per_node) / Mode 2 (standalone_digest)
+      // — см. docs/STEERING_AND_TOPIC_QNA_ROADMAP.md, "Разделение на Mode
+      // 1/Mode 2". Селектор виден только при controlAxis==="steering" —
+      // Автопилоту он не нужен, у него нет под-режимов.
+      controlAxis === "steering" && import_react9.default.createElement(
+        "select",
+        {
+          className: "skill-mode-select",
+          value: steeringMode || "per_node",
+          onChange: (e) => onSteeringModeChange(e.target.value),
+          "aria-label": "\u0420\u0435\u0436\u0438\u043C \u0428\u0442\u0443\u0440\u0432\u0430\u043B\u0430",
+          disabled: workspaceBusy
+        },
+        import_react9.default.createElement(
+          "option",
+          { value: "per_node" },
+          "\u{1F5FA}\uFE0F \u041F\u043E \u043D\u043E\u0434\u0430\u043C \u2014 \u0433\u0440\u0430\u0444 + \u0442\u043E\u0447\u0435\u0447\u043D\u043E\u0435 \u0437\u0430\u0437\u0435\u043C\u043B\u0435\u043D\u0438\u0435"
+        ),
+        import_react9.default.createElement(
+          "option",
+          { value: "standalone_digest" },
+          "\u{1F4C4} \u041E\u0431\u0437\u043E\u0440 \u0442\u0435\u043C\u044B \u2014 \u0431\u0435\u0437 \u0433\u0440\u0430\u0444\u0430, \u043E\u0434\u0438\u043D \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442"
+        )
+      ),
       genStatus && import_react9.default.createElement(
         "p",
         { className: "muted skill-gen-status", role: "status" },
         genStatus
       ),
+      // Мягкое доп. уведомление после долгого ожидания (см. prompt.log,
+      // "UX-уведомление о длительной обработке") — НЕ заменяет genStatus/
+      // индикатор прогресса, просто дополняет его отдельной строкой.
+      longWaitNotice && import_react9.default.createElement(
+        "p",
+        { className: "muted skill-gen-status skill-gen-long-wait", role: "status" },
+        longWaitNotice
+      ),
       hasGraph ? import_react9.default.createElement(
         "div",
         { className: "skill-btn-group" },
-        import_react9.default.createElement(
+        // БАГФИКС: скрываем "Достроить ветку" при Штурвале — у него нет
+        // expand-эквивалента (см. onFormSubmit выше), кнопка иначе молча
+        // игнорировала бы выбор оси и запускала старый Autopilot-пайплайн.
+        controlAxis !== "steering" && import_react9.default.createElement(
           "button",
           {
             type: "button",
@@ -38083,7 +38179,7 @@ function CurriculumInputBar({
 }
 
 // NodeDrawer.js
-var import_react18 = __toESM(require_react(), 1);
+var import_react19 = __toESM(require_react(), 1);
 
 // llmTextRepair.js
 var NL_NOT_LATEX = /\\n(?!eq|ot|u|abla|eg|mid|otin|rightarrow|leftarrow|warrow|earrow|i|pm|subset|cap|cup|warrow|exists|cong|sim|propto|fancy|atural|egative)/g;
@@ -39124,33 +39220,37 @@ function linkifySourceAnchorsHtml(html, registry) {
 // api.js
 var API = "/api/v1";
 var LS_ACTIVE = "ke_skill_tree_active_curriculum";
-async function waitWorkJob(jobId, timeoutSec = 600) {
-  const r = await fetch(
-    `${API}/work-jobs/${encodeURIComponent(jobId)}/wait?timeout_sec=${timeoutSec}`
-  );
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({}));
-    throw new Error(err.detail || r.statusText);
-  }
-  const data = await r.json();
-  if (data.timed_out && !data.done) {
-    throw new Error(
-      "Worker \u043D\u0435 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B \u0437\u0430\u0434\u0430\u0447\u0443 \u0432 \u043E\u0442\u0432\u0435\u0434\u0451\u043D\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0442\u0435\u0440\u043C\u0438\u043D\u0430\u043B make dev (WORKER) \u0438 \u043F\u0435\u0440\u0435\u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u0435 dev."
+var WORK_JOB_POLL_TIMEOUT_SEC = 30;
+var WORK_JOB_LONG_WAIT_SEC = 300;
+async function waitWorkJob(jobId, opts = {}) {
+  const { onLongWait } = opts;
+  let elapsed = 0;
+  let notified = false;
+  for (; ; ) {
+    const r = await fetch(
+      `${API}/work-jobs/${encodeURIComponent(jobId)}/wait?timeout_sec=${WORK_JOB_POLL_TIMEOUT_SEC}`
     );
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || r.statusText);
+    }
+    const data = await r.json();
+    const job = data.job || data;
+    if (data.done) {
+      if (job.error) throw new Error(job.error);
+      if (job.status === "failed") throw new Error(job.error || "job failed");
+      return job;
+    }
+    elapsed += typeof data.waited_sec === "number" ? data.waited_sec : WORK_JOB_POLL_TIMEOUT_SEC;
+    if (!notified && elapsed >= WORK_JOB_LONG_WAIT_SEC) {
+      notified = true;
+      if (onLongWait) onLongWait();
+    }
   }
-  const job = data.job || data;
-  if (job.status === "running" || job.status === "pending") {
-    throw new Error(
-      "\u0417\u0430\u0434\u0430\u0447\u0430 \u0432\u0441\u0451 \u0435\u0449\u0451 \u0432 \u043E\u0447\u0435\u0440\u0435\u0434\u0438 (worker \u043D\u0435 \u043E\u0442\u0432\u0435\u0442\u0438\u043B). \u041F\u0435\u0440\u0435\u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u0435 make dev."
-    );
-  }
-  if (job.error) throw new Error(job.error);
-  if (job.status === "failed") throw new Error(job.error || "job failed");
-  return job;
 }
-async function resolveMaybeJobResponse(data) {
+async function resolveMaybeJobResponse(data, opts = {}) {
   if (data && data.job_id && data.status === "pending") {
-    const job = await waitWorkJob(data.job_id);
+    const job = await waitWorkJob(data.job_id, opts);
     return job.result;
   }
   return data;
@@ -39416,7 +39516,7 @@ function mergeNodeStatuses(curriculum, serverStatuses) {
   }
   return out;
 }
-async function createCurriculum(targetGoal, sourcePolicy) {
+async function createCurriculum(targetGoal, sourcePolicy, opts = {}) {
   const policy = sourcePolicy || "practical_only";
   const depth = policy === "hybrid" || policy === "academic_only" ? "Deep Mechanics" : "Standard";
   const r = await fetch(`${API}/curriculum/create`, {
@@ -39437,12 +39537,12 @@ async function createCurriculum(targetGoal, sourcePolicy) {
   const data = await r.json();
   if (data.graph) return data.graph;
   if (data.job_id) {
-    const job = await waitWorkJob(data.job_id);
+    const job = await waitWorkJob(data.job_id, opts);
     return job.result;
   }
   return data;
 }
-async function expandCurriculum(curriculumId, expansionPrompt, sourcePolicy) {
+async function expandCurriculum(curriculumId, expansionPrompt, sourcePolicy, opts = {}) {
   const policy = sourcePolicy || "practical_only";
   const r = await fetch(`${API}/curriculum/expand`, {
     method: "POST",
@@ -39461,10 +39561,60 @@ async function expandCurriculum(curriculumId, expansionPrompt, sourcePolicy) {
   const data = await r.json();
   if (data.graph) return data.graph;
   if (data.job_id) {
-    const job = await waitWorkJob(data.job_id);
+    const job = await waitWorkJob(data.job_id, opts);
     return job.result;
   }
   return data;
+}
+async function steeringGenerate(payload) {
+  const r = await fetch(`${API}/curriculum/steering/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+async function steeringApproveGate1(workJobId, approvedUrls) {
+  const r = await fetch(`${API}/curriculum/steering/approve-gate1`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      work_job_id: workJobId,
+      approved_urls: approvedUrls
+    })
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+async function steeringApproveGate2(workJobId, finalApprovedUrls) {
+  const r = await fetch(`${API}/curriculum/steering/approve-gate2`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      work_job_id: workJobId,
+      final_approved_urls: finalApprovedUrls
+    })
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+async function steeringGetStatus(workJobId) {
+  const r = await fetch(`${API}/curriculum/steering/${workJobId}/status`);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
 }
 async function fetchNodeSourceRegistry(curriculumId, nodeId) {
   const r = await fetch(
@@ -39473,7 +39623,63 @@ async function fetchNodeSourceRegistry(curriculumId, nodeId) {
   if (!r.ok) return { source_registry: [] };
   return r.json();
 }
-async function nodeRestart(curriculumId, nodeData) {
+async function nodeGroundingDiscover(curriculumId, nodeData) {
+  const r = await fetch(`${API}/node/grounding-discover`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ curriculum_id: curriculumId, node_data: nodeData })
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+async function nodeGroundingDigest(curriculumId, nodeId, approvedUrls) {
+  const r = await fetch(`${API}/node/grounding-digest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      curriculum_id: curriculumId,
+      node_id: nodeId,
+      approved_urls: approvedUrls
+    })
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+async function nodeGroundingFinalize(curriculumId, nodeId, approvedUrls) {
+  const r = await fetch(`${API}/node/grounding-finalize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      curriculum_id: curriculumId,
+      node_id: nodeId,
+      approved_urls: approvedUrls
+    })
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+async function ensureSteeringSourcesIngested(curriculumId, nodeData) {
+  const r = await fetch(`${API}/node/ensure-steering-sources`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ curriculum_id: curriculumId, node_data: nodeData })
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+async function nodeRestart(curriculumId, nodeData, opts = {}) {
   const r = await fetch(`${API}/node/restart`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -39483,7 +39689,24 @@ async function nodeRestart(curriculumId, nodeData) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return resolveMaybeJobResponse(await r.json());
+  return resolveMaybeJobResponse(await r.json(), opts);
+}
+async function nodeChat(curriculumId, nodeData, userMessage, opts = {}, interactionAxis = "lecture_self_check") {
+  const r = await fetch(`${API}/node/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      curriculum_id: curriculumId,
+      node_data: nodeData,
+      user_message: userMessage,
+      interaction_axis: interactionAxis
+    })
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return resolveMaybeJobResponse(await r.json(), opts);
 }
 async function readNodeSsePost(url, body, onEvent, { signal } = {}) {
   const r = await fetch(url, {
@@ -39516,21 +39739,26 @@ async function readNodeSsePost(url, body, onEvent, { signal } = {}) {
     }
   }
 }
-async function nodeChatStream(curriculumId, nodeData, userMessage, onEvent) {
+async function nodeChatStream(curriculumId, nodeData, userMessage, onEvent, interactionAxis = "lecture_self_check") {
   return readNodeSsePost(
     `${API}/node/chat-stream`,
     {
       curriculum_id: curriculumId,
       node_data: nodeData,
-      user_message: userMessage
+      user_message: userMessage,
+      interaction_axis: interactionAxis
     },
     onEvent
   );
 }
-async function nodeInitStream(curriculumId, nodeData, onEvent) {
+async function nodeInitStream(curriculumId, nodeData, onEvent, interactionAxis = "lecture_self_check") {
   return readNodeSsePost(
     `${API}/node/init-stream`,
-    { curriculum_id: curriculumId, node_data: nodeData },
+    {
+      curriculum_id: curriculumId,
+      node_data: nodeData,
+      interaction_axis: interactionAxis
+    },
     onEvent
   );
 }
@@ -39597,7 +39825,12 @@ function toNodeDataInput(node) {
     source_ref: node.source_ref || null,
     node_curriculum_breakdown: node.node_curriculum_breakdown || null,
     primary_source_id: node.primary_source_id || "",
-    resource_urls: node.resource_urls || []
+    resource_urls: node.resource_urls || [],
+    // node_kind="steering_standalone" (Штурвал Mode 2) снимает капу в 4
+    // источника на бэкенде (см. NodeDataInput в node_deep_dive/schemas.py) —
+    // без этого поля узел со всеми Gate-2-approved источниками падал бы на
+    // валидации (list should have at most 4 items).
+    node_kind: node.node_kind || "standard"
   };
 }
 
@@ -41174,7 +41407,7 @@ function DiagramBlock({ diagram, nodeId, compact }) {
 
 // ResourceCard.js
 var import_react15 = __toESM(require_react(), 1);
-function ResourceCard2({ item }) {
+function ResourceCard({ item }) {
   if (!item) return null;
   const title = (item.title || item.source_name || item.url || "").trim();
   const sourceName = (item.source_name || "").trim();
@@ -41262,7 +41495,7 @@ function MaterialItemBody({ item, nodeId }) {
       language: payload.language || void 0
     });
   }
-  return import_react17.default.createElement(ResourceCard2, { item: payload });
+  return import_react17.default.createElement(ResourceCard, { item: payload });
 }
 function NodeMaterialsPanel({
   items,
@@ -41414,6 +41647,258 @@ function CarouselView({ items, activeIndex, nodeId }) {
           onClick: () => setIndex(i)
         })
       )
+    )
+  );
+}
+
+// SteeringGatePanel.js
+var import_react18 = __toESM(require_react(), 1);
+function sourceBadge(hubOrTier) {
+  const h = (hubOrTier || "").toLowerCase();
+  if (h === "habr" || h.includes("habr")) {
+    return { className: "source-tier-badge searxng", label: "Habr" };
+  }
+  if (h === "consensus") {
+    return { className: "source-tier-badge consensus", label: "Consensus" };
+  }
+  if (h === "arxiv" || h === "semantic_scholar" || h.includes("arxiv") || h.includes("semantic") || h.includes("consensus")) {
+    return { className: "source-tier-badge academic", label: "Academic" };
+  }
+  return { className: "source-tier-badge exa", label: "Exa" };
+}
+function Gate1Candidate({ item, checked, disabled, onToggle }) {
+  const badge = sourceBadge(item.source_tier || item.source_hub);
+  const bodyText = item.gist || item.lead_paragraph || "";
+  return import_react18.default.createElement(
+    "label",
+    {
+      className: "steering-gate-card" + (disabled ? " steering-gate-card-disabled" : "")
+    },
+    import_react18.default.createElement("input", {
+      type: "checkbox",
+      checked,
+      disabled: Boolean(disabled),
+      onChange: () => onToggle(item.url)
+    }),
+    import_react18.default.createElement(
+      "div",
+      { className: "steering-gate-card-body" },
+      import_react18.default.createElement(
+        "div",
+        { className: "steering-gate-card-head" },
+        import_react18.default.createElement("span", { className: badge.className }, badge.label),
+        import_react18.default.createElement(
+          "span",
+          { className: "steering-gate-card-title" },
+          item.title
+        ),
+        item.topic && import_react18.default.createElement("span", { className: "muted small" }, item.topic)
+      ),
+      import_react18.default.createElement("p", { className: "muted small" }, bodyText),
+      (item.tech_stack || []).length > 0 && import_react18.default.createElement(
+        "div",
+        { className: "drawer-meta" },
+        item.tech_stack.map(
+          (t) => import_react18.default.createElement("span", { key: t, className: "chip" }, t)
+        )
+      ),
+      import_react18.default.createElement(
+        "a",
+        {
+          className: "source-link small",
+          href: item.url,
+          target: "_blank",
+          rel: "noopener noreferrer"
+        },
+        item.url
+      )
+    )
+  );
+}
+function Gate2Digest({ item, checked, onToggle }) {
+  const isNodeDigest = item.architecture !== void 0;
+  return import_react18.default.createElement(
+    "label",
+    { className: "steering-gate-card" },
+    import_react18.default.createElement("input", {
+      type: "checkbox",
+      checked,
+      onChange: () => onToggle(item.url)
+    }),
+    import_react18.default.createElement(
+      "div",
+      { className: "steering-gate-card-body" },
+      import_react18.default.createElement(
+        "div",
+        { className: "steering-gate-card-head" },
+        import_react18.default.createElement(
+          "span",
+          { className: "steering-gate-card-title" },
+          item.title
+        ),
+        item.company_or_author && import_react18.default.createElement(
+          "span",
+          { className: "muted small" },
+          item.company_or_author
+        )
+      ),
+      isNodeDigest ? import_react18.default.createElement(
+        import_react18.default.Fragment,
+        null,
+        import_react18.default.createElement(
+          "p",
+          null,
+          import_react18.default.createElement("strong", null, "\u0410\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u0430: "),
+          item.architecture
+        ),
+        import_react18.default.createElement(
+          "p",
+          null,
+          import_react18.default.createElement("strong", null, "\u041F\u0440\u0430\u043A\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u043A\u0435\u0439\u0441: "),
+          item.practical_case
+        ),
+        import_react18.default.createElement(
+          "p",
+          { className: "muted small" },
+          import_react18.default.createElement("strong", null, "\u041E\u0433\u0440\u0430\u043D\u0438\u0447\u0435\u043D\u0438\u044F: "),
+          item.limitations
+        )
+      ) : import_react18.default.createElement(
+        import_react18.default.Fragment,
+        null,
+        import_react18.default.createElement("p", null, item.two_sentence_summary),
+        item.problem_solved && import_react18.default.createElement(
+          "p",
+          { className: "muted small" },
+          `\u041F\u0440\u043E\u0431\u043B\u0435\u043C\u0430: ${item.problem_solved}`
+        )
+      ),
+      (item.main_tech_stack || []).length > 0 && import_react18.default.createElement(
+        "div",
+        { className: "drawer-meta" },
+        item.main_tech_stack.map(
+          (t) => import_react18.default.createElement("span", { key: t, className: "chip" }, t)
+        )
+      ),
+      // Раньше здесь не было ссылки на источник вообще (в отличие от
+      // Gate1Candidate) — на Gate 2 пользователь не мог проверить, на
+      // какую именно статью ссылается дайджест, ни открыть оригинал.
+      import_react18.default.createElement(
+        "a",
+        {
+          className: "source-link small",
+          href: item.url,
+          target: "_blank",
+          rel: "noopener noreferrer"
+        },
+        item.url
+      )
+    )
+  );
+}
+function SteeringGatePanel({
+  status,
+  candidates,
+  digests,
+  busy,
+  onApprove,
+  maxApproved,
+  kind,
+  // "course" (default, Штурвал) | "node" (Node Grounding Gate)
+  approvedCount
+  // сколько URL было утверждено на Gate 1 (для Gate 2 hint)
+}) {
+  const isGate1 = status === "awaiting_gate_1";
+  const isGate2 = status === "awaiting_gate_2";
+  const items = isGate1 ? candidates || [] : isGate2 ? digests || [] : [];
+  const itemUrls = (0, import_react18.useMemo)(() => items.map((it) => it.url), [items]);
+  const hasCap = typeof maxApproved === "number" && maxApproved > 0;
+  const [selected2, setSelected] = (0, import_react18.useState)(
+    () => isGate2 ? new Set(itemUrls) : /* @__PURE__ */ new Set()
+  );
+  (0, import_react18.useEffect)(() => {
+    setSelected(isGate2 ? new Set(itemUrls) : /* @__PURE__ */ new Set());
+  }, [itemUrls.join("|"), isGate2]);
+  if (!isGate1 && !isGate2) return null;
+  function toggle(url) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) {
+        next.delete(url);
+        return next;
+      }
+      if (hasCap && next.size >= maxApproved) return prev;
+      next.add(url);
+      return next;
+    });
+  }
+  const selectedUrls = itemUrls.filter((u) => selected2.has(u));
+  const atCap = hasCap && selectedUrls.length >= maxApproved;
+  return import_react18.default.createElement(
+    "div",
+    { className: "drawer-section steering-gate-panel" },
+    import_react18.default.createElement(
+      "h3",
+      null,
+      isGate1 ? "Gate 1 \xB7 \u041E\u0442\u0431\u043E\u0440 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432" : "Gate 2 \xB7 \u041E\u0431\u0437\u043E\u0440 \u0432\u044B\u0436\u0438\u043C\u043E\u043A"
+    ),
+    import_react18.default.createElement(
+      "p",
+      { className: "muted small drawer-hint" },
+      isGate1 ? kind === "node" ? "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0441\u0442\u0430\u0442\u044C\u0438, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u043E\u0439\u0434\u0443\u0442 \u0432 \u0434\u0430\u0439\u0434\u0436\u0435\u0441\u0442 (\u0448\u0430\u0433 2 \u2014 \u0442\u043E\u0447\u0435\u0447\u043D\u044B\u0439 \u0440\u0430\u0437\u0431\u043E\u0440)." : "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0441\u0442\u0430\u0442\u044C\u0438, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u043E\u0439\u0434\u0443\u0442 \u0432 \u0434\u0430\u0439\u0434\u0436\u0435\u0441\u0442 (\u0448\u0430\u0433 2 \u2014 Batch Digest)." : kind === "node" ? "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0441\u0442\u0430\u0442\u044C\u0438, \u0434\u0430\u0439\u0434\u0436\u0435\u0441\u0442 \u043A\u043E\u0442\u043E\u0440\u044B\u0445 \u0432\u043E\u0439\u0434\u0451\u0442 \u0432 \u0431\u0430\u0437\u0443 \u0437\u043D\u0430\u043D\u0438\u0439 \u043D\u043E\u0434\u044B." : "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0441\u0442\u0430\u0442\u044C\u0438, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u043E\u0439\u0434\u0443\u0442 \u0432 \u0444\u0438\u043D\u0430\u043B\u044C\u043D\u0443\u044E \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044E \u043A\u0443\u0440\u0441\u0430."
+    ),
+    hasCap && import_react18.default.createElement(
+      "p",
+      { className: "muted small steering-gate-cap-hint" },
+      `\u0412\u044B\u0431\u0440\u0430\u043D\u043E ${selectedUrls.length} \u0438\u0437 ${maxApproved} \u043C\u0430\u043A\u0441\u0438\u043C\u0443\u043C.`
+    ),
+    !hasCap && items.length > 0 && selectedUrls.length === 0 && import_react18.default.createElement(
+      "p",
+      { className: "muted small steering-gate-cap-hint" },
+      "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0445\u043E\u0442\u044F \u0431\u044B \u043E\u0434\u043D\u0443 \u0441\u0442\u0430\u0442\u044C\u044E, \u0447\u0442\u043E\u0431\u044B \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C."
+    ),
+    // На Gate 1 могли утвердить дубли одной и той же статьи (та же
+    // статья найдена через разные хабы — дедуп добавлен, но старые сессии
+    // и редкие остаточные случаи возможны) или URL не открылся (сеть/
+    // блокировка сайта) — дайджест на него просто не появится. Без этой
+    // подсказки расхождение выглядит как "статьи пропали без причины".
+    isGate2 && typeof approvedCount === "number" && approvedCount > items.length && import_react18.default.createElement(
+      "p",
+      { className: "muted small steering-gate-cap-hint" },
+      `\u0418\u0437 ${approvedCount} \u0443\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D\u043D\u044B\u0445 \u043D\u0430 Gate 1 \u0434\u0430\u0439\u0434\u0436\u0435\u0441\u0442 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0434\u043B\u044F ${items.length} \u2014 \u043E\u0441\u0442\u0430\u043B\u044C\u043D\u044B\u0435 \u043D\u0435 \u043E\u0442\u043A\u0440\u044B\u043B\u0438\u0441\u044C (\u0434\u0443\u0431\u043B\u0438 \u0442\u043E\u0439 \u0436\u0435 \u0441\u0442\u0430\u0442\u044C\u0438 \u0438\u043B\u0438 \u0441\u0430\u0439\u0442 \u0437\u0430\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043B \u0434\u043E\u0441\u0442\u0443\u043F) \u0438 \u043D\u0435 \u043F\u043E\u044F\u0432\u044F\u0442\u0441\u044F \u0437\u0434\u0435\u0441\u044C.`
+    ),
+    !items.length && import_react18.default.createElement(
+      "p",
+      { className: "muted" },
+      "\u041A\u0430\u043D\u0434\u0438\u0434\u0430\u0442\u043E\u0432 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E \u2014 \u043F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0434\u0440\u0443\u0433\u0443\u044E \u0444\u043E\u0440\u043C\u0443\u043B\u0438\u0440\u043E\u0432\u043A\u0443 \u0446\u0435\u043B\u0438."
+    ),
+    import_react18.default.createElement(
+      "div",
+      { className: "steering-gate-list" },
+      items.map(
+        (item) => isGate1 ? import_react18.default.createElement(Gate1Candidate, {
+          key: item.url,
+          item,
+          checked: selected2.has(item.url),
+          disabled: atCap && !selected2.has(item.url),
+          onToggle: toggle
+        }) : import_react18.default.createElement(Gate2Digest, {
+          key: item.url,
+          item,
+          checked: selected2.has(item.url),
+          onToggle: toggle
+        })
+      )
+    ),
+    items.length > 0 && import_react18.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: "skill-btn-primary steering-gate-approve-btn",
+        disabled: Boolean(busy) || selectedUrls.length === 0 || hasCap && selectedUrls.length > maxApproved,
+        onClick: () => onApprove(selectedUrls)
+      },
+      busy ? "\u2026" : isGate1 ? `\u0423\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 (Gate 1) \xB7 ${selectedUrls.length}` : kind === "node" ? `\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0432 \u043D\u043E\u0434\u0443 (Gate 2) \xB7 ${selectedUrls.length}` : `\u0417\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044E (Gate 2) \xB7 ${selectedUrls.length}`
     )
   );
 }
@@ -41643,21 +42128,21 @@ function resolveMappedSourceRows(selectedNode, curriculum, session) {
 function renderMappedSourceRow(row) {
   const badge = sourceTierBadge(row.source_tier);
   const label = (row.title || row.source_id).trim();
-  return import_react18.default.createElement(
+  return import_react19.default.createElement(
     "li",
     { key: row.source_id },
-    badge && import_react18.default.createElement(
+    badge && import_react19.default.createElement(
       "span",
       { className: badge.className },
       badge.label === "Consensus" ? "\u{1F7E3} " : "\u{1F7E2} ",
       `[${badge.label}]`
     ),
-    import_react18.default.createElement(
+    import_react19.default.createElement(
       "span",
       { className: "source-anchor-tag" },
       `[${row.source_id}]`
     ),
-    row.url ? import_react18.default.createElement(
+    row.url ? import_react19.default.createElement(
       "a",
       {
         className: "source-link",
@@ -41666,8 +42151,8 @@ function renderMappedSourceRow(row) {
         rel: "noopener noreferrer"
       },
       label
-    ) : import_react18.default.createElement("span", null, label),
-    !row.url && import_react18.default.createElement(
+    ) : import_react19.default.createElement("span", null, label),
+    !row.url && import_react19.default.createElement(
       "span",
       { className: "muted small" },
       " \xB7 URL \u043D\u0435 \u0432 \u0440\u0435\u0435\u0441\u0442\u0440\u0435 \u2014 \u0441\u043C. \xAB\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u043A\u0443\u0440\u0441\u0430\xBB"
@@ -41676,44 +42161,44 @@ function renderMappedSourceRow(row) {
 }
 function renderCourseKnowledgePool(selectedNode, curriculum) {
   const { library } = courseLibraryIndex(curriculum);
-  return import_react18.default.createElement(
+  return import_react19.default.createElement(
     "details",
     { className: "drawer-section knowledge-pool-panel" },
-    import_react18.default.createElement(
+    import_react19.default.createElement(
       "summary",
       { className: "knowledge-pool-summary" },
       "\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u043A\u0443\u0440\u0441\u0430 (Knowledge Pool)",
-      import_react18.default.createElement(
+      import_react19.default.createElement(
         "span",
         { className: "muted small" },
         ` \xB7 ${library.length} \u0432 \u0440\u0435\u0435\u0441\u0442\u0440\u0435, \u043D\u0435 \u0441\u0435\u0441\u0441\u0438\u044F \u043D\u043E\u0434\u044B`
       )
     ),
-    import_react18.default.createElement(
+    import_react19.default.createElement(
       "p",
       { className: "muted small drawer-hint" },
       "\u041E\u0431\u0449\u0438\u0439 \u043F\u0443\u043B \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u0430. \u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0442\u0435\u043A\u0443\u0449\u0435\u0439 \u043D\u043E\u0434\u044B \u2014 \u0442\u043E\u043B\u044C\u043A\u043E \u0432 \u0431\u043B\u043E\u043A\u0435 \xAB\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0432 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0435\xBB \u043D\u0438\u0436\u0435."
     ),
-    import_react18.default.createElement(
+    import_react19.default.createElement(
       "ul",
       { className: "source-registry-list course-library-list" },
       library.map((entry) => {
         const badge = sourceTierBadge(entry.source_tier);
-        return import_react18.default.createElement(
+        return import_react19.default.createElement(
           "li",
           { key: entry.source_id || entry.url },
-          badge && import_react18.default.createElement(
+          badge && import_react19.default.createElement(
             "span",
             { className: badge.className },
             badge.label === "Consensus" ? "\u{1F7E3} " : "\u{1F7E2} ",
             `[${badge.label}]`
           ),
-          import_react18.default.createElement(
+          import_react19.default.createElement(
             "span",
             { className: "source-anchor-tag" },
             `[${entry.source_id}]`
           ),
-          entry.url ? import_react18.default.createElement(
+          entry.url ? import_react19.default.createElement(
             "a",
             {
               className: "source-link",
@@ -41722,8 +42207,8 @@ function renderCourseKnowledgePool(selectedNode, curriculum) {
               rel: "noopener noreferrer"
             },
             entry.title || entry.url
-          ) : import_react18.default.createElement("span", null, entry.title || "source"),
-          entry.whitelist_domain && import_react18.default.createElement(
+          ) : import_react19.default.createElement("span", null, entry.title || "source"),
+          entry.whitelist_domain && import_react19.default.createElement(
             "span",
             { className: "muted small" },
             ` \xB7 ${entry.whitelist_domain}`
@@ -41742,23 +42227,23 @@ function renderRouteCurriculumMaterials(selectedNode, curriculum, session) {
   const mappedRows = resolveMappedSourceRows(selectedNode, curriculum, session);
   const learningGoal = (selectedNode?.learning_goal || "").trim();
   if (!lm && !lres.length && !mappedRows.length && !learningGoal) return null;
-  return import_react18.default.createElement(
+  return import_react19.default.createElement(
     "div",
     { className: "drawer-section route-curriculum-sources" },
-    learningGoal && import_react18.default.createElement(
+    learningGoal && import_react19.default.createElement(
       "p",
       { className: "muted small node-learning-goal" },
       `\u0426\u0435\u043B\u044C \u043D\u043E\u0434\u044B: ${learningGoal}`
     ),
-    mappedRows.length > 0 && import_react18.default.createElement(
+    mappedRows.length > 0 && import_react19.default.createElement(
       "div",
       { className: "drawer-subsection" },
-      import_react18.default.createElement(
+      import_react19.default.createElement(
         "h4",
         { className: "drawer-subtitle" },
         "\u0410\u0434\u0440\u0435\u0441\u0430\u0446\u0438\u044F \u043D\u043E\u0434\u044B"
       ),
-      import_react18.default.createElement(
+      import_react19.default.createElement(
         "ul",
         { className: "source-registry-list mapped-sources" },
         mappedRows.map((row) => {
@@ -41767,20 +42252,20 @@ function renderRouteCurriculumMaterials(selectedNode, curriculum, session) {
         })
       )
     ),
-    lm && import_react18.default.createElement(
+    lm && import_react19.default.createElement(
       "div",
       { className: "drawer-subsection" },
-      import_react18.default.createElement("h4", { className: "drawer-subtitle" }, "\u0424\u0443\u043D\u0434\u0430\u043C\u0435\u043D\u0442 \u043D\u043E\u0434\u044B"),
-      linked && import_react18.default.createElement(
+      import_react19.default.createElement("h4", { className: "drawer-subtitle" }, "\u0424\u0443\u043D\u0434\u0430\u043C\u0435\u043D\u0442 \u043D\u043E\u0434\u044B"),
+      linked && import_react19.default.createElement(
         "p",
         { className: "muted small" },
         "\u0421\u0441\u044B\u043B\u043A\u0430 \u043D\u0430 \u0440\u0435\u0435\u0441\u0442\u0440: ",
-        import_react18.default.createElement(
+        import_react19.default.createElement(
           "span",
           { className: "source-anchor-tag" },
           `[${linked.source_id}]`
         ),
-        linked.url ? import_react18.default.createElement(
+        linked.url ? import_react19.default.createElement(
           "a",
           {
             className: "source-link",
@@ -41789,24 +42274,24 @@ function renderRouteCurriculumMaterials(selectedNode, curriculum, session) {
             rel: "noopener noreferrer"
           },
           linked.title || linked.source_name || linked.url
-        ) : import_react18.default.createElement("span", null, linked.title || linked.source_id)
+        ) : import_react19.default.createElement("span", null, linked.title || linked.source_id)
       ),
-      import_react18.default.createElement("p", null, lm.source_name),
-      import_react18.default.createElement("p", { className: "muted" }, lm.chapter_or_article),
-      (lm.core_concepts || []).length > 0 && import_react18.default.createElement(
+      import_react19.default.createElement("p", null, lm.source_name),
+      import_react19.default.createElement("p", { className: "muted" }, lm.chapter_or_article),
+      (lm.core_concepts || []).length > 0 && import_react19.default.createElement(
         "ul",
         { className: "drawer-concepts" },
-        lm.core_concepts.map((c) => import_react18.default.createElement("li", { key: c }, c))
+        lm.core_concepts.map((c) => import_react19.default.createElement("li", { key: c }, c))
       )
     ),
-    lres.length > 0 && import_react18.default.createElement(
+    lres.length > 0 && import_react19.default.createElement(
       "div",
       { className: "drawer-subsection" },
-      import_react18.default.createElement("h4", { className: "drawer-subtitle" }, "\u0421\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0447\u0442\u0435\u043D\u0438\u0435"),
-      import_react18.default.createElement(
+      import_react19.default.createElement("h4", { className: "drawer-subtitle" }, "\u0421\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0447\u0442\u0435\u043D\u0438\u0435"),
+      import_react19.default.createElement(
         "div",
         { className: "resource-card-list" },
-        lres.map((r, i) => import_react18.default.createElement(ResourceCard, { key: i, item: r }))
+        lres.map((r, i) => import_react19.default.createElement(ResourceCard, { key: i, item: r }))
       )
     )
   );
@@ -41825,11 +42310,14 @@ function NodeDrawer({
   sessions,
   selectedMaterialId,
   materialViewMode,
-  onMaterialViewModeChange
+  onMaterialViewModeChange,
+  onInteractionAxisChange,
+  onGateApprove,
+  onNodeGateApprove
 }) {
-  const materialRef = (0, import_react18.useRef)(null);
+  const materialRef = (0, import_react19.useRef)(null);
   if (!selectedNode) {
-    return import_react18.default.createElement(
+    return import_react19.default.createElement(
       "aside",
       { className: "node-drawer empty" },
       "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u0438\u043B\u0438 \u0441\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u0443\u0439\u0442\u0435 \u0443\u0447\u0435\u0431\u043D\u044B\u0439 \u043F\u0443\u0442\u044C."
@@ -41840,10 +42328,10 @@ function NodeDrawer({
   const registry = session?.sourceRegistry || [];
   const materialItems = flattenMaterials(normalizeNodeMaterials(content));
   const nodeData = toNodeDataInput(selectedNode);
-  return import_react18.default.createElement(
+  return import_react19.default.createElement(
     "aside",
     { className: "node-drawer" },
-    import_react18.default.createElement(NodeSelectionExplain, {
+    import_react19.default.createElement(NodeSelectionExplain, {
       curriculumId: curriculum.curriculum_id,
       nodeData,
       containerRef: materialRef,
@@ -41851,40 +42339,60 @@ function NodeDrawer({
         content.summary || content.summary_html || materialItems.length
       )
     }),
-    import_react18.default.createElement(
+    import_react19.default.createElement(
       "div",
       { className: "drawer-scroll node-selectable-material", ref: materialRef },
-      import_react18.default.createElement(
+      import_react19.default.createElement(
         "div",
         { className: "drawer-header" },
-        import_react18.default.createElement("h2", null, selectedNode.title),
-        import_react18.default.createElement(NodeMasteryPanel, {
+        import_react19.default.createElement("h2", null, selectedNode.title),
+        import_react19.default.createElement(NodeMasteryPanel, {
           status: st,
           masteryDashboard: session?.masteryDashboard,
           topicMasteryScore: session?.topicMasteryScore,
           lastEvalDirective: session?.lastEvalDirective,
           onModeSelect,
-          disabled: composeLocked
+          disabled: composeLocked,
+          interactionAxis: session?.interactionAxis,
+          onInteractionAxisChange: onInteractionAxisChange ? (axis) => onInteractionAxisChange(selectedNode.node_id, axis) : void 0
         }),
-        import_react18.default.createElement(
+        session?.steeringStatus && import_react19.default.createElement(SteeringGatePanel, {
+          status: session.steeringStatus,
+          candidates: session.steeringCandidates,
+          digests: session.steeringDigests,
+          busy: composeLocked || nodeGenerating,
+          approvedCount: session.steeringApprovedCount,
+          onApprove: onGateApprove
+        }),
+        session?.nodeGateStatus && import_react19.default.createElement(SteeringGatePanel, {
+          kind: "node",
+          status: session.nodeGateStatus,
+          candidates: session.nodeGateCandidates,
+          digests: session.nodeGateDigests,
+          busy: composeLocked || nodeGenerating,
+          maxApproved: 4,
+          approvedCount: session.nodeGateApprovedCount,
+          onApprove: onNodeGateApprove
+        }),
+        import_react19.default.createElement(
           "div",
           { className: "drawer-meta" },
-          import_react18.default.createElement("span", { className: "chip" }, selectedNode.layer),
-          import_react18.default.createElement("span", { className: "chip" }, st),
-          selectedNode.category && import_react18.default.createElement("span", { className: "chip" }, selectedNode.category)
+          import_react19.default.createElement("span", { className: "chip" }, selectedNode.layer),
+          import_react19.default.createElement("span", { className: "chip" }, st),
+          selectedNode.category && import_react19.default.createElement("span", { className: "chip" }, selectedNode.category)
         ),
         renderRouteCurriculumMaterials(selectedNode, curriculum, session),
-        (selectedNode.prerequisites || []).length > 0 && import_react18.default.createElement(
+        (selectedNode.prerequisites || []).length > 0 && import_react19.default.createElement(
           "div",
           { className: "drawer-section" },
-          import_react18.default.createElement("h3", null, "\u041F\u0440\u0435\u0434\u0448\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0435 \u0442\u0435\u043C\u044B"),
-          import_react18.default.createElement(
+          import_react19.default.createElement("h3", null, "\u041F\u0440\u0435\u0434\u0448\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0435 \u0442\u0435\u043C\u044B"),
+          import_react19.default.createElement(
             "div",
             { className: "drawer-meta" },
             selectedNode.prerequisites.map((pid) => {
               const pre = curriculum.nodes.find((n) => n.node_id === pid);
               const preInit = Boolean(sessions?.[pid]?.initialized);
-              return import_react18.default.createElement(
+              return import_react19.default.createElement(
                 "span",
                 {
                   key: pid,
@@ -41902,34 +42410,34 @@ function NodeDrawer({
           )
         )
       ),
-      nodeGenerating && import_react18.default.createElement(
+      nodeGenerating && import_react19.default.createElement(
         "p",
         { className: "muted drawer-gen-hint" },
         "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043D\u043E\u0434\u044B\u2026 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B \u043D\u0438\u0436\u0435 \u043C\u043E\u0436\u043D\u043E \u0447\u0438\u0442\u0430\u0442\u044C \u0438 \u043F\u0440\u043E\u043A\u0440\u0443\u0447\u0438\u0432\u0430\u0442\u044C."
       ),
-      content.summary && import_react18.default.createElement(
+      content.summary && import_react19.default.createElement(
         "div",
         { className: "drawer-section node-selectable-material" },
-        import_react18.default.createElement("h3", null, "\u0421\u0443\u0442\u044C \u043C\u0435\u0445\u0430\u043D\u0438\u043A\u0438"),
-        import_react18.default.createElement(
+        import_react19.default.createElement("h3", null, "\u0421\u0443\u0442\u044C \u043C\u0435\u0445\u0430\u043D\u0438\u043A\u0438"),
+        import_react19.default.createElement(
           "p",
           { className: "muted small drawer-hint" },
           "\u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u2014 \xAB\u041E\u0431\u044A\u044F\u0441\u043D\u0438\u0442\u044C\xBB \u0438 \u0441\u043B\u043E\u0436\u043D\u044B\u0435 \u0432\u043E\u043F\u0440\u043E\u0441\u044B, \u043A\u0430\u043A \u0432 \u043E\u0431\u0437\u043E\u0440\u0435 \u0430\u043D\u0430\u043B\u0438\u0437\u0430."
         ),
-        (content.summary_html || "").trim() ? import_react18.default.createElement(LlmHtmlBlock, {
+        (content.summary_html || "").trim() ? import_react19.default.createElement(LlmHtmlBlock, {
           html: content.summary_html,
           className: "drawer-summary md-body"
-        }) : structuredAnalysisToHtml(content.summary || "") ? import_react18.default.createElement(LlmHtmlBlock, {
+        }) : structuredAnalysisToHtml(content.summary || "") ? import_react19.default.createElement(LlmHtmlBlock, {
           html: structuredAnalysisToHtml(content.summary || ""),
           className: "drawer-summary md-body"
-        }) : import_react18.default.createElement(
+        }) : import_react19.default.createElement(
           "div",
           { className: "drawer-summary" },
           content.summary
         )
       ),
-      import_react18.default.createElement(SourceRegistryList, { registry }),
-      import_react18.default.createElement(NodeMaterialsPanel, {
+      import_react19.default.createElement(SourceRegistryList, { registry }),
+      import_react19.default.createElement(NodeMaterialsPanel, {
         items: materialItems,
         viewMode: materialViewMode || "list",
         onViewModeChange: onMaterialViewModeChange,
@@ -41937,10 +42445,10 @@ function NodeDrawer({
         nodeId: selectedNode.node_id
       }),
       renderCourseKnowledgePool(selectedNode, curriculum),
-      import_react18.default.createElement(
+      import_react19.default.createElement(
         "div",
         { className: "drawer-actions" },
-        import_react18.default.createElement(
+        import_react19.default.createElement(
           "button",
           {
             type: "button",
@@ -41953,7 +42461,7 @@ function NodeDrawer({
           },
           "\u041F\u0440\u043E\u0439\u0442\u0438 \u0437\u0430\u043D\u043E\u0432\u043E"
         ),
-        import_react18.default.createElement(
+        import_react19.default.createElement(
           "button",
           {
             type: "button",
@@ -41972,12 +42480,12 @@ function NodeDrawer({
 }
 
 // NodeTutorChat.js
-var import_react22 = __toESM(require_react(), 1);
+var import_react23 = __toESM(require_react(), 1);
 
 // RagInspectorPanel.js
-var import_react19 = __toESM(require_react(), 1);
+var import_react20 = __toESM(require_react(), 1);
 function RagChunkCard({ item }) {
-  const [open, setOpen] = (0, import_react19.useState)(false);
+  const [open, setOpen] = (0, import_react20.useState)(false);
   const ragId = item.rag_id || "[R?]";
   const title = (item.title || "source").trim();
   const url = (item.url || "").trim();
@@ -41985,14 +42493,14 @@ function RagChunkCard({ item }) {
   const chunkTotal = Number(item.chunks_in_doc) || 0;
   const score = typeof item.cosine_score === "number" ? item.cosine_score.toFixed(3) : String(item.cosine_score || "\u2014");
   const chunkText = (item.chunk_text || "").trim();
-  return import_react19.default.createElement(
+  return import_react20.default.createElement(
     "article",
     { className: "rag-inspector-card" },
-    import_react19.default.createElement(
+    import_react20.default.createElement(
       "header",
       { className: "rag-inspector-card-head" },
-      import_react19.default.createElement("span", { className: "rag-inspector-badge" }, ragId),
-      url ? import_react19.default.createElement(
+      import_react20.default.createElement("span", { className: "rag-inspector-badge" }, ragId),
+      url ? import_react20.default.createElement(
         "a",
         {
           className: "source-link",
@@ -42001,14 +42509,14 @@ function RagChunkCard({ item }) {
           rel: "noopener noreferrer"
         },
         title
-      ) : import_react19.default.createElement("span", { className: "rag-inspector-title" }, title),
-      import_react19.default.createElement(
+      ) : import_react20.default.createElement("span", { className: "rag-inspector-title" }, title),
+      import_react20.default.createElement(
         "span",
         { className: "muted small rag-inspector-meta" },
         chunkIdx > 0 && chunkTotal > 0 ? `Chunk ${chunkIdx}/${chunkTotal} \xB7 cos=${score}` : `cos=${score}`
       )
     ),
-    chunkText && import_react19.default.createElement(
+    chunkText && import_react20.default.createElement(
       "button",
       {
         type: "button",
@@ -42017,7 +42525,7 @@ function RagChunkCard({ item }) {
       },
       open ? "\u0421\u043A\u0440\u044B\u0442\u044C \u0442\u0435\u043A\u0441\u0442 \u0447\u0430\u043D\u043A\u0430" : "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0442\u0435\u043A\u0441\u0442 \u0447\u0430\u043D\u043A\u0430"
     ),
-    open && chunkText && import_react19.default.createElement(
+    open && chunkText && import_react20.default.createElement(
       "pre",
       { className: "rag-inspector-chunk-text" },
       chunkText
@@ -42027,29 +42535,29 @@ function RagChunkCard({ item }) {
 function RagInspectorPanel({ items }) {
   const list = Array.isArray(items) ? items : [];
   if (!list.length) return null;
-  return import_react19.default.createElement(
+  return import_react20.default.createElement(
     "details",
     { className: "drawer-section rag-inspector-panel", open: false },
-    import_react19.default.createElement(
+    import_react20.default.createElement(
       "summary",
       { className: "rag-inspector-summary" },
       "\u{1F50D} \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u043D\u044B\u0435 RAG-\u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u044B (Inspector)",
-      import_react19.default.createElement(
+      import_react20.default.createElement(
         "span",
         { className: "muted small" },
         ` \xB7 ${list.length} \u0447\u0430\u043D\u043A\u043E\u0432`
       )
     ),
-    import_react19.default.createElement(
+    import_react20.default.createElement(
       "p",
       { className: "muted small drawer-hint" },
       "\u0422\u043E\u0447\u043D\u044B\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u044B \u0438\u0437 \u0431\u043B\u043E\u043A\u0430 \u041D\u0410\u0427\u0410\u041B\u041E \u041C\u0410\u0422\u0415\u0420\u0418\u0410\u041B\u0410 \u043F\u0435\u0440\u0435\u0434 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0435\u0439 \u043B\u0435\u043A\u0446\u0438\u0438. \u0421\u0432\u0435\u0440\u044F\u0439\u0442\u0435 \u0441\u043D\u043E\u0441\u043A\u0438 [R1]\u2026 \u0432 \u0442\u0435\u043A\u0441\u0442\u0435."
     ),
-    import_react19.default.createElement(
+    import_react20.default.createElement(
       "div",
       { className: "rag-inspector-list" },
       list.map(
-        (item, i) => import_react19.default.createElement(RagChunkCard, {
+        (item, i) => import_react20.default.createElement(RagChunkCard, {
           key: `${item.rag_id || "R"}-${item.doc_id || i}-${item.chunk_index || 0}`,
           item
         })
@@ -42059,10 +42567,10 @@ function RagInspectorPanel({ items }) {
 }
 
 // QuickReplyChips.js
-var import_react21 = __toESM(require_react(), 1);
+var import_react22 = __toESM(require_react(), 1);
 
 // ActionChips.js
-var import_react20 = __toESM(require_react(), 1);
+var import_react21 = __toESM(require_react(), 1);
 var OVERLAY_CHIP_DISPLAY = {
   advanced_analysis: "\u0410\u043D\u0430\u043B\u0438\u0437 \u0443\u044F\u0437\u0432\u0438\u043C\u043E\u0441\u0442\u0435\u0439",
   deep_design: "\u0410\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u043D\u044B\u0439 \u0434\u0438\u0437\u0430\u0439\u043D"
@@ -42165,9 +42673,9 @@ function hostChipLabelsFromSession(session) {
   return [...Array.isArray(a) ? a : [], ...Array.isArray(b) ? b : []];
 }
 function ActionChips({ chips, disabled, onChip, visible = true }) {
-  const list = (0, import_react20.useMemo)(() => chips || [], [chips]);
+  const list = (0, import_react21.useMemo)(() => chips || [], [chips]);
   if (!visible || !list.length) return null;
-  return import_react20.default.createElement(
+  return import_react21.default.createElement(
     "div",
     {
       className: "tutor-quick-replies",
@@ -42175,7 +42683,7 @@ function ActionChips({ chips, disabled, onChip, visible = true }) {
       "aria-label": "\u0414\u0430\u043B\u044C\u043D\u0435\u0439\u0448\u0438\u0435 \u0448\u0430\u0433\u0438"
     },
     list.map(
-      (chip) => import_react20.default.createElement(
+      (chip) => import_react21.default.createElement(
         "button",
         {
           key: chip.id + (chip.label || ""),
@@ -42312,11 +42820,11 @@ function QuickReplyChips({
   disabled,
   onChip
 }) {
-  const chips = (0, import_react21.useMemo)(
+  const chips = (0, import_react22.useMemo)(
     () => visible ? buildTransitionChips(session, nodeLayer) : [],
     [visible, session, nodeLayer, session?.quickReplies, session?.suggestedChips, session?.topicMasteryScore]
   );
-  return import_react21.default.createElement(ActionChips, {
+  return import_react22.default.createElement(ActionChips, {
     visible,
     chips,
     disabled,
@@ -42326,7 +42834,7 @@ function QuickReplyChips({
 function NextNodeSelector({ open, nodes, onSelect, onClose }) {
   if (!open) return null;
   const list = nodes || [];
-  return import_react21.default.createElement(
+  return import_react22.default.createElement(
     "div",
     {
       className: "next-node-selector-backdrop",
@@ -42335,7 +42843,7 @@ function NextNodeSelector({ open, nodes, onSelect, onClose }) {
         if (e.target === e.currentTarget) onClose?.();
       }
     },
-    import_react21.default.createElement(
+    import_react22.default.createElement(
       "div",
       {
         className: "next-node-selector",
@@ -42343,11 +42851,11 @@ function NextNodeSelector({ open, nodes, onSelect, onClose }) {
         "aria-modal": "true",
         "aria-label": "\u0412\u044B\u0431\u043E\u0440 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0435\u0439 \u043D\u043E\u0434\u044B"
       },
-      import_react21.default.createElement(
+      import_react22.default.createElement(
         "div",
         { className: "next-node-selector-head" },
-        import_react21.default.createElement("strong", null, "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0430\u044F \u043D\u043E\u0434\u0430"),
-        import_react21.default.createElement(
+        import_react22.default.createElement("strong", null, "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0430\u044F \u043D\u043E\u0434\u0430"),
+        import_react22.default.createElement(
           "button",
           {
             type: "button",
@@ -42358,30 +42866,30 @@ function NextNodeSelector({ open, nodes, onSelect, onClose }) {
           "\xD7"
         )
       ),
-      list.length === 0 ? import_react21.default.createElement(
+      list.length === 0 ? import_react22.default.createElement(
         "p",
         { className: "muted next-node-selector-empty" },
         "\u041D\u0435\u0442 \u0441\u043C\u0435\u0436\u043D\u044B\u0445 \u043D\u043E\u0434 \u0432 \u0433\u0440\u0430\u0444\u0435. \u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0443\u044E \u0442\u0435\u043C\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u043D\u0430\u0432\u044B\u043A\u043E\u0432."
-      ) : import_react21.default.createElement(
+      ) : import_react22.default.createElement(
         "ul",
         { className: "next-node-selector-list" },
         list.map(
-          (n) => import_react21.default.createElement(
+          (n) => import_react22.default.createElement(
             "li",
             { key: n.node_id },
-            import_react21.default.createElement(
+            import_react22.default.createElement(
               "button",
               {
                 type: "button",
                 className: "next-node-selector-item",
                 onClick: () => onSelect?.(n)
               },
-              import_react21.default.createElement(
+              import_react22.default.createElement(
                 "span",
                 { className: "next-node-selector-title" },
                 n.title || n.node_id
               ),
-              n.layer ? import_react21.default.createElement(
+              n.layer ? import_react22.default.createElement(
                 "span",
                 { className: "muted next-node-selector-layer" },
                 n.layer
@@ -42433,22 +42941,22 @@ function NodeTutorChat({
   curriculum,
   onOpenNode
 }) {
-  const [input, setInput] = (0, import_react22.useState)("");
-  const [chipsDismissed, setChipsDismissed] = (0, import_react22.useState)(false);
-  const [nodePickerOpen, setNodePickerOpen] = (0, import_react22.useState)(false);
-  const materialRef = (0, import_react22.useRef)(null);
-  const inputRef = (0, import_react22.useRef)(null);
+  const [input, setInput] = (0, import_react23.useState)("");
+  const [chipsDismissed, setChipsDismissed] = (0, import_react23.useState)(false);
+  const [nodePickerOpen, setNodePickerOpen] = (0, import_react23.useState)(false);
+  const materialRef = (0, import_react23.useRef)(null);
+  const inputRef = (0, import_react23.useRef)(null);
   const messages = sortDialogMessages(session?.messages || []);
   const composeLocked = Boolean(disabled);
   const explainEnabled = Boolean(curriculumId && nodeData);
   const tutorTurnKey = lastTutorMsgId(messages);
   const hostQuickCount = Array.isArray(session?.quickReplies) ? session.quickReplies.length : 0;
   const showTransitionChips = (Boolean(session?.readyForTransition) || hostQuickCount > 0) && !chipsDismissed && !generating && Boolean(tutorTurnKey);
-  (0, import_react22.useEffect)(() => {
+  (0, import_react23.useEffect)(() => {
     setChipsDismissed(false);
     setNodePickerOpen(false);
   }, [tutorTurnKey, session?.readyForTransition, session?.lastEvalDirective, session?.quickReplies]);
-  const successorNodes = (0, import_react22.useMemo)(
+  const successorNodes = (0, import_react23.useMemo)(
     () => listSuccessorNodes(curriculum, nodeData?.node_id),
     [curriculum, nodeData?.node_id]
   );
@@ -42481,16 +42989,16 @@ function NodeTutorChat({
     setNodePickerOpen(false);
     if (node && onOpenNode) onOpenNode(node);
   }
-  return import_react22.default.createElement(
+  return import_react23.default.createElement(
     "div",
     { className: "tutor-panel" },
-    import_react22.default.createElement(NodeSelectionExplain, {
+    import_react23.default.createElement(NodeSelectionExplain, {
       curriculumId,
       nodeData,
       containerRef: materialRef,
       enabled: explainEnabled
     }),
-    generating && import_react22.default.createElement(
+    generating && import_react23.default.createElement(
       "div",
       { className: "tutor-busy-hint", "aria-live": "polite" },
       // stageMessage — последнее FSM stage-событие (см. schemas/fsm.py,
@@ -42498,15 +43006,15 @@ function NodeTutorChat({
       // пока событий ещё не пришло или backend их не шлёт (non-stream путь).
       stageMessage || "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043E\u0442\u0432\u0435\u0442\u0430\u2026 \u043C\u043E\u0436\u043D\u043E \u0447\u0438\u0442\u0430\u0442\u044C \u0438\u0441\u0442\u043E\u0440\u0438\u044E \u0432\u044B\u0448\u0435; \u043D\u043E\u0432\u044B\u0435 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B."
     ),
-    import_react22.default.createElement(
+    import_react23.default.createElement(
       "div",
       { className: "tutor-panel-scroll tutor-selectable", ref: materialRef },
-      messages.length > 0 && import_react22.default.createElement(
+      messages.length > 0 && import_react23.default.createElement(
         "p",
         { className: "tutor-selectable-hint muted" },
         "\u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u0432 \u043E\u0442\u0432\u0435\u0442\u0435 \u0442\u044C\u044E\u0442\u043E\u0440\u0430 \u2014 \xAB\u041E\u0431\u044A\u044F\u0441\u043D\u0438\u0442\u044C\xBB."
       ),
-      import_react22.default.createElement(
+      import_react23.default.createElement(
         "div",
         { className: "chat-log node-selectable-material" },
         messages.map((m) => {
@@ -42518,7 +43026,7 @@ function NodeTutorChat({
             session?.sourceRegistry
           ) : "";
           const isLastTutor = m.role === "tutor" && msgKey === tutorTurnKey;
-          return import_react22.default.createElement(
+          return import_react23.default.createElement(
             "div",
             {
               key: msgKey,
@@ -42526,21 +43034,21 @@ function NodeTutorChat({
               "data-msg-id": m.msg_id || "",
               "data-role": m.role
             },
-            useTutorHtml ? import_react22.default.createElement(LlmHtmlBlock, {
+            useTutorHtml ? import_react23.default.createElement(LlmHtmlBlock, {
               html: tutorHtml,
               className: "md-body chat-md"
-            }) : m.role === "tutor" && structuredAnalysisToHtml(m.content || "") ? import_react22.default.createElement(LlmHtmlBlock, {
+            }) : m.role === "tutor" && structuredAnalysisToHtml(m.content || "") ? import_react23.default.createElement(LlmHtmlBlock, {
               html: structuredAnalysisToHtml(m.content || ""),
               className: "md-body chat-md"
-            }) : tutorMarkdownHtml ? import_react22.default.createElement(LlmHtmlBlock, {
+            }) : tutorMarkdownHtml ? import_react23.default.createElement(LlmHtmlBlock, {
               html: tutorMarkdownHtml,
               className: "md-body chat-md"
-            }) : import_react22.default.createElement(
+            }) : import_react23.default.createElement(
               "div",
               { className: "chat-plain lecture-plain" },
               m.content || ""
             ),
-            isLastTutor ? import_react22.default.createElement(QuickReplyChips, {
+            isLastTutor ? import_react23.default.createElement(QuickReplyChips, {
               visible: showTransitionChips,
               session,
               nodeLayer: nodeData?.layer || session?.nodeLayer || "foundation",
@@ -42550,26 +43058,26 @@ function NodeTutorChat({
           );
         })
       ),
-      import_react22.default.createElement(RagInspectorPanel, {
+      import_react23.default.createElement(RagInspectorPanel, {
         items: session?.lectureRagInspector || []
       })
     ),
-    import_react22.default.createElement(NextNodeSelector, {
+    import_react23.default.createElement(NextNodeSelector, {
       open: nodePickerOpen,
       nodes: successorNodes,
       onSelect: handleSelectNextNode,
       onClose: () => setNodePickerOpen(false)
     }),
-    import_react22.default.createElement(
+    import_react23.default.createElement(
       "div",
       {
         className: composeLocked ? "tutor-panel-compose tutor-panel-compose-locked" : "tutor-panel-compose"
       },
-      import_react22.default.createElement(
+      import_react23.default.createElement(
         "div",
         { className: "quick-chips" },
         QUICK.map(
-          (q) => import_react22.default.createElement(
+          (q) => import_react23.default.createElement(
             "button",
             {
               key: q.label,
@@ -42581,7 +43089,7 @@ function NodeTutorChat({
           )
         )
       ),
-      import_react22.default.createElement(
+      import_react23.default.createElement(
         "form",
         {
           className: "chat-form",
@@ -42590,7 +43098,7 @@ function NodeTutorChat({
             if (!composeLocked) send(input);
           }
         },
-        import_react22.default.createElement("input", {
+        import_react23.default.createElement("input", {
           ref: inputRef,
           value: input,
           onChange: (e) => {
@@ -42600,7 +43108,7 @@ function NodeTutorChat({
           placeholder: composeLocked ? "\u0416\u0434\u0451\u043C \u043E\u0442\u0432\u0435\u0442 \u0442\u044C\u044E\u0442\u043E\u0440\u0430\u2026" : "\u0412\u043E\u043F\u0440\u043E\u0441 \u0442\u044C\u044E\u0442\u043E\u0440\u0443\u2026",
           disabled: composeLocked
         }),
-        import_react22.default.createElement(
+        import_react23.default.createElement(
           "button",
           { type: "submit", disabled: composeLocked },
           composeLocked ? "\u2026" : "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C"
@@ -42611,7 +43119,7 @@ function NodeTutorChat({
 }
 
 // ColumnResizer.js
-var import_react23 = __toESM(require_react(), 1);
+var import_react24 = __toESM(require_react(), 1);
 function ColumnResizer({ onDragDelta, onDragEnd }) {
   function onMouseDown(e) {
     e.preventDefault();
@@ -42632,7 +43140,7 @@ function ColumnResizer({ onDragDelta, onDragEnd }) {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
-  return import_react23.default.createElement("div", {
+  return import_react24.default.createElement("div", {
     className: "skill-col-resizer",
     role: "separator",
     "aria-orientation": "vertical",
@@ -42651,36 +43159,40 @@ function replaceSkillTreeSearchParams(patch) {
   window.history.replaceState(null, "", url.pathname + url.search);
 }
 function RoadmapDashboard() {
-  const [goal, setGoal] = (0, import_react24.useState)("");
-  const [sourcePolicy, setSourcePolicy] = (0, import_react24.useState)("practical_only");
-  const [ragStatus, setRagStatus] = (0, import_react24.useState)(null);
-  const [curriculum, setCurriculum] = (0, import_react24.useState)(null);
-  const [curriculaList, setCurriculaList] = (0, import_react24.useState)([]);
-  const [statuses, setStatuses] = (0, import_react24.useState)({});
-  const [selectedNode, setSelectedNode] = (0, import_react24.useState)(null);
-  const [sessions, setSessions] = (0, import_react24.useState)({});
-  const [workspaceBusy, setWorkspaceBusy] = (0, import_react24.useState)(false);
-  const [genStatus, setGenStatus] = (0, import_react24.useState)("");
-  const [genBusyAction, setGenBusyAction] = (0, import_react24.useState)(null);
-  const [tutorBusyNodeId, setTutorBusyNodeId] = (0, import_react24.useState)(null);
-  const [tutorStageMessage, setTutorStageMessage] = (0, import_react24.useState)("");
-  const [selectedMaterialId, setSelectedMaterialId] = (0, import_react24.useState)(null);
-  const [materialViewMode, setMaterialViewMode] = (0, import_react24.useState)(() => {
+  const [goal, setGoal] = (0, import_react25.useState)("");
+  const [sourcePolicy, setSourcePolicy] = (0, import_react25.useState)("practical_only");
+  const [controlAxis, setControlAxis] = (0, import_react25.useState)("autopilot");
+  const [steeringMode, setSteeringMode] = (0, import_react25.useState)("per_node");
+  const [ragStatus, setRagStatus] = (0, import_react25.useState)(null);
+  const [curriculum, setCurriculum] = (0, import_react25.useState)(null);
+  const [curriculaList, setCurriculaList] = (0, import_react25.useState)([]);
+  const [statuses, setStatuses] = (0, import_react25.useState)({});
+  const [selectedNode, setSelectedNode] = (0, import_react25.useState)(null);
+  const [sessions, setSessions] = (0, import_react25.useState)({});
+  const [workspaceBusy, setWorkspaceBusy] = (0, import_react25.useState)(false);
+  const [genStatus, setGenStatus] = (0, import_react25.useState)("");
+  const [longWaitNotice, setLongWaitNotice] = (0, import_react25.useState)("");
+  const LONG_WAIT_MESSAGE = "\u0417\u0430\u043F\u0440\u043E\u0441 \u0438\u0434\u0451\u0442 \u0447\u0443\u0442\u044C \u0434\u043E\u043B\u044C\u0448\u0435 \u043E\u0431\u044B\u0447\u043D\u043E\u0433\u043E. \u041F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430, \u043F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435, \u0438\u0434\u0451\u0442 \u0433\u043B\u0443\u0431\u043E\u043A\u0438\u0439 \u0430\u043D\u0430\u043B\u0438\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u0441\u0431\u043E\u0440\u2026";
+  const [genBusyAction, setGenBusyAction] = (0, import_react25.useState)(null);
+  const [tutorBusyNodeId, setTutorBusyNodeId] = (0, import_react25.useState)(null);
+  const [tutorStageMessage, setTutorStageMessage] = (0, import_react25.useState)("");
+  const [selectedMaterialId, setSelectedMaterialId] = (0, import_react25.useState)(null);
+  const [materialViewMode, setMaterialViewMode] = (0, import_react25.useState)(() => {
     const v = localStorage.getItem(MATERIAL_VIEW_LS);
     return v === "carousel" ? "carousel" : "list";
   });
-  const [error, setError] = (0, import_react24.useState)("");
-  const [layoutEpoch, setLayoutEpoch] = (0, import_react24.useState)(0);
-  const [leftColWidth, setLeftColWidth] = (0, import_react24.useState)(() => {
+  const [error, setError] = (0, import_react25.useState)("");
+  const [layoutEpoch, setLayoutEpoch] = (0, import_react25.useState)(0);
+  const [leftColWidth, setLeftColWidth] = (0, import_react25.useState)(() => {
     const n = Number(localStorage.getItem("skillTreeColLeft"));
     return n >= 240 && n <= 720 ? n : 360;
   });
-  const [rightColWidth, setRightColWidth] = (0, import_react24.useState)(() => {
+  const [rightColWidth, setRightColWidth] = (0, import_react25.useState)(() => {
     const n = Number(localStorage.getItem("skillTreeColRight"));
     return n >= 280 && n <= 960 ? n : 420;
   });
-  const leftColRef = import_react24.default.useRef(leftColWidth);
-  const rightColRef = import_react24.default.useRef(rightColWidth);
+  const leftColRef = import_react25.default.useRef(leftColWidth);
+  const rightColRef = import_react25.default.useRef(rightColWidth);
   leftColRef.current = leftColWidth;
   rightColRef.current = rightColWidth;
   function maxResizableColumnWidth(oppositeWidth) {
@@ -42695,7 +43207,7 @@ function RoadmapDashboard() {
     localStorage.setItem("skillTreeColLeft", String(leftColRef.current));
     localStorage.setItem("skillTreeColRight", String(rightColRef.current));
   }
-  const loadWorkspace = (0, import_react24.useCallback)(async (curriculumId) => {
+  const loadWorkspace = (0, import_react25.useCallback)(async (curriculumId) => {
     if (!curriculumId) return;
     setError("");
     setWorkspaceBusy(true);
@@ -42721,7 +43233,7 @@ function RoadmapDashboard() {
       setWorkspaceBusy(false);
     }
   }, []);
-  const refreshCurriculumGraph = (0, import_react24.useCallback)(async (curriculumId) => {
+  const refreshCurriculumGraph = (0, import_react25.useCallback)(async (curriculumId) => {
     if (!curriculumId) return null;
     try {
       const ws = await fetchWorkspace(curriculumId);
@@ -42735,7 +43247,80 @@ function RoadmapDashboard() {
       return null;
     }
   }, []);
-  (0, import_react24.useEffect)(() => {
+  const resumeSteeringSession = (0, import_react25.useCallback)(async (jobId) => {
+    setError("");
+    setWorkspaceBusy(true);
+    try {
+      const res = await steeringGetStatus(jobId);
+      if (res.status === "awaiting_gate_1" || res.status === "awaiting_gate_2") {
+        const gateNode = {
+          node_id: "steering-gate-node",
+          title: res.status === "awaiting_gate_1" ? "\u{1F3AF} \u0421\u043E\u0433\u043B\u0430\u0441\u043E\u0432\u0430\u043D\u0438\u0435 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432 (Gate 1)" : "\u{1F4E6} \u041E\u0431\u0437\u043E\u0440 \u0432\u044B\u0436\u0438\u043C\u043E\u043A (Gate 2)",
+          layer: "foundation",
+          category: "\u0428\u0442\u0443\u0440\u0432\u0430\u043B",
+          prerequisites: []
+        };
+        const virtualCurriculumId = `steering-${jobId}`;
+        setGoal(res.target_goal || "");
+        setCurriculum({ curriculum_id: virtualCurriculumId, nodes: [gateNode] });
+        setStatuses({ [gateNode.node_id]: "in_progress" });
+        setSelectedNode(gateNode);
+        setSelectedMaterialId(null);
+        setSessions({
+          [gateNode.node_id]: {
+            initialized: true,
+            messages: [],
+            steeringWorkJobId: jobId,
+            steeringStatus: res.status,
+            steeringCandidates: res.taxonomy_discovery?.candidate_articles || [],
+            steeringDigests: res.surface_digests?.digests || [],
+            steeringApprovedCount: (res.approved_gate1_urls || []).length
+          }
+        });
+        replaceSkillTreeSearchParams({
+          curriculum: virtualCurriculumId,
+          node: gateNode.node_id,
+          material: ""
+        });
+        return;
+      }
+      if (res.status === "completed") {
+        const genJobId = res.result?.generation_job_id;
+        if (!genJobId) {
+          setError(
+            "\u0421\u0435\u0441\u0441\u0438\u044F \u0428\u0442\u0443\u0440\u0432\u0430\u043B\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0430, \u043D\u043E \u0437\u0430\u0434\u0430\u0447\u0430 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438 \u043A\u0443\u0440\u0441\u0430 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430."
+          );
+          return;
+        }
+        setGenBusyAction("create");
+        setGenStatus("\u0428\u0442\u0443\u0440\u0432\u0430\u043B: \u043E\u0436\u0438\u0434\u0430\u0435\u043C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F Map-Reduce\u2026");
+        const job = await waitWorkJob(genJobId, {
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE)
+        });
+        if (job?.result?.curriculum_id) {
+          await loadWorkspace(job.result.curriculum_id);
+        } else if (job?.status === "failed") {
+          setError(`\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043A\u0443\u0440\u0441\u0430 \u0428\u0442\u0443\u0440\u0432\u0430\u043B\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B\u0430\u0441\u044C \u043E\u0448\u0438\u0431\u043A\u043E\u0439: ${job.error || ""}`);
+        } else {
+          setError(
+            "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043A\u0443\u0440\u0441\u0430 \u0428\u0442\u0443\u0440\u0432\u0430\u043B\u0430 \u0435\u0449\u0451 \u043D\u0435 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0430 \u2014 \u043F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u044C \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u043F\u043E\u0437\u0436\u0435."
+          );
+        }
+        return;
+      }
+      setError(
+        `\u0421\u0435\u0441\u0441\u0438\u044F \u0428\u0442\u0443\u0440\u0432\u0430\u043B\u0430 \u043D\u0435 \u043C\u043E\u0436\u0435\u0442 \u0431\u044B\u0442\u044C \u0432\u043E\u0441\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0430 (status=${res.status}).`
+      );
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setWorkspaceBusy(false);
+      setGenBusyAction(null);
+      setGenStatus("");
+      setLongWaitNotice("");
+    }
+  }, [loadWorkspace]);
+  (0, import_react25.useEffect)(() => {
     fetchRagStatus().then(setRagStatus).catch(
       () => setRagStatus({
         connected: false,
@@ -42749,15 +43334,19 @@ function RoadmapDashboard() {
       try {
         const list = await fetchCurriculaList();
         setCurriculaList(list.curricula || []);
-        const params = new URLSearchParams(window.location.search);
-        const fromUrl = params.get("curriculum");
+        const params2 = new URLSearchParams(window.location.search);
+        const fromUrl = params2.get("curriculum");
         const active = fromUrl || list.active_curriculum_id || readActiveCurriculumId();
-        if (active) await loadWorkspace(active);
+        if (active && active.startsWith("steering-")) {
+          await resumeSteeringSession(active.slice("steering-".length));
+        } else if (active) {
+          await loadWorkspace(active);
+        }
       } catch (err) {
         setError(String(err.message || err));
       }
     })();
-  }, [loadWorkspace]);
+  }, [loadWorkspace, resumeSteeringSession]);
   function clearCanvasForNewRoute() {
     setCurriculum(null);
     setSelectedNode(null);
@@ -42771,6 +43360,10 @@ function RoadmapDashboard() {
     setSourcePolicy("practical_only");
   }
   async function runCreatePath(text) {
+    if (controlAxis === "steering") {
+      await runSteeringCreatePath(text);
+      return;
+    }
     setError("");
     setWorkspaceBusy(true);
     setGenBusyAction("create");
@@ -42802,7 +43395,9 @@ function RoadmapDashboard() {
       setGenStatus(phases[phaseIdx]);
     }, 12e3);
     try {
-      const graph = await createCurriculum(text, sourcePolicy);
+      const graph = await createCurriculum(text, sourcePolicy, {
+        onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE)
+      });
       setGoal(text);
       await loadWorkspace(graph.curriculum_id);
     } catch (err) {
@@ -42810,9 +43405,169 @@ function RoadmapDashboard() {
     } finally {
       if (phaseTimer) clearInterval(phaseTimer);
       setGenStatus("");
+      setLongWaitNotice("");
       setGenBusyAction(null);
       setWorkspaceBusy(false);
     }
+  }
+  async function runSteeringCreatePath(text) {
+    if (steeringMode === "per_node") {
+      await runSteeringCreatePerNode(text);
+      return;
+    }
+    await runSteeringCreateStandaloneDigest(text);
+  }
+  async function runSteeringCreatePerNode(text) {
+    setError("");
+    setWorkspaceBusy(true);
+    setGenBusyAction("create");
+    setGenStatus("\u0428\u0442\u0443\u0440\u0432\u0430\u043B (\u043F\u043E \u043D\u043E\u0434\u0430\u043C): Model-First \u0441\u0442\u0440\u043E\u0438\u0442 \u0433\u0440\u0430\u0444\u2026");
+    const policy = sourcePolicy || "practical_only";
+    const depth = policy === "hybrid" || policy === "academic_only" ? "Deep Mechanics" : "Standard";
+    try {
+      const res = await steeringGenerate({
+        target_goal: text,
+        user_level: "Intermediate/Advanced",
+        depth_level: depth,
+        source_policy: policy,
+        generation_mode: policy === "academic_only" ? "consensus" : "fast",
+        control_axis: "steering",
+        steering_mode: "per_node"
+      });
+      setGoal(text);
+      let graph = res.graph;
+      if (!graph) {
+        setGenStatus("\u0428\u0442\u0443\u0440\u0432\u0430\u043B (\u043F\u043E \u043D\u043E\u0434\u0430\u043C): \u043E\u0436\u0438\u0434\u0430\u0435\u043C worker\u2026");
+        const job = await waitWorkJob(res.work_job_id, {
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE)
+        });
+        graph = job.result;
+      }
+      if (graph?.curriculum_id) {
+        await loadWorkspace(graph.curriculum_id);
+      } else {
+        setError("\u0428\u0442\u0443\u0440\u0432\u0430\u043B: \u0433\u0440\u0430\u0444 \u0441\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u043D, \u043D\u043E curriculum_id \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D.");
+      }
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setGenStatus("");
+      setLongWaitNotice("");
+      setGenBusyAction(null);
+      setWorkspaceBusy(false);
+    }
+  }
+  async function runSteeringCreateStandaloneDigest(text) {
+    setError("");
+    setWorkspaceBusy(true);
+    setGenBusyAction("create");
+    setGenStatus("\u0428\u0442\u0443\u0440\u0432\u0430\u043B (\u043E\u0431\u0437\u043E\u0440 \u0442\u0435\u043C\u044B): TaxonomyService + Light Discovery\u2026");
+    const policy = sourcePolicy || "practical_only";
+    const depth = policy === "hybrid" || policy === "academic_only" ? "Deep Mechanics" : "Standard";
+    try {
+      const res = await steeringGenerate({
+        target_goal: text,
+        user_level: "Intermediate/Advanced",
+        depth_level: depth,
+        source_policy: policy,
+        generation_mode: policy === "academic_only" ? "consensus" : "fast",
+        control_axis: "steering",
+        steering_mode: "standalone_digest"
+      });
+      setGoal(text);
+      const gateNode = {
+        node_id: "steering-gate-node",
+        title: "\u{1F3AF} \u0421\u043E\u0433\u043B\u0430\u0441\u043E\u0432\u0430\u043D\u0438\u0435 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432 (Gate 1)",
+        layer: "foundation",
+        category: "\u0428\u0442\u0443\u0440\u0432\u0430\u043B",
+        prerequisites: []
+      };
+      const virtualCurriculumId = `steering-${res.work_job_id}`;
+      setCurriculum({ curriculum_id: virtualCurriculumId, nodes: [gateNode] });
+      setStatuses({ [gateNode.node_id]: "in_progress" });
+      setSelectedNode(gateNode);
+      setSelectedMaterialId(null);
+      replaceSkillTreeSearchParams({
+        curriculum: virtualCurriculumId,
+        node: gateNode.node_id,
+        material: ""
+      });
+      setSessions((prev) => ({
+        ...prev,
+        [gateNode.node_id]: {
+          initialized: true,
+          messages: [],
+          steeringWorkJobId: res.work_job_id,
+          steeringStatus: res.status,
+          steeringCandidates: res.taxonomy_discovery?.candidate_articles || [],
+          steeringDigests: []
+        }
+      }));
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setGenStatus("");
+      setLongWaitNotice("");
+      setGenBusyAction(null);
+      setWorkspaceBusy(false);
+    }
+  }
+  async function handleGateApprove(selectedUrls) {
+    const node = selectedNode;
+    if (!node || node.node_id !== "steering-gate-node") return;
+    const sess = sessions[node.node_id];
+    if (!sess) return;
+    const jobId = sess.steeringWorkJobId;
+    setTutorBusyNodeId(node.node_id);
+    setError("");
+    try {
+      if (sess.steeringStatus === "awaiting_gate_1") {
+        const res = await steeringApproveGate1(jobId, selectedUrls);
+        setSessions((prev) => ({
+          ...prev,
+          [node.node_id]: {
+            ...prev[node.node_id],
+            steeringStatus: res.status,
+            steeringDigests: res.surface_digests?.digests || [],
+            steeringApprovedCount: selectedUrls.length
+          }
+        }));
+        setSelectedNode(
+          (prev) => prev && prev.node_id === node.node_id ? { ...prev, title: "\u{1F4E6} \u041E\u0431\u0437\u043E\u0440 \u0432\u044B\u0436\u0438\u043C\u043E\u043A (Gate 2)" } : prev
+        );
+      } else if (sess.steeringStatus === "awaiting_gate_2") {
+        const res = await steeringApproveGate2(jobId, selectedUrls);
+        setSessions((prev) => ({
+          ...prev,
+          [node.node_id]: {
+            ...prev[node.node_id],
+            steeringStatus: res.status,
+            steeringGenerationJobId: res.generation_job_id
+          }
+        }));
+        setGenBusyAction("create");
+        setGenStatus("\u0428\u0442\u0443\u0440\u0432\u0430\u043B: \u0442\u044F\u0436\u0451\u043B\u044B\u0439 Map-Reduce \u043F\u043E \u0443\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D\u043D\u044B\u043C \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0430\u043C\u2026");
+        const job = await waitWorkJob(res.generation_job_id, {
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE)
+        });
+        if (job?.result?.curriculum_id) {
+          await loadWorkspace(job.result.curriculum_id);
+        }
+      }
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setTutorBusyNodeId(null);
+      setGenStatus("");
+      setLongWaitNotice("");
+      setGenBusyAction(null);
+    }
+  }
+  function setNodeInteractionAxis(nodeId, axis) {
+    setSessions((prev) => ({
+      ...prev,
+      [nodeId]: { ...prev[nodeId] || { messages: [] }, interactionAxis: axis }
+    }));
   }
   async function runExpandBranch(text) {
     if (!curriculum?.curriculum_id) return;
@@ -42836,7 +43591,8 @@ function RoadmapDashboard() {
       const graph = await expandCurriculum(
         curriculum.curriculum_id,
         text,
-        sourcePolicy
+        sourcePolicy,
+        { onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE) }
       );
       setGoal("");
       setLayoutEpoch((n) => n + 1);
@@ -42846,6 +43602,7 @@ function RoadmapDashboard() {
     } finally {
       clearInterval(phaseTimer);
       setGenStatus("");
+      setLongWaitNotice("");
       setGenBusyAction(null);
       setWorkspaceBusy(false);
     }
@@ -42854,7 +43611,7 @@ function RoadmapDashboard() {
     clearCanvasForNewRoute();
     await runCreatePath(text);
   }
-  (0, import_react24.useEffect)(() => {
+  (0, import_react25.useEffect)(() => {
     function onPickMaterial(e) {
       const id2 = String(e.detail?.id || "").trim();
       if (!id2) return;
@@ -42864,10 +43621,10 @@ function RoadmapDashboard() {
     window.addEventListener("ke:select-material", onPickMaterial);
     return () => window.removeEventListener("ke:select-material", onPickMaterial);
   }, []);
-  (0, import_react24.useEffect)(() => {
+  (0, import_react25.useEffect)(() => {
     localStorage.setItem(MATERIAL_VIEW_LS, materialViewMode);
   }, [materialViewMode]);
-  const applyNodeResponse = (0, import_react24.useCallback)((nodeId, res, userMsg) => {
+  const applyNodeResponse = (0, import_react25.useCallback)((nodeId, res, userMsg) => {
     if (res.error) {
       setError(res.error);
       return;
@@ -42899,6 +43656,12 @@ function RoadmapDashboard() {
       return {
         ...prev,
         [nodeId]: {
+          // ...old сохраняет поля, которыми эта функция не управляет
+          // (interactionAxis и т.п.) — раньше объект сессии пересобирался
+          // ПОЛНОСТЬЮ по фиксированному списку ниже, и любое поле не из
+          // этого списка (например Interaction Axis, выставленный в
+          // NodeMasteryPanel) стиралось на первом же ответе тьютора.
+          ...old,
           initialized: true,
           prepared: messages.length === 0 && Boolean(res.rag_facts_count || old.prepared),
           content: res.content,
@@ -42920,7 +43683,7 @@ function RoadmapDashboard() {
       };
     });
   }, []);
-  const openNode = (0, import_react24.useCallback)(
+  const openNode = (0, import_react25.useCallback)(
     async (node) => {
       if (!curriculum || !node?.node_id) return;
       const sid = node.node_id;
@@ -42948,7 +43711,47 @@ function RoadmapDashboard() {
         }
         return;
       }
+      const existingGateStatus = sessions[sid]?.nodeGateStatus;
+      if (existingGateStatus === "awaiting_gate_1" || existingGateStatus === "awaiting_gate_2") {
+        return;
+      }
+      const needsNodeGate = node.node_risk_kind === "DEEP" && node.grounding_status !== "grounded";
+      if (needsNodeGate) {
+        setTutorBusyNodeId(sid);
+        setError("");
+        try {
+          const disc = await nodeGroundingDiscover(
+            curriculum.curriculum_id,
+            toNodeDataInput(node)
+          );
+          if ((disc.candidates || []).length > 0) {
+            setSessions((prev) => ({
+              ...prev,
+              [sid]: {
+                ...prev[sid] || { messages: [] },
+                initialized: false,
+                nodeGateStatus: "awaiting_gate_1",
+                nodeGateCandidates: disc.candidates,
+                nodeGateDigests: []
+              }
+            }));
+            return;
+          }
+        } catch (err) {
+          setError(String(err.message || err));
+        } finally {
+          setTutorBusyNodeId(null);
+        }
+      }
       setTutorBusyNodeId(sid);
+      setTutorStageMessage("\u041F\u0440\u043E\u0432\u0435\u0440\u044F\u0435\u043C \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u044B \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0430\u2026");
+      try {
+        await ensureSteeringSourcesIngested(
+          curriculum.curriculum_id,
+          toNodeDataInput(node)
+        );
+      } catch {
+      }
       setTutorStageMessage("");
       try {
         let finalRes = null;
@@ -42965,7 +43768,8 @@ function RoadmapDashboard() {
             if (evt.type === "error") {
               throw new Error(evt.detail || "init-stream error");
             }
-          }
+          },
+          sessions[sid]?.interactionAxis || "lecture_self_check"
         );
         applyNodeResponse(sid, finalRes || {});
         const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
@@ -42987,10 +43791,60 @@ function RoadmapDashboard() {
       refreshCurriculumGraph
     ]
   );
-  (0, import_react24.useEffect)(() => {
+  async function handleNodeGateApprove(selectedUrls) {
+    const node = selectedNode;
+    if (!node) return;
+    const sess = sessions[node.node_id];
+    if (!sess || !sess.nodeGateStatus) return;
+    setTutorBusyNodeId(node.node_id);
+    setError("");
+    try {
+      if (sess.nodeGateStatus === "awaiting_gate_1") {
+        const res = await nodeGroundingDigest(
+          curriculum.curriculum_id,
+          node.node_id,
+          selectedUrls
+        );
+        setSessions((prev) => ({
+          ...prev,
+          [node.node_id]: {
+            ...prev[node.node_id],
+            nodeGateStatus: "awaiting_gate_2",
+            nodeGateDigests: res.digests || [],
+            nodeGateApprovedCount: selectedUrls.length
+          }
+        }));
+      } else if (sess.nodeGateStatus === "awaiting_gate_2") {
+        setTutorStageMessage("\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u044B \u0432 \u043D\u043E\u0434\u0443 (Map-Reduce)\u2026");
+        await nodeGroundingFinalize(
+          curriculum.curriculum_id,
+          node.node_id,
+          selectedUrls
+        );
+        setSessions((prev) => {
+          const next = { ...prev };
+          delete next[node.node_id];
+          return next;
+        });
+        const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
+        const freshNode = (freshGraph?.nodes || []).find((n) => n.node_id === node.node_id) || node;
+        setSelectedNode(freshNode);
+        setTutorBusyNodeId(null);
+        setTutorStageMessage("");
+        await openNode(freshNode);
+        return;
+      }
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setTutorBusyNodeId(null);
+      setTutorStageMessage("");
+    }
+  }
+  (0, import_react25.useEffect)(() => {
     if (!curriculum?.nodes?.length || workspaceBusy) return;
-    const params = new URLSearchParams(window.location.search);
-    const nodeId = (params.get("node") || "").trim();
+    const params2 = new URLSearchParams(window.location.search);
+    const nodeId = (params2.get("node") || "").trim();
     if (!nodeId) return;
     if (selectedNode?.node_id === nodeId) return;
     const node = curriculum.nodes.find((n) => n.node_id === nodeId);
@@ -43006,7 +43860,7 @@ function RoadmapDashboard() {
     selectedNode?.node_id,
     openNode
   ]);
-  (0, import_react24.useEffect)(() => {
+  (0, import_react25.useEffect)(() => {
     if (!selectedNode || workspaceBusy) return;
     const mid = (new URLSearchParams(window.location.search).get("material") || "").trim();
     if (mid) setSelectedMaterialId(mid);
@@ -43056,7 +43910,8 @@ function RoadmapDashboard() {
           if (evt.type === "error") {
             throw new Error(evt.detail || "chat-stream error");
           }
-        }
+        },
+        sessions[nid]?.interactionAxis || "lecture_self_check"
       );
       if (finalRes) {
         applyNodeResponse(nid, finalRes, msg);
@@ -43154,7 +44009,8 @@ function RoadmapDashboard() {
     try {
       const res = await nodeRestart(
         curriculum.curriculum_id,
-        toNodeDataInput(selectedNode)
+        toNodeDataInput(selectedNode),
+        { onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE) }
       );
       applyNodeResponse(nid, res);
       const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
@@ -43167,6 +44023,7 @@ function RoadmapDashboard() {
     } finally {
       setTutorBusyNodeId(null);
       setTutorStageMessage("");
+      setLongWaitNotice("");
     }
   }
   const session = selectedNode ? sessions[selectedNode.node_id] : null;
@@ -43181,31 +44038,31 @@ function RoadmapDashboard() {
     const suffix = c.has_graph === false ? " (\u0431\u0435\u0437 \u0433\u0440\u0430\u0444\u0430)" : "";
     return `${title}${nodes}${suffix}`;
   }
-  return import_react24.default.createElement(
+  return import_react25.default.createElement(
     "div",
     { className: "skill-dashboard" },
-    import_react24.default.createElement(
+    import_react25.default.createElement(
       "header",
       { className: "skill-header" },
-      import_react24.default.createElement(
+      import_react25.default.createElement(
         "div",
         { className: "skill-header-top" },
-        import_react24.default.createElement(
+        import_react25.default.createElement(
           "div",
           null,
-          import_react24.default.createElement("h1", null, "AI Skill Tree & Tutor"),
-          import_react24.default.createElement(
+          import_react25.default.createElement("h1", null, "AI Skill Tree & Tutor"),
+          import_react25.default.createElement(
             "p",
             { className: "muted" },
             "\u041C\u0430\u0440\u0448\u0440\u0443\u0442\u044B: knowledge_engine/.runs/skill_tree_curricula.json"
           ),
-          import_react24.default.createElement(
+          import_react25.default.createElement(
             "a",
             { href: "/app", className: "nav-link-skill" },
             "\u2190 \u0418\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0439 \u0430\u043D\u0430\u043B\u0438\u0437"
           )
         ),
-        ragStatus && import_react24.default.createElement(
+        ragStatus && import_react25.default.createElement(
           "span",
           {
             className: `rag-pill${ragStatus.connected ? "" : " off"}`
@@ -43213,23 +44070,23 @@ function RoadmapDashboard() {
           ragStatus.label
         )
       ),
-      import_react24.default.createElement(
+      import_react25.default.createElement(
         "div",
         { className: "skill-saved-section" },
-        import_react24.default.createElement(
+        import_react25.default.createElement(
           "p",
           { className: "skill-saved-title" },
           `\u0421\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u044B (${curriculaList.length})`
         ),
-        curriculaList.length === 0 ? import_react24.default.createElement(
+        curriculaList.length === 0 ? import_react25.default.createElement(
           "p",
           { className: "skill-saved-empty" },
           "\u041F\u043E\u043A\u0430 \u043D\u0435\u0442 \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u043E\u0432. \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043F\u0443\u0442\u044C \u043D\u0438\u0436\u0435 \u2014 \u043E\u043D \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438."
-        ) : import_react24.default.createElement(
+        ) : import_react25.default.createElement(
           "div",
           { className: "skill-route-list" },
           curriculaList.map(
-            (c) => import_react24.default.createElement(
+            (c) => import_react25.default.createElement(
               "button",
               {
                 key: c.curriculum_id,
@@ -43254,22 +44111,27 @@ function RoadmapDashboard() {
           )
         )
       ),
-      import_react24.default.createElement(CurriculumInputBar, {
+      import_react25.default.createElement(CurriculumInputBar, {
         goal,
         onGoalChange: setGoal,
         sourcePolicy,
         onSourcePolicyChange: setSourcePolicy,
+        controlAxis,
+        onControlAxisChange: setControlAxis,
+        steeringMode,
+        onSteeringModeChange: setSteeringMode,
         activeCurriculumId: activeId,
         workspaceBusy,
         genStatus,
+        longWaitNotice,
         busyAction: genBusyAction,
         onCreatePath: runCreatePath,
         onExpandBranch: runExpandBranch,
         onCreateNew: runCreateNewWhileLoaded
       })
     ),
-    error && import_react24.default.createElement("div", { className: "skill-error" }, error),
-    import_react24.default.createElement(
+    error && import_react25.default.createElement("div", { className: "skill-error" }, error),
+    import_react25.default.createElement(
       "div",
       {
         className: "skill-split",
@@ -43277,7 +44139,7 @@ function RoadmapDashboard() {
           gridTemplateColumns: `minmax(180px, 1fr) 6px ${leftColWidth}px 6px ${rightColWidth}px`
         }
       },
-      curriculum ? import_react24.default.createElement(RoadmapCanvas, {
+      curriculum ? import_react25.default.createElement(RoadmapCanvas, {
         curriculum,
         statuses,
         selectedNodeId: selectedNode?.node_id,
@@ -43285,12 +44147,12 @@ function RoadmapDashboard() {
         tutorBusyNodeId,
         sessions,
         layoutEpoch
-      }) : import_react24.default.createElement(
+      }) : import_react25.default.createElement(
         "div",
         { className: "skill-canvas-wrap muted", style: { padding: "2rem" } },
         "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0446\u0435\u043B\u044C \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0439 \u043C\u0430\u0440\u0448\u0440\u0443\u0442."
       ),
-      import_react24.default.createElement(ColumnResizer, {
+      import_react25.default.createElement(ColumnResizer, {
         onDragDelta: (dx) => {
           setLeftColWidth((w) => {
             const maxWidth = Math.min(
@@ -43304,10 +44166,10 @@ function RoadmapDashboard() {
         },
         onDragEnd: persistColWidths
       }),
-      import_react24.default.createElement(
+      import_react25.default.createElement(
         "aside",
         { className: "skill-chat-column" },
-        curriculum && selectedNode ? import_react24.default.createElement(NodeTutorChat, {
+        curriculum && selectedNode ? import_react25.default.createElement(NodeTutorChat, {
           session,
           onSend: sendTutorMessage,
           disabled: composeLocked,
@@ -43317,18 +44179,18 @@ function RoadmapDashboard() {
           nodeData: toNodeDataInput(selectedNode),
           curriculum,
           onOpenNode: openNode
-        }) : import_react24.default.createElement(
+        }) : import_react25.default.createElement(
           "div",
           { className: "tutor-panel skill-chat-placeholder" },
-          import_react24.default.createElement("h3", null, "\u0427\u0430\u0442 \u0441 \u0442\u044C\u044E\u0442\u043E\u0440\u043E\u043C"),
-          import_react24.default.createElement(
+          import_react25.default.createElement("h3", null, "\u0427\u0430\u0442 \u0441 \u0442\u044C\u044E\u0442\u043E\u0440\u043E\u043C"),
+          import_react25.default.createElement(
             "p",
             { className: "muted" },
-            curriculum ? "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u2014 \u0434\u0438\u0430\u043B\u043E\u0433 \u043E\u0442\u043A\u0440\u043E\u0435\u0442\u0441\u044F \u0437\u0434\u0435\u0441\u044C (\u043A\u0430\u043A \u0432 Cursor)." : "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442, \u0437\u0430\u0442\u0435\u043C \u043E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u0433\u0440\u0430\u0444\u0435."
+            curriculum ? "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u043A\u0430\u0440\u0442\u0435 \u2014 \u0434\u0438\u0430\u043B\u043E\u0433 \u043E\u0442\u043A\u0440\u043E\u0435\u0442\u0441\u044F \u0437\u0434\u0435\u0441\u044C." : "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442, \u0437\u0430\u0442\u0435\u043C \u043E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043D\u043E\u0434\u0443 \u043D\u0430 \u0433\u0440\u0430\u0444\u0435."
           )
         )
       ),
-      import_react24.default.createElement(ColumnResizer, {
+      import_react25.default.createElement(ColumnResizer, {
         onDragDelta: (dx) => {
           setRightColWidth((w) => {
             const maxWidth = Math.min(
@@ -43342,7 +44204,7 @@ function RoadmapDashboard() {
         },
         onDragEnd: persistColWidths
       }),
-      curriculum ? import_react24.default.createElement(NodeDrawer, {
+      curriculum ? import_react25.default.createElement(NodeDrawer, {
         curriculum,
         selectedNode,
         session,
@@ -43356,15 +44218,370 @@ function RoadmapDashboard() {
         sessions,
         selectedMaterialId,
         materialViewMode,
-        onMaterialViewModeChange: setMaterialViewMode
-      }) : import_react24.default.createElement("aside", { className: "node-drawer empty" })
+        onMaterialViewModeChange: setMaterialViewMode,
+        onInteractionAxisChange: setNodeInteractionAxis,
+        onGateApprove: handleGateApprove,
+        onNodeGateApprove: handleNodeGateApprove
+      }) : import_react25.default.createElement("aside", { className: "node-drawer empty" })
+    )
+  );
+}
+
+// SteeringStudio.js
+var import_react26 = __toESM(require_react(), 1);
+var SOURCE_POLICIES = [
+  { value: "practical_only", label: "\u26A1 \u041F\u0440\u0430\u043A\u0442\u0438\u043A\u0430 \u2014 \u0431\u043B\u043E\u0433\u0438 \u0438 \u043A\u0435\u0439\u0441\u044B" },
+  { value: "academic_only", label: "\u{1F52C} \u0410\u043A\u0430\u0434\u0435\u043C\u0438\u044F \u2014 \u0441\u0442\u0430\u0442\u044C\u0438 \u0438 Consensus" },
+  { value: "hybrid", label: "\u{1F9E0} \u041F\u043E\u043B\u043D\u044B\u0439 \u2014 \u043D\u0430\u0443\u043A\u0430 + \u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0430" }
+];
+var STEPS = [
+  { key: "input", label: "1. \u0426\u0435\u043B\u044C" },
+  { key: "gate1", label: "2. Gate 1" },
+  { key: "gate2", label: "3. Gate 2" },
+  { key: "generating", label: "4. \u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F" }
+];
+function StepIndicator({ current }) {
+  return import_react26.default.createElement(
+    "div",
+    { className: "steering-studio-steps" },
+    STEPS.map(
+      (s) => import_react26.default.createElement(
+        "span",
+        {
+          key: s.key,
+          className: "steering-studio-step-chip" + (s.key === current ? " active" : "")
+        },
+        s.label
+      )
+    )
+  );
+}
+function SteeringStudio() {
+  const [step, setStep] = (0, import_react26.useState)("input");
+  const [goal, setGoal] = (0, import_react26.useState)("");
+  const [sourcePolicy, setSourcePolicy] = (0, import_react26.useState)("practical_only");
+  const [workJobId, setWorkJobId] = (0, import_react26.useState)(null);
+  const [candidates, setCandidates] = (0, import_react26.useState)([]);
+  const [digests, setDigests] = (0, import_react26.useState)([]);
+  const [genStatus, setGenStatus] = (0, import_react26.useState)("");
+  const [error, setError] = (0, import_react26.useState)("");
+  const [busy, setBusy] = (0, import_react26.useState)(false);
+  async function runAnalysis(e) {
+    e?.preventDefault();
+    const text = goal.trim();
+    if (text.length < 8) return;
+    setError("");
+    setBusy(true);
+    setGenStatus("TaxonomyService + Light Discovery\u2026");
+    try {
+      const depth = sourcePolicy === "hybrid" || sourcePolicy === "academic_only" ? "Deep Mechanics" : "Standard";
+      const res = await steeringGenerate({
+        target_goal: text,
+        user_level: "Intermediate/Advanced",
+        depth_level: depth,
+        source_policy: sourcePolicy,
+        generation_mode: sourcePolicy === "academic_only" ? "consensus" : "fast",
+        control_axis: "steering"
+      });
+      setWorkJobId(res.work_job_id);
+      setCandidates(res.taxonomy_discovery?.candidate_articles || []);
+      setStep("gate1");
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy(false);
+      setGenStatus("");
+    }
+  }
+  async function approveGate1(urls) {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await steeringApproveGate1(workJobId, urls);
+      setDigests(res.surface_digests?.digests || []);
+      setStep("gate2");
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function approveGate2(urls) {
+    setBusy(true);
+    setError("");
+    setStep("generating");
+    setGenStatus("\u0428\u0442\u0443\u0440\u0432\u0430\u043B: \u0442\u044F\u0436\u0451\u043B\u044B\u0439 Map-Reduce \u043F\u043E \u0443\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D\u043D\u044B\u043C \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0430\u043C\u2026");
+    try {
+      const res = await steeringApproveGate2(workJobId, urls);
+      const job = await waitWorkJob(res.generation_job_id);
+      const curriculumId = job?.result?.curriculum_id;
+      if (!curriculumId) {
+        throw new Error("\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B\u0430\u0441\u044C \u0431\u0435\u0437 curriculum_id");
+      }
+      const nodes = job.result.nodes || [];
+      const target = new URL(window.location.href);
+      target.search = "";
+      if (nodes.length === 1) {
+        target.searchParams.set("mode", "topic");
+        target.searchParams.set("id", nodes[0].node_id);
+        target.searchParams.set("curriculum", curriculumId);
+      } else {
+        target.searchParams.set("curriculum", curriculumId);
+      }
+      window.location.href = target.toString();
+    } catch (err) {
+      setError(String(err.message || err));
+      setStep("gate2");
+      setBusy(false);
+    }
+  }
+  return import_react26.default.createElement(
+    "div",
+    { className: "steering-studio-container" },
+    import_react26.default.createElement(
+      "header",
+      { className: "steering-studio-header" },
+      import_react26.default.createElement("h1", null, "\u{1F3AF} \u0428\u0442\u0443\u0440\u0432\u0430\u043B Studio"),
+      import_react26.default.createElement(
+        "p",
+        { className: "muted" },
+        "\u041F\u043E\u0448\u0430\u0433\u043E\u0432\u0430\u044F \u0441\u0431\u043E\u0440\u043A\u0430 \u043A\u0443\u0440\u0441\u0430 \u0438\u0437 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043D\u044B\u0445 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432 \u2014 \u0431\u0435\u0437 \u0432\u0438\u0437\u0443\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0433\u0440\u0430\u0444\u0430."
+      )
+    ),
+    import_react26.default.createElement(StepIndicator, { current: step }),
+    error && import_react26.default.createElement("div", { className: "skill-error" }, error),
+    step === "input" && import_react26.default.createElement(
+      "form",
+      {
+        className: "steering-studio-step steering-studio-input",
+        onSubmit: runAnalysis
+      },
+      import_react26.default.createElement("label", null, "\u0426\u0435\u043B\u044C \u043E\u0431\u0443\u0447\u0435\u043D\u0438\u044F"),
+      import_react26.default.createElement("input", {
+        value: goal,
+        onChange: (e) => setGoal(e.target.value),
+        placeholder: "\u0427\u0435\u043C\u0443 \u0432\u044B \u0445\u043E\u0442\u0438\u0442\u0435 \u043D\u0430\u0443\u0447\u0438\u0442\u044C\u0441\u044F?",
+        minLength: 8,
+        required: true,
+        disabled: busy
+      }),
+      import_react26.default.createElement("label", null, "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438"),
+      import_react26.default.createElement(
+        "select",
+        {
+          value: sourcePolicy,
+          onChange: (e) => setSourcePolicy(e.target.value),
+          disabled: busy
+        },
+        SOURCE_POLICIES.map(
+          (p) => import_react26.default.createElement("option", { key: p.value, value: p.value }, p.label)
+        )
+      ),
+      import_react26.default.createElement(
+        "button",
+        {
+          type: "submit",
+          className: "skill-btn-primary",
+          disabled: busy || goal.trim().length < 8
+        },
+        busy ? genStatus || "\u2026" : "\u0417\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0430\u043D\u0430\u043B\u0438\u0437"
+      )
+    ),
+    (step === "gate1" || step === "gate2") && import_react26.default.createElement(
+      "div",
+      { className: "steering-studio-step" },
+      import_react26.default.createElement(SteeringGatePanel, {
+        status: step === "gate1" ? "awaiting_gate_1" : "awaiting_gate_2",
+        candidates,
+        digests,
+        busy,
+        onApprove: step === "gate1" ? approveGate1 : approveGate2
+      })
+    ),
+    step === "generating" && import_react26.default.createElement(
+      "div",
+      { className: "steering-studio-step steering-studio-generating" },
+      import_react26.default.createElement("p", null, genStatus || "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043A\u0443\u0440\u0441\u0430\u2026")
+    )
+  );
+}
+
+// TopicFocusView.js
+var import_react27 = __toESM(require_react(), 1);
+function TopicFocusView({ nodeId, curriculumId }) {
+  const [curriculum, setCurriculum] = (0, import_react27.useState)(null);
+  const [node, setNode] = (0, import_react27.useState)(null);
+  const [session, setSession] = (0, import_react27.useState)({ messages: [] });
+  const [stageMessage, setStageMessage] = (0, import_react27.useState)("");
+  const [busy, setBusy] = (0, import_react27.useState)(false);
+  const [error, setError] = (0, import_react27.useState)("");
+  (0, import_react27.useEffect)(() => {
+    if (!curriculumId || !nodeId) {
+      setError(
+        "\u041D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D curriculum \u0438/\u0438\u043B\u0438 id \u0432 URL (?mode=topic&id=...&curriculum=...)."
+      );
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setBusy(true);
+      setError("");
+      try {
+        const ws = await fetchWorkspace(curriculumId);
+        const found = (ws.curriculum?.nodes || []).find(
+          (n) => n.node_id === nodeId
+        );
+        if (!found) {
+          throw new Error(`\u041D\u043E\u0434\u0430 ${nodeId} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430 \u0432 \u043A\u0443\u0440\u0441\u0435 ${curriculumId}`);
+        }
+        if (cancelled) return;
+        setCurriculum(ws.curriculum);
+        setNode(found);
+        let finalRes = null;
+        await nodeInitStream(
+          curriculumId,
+          toNodeDataInput(found),
+          (evt) => {
+            if (evt.type === "stage" && evt.message) setStageMessage(evt.message);
+            if (evt.type === "complete" && evt.result) finalRes = evt.result;
+            if (evt.type === "error") {
+              throw new Error(evt.detail || "init-stream error");
+            }
+          },
+          "topic_qna"
+        );
+        if (!cancelled) applyResponse(finalRes || {}, null);
+      } catch (err) {
+        if (!cancelled) setError(String(err.message || err));
+      } finally {
+        if (!cancelled) {
+          setBusy(false);
+          setStageMessage("");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [curriculumId, nodeId]);
+  function applyResponse(res, userMsg) {
+    setSession((prev) => {
+      const messages = buildMessagesAfterChatComplete(
+        res,
+        userMsg,
+        prev.messages || [],
+        "topic-focus-stream"
+      );
+      return {
+        ...prev,
+        initialized: true,
+        content: res.content || prev.content,
+        messages,
+        readyForTransition: Boolean(res.ready_for_transition),
+        quickReplies: Array.isArray(res.quick_replies) ? res.quick_replies : [],
+        sourceRegistry: Array.isArray(res.source_registry) ? res.source_registry : prev.sourceRegistry || []
+      };
+    });
+  }
+  async function send(text) {
+    if (!curriculum || !node || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await nodeChat(
+        curriculum.curriculum_id,
+        toNodeDataInput(node),
+        text,
+        {},
+        "topic_qna"
+      );
+      applyResponse(res, text);
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  function openNextNode(nextNode) {
+    if (!nextNode) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("id", nextNode.node_id);
+    window.location.href = url.toString();
+  }
+  if (error) {
+    return import_react27.default.createElement(
+      "div",
+      { className: "topic-focus-container topic-focus-error" },
+      error
+    );
+  }
+  if (!node) {
+    return import_react27.default.createElement(
+      "div",
+      { className: "topic-focus-container topic-focus-loading" },
+      stageMessage || "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0442\u0435\u043C\u044B\u2026"
+    );
+  }
+  const content = session.content || {};
+  const summaryHtml = (content.summary_html || "").trim() ? content.summary_html : structuredAnalysisToHtml(content.summary || "");
+  return import_react27.default.createElement(
+    "div",
+    { className: "topic-focus-container" },
+    import_react27.default.createElement(
+      "div",
+      { className: "topic-focus-reading" },
+      import_react27.default.createElement("h1", null, node.title),
+      busy && import_react27.default.createElement(
+        "p",
+        { className: "muted topic-focus-busy-hint" },
+        stageMessage || "\u0413\u043E\u0442\u043E\u0432\u0438\u043C \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u2026"
+      ),
+      summaryHtml ? import_react27.default.createElement(LlmHtmlBlock, {
+        html: summaryHtml,
+        className: "drawer-summary md-body"
+      }) : content.summary ? import_react27.default.createElement(
+        "div",
+        { className: "drawer-summary" },
+        content.summary
+      ) : null,
+      import_react27.default.createElement(SourceRegistryList, {
+        registry: session.sourceRegistry || []
+      })
+    ),
+    import_react27.default.createElement(
+      "div",
+      { className: "topic-focus-chat" },
+      import_react27.default.createElement(NodeTutorChat, {
+        session,
+        onSend: send,
+        disabled: busy,
+        generating: busy,
+        stageMessage,
+        curriculumId: curriculum.curriculum_id,
+        nodeData: toNodeDataInput(node),
+        curriculum,
+        onOpenNode: openNextNode
+      })
     )
   );
 }
 
 // main.js
 var root2 = (0, import_client.createRoot)(document.getElementById("skill-tree-root"));
-root2.render(import_react25.default.createElement(RoadmapDashboard));
+var params = new URLSearchParams(window.location.search);
+var mode = params.get("mode");
+var app;
+if (mode === "studio") {
+  app = import_react28.default.createElement(SteeringStudio);
+} else if (mode === "topic") {
+  app = import_react28.default.createElement(TopicFocusView, {
+    nodeId: params.get("id"),
+    curriculumId: params.get("curriculum")
+  });
+} else {
+  app = import_react28.default.createElement(RoadmapDashboard);
+}
+root2.render(app);
 /*! Bundled license information:
 
 react/cjs/react.development.js:

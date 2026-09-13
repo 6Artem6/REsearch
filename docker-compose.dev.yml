@@ -15,30 +15,36 @@ services:
     tty: true
     develop:
       watch:
-        - path: ./knowledge_engine/api
+        - path: ./knowledge_engine/src/entrypoints/api
           action: sync
-          target: /app/knowledge_engine/api
-        - path: ./knowledge_engine/graph
+          target: /app/knowledge_engine/src/entrypoints/api
+        - path: ./knowledge_engine/src/app
           action: sync
-          target: /app/knowledge_engine/graph
+          target: /app/knowledge_engine/src/app
+        - path: ./knowledge_engine/src/legacy/graph
+          action: sync
+          target: /app/knowledge_engine/src/legacy/graph
         - path: ./knowledge_engine/services
           action: sync
           target: /app/knowledge_engine/services
-        - path: ./knowledge_engine/nodes
+        - path: ./knowledge_engine/src/legacy/nodes
           action: sync
-          target: /app/knowledge_engine/nodes
-        - path: ./knowledge_engine/ui
+          target: /app/knowledge_engine/src/legacy/nodes
+        - path: ./knowledge_engine/src/shared
           action: sync
-          target: /app/knowledge_engine/ui
-        - path: ./knowledge_engine/schemas.py
+          target: /app/knowledge_engine/src/shared
+        - path: ./knowledge_engine/src/adapters
           action: sync
-          target: /app/knowledge_engine/schemas.py
-        - path: ./knowledge_engine/config.py
+          target: /app/knowledge_engine/src/adapters
+        - path: ./knowledge_engine/src/domains
           action: sync
-          target: /app/knowledge_engine/config.py
-        - path: ./knowledge_engine/main.py
+          target: /app/knowledge_engine/src/domains
+        - path: ./knowledge_engine/src/core
           action: sync
-          target: /app/knowledge_engine/main.py
+          target: /app/knowledge_engine/src/core
+        - path: ./knowledge_engine/src/config
+          action: sync
+          target: /app/knowledge_engine/src/config
         - path: ./knowledge_engine/llm.py
           action: sync
           target: /app/knowledge_engine/llm.py

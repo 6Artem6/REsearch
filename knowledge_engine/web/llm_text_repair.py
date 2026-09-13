@@ -890,14 +890,18 @@ def _quote_arrow_messages(inner: str) -> str:
 
 
 def _format_mermaid_inner(inner: str) -> str:
-    from knowledge_engine.services.mermaid_validate import sanitize_mermaid_syntax
+    from knowledge_engine.src.shared.diagram_tools.mermaid_validate import (
+        sanitize_mermaid_syntax,
+    )
 
     s = sanitize_mermaid_syntax(repair_llm_literal_escapes(inner).strip())
     s = _quote_subgraph_titles(s)
     if not s:
         return s
 
-    from knowledge_engine.services.mermaid_validate import strip_mermaid_init_directive
+    from knowledge_engine.src.shared.diagram_tools.mermaid_validate import (
+        strip_mermaid_init_directive,
+    )
 
     s = strip_mermaid_init_directive(s)
     has_init = bool(re.search(r"%%\s*\{init:", s, re.I))

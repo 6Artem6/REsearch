@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from typing import Any, Awaitable, Callable, List, Optional
 
-from knowledge_engine.config import SEARXNG_DISCOVERY_CATEGORIES, SEARXNG_ENABLED
-from knowledge_engine.services.searxng_client import searxng_search_json
-from knowledge_engine.ui.run_log import trace
+from knowledge_engine.src.adapters.search_providers.searxng_client import (
+    searxng_search_json,
+)
+from knowledge_engine.src.config.settings import (
+    SEARXNG_DISCOVERY_CATEGORIES,
+    SEARXNG_ENABLED,
+)
+from knowledge_engine.src.core.run_log import trace
 
 SearchClient = Callable[..., Awaitable[List[dict[str, Any]]]]
 

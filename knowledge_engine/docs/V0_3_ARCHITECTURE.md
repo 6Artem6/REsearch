@@ -8,7 +8,7 @@
 export GEMINI_API_KEY=...   # или GOOGLE_API_KEY
 export GRAPH_VERSION=0.3      # default
 export PYTHONPATH="$(pwd)"
-python -m knowledge_engine.main analyze -c "..." "Задача"
+python -m knowledge_engine.src.app.main analyze -c "..." "Задача"
 ```
 
 - `MAX_RESEARCH_DEPTH` (default 2) — Re-Act раунды discovery после `research_evaluator`

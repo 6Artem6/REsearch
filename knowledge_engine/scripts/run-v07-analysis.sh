@@ -13,4 +13,4 @@ fi
 export KE_TRACE_STDOUT="${KE_TRACE_STDOUT:-true}"
 export KE_LOG_PLAIN="${KE_LOG_PLAIN:-true}"
 QUERY="${1:?usage: run-v07-analysis.sh \"IT вопрос\"}"
-exec "${ROOT}/.venv/bin/python" -m knowledge_engine.scripts.run_v07 "${QUERY}"
+exec "${ROOT}/.venv/bin/python" -m knowledge_engine.scripts.legacy_research.run_v07 "${QUERY}"

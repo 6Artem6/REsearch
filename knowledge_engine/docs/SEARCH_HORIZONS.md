@@ -63,7 +63,7 @@ Knowledge Engine разделяет **сбор источников** на тр�
 ## Конфигурация
 
 - Провайдеры по горизонту: `HORIZON_PROVIDERS` в `services/search/horizons.py`.
-- Глобальный список активных провайдеров: `SEARCH_ACTIVE_PROVIDERS` в `config.py` (для `test-search` без разбиения по горизонтам).
+- Глобальный список активных провайдеров: `SEARCH_ACTIVE_PROVIDERS` в `src/config/settings.py` (для `test-search` без разбиения по горизонтам).
 - Шаблоны фокуса запроса: `_QUERY_FOCUS` в том же модуле (можно расширить или позже заменить генерацией 1.5B).
 
 ---
@@ -72,7 +72,7 @@ Knowledge Engine разделяет **сбор источников** на тр�
 
 ```bash
 export PYTHONPATH="/path/to/REsearch"
-python -m knowledge_engine.main test-search "RAG cache invalidation" -c "Mac M1 Python"
+python -m knowledge_engine.src.app.main test-search "RAG cache invalidation" -c "Mac M1 Python"
 ```
 
 По умолчанию **три панели** (запрос + провайдеры) и **три таблицы** URL по горизонтам. Старый режим одного запроса: `--flat`.
@@ -94,9 +94,9 @@ python -m knowledge_engine.main test-search "RAG cache invalidation" -c "Mac M1 
 
 ```bash
 export PYTHONPATH="$(pwd)"
-python -m knowledge_engine.main browser-login   # один раз
+python -m knowledge_engine.src.app.main browser-login   # один раз
 export GEMINI_BROWSER_HEADLESS=false
-python -m knowledge_engine.main analyze \
+python -m knowledge_engine.src.app.main analyze \
   --gemini-research \
   -c "стек, железо" \
   "ваша задача" \
@@ -115,7 +115,7 @@ Playwright **не** подключается к вашему системном�
 cd knowledge_engine && .venv/bin/playwright install firefox
 export PLAYWRIGHT_BROWSER=firefox
 export GEMINI_BROWSER_HEADLESS=false
-python -m knowledge_engine.main browser-login
+python -m knowledge_engine.src.app.main browser-login
 ```
 
 Профиль сессии: `knowledge_engine/.browser_state/firefox/` (отдельно от `chromium/`).

@@ -11,8 +11,8 @@ from typing import Any, Iterable, Sequence
 
 from pydantic import BaseModel, Field, field_validator
 
-from knowledge_engine.config import PACKAGE_ROOT
-from knowledge_engine.ui.run_log import trace
+from knowledge_engine.src.config.settings import PACKAGE_ROOT
+from knowledge_engine.src.core.run_log import trace
 
 _STORE_DIR = PACKAGE_ROOT / ".runs"
 _lock = threading.RLock()
@@ -246,9 +246,7 @@ class SessionWeaknessLedger(BaseModel):
             key = (tag, nid)
             if key in existing:
                 continue
-            archived.append(
-                ClosedWeaknessTag(tag=tag, closed_at=now, node_id=nid)
-            )
+            archived.append(ClosedWeaknessTag(tag=tag, closed_at=now, node_id=nid))
             existing.add(key)
         self.closed_weaknesses = archived[-_MAX_CLOSED_TAGS:]
         self.prune_closed_tags()
@@ -322,9 +320,7 @@ class SessionWeaknessLedger(BaseModel):
             nxt = [t for t in tags if t not in aged_out]
             if len(nxt) != len(tags):
                 decayed += len(tags) - len(nxt)
-                refreshed.append(
-                    summary.model_copy(update={"weakness_tags": nxt})
-                )
+                refreshed.append(summary.model_copy(update={"weakness_tags": nxt}))
             else:
                 refreshed.append(summary)
         self.node_summaries = refreshed[-_MAX_SUMMARIES:]
