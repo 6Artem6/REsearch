@@ -199,6 +199,21 @@ TUTOR_EXPLAIN_STREAM_FIELDS: tuple[str, ...] = (
     "follow_up_question",
 )
 
+# RU: TopicQnaTutorContract/TopicQnaExplainContract (tutor.py) — те же поля,
+# что у DeepDiveTutorContract/DeepDiveExplainContract, минус
+# follow_up_question (в Topic Q&A этого поля нет в схеме вообще). Без этих
+# констант и веток в send_chat_message_stream (chat_session_manager.py)
+# стрим для Topic Q&A не попадал ни в один schema_name-кейс и падал в
+# JsonFieldStreamFilter с пустым field ИЛИ вообще не фильтровался —
+# в чат летел сырой растущий JSON вместо текста по словам.
+TOPIC_QNA_TUTOR_STREAM_FIELDS: tuple[str, ...] = (
+    "confirmation",
+    "correction_breakdown",
+    "technical_explanation",
+)
+
+TOPIC_QNA_EXPLAIN_STREAM_FIELDS: tuple[str, ...] = ("technical_explanation",)
+
 DRILL_ACTIVE_STREAM_FIELDS: tuple[str, ...] = (
     "status_header",
     "confirmation",
@@ -319,6 +334,8 @@ def structured_stream_text_field(response_schema: type | None) -> str | None:
         "DeepDiveTutorContract",
         "DeepDiveDeepAnalysisContract",
         "DeepDiveExplainContract",
+        "TopicQnaTutorContract",
+        "TopicQnaExplainContract",
     ):
         return None
     if name == "ActiveDrillStepResponse":

@@ -44,6 +44,7 @@ from knowledge_engine.src.domains.grounding.tiered_memory import (
 )
 from knowledge_engine.src.domains.grounding.tutor import (
     StructuredLectureResponse,
+    TopicQnaLectureResponse,
     structured_lecture_to_dense,
 )
 from knowledge_engine.src.domains.grounding.tutor_prompt_builder import (
@@ -154,23 +155,31 @@ def generate_dense_material(
     )
     handoff = build_handoff_summary(memory)
 
+    is_topic_qna = (interaction_axis or "").strip().lower() == "topic_qna"
+    # RU: checkpoint_prompt существует ТОЛЬКО в StructuredLectureResponse —
+    # для topic_qna используется TopicQnaLectureResponse, у которой этого
+    # поля вообще нет в JSON Schema, так что self-check вопрос физически
+    # невозможно записать (см. _DenseLectureFieldsBase в tutor.py). Раньше
+    # это запрещалось только текстом инструкции (system prompt + Field
+    # description) — Gemini всё равно его игнорировал (live-тест на sql_cte,
+    # prompt.log): известный на момент запроса инвариант должен быть
+    # закодирован в схеме, а не в условной инструкции.
+    response_schema = (
+        TopicQnaLectureResponse if is_topic_qna else StructuredLectureResponse
+    )
+
     system = _dense_system_instruction(
         scope,
         topic_already_covered=topic_already_covered,
         memory=memory,
         interaction_axis=interaction_axis,
     )
-    if (interaction_axis or "").strip().lower() == "topic_qna":
-        # RU (Interaction Axis теперь живой — см. docs/
-        # STEERING_AND_TOPIC_QNA_ROADMAP.md, "Interaction Axis подключён"):
-        # base-промпт уже собран БЕЗ mandatory-checkpoint правил (см.
-        # PromptComposeContext.interaction_axis /
-        # LECTURE_MODE_STRUCTURE_RULES_TOPIC_QNA) — TOPIC_QNA_SYSTEM_PROMPT
-        # добавляется поверх как подтверждающая, не перекрывающая, вставка
-        # (раньше приходилось именно "перекрывать" mandatory-правило текстом
-        # в конце промпта — модель его игнорировала, см. prompt.log).
-        # select_interaction_axis_system_prompt возвращает None для
-        # "lecture_self_check" — ветка просто не выполняется.
+    if is_topic_qna:
+        # RU (Interaction Axis — см. docs/STEERING_AND_TOPIC_QNA_ROADMAP.md):
+        # оставшиеся поведенческие правила (не задавать встречных вопросов,
+        # отвечать по RAG, короткий формат) не кодируются в схеме — только
+        # они и остаются текстом. select_interaction_axis_system_prompt
+        # возвращает None для "lecture_self_check" — ветка не выполняется.
         from knowledge_engine.src.domains.grounding.prompt_factory import (
             select_interaction_axis_system_prompt,
         )
@@ -191,7 +200,7 @@ def generate_dense_material(
             system,
             payload,
             anchor,
-            StructuredLectureResponse,
+            response_schema,
             "node_deep_dive / dense_material",
             rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
             chat_manager=mgr,
@@ -208,11 +217,11 @@ def generate_dense_material(
     except Exception as exc:
         trace(
             f"NODE_DIVE dense_material fallback Cloud LLM json_schema | "
-            f"StructuredLectureResponse | {exc}"
+            f"{response_schema.__name__} | {exc}"
         )
         structured = run_local_structured(
             MAIN_MODEL,
-            StructuredLectureResponse,
+            response_schema,
             system,
             payload,
             anchor,

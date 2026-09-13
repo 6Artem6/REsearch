@@ -76,6 +76,7 @@ def _tutor_generate_node_impl(
             content,
             stream_callback,
             f"{req.curriculum_id}/{node.node_id}",
+            interaction_axis=req.interaction_axis,
         )
         from knowledge_engine.src.domains.grounding.subconcept_invariants import (
             enforce_question_sub_concept_invariant,
@@ -102,6 +103,7 @@ def _tutor_generate_node_impl(
                 f"{req.curriculum_id}/{node.node_id}",
                 strip_chat_history=True,
                 emit_stream_plaque=False,
+                interaction_axis=req.interaction_axis,
             )
             llm_out, drifted2 = enforce_question_sub_concept_invariant(memory, llm_out)
             if drifted2:

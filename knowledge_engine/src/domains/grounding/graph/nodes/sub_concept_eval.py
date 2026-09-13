@@ -43,24 +43,27 @@ def sub_concept_eval_node(
 def _sub_concept_eval_node_impl(
     state: TutorGraphState, config: dict[str, Any] | None = None
 ) -> TutorGraphState:
-    """Gap eval for ``pending_evaluation_concept_id`` only; skip if no pending."""
+    """Gap eval for ``pending_evaluation_concept_id`` only; skip if no pending.
+
+    Topic Q&A (``req.interaction_axis == "topic_qna"``) has NO axis-specific
+    branch here on purpose (removed — see prompt.log "self_check_node" task
+    and docs/STEERING_AND_TOPIC_QNA_ROADMAP.md): the generic "no pending"
+    skip below already covers plain Q&A, because TopicQnaLectureResponse /
+    TopicQnaExplainContract structurally cannot ask a question, so ordinary
+    answers never set ``pending_evaluation_concept_id`` in the first place
+    (see ``commit_turn.py`` — it only binds pending when
+    ``llm_out.follow_up_question`` is non-empty). Pending is set ONLY by the
+    explicit ``[mode:self_check]`` turn (``TopicQnaTutorContract``/
+    ``DeepDiveExplainContract`` is skipped there too, but for that specific
+    turn ``engine.py`` swaps back to a question-bearing schema — see
+    ``_invoke_tutor``'s ``factory_mode != "self_check"`` check). So when
+    pending IS set for a topic_qna session, it is always a genuine
+    Self-Check answer awaiting grading, and must be evaluated normally —
+    unconditionally skipping it (the old behavior) was exactly the bug: the
+    learner had to switch to "Лекция" to ever get credit for a subtopic."""
     req = state["request"]
     memory = state["memory"]
     memory.evaluator_skipped = False
-    if (req.interaction_axis or "").strip().lower() == "topic_qna":
-        # Topic Q&A: expert-consultant role, answers only — never grades a
-        # reply as right/wrong (see docs/STEERING_AND_TOPIC_QNA_ROADMAP.md).
-        # Same skip mechanism as an explicit lecture request below; mastery/
-        # coverage state is left untouched, not reset, so switching back to
-        # Autopilot on the same node keeps prior progress.
-        logger.info("sub_concept_eval_node skip | topic_qna interaction_axis")
-        from knowledge_engine.src.domains.grounding.sub_concept_evaluator import (
-            mark_evaluator_skipped,
-        )
-
-        mark_evaluator_skipped(memory, "topic_qna (expert-consultant, no grading)")
-        return _with_memory(state, memory)
-
     user_message = (req.user_message or "").strip()
     if not user_message:
         logger.info("sub_concept_eval_node skip | empty user_message")

@@ -564,6 +564,88 @@ def _invoke_intro_assessment(
     return IntroAssessmentOutput.model_validate(out.model_dump())
 
 
+# RU: sub_concept_evaluator.EvalDirective, терминальные значения — подтема
+# реально зачтена, а не "ещё один слой той же подтемы предстоит пройти"
+# (PROBE_NEXT_LAYER:*). Используется только для interaction_axis="topic_qna"
+# schema-selection в _resolve_tutor_response_schema.
+_TOPIC_QNA_RESOLVED_EVAL_DIRECTIVES = frozenset(
+    {"PASSED_WITH_GLOSS", "PASSED_CLEAN", "DEEP_MASTERY_EARNED"}
+)
+
+
+def _resolve_tutor_response_schema(
+    *,
+    star_guard: bool,
+    evaluator_skipped: bool,
+    factory_mode: str,
+    drill_schema: type | None,
+    interaction_axis: str,
+    last_eval_directive: str,
+    has_pending_self_check: bool = False,
+) -> type:
+    """Pick the Gemini structured-output schema for one _invoke_tutor call.
+
+    Topic Q&A (interaction_axis="topic_qna") never gets a schema with
+    follow_up_question EXCEPT for cases where a question is genuinely
+    required and cannot be phrased any other way:
+    - the [mode:self_check] turn itself (SELF_CHECK_MODE_PROMPT formulates
+      the check question — see prompt.log "self_check_node" task);
+    - any turn while a Self-Check question is still pending an answer
+      (has_pending_self_check) — e.g. the learner presses "Переформулируй
+      вопрос" (intent "clarify"). That message is itself a UI quick-reply
+      control chip (is_quick_reply_control_message → evaluator_skipped),
+      not a scored answer, and does NOT clear pending_evaluation_concept_id
+      — so the self-check is still open and the tutor must be ABLE to
+      re-ask/rephrase it. Confirmed live: without this, "clarify" was
+      correctly recognized but the reply had no question at all (nowhere
+      to put one — TopicQnaExplainContract has no such field);
+    - a just-graded Self-Check answer that was NOT credited yet
+      (last_eval_directive == "PROBE_NEXT_LAYER:*", not a terminal
+      directive) — the loop must keep asking to give another attempt,
+      or the model is left improvising an "уточните" text without a real
+      question field (technical_explanation forbids «?»). Removing
+      follow_up_question unconditionally for topic_qna (the first version
+      of this fix) broke exactly this retry path — confirmed live.
+    """
+    from knowledge_engine.src.domains.grounding.tutor import (
+        DeepDiveDeepAnalysisContract,
+        DeepDiveExplainContract,
+        TopicQnaExplainContract,
+        TopicQnaTutorContract,
+    )
+
+    is_topic_qna = (interaction_axis or "").strip().lower() == "topic_qna"
+    if evaluator_skipped:
+        # RU: TopicQnaExplainContract — та же причина, что у
+        # TopicQnaLectureResponse (dense_material): "Optional follow_up_
+        # question... if set" без axis-условия — тот же класс бага, что уже
+        # был у checkpoint_prompt. Исключения — сам ход [mode:self_check] и
+        # любой ход, пока self-check ещё не отвечен (has_pending_self_check,
+        # например «Переформулируй вопрос»): им нужно поле follow_up_question,
+        # чтобы задать/переформулировать контрольный вопрос, не переключая
+        # ось. Для настоящей "чистой" причины skip (пустое сообщение / явный
+        # lecture request / вообще нет pending) follow-up по-прежнему
+        # опционален через DeepDiveExplainContract, как раньше.
+        if is_topic_qna and factory_mode != "self_check" and not has_pending_self_check:
+            return TopicQnaExplainContract
+        return DeepDiveExplainContract
+    if drill_schema is not None:
+        return drill_schema
+    if is_topic_qna and not star_guard:
+        # RU: Evaluator ран (grading a Self-Check answer). Если подтема
+        # РЕАЛЬНО зачтена (терминальная директива) — follow_up_question
+        # больше не нужен: TopicQnaTutorContract не добавляет это поле
+        # вовсе, auto-advance остаётся на Host-owned
+        # ready_for_transition/suggested_next_step (не axis-specific).
+        # Иначе (PROBE_NEXT_LAYER:* — тот же слой ещё не пройден)
+        # самопроверка продолжается — нужен ещё один вопрос, поэтому
+        # остаёмся на DeepDiveTutorContract (default ниже).
+        if (last_eval_directive or "").strip() in _TOPIC_QNA_RESOLVED_EVAL_DIRECTIVES:
+            return TopicQnaTutorContract
+        return DeepDiveTutorContract
+    return DeepDiveDeepAnalysisContract if star_guard else DeepDiveTutorContract
+
+
 def _invoke_tutor(
     memory: SessionMemory,
     node: NodeDataInput,
@@ -581,6 +663,7 @@ def _invoke_tutor(
     *,
     strip_chat_history: bool = False,
     emit_stream_plaque: bool = True,
+    interaction_axis: str = "lecture_self_check",
 ) -> DeepDiveLLMOutput:
     from knowledge_engine.src.domains.grounding.subconcept_invariants import (
         format_subconcept_hard_anchor,
@@ -612,10 +695,6 @@ def _invoke_tutor(
         get_star_task_status,
         overlay_factory_mode_tag,
         star_task_blocks_transition,
-    )
-    from knowledge_engine.src.domains.grounding.tutor import (
-        DeepDiveDeepAnalysisContract,
-        DeepDiveExplainContract,
     )
 
     raw_user_msg = user_msg
@@ -910,13 +989,19 @@ def _invoke_tutor(
             user_message_len=len((user_msg or "").strip()),
         ),
     )
-    response_schema: type = (
-        DeepDiveDeepAnalysisContract if star_guard else DeepDiveTutorContract
+    from knowledge_engine.src.domains.grounding.concept_map_state import (
+        stored_pending_evaluation_id,
     )
-    if evaluator_skipped:
-        response_schema = DeepDiveExplainContract
-    elif drill_schema is not None:
-        response_schema = drill_schema
+
+    response_schema = _resolve_tutor_response_schema(
+        star_guard=star_guard,
+        evaluator_skipped=evaluator_skipped,
+        factory_mode=factory_mode,
+        drill_schema=drill_schema,
+        interaction_axis=interaction_axis,
+        last_eval_directive=getattr(memory, "last_eval_directive", "") or "",
+        has_pending_self_check=bool(stored_pending_evaluation_id(memory)),
+    )
     last_err: Exception | None = None
     raw = None
     max_attempts = 2 if (star_guard or drill_schema is not None) else 1

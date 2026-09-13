@@ -370,7 +370,19 @@ async def iter_node_selection_explain_stream(
 
     async def worker() -> None:
         try:
-            user_payload, registry_ref, resolved_r = _build_node_explain_payload(
+            # RU: _build_node_explain_payload → build_explain_context_bundle
+            # внутри себя делает asyncio.run() на каждый vector-store вызов
+            # (explain_context_bundle.py — рассчитан на синхронный LangGraph
+            # тред, без своего event loop). Этот worker — уже corutina на
+            # ТЕКУЩЕМ активном loop (asyncio.create_task ниже), поэтому
+            # прямой вызов ловил "asyncio.run() cannot be called from a
+            # running event loop" — RuntimeError молча съедался в try/except
+            # внутри explain_context_bundle.py, оставляя corutину
+            # неawaited (RuntimeWarning) и anchor/invariants блоки пустыми.
+            # to_thread возвращает вызов в отдельный поток без активного
+            # loop — там asyncio.run() снова легитимен.
+            user_payload, registry_ref, resolved_r = await asyncio.to_thread(
+                _build_node_explain_payload,
                 node_title,
                 selected_text,
                 user_question,

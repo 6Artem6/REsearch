@@ -168,6 +168,8 @@ export function NodeMasteryPanel({
   lastEvalDirective,
   onModeSelect,
   disabled,
+  interactionAxis,
+  onInteractionAxisChange,
 }) {
   const dash = masteryDashboard || {};
   const { coverage, score } = resolveMasteryScore(
@@ -268,6 +270,32 @@ export function NodeMasteryPanel({
         "p",
         { className: "mastery-bridge muted" },
         dash.pathway_bridge,
+      ),
+    onInteractionAxisChange &&
+      React.createElement(
+        "div",
+        { className: "mastery-axis-row" },
+        React.createElement("span", { className: "muted small" }, "Формат: "),
+        React.createElement(
+          "select",
+          {
+            className: "skill-mode-select mastery-axis-select",
+            value: interactionAxis || "lecture_self_check",
+            onChange: (e) => onInteractionAxisChange(e.target.value),
+            "aria-label": "Ось взаимодействия",
+            disabled,
+          },
+          React.createElement(
+            "option",
+            { value: "lecture_self_check" },
+            "📖 Лекция",
+          ),
+          React.createElement(
+            "option",
+            { value: "topic_qna" },
+            "💬 Topic Q&A",
+          ),
+        ),
       ),
     React.createElement("h4", { className: "mastery-modes-label" }, "Режим работы"),
     React.createElement(

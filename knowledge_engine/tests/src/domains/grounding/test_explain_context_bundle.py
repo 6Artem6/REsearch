@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import warnings
+
 from knowledge_engine.src.domains.grounding.explain_context_bundle import (
     ExplainContextBundle,
     build_explain_context_bundle,
@@ -210,3 +213,50 @@ def test_explain_payload_includes_triad_blocks(monkeypatch):
     assert len(resolved) == 1
     assert "Почему так" in _NODE_EXPLAIN_SYSTEM
     assert "fundamental_invariants" in _NODE_EXPLAIN_SYSTEM
+
+
+def test_iter_node_selection_explain_stream_no_nested_loop_warning(monkeypatch):
+    """Regression: worker() inside iter_node_selection_explain_stream used
+
+    to call _build_node_explain_payload directly on the already-running
+    event loop (asyncio.create_task(worker())). That sync function's own
+    vector-store calls use asyncio.run() internally (legitimate only from
+    a separate thread, per explain_context_bundle.py's own comment) — so
+    called this way it raised "asyncio.run() cannot be called from a
+    running event loop", silently swallowed by explain_context_bundle.py's
+    try/except, leaving the coroutine unawaited (RuntimeWarning:
+    "coroutine ... was never awaited") and the anchor/invariants context
+    silently empty with no visible error. Fix: asyncio.to_thread runs the
+    call off the event loop thread, where asyncio.run() is legitimate
+    again."""
+    from knowledge_engine.src.domains.grounding import node_selection_explain as mod
+    from knowledge_engine.src.processors.explainer import ExplainSourceRef
+
+    monkeypatch.setattr(
+        mod,
+        "_build_node_explain_payload",
+        lambda *a, **k: ("payload", ExplainSourceRef(), []),
+    )
+
+    class _FakeContract:
+        explanation = "answer text"
+        cited_source_ids: list[str] = []
+
+    monkeypatch.setattr(
+        mod, "_invoke_node_explain_gemini", lambda *a, **k: _FakeContract()
+    )
+
+    async def _drive():
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            events = [
+                item
+                async for item in mod.iter_node_selection_explain_stream(
+                    "Node", "selected", "question", "", "", "", [], "anchor-1"
+                )
+            ]
+            return events, list(caught)
+
+    events, caught = asyncio.run(_drive())
+    assert any(e.get("type") == "complete" for e in events)
+    assert not any("was never awaited" in str(w.message) for w in caught)

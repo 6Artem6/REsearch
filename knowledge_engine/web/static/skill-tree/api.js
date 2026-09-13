@@ -1,34 +1,56 @@
 const API = "/api/v1";
 const LS_ACTIVE = "ke_skill_tree_active_curriculum";
 
-async function waitWorkJob(jobId, timeoutSec = 600) {
-  const r = await fetch(
-    `${API}/work-jobs/${encodeURIComponent(jobId)}/wait?timeout_sec=${timeoutSec}`,
-  );
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({}));
-    throw new Error(err.detail || r.statusText);
-  }
-  const data = await r.json();
-  if (data.timed_out && !data.done) {
-    throw new Error(
-      "Worker не завершил задачу в отведённое время. Проверьте терминал make dev (WORKER) и перезапустите dev.",
+// RU (см. prompt.log, "Убрать жёсткий таймаут ожидания результатов"): раньше
+// это был ОДИН GET /work-jobs/{id}/wait?timeout_sec=600 — при 10-минутном
+// таймауте сервер отвечал timed_out=true, и клиент это трактовал как ошибку
+// ("Worker не завершил задачу"), хотя задача просто ещё выполнялась. Долгие
+// операции (тяжёлый Map-Reduce, консенсус-поиск) регулярно превышают 10
+// минут — таймаут был ложным сигналом сбоя, а не реальным.
+//
+// Теперь — бесконечный цикл КОРОТКИХ long-poll запросов (по
+// WORK_JOB_POLL_TIMEOUT_SEC секунд каждый, ограничение сервера — см.
+// api/routes/work_jobs.py::wait_work_job): любой отдельный HTTP-запрос
+// short-lived и не может зависнуть на часы, но само ожидание продолжается,
+// пока сервер не пришлёт status=completed/failed — без искусственного
+// общего предела. onLongWait (опционально) вызывается один раз, когда
+// суммарное время ожидания превышает WORK_JOB_LONG_WAIT_SEC — для мягкого
+// UX-уведомления "чуть дольше обычного", не прерывающего ожидание.
+const WORK_JOB_POLL_TIMEOUT_SEC = 30;
+const WORK_JOB_LONG_WAIT_SEC = 300; // 5 минут
+
+export async function waitWorkJob(jobId, opts = {}) {
+  const { onLongWait } = opts;
+  let elapsed = 0;
+  let notified = false;
+  for (;;) {
+    const r = await fetch(
+      `${API}/work-jobs/${encodeURIComponent(jobId)}/wait?timeout_sec=${WORK_JOB_POLL_TIMEOUT_SEC}`,
     );
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || r.statusText);
+    }
+    const data = await r.json();
+    const job = data.job || data;
+    if (data.done) {
+      if (job.error) throw new Error(job.error);
+      if (job.status === "failed") throw new Error(job.error || "job failed");
+      return job;
+    }
+    // timed_out (задача ещё running/pending за этот короткий раунд) — не
+    // ошибка, просто продолжаем ждать следующим раундом.
+    elapsed += typeof data.waited_sec === "number" ? data.waited_sec : WORK_JOB_POLL_TIMEOUT_SEC;
+    if (!notified && elapsed >= WORK_JOB_LONG_WAIT_SEC) {
+      notified = true;
+      if (onLongWait) onLongWait();
+    }
   }
-  const job = data.job || data;
-  if (job.status === "running" || job.status === "pending") {
-    throw new Error(
-      "Задача всё ещё в очереди (worker не ответил). Перезапустите make dev.",
-    );
-  }
-  if (job.error) throw new Error(job.error);
-  if (job.status === "failed") throw new Error(job.error || "job failed");
-  return job;
 }
 
-async function resolveMaybeJobResponse(data) {
+async function resolveMaybeJobResponse(data, opts = {}) {
   if (data && data.job_id && data.status === "pending") {
-    const job = await waitWorkJob(data.job_id);
+    const job = await waitWorkJob(data.job_id, opts);
     return job.result;
   }
   return data;
@@ -378,7 +400,7 @@ export function mergeNodeStatuses(curriculum, serverStatuses) {
   return out;
 }
 
-export async function createCurriculum(targetGoal, sourcePolicy) {
+export async function createCurriculum(targetGoal, sourcePolicy, opts = {}) {
   const policy = sourcePolicy || "practical_only";
   const depth =
     policy === "hybrid" || policy === "academic_only"
@@ -402,7 +424,7 @@ export async function createCurriculum(targetGoal, sourcePolicy) {
   const data = await r.json();
   if (data.graph) return data.graph;
   if (data.job_id) {
-    const job = await waitWorkJob(data.job_id);
+    const job = await waitWorkJob(data.job_id, opts);
     return job.result;
   }
   return data;
@@ -417,6 +439,7 @@ export async function expandCurriculum(
   curriculumId,
   expansionPrompt,
   sourcePolicy,
+  opts = {},
 ) {
   const policy = sourcePolicy || "practical_only";
   const r = await fetch(`${API}/curriculum/expand`, {
@@ -436,10 +459,67 @@ export async function expandCurriculum(
   const data = await r.json();
   if (data.graph) return data.graph;
   if (data.job_id) {
-    const job = await waitWorkJob(data.job_id);
+    const job = await waitWorkJob(data.job_id, opts);
     return job.result;
   }
   return data;
+}
+
+export async function steeringGenerate(payload) {
+  const r = await fetch(`${API}/curriculum/steering/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+
+export async function steeringApproveGate1(workJobId, approvedUrls) {
+  const r = await fetch(`${API}/curriculum/steering/approve-gate1`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      work_job_id: workJobId,
+      approved_urls: approvedUrls,
+    }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+
+export async function steeringApproveGate2(workJobId, finalApprovedUrls) {
+  const r = await fetch(`${API}/curriculum/steering/approve-gate2`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      work_job_id: workJobId,
+      final_approved_urls: finalApprovedUrls,
+    }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+
+// Read-only восстановление Gate 1/2 после обновления страницы — виртуальный
+// curriculum_id="steering-<job_id>" никогда не попадает в обычный
+// skill_tree_store, поэтому его нельзя грузить через fetchWorkspace.
+export async function steeringGetStatus(workJobId) {
+  const r = await fetch(`${API}/curriculum/steering/${workJobId}/status`);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
 }
 
 export async function fetchNodeStatuses(curriculumId) {
@@ -458,7 +538,26 @@ export async function fetchNodeSourceRegistry(curriculumId, nodeId) {
   return r.json();
 }
 
-export async function nodeInit(curriculumId, nodeData) {
+/** Node Grounding Gate — Этап 0+1 (см. docs/STEERING_AND_TOPIC_QNA_ROADMAP.md):
+
+ * единый поисковый профиль + сбор/дедуп/паспорта кандидатов для Gate 1
+ * одной ноды. НЕ вызывается автоматически из nodeInit/nodeInitStream —
+ * сшивка в живой поток открытия ноды (плюс Gate 2 и сам инжест) —
+ * следующий шаг. */
+export async function fetchNodeGroundingDiscovery(curriculumId, nodeData) {
+  const r = await fetch(`${API}/node/grounding-discover`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ curriculum_id: curriculumId, node_data: nodeData }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+
+export async function nodeInit(curriculumId, nodeData, opts = {}) {
   const r = await fetch(`${API}/node/init`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -468,11 +567,82 @@ export async function nodeInit(curriculumId, nodeData) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return resolveMaybeJobResponse(await r.json());
+  return resolveMaybeJobResponse(await r.json(), opts);
+}
+
+// Node Grounding Gate (per-node, независимо от Штурвала — см.
+// docs/STEERING_AND_TOPIC_QNA_ROADMAP.md). Этап 0+1: единый профиль + сбор
+// кандидатов для Gate 1.
+export async function nodeGroundingDiscover(curriculumId, nodeData) {
+  const r = await fetch(`${API}/node/grounding-discover`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ curriculum_id: curriculumId, node_data: nodeData }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+
+// Этап 2: по ≤4 Gate-1-утверждённым URL — BGE-M3+Reranker+Gemma дайджест
+// для Gate 2.
+export async function nodeGroundingDigest(curriculumId, nodeId, approvedUrls) {
+  const r = await fetch(`${API}/node/grounding-digest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      curriculum_id: curriculumId,
+      node_id: nodeId,
+      approved_urls: approvedUrls,
+    }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+
+// Этап 3: финальное согласие на Gate 2 → реальный Map-Reduce инжест,
+// узел переходит в grounding_status="grounded".
+export async function nodeGroundingFinalize(curriculumId, nodeId, approvedUrls) {
+  const r = await fetch(`${API}/node/grounding-finalize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      curriculum_id: curriculumId,
+      node_id: nodeId,
+      approved_urls: approvedUrls,
+    }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+
+// Штурвал-ноды изначально несут только лёгкий Gate-2 дайджест — при первом
+// открытии ноды реально доингещиваем примапленные источники (тот же
+// Map-Reduce, что и Node Grounding Gate). Мгновенный no-op для любой
+// другой ноды (Autopilot / уже доингещенная Штурвал-нода).
+export async function ensureSteeringSourcesIngested(curriculumId, nodeData) {
+  const r = await fetch(`${API}/node/ensure-steering-sources`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ curriculum_id: curriculumId, node_data: nodeData }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
 }
 
 /** Сброс сессии ноды и повторный сбор RAG / init (как первое открытие). */
-export async function nodeRestart(curriculumId, nodeData) {
+export async function nodeRestart(curriculumId, nodeData, opts = {}) {
   const r = await fetch(`${API}/node/restart`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -482,10 +652,16 @@ export async function nodeRestart(curriculumId, nodeData) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return resolveMaybeJobResponse(await r.json());
+  return resolveMaybeJobResponse(await r.json(), opts);
 }
 
-export async function nodeChat(curriculumId, nodeData, userMessage) {
+export async function nodeChat(
+  curriculumId,
+  nodeData,
+  userMessage,
+  opts = {},
+  interactionAxis = "lecture_self_check",
+) {
   const r = await fetch(`${API}/node/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -493,13 +669,14 @@ export async function nodeChat(curriculumId, nodeData, userMessage) {
       curriculum_id: curriculumId,
       node_data: nodeData,
       user_message: userMessage,
+      interaction_axis: interactionAxis,
     }),
   });
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return resolveMaybeJobResponse(await r.json());
+  return resolveMaybeJobResponse(await r.json(), opts);
 }
 
 /** Читает SSE POST (data: JSON lines). */
@@ -536,12 +713,17 @@ async function readNodeSsePost(url, body, onEvent, { signal } = {}) {
   }
 }
 
-/** SSE POST /node/chat-stream — onEvent({type, text?, result?, detail?}). */
+/** SSE POST /node/chat-stream — onEvent({type, text?, result?, detail?}).
+ * interactionAxis: "lecture_self_check" (default) | "topic_qna" — см.
+ * NodeDeepDiveRequest.interaction_axis, доходит до generate_dense_material
+ * (services/node_content_generator.py), где добавляет TOPIC_QNA_SYSTEM_PROMPT
+ * поверх обычного dense-system. */
 export async function nodeChatStream(
   curriculumId,
   nodeData,
   userMessage,
   onEvent,
+  interactionAxis = "lecture_self_check",
 ) {
   return readNodeSsePost(
     `${API}/node/chat-stream`,
@@ -549,6 +731,7 @@ export async function nodeChatStream(
       curriculum_id: curriculumId,
       node_data: nodeData,
       user_message: userMessage,
+      interaction_axis: interactionAxis,
     },
     onEvent,
   );
@@ -557,10 +740,19 @@ export async function nodeChatStream(
 /** SSE POST /node/init-stream — onEvent({type, stage?, status?, message?, result?, detail?}).
  * Тот же паттерн, что nodeChatStream, но для подготовки ноды (action=init) —
  * FSM stage-события идут в том же потоке (см. schemas/fsm.py). */
-export async function nodeInitStream(curriculumId, nodeData, onEvent) {
+export async function nodeInitStream(
+  curriculumId,
+  nodeData,
+  onEvent,
+  interactionAxis = "lecture_self_check",
+) {
   return readNodeSsePost(
     `${API}/node/init-stream`,
-    { curriculum_id: curriculumId, node_data: nodeData },
+    {
+      curriculum_id: curriculumId,
+      node_data: nodeData,
+      interaction_axis: interactionAxis,
+    },
     onEvent,
   );
 }
@@ -672,5 +864,10 @@ export function toNodeDataInput(node) {
     node_curriculum_breakdown: node.node_curriculum_breakdown || null,
     primary_source_id: node.primary_source_id || "",
     resource_urls: node.resource_urls || [],
+    // node_kind="steering_standalone" (Штурвал Mode 2) снимает капу в 4
+    // источника на бэкенде (см. NodeDataInput в node_deep_dive/schemas.py) —
+    // без этого поля узел со всеми Gate-2-approved источниками падал бы на
+    // валидации (list should have at most 4 items).
+    node_kind: node.node_kind || "standard",
   };
 }
