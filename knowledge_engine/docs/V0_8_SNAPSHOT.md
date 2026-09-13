@@ -42,10 +42,10 @@ knowledge_engine/src/processors/validator.py
 knowledge_engine/src/processors/consensus_query_prep.py
 knowledge_engine/src/processors/reasoner.py
 knowledge_engine/src/guardrails/fast_grounding.py
-knowledge_engine/services/v07_run_store.py
+knowledge_engine/src/domains/curriculum/v07_run_store.py
 knowledge_engine/web/present.py, linkify.py, source_present.py
 knowledge_engine/web/static/ (app.css, app.js, themes/themes.css)
-knowledge_engine/api/app.py                      # static /app, shutdown
+knowledge_engine/src/entrypoints/api/app.py       # static /app, shutdown
 knowledge_engine/scripts/consensus-login.sh
 knowledge_engine/scripts/dev-native.sh
 ```

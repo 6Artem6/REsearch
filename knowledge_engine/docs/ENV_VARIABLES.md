@@ -1,6 +1,6 @@
 # Переменные окружения Knowledge Engine
 
-**Единая точка чтения:** `knowledge_engine/config.py` (`_load_dotenv()` при импорте).
+**Единая точка чтения:** `knowledge_engine/src/config/settings.py` (`_load_dotenv()` при импорте).
 В сервисах импортируйте константы из `config`, не `os.getenv`.
 
 Шаблон: `.env.example`. Секреты: `.env`.
@@ -8,8 +8,8 @@
 Полный машинный список (~272 ключей):
 
 ```bash
-.venv/bin/python knowledge_engine/scripts/sync_env_catalog.py --write-example
-.venv/bin/python knowledge_engine/scripts/sync_env_catalog.py --merge-env
+.venv/bin/python knowledge_engine/scripts/dev/sync_env_catalog.py --write-example
+.venv/bin/python knowledge_engine/scripts/dev/sync_env_catalog.py --merge-env
 ```
 
 ---
@@ -29,10 +29,10 @@
 
 ## Postgres / pgvector / бэкенды (Phase 0-3)
 
-Типизированная конфигурация — `knowledge_engine/db/pg_settings.py` (Pydantic
-Settings), не голый `os.getenv`; `config.py` реэкспортирует готовые константы
+Типизированная конфигурация — `knowledge_engine/src/config/postgres_settings.py` (Pydantic
+Settings), не голый `os.getenv`; `src/config/settings.py` реэкспортирует готовые константы
 (`POSTGRES_DSN` и т.д.), остальной код по-прежнему делает
-`from knowledge_engine.config import POSTGRES_DSN`. См. `docker-compose.yml`
+`from knowledge_engine.src.config.settings import POSTGRES_DSN`. См. `docker-compose.yml`
 (`postgres` + ephemeral `migrator`, накатывает Alembic автоматически на
 каждый `docker compose up`) и `docs/DOCKER_LAYOUT.md`.
 
@@ -188,7 +188,7 @@ Settings), не голый `os.getenv`; `config.py` реэкспортирует
 
 ## Gemini, CSE, SearXNG, SS, Exa, RAG, Curriculum, Consensus
 
-См. таблицы в `.env.example` (комментарии) и блоки `CURRICULUM_*`, `CONSENSUS_*`, `GEMINI_*` в `config.py`.
+См. таблицы в `.env.example` (комментарии) и блоки `CURRICULUM_*`, `CONSENSUS_*`, `GEMINI_*` в `src/config/settings.py`.
 
 **Exa Search (полный справочник `EXA_*`):** [EXA_SEARCH.md](EXA_SEARCH.md). Пул источников: [SOURCE_POOL.md](SOURCE_POOL.md).
 
@@ -232,7 +232,7 @@ Settings), не голый `os.getenv`; `config.py` реэкспортирует
 | `EXA_RERANK_LITE_THRESHOLD` | `5` | Порог Lite rerank |
 | `EXA_DUAL_QUERY_EN_RATIO` | `0.7` | Доля EN dual-merge |
 | `EXA_EXCLUDE_TEXT` | api reference… | Exa excludeText ≤5 слов |
-| `EXA_PRACTICAL_HIGHLIGHT_QUERY` | (см. `config.py`) | Fallback highlights |
+| `EXA_PRACTICAL_HIGHLIGHT_QUERY` | (см. `src/config/settings.py`) | Fallback highlights |
 | `EXCLUDED_SOURCES_BLACKLIST` | medium,dev.to,… | exclude_domains |
 | `DOMAIN_REGISTRY_EMBED_MODEL` | `BAAI/bge-m3` | Bi-Encoder gist доменов |
 | `DOMAIN_REGISTRY_COSINE_MIN` | `0.82` | Порог Pre-Discovery lookup |
@@ -250,7 +250,9 @@ Settings), не голый `os.getenv`; `config.py` реэкспортирует
 | `RAG_CE_AUTO_UNLOAD` | `false` |
 | `RAG_CE_AUTO_UNLOAD_IDLE_SEC` | `300` |
 | `RAG_MPS_MEMORY_THRESHOLD_GB` | `3.5` | `services/ml_memory_guard.py` — экстренный порог OS-agnostic footprint-а (см. [PERFORMANCE.md](PERFORMANCE.md#ml-memory-guard-bge-m3--cross-encoder-mps-ram)); превышение выгружает не занятую прямо сейчас модель немедленно, не дожидаясь `RAG_MPS_REQUEST_COOLDOWN_SEC` |
-| `RAG_MPS_REQUEST_COOLDOWN_SEC` | `300` | Idle-выгрузка ВСЕХ моделей по завершении ВСЕГО RAG-запроса (`rag_request_finished()`), не отдельного вызова embed/rerank; таймер сбрасывается каждым новым запросом (`rag_request_started()`) |
-| `LECTURE_RAG_*` | см. `config.py` |
+| `RAG_MPS_REQUEST_COOLDOWN_SEC` | `900` | Idle-выгрузка ВСЕХ моделей по завершении ВСЕГО RAG-запроса (`rag_request_finished()`), не отдельного вызова embed/rerank; таймер сбрасывается каждым новым запросом (`rag_request_started()`) |
+| `LECTURE_RAG_*` | см. `src/config/settings.py` |
 | `LIGHT_RAG_MIN_COSINE_SIM` | `0.42` |
 | `KE_RAG_TIMEOUT_SEC` | `45` |
+| `VECTOR_ROUTER_COLD_TIMEOUT` | `15.0` | `vector_intent_router.py` — таймаут классификации, пока BGE-M3 ещё не загружен в память (`is_bge_m3_loaded()` false) |
+| `VECTOR_ROUTER_WARM_TIMEOUT` | `3.0` | Тот же router, но модель уже прогрета — короче, т.к. первый прогон уже оплатил cold-start |

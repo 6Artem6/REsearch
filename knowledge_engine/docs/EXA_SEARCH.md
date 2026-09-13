@@ -187,7 +187,7 @@ Exa `include_domains` принимает только хосты → path-зап
 
 ## 4. Справочник Env (`EXA_*` и смежные)
 
-Источник истины: `knowledge_engine/config.py`. Шаблон: `.env.example`.
+Источник истины: `knowledge_engine/src/config/settings.py`. Шаблон: `.env.example`.
 
 | Variable | Default | Описание |
 |----------|---------|----------|
@@ -202,7 +202,7 @@ Exa `include_domains` принимает только хосты → path-зап
 | `EXA_RERANK_LITE_THRESHOLD` | `5` | Lite rerank, если кандидатов строго больше порога |
 | `EXA_DUAL_QUERY_EN_RATIO` | `0.7` | Доля EN при merge dual-query (`merge_dual_exa_hits`, fallback path) |
 | `EXA_EXCLUDE_TEXT` | `api reference documentation sdk classes` | Exa `excludeText` (≤5 слов после normalize) |
-| `EXA_PRACTICAL_HIGHLIGHT_QUERY` | engineering deep-dive prompt (см. `config.py`) | Fallback highlight query |
+| `EXA_PRACTICAL_HIGHLIGHT_QUERY` | engineering deep-dive prompt (см. `src/config/settings.py`) | Fallback highlight query |
 | `EXCLUDED_SOURCES_BLACKLIST` | medium,dev.to,twitter,… | `exclude_domains` для Exa |
 | `DOMAIN_REGISTRY_EMBED_MODEL` | `BAAI/bge-m3` | Bi-Encoder для gist доменов (не reranker) |
 | `DOMAIN_REGISTRY_COSINE_MIN` | `0.82` | Жёсткий порог cosine Pre-Discovery lookup |

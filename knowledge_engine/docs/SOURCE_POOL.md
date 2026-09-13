@@ -33,14 +33,14 @@
 | **Semantic Scholar** (академика) | `SEMANTIC_SCHOLAR_API_KEY` (опц.) | [Semantic Scholar API](https://www.semanticscholar.org/product/api) | **1 req/s** на все endpoints (cross-process throttle, `SEMANTIC_SCHOLAR_MIN_INTERVAL_SEC=1.25`, lock `.runs/semantic_scholar_rate_lock`) | `SEMANTIC_SCHOLAR_DAILY_LIMIT`, блок на 429/503 |
 | **arXiv** | `ARXIV_MIN_INTERVAL_SEC=3.25`, `ARXIV_MAX_RETRIES`, `ARXIV_BACKOFF_BASE_SEC`, `ARXIV_ID_LIST_CHUNK` | публичный `export.arxiv.org` | **≥3s** между HTTP (код: cross-process flock `.runs/arxiv_rate_lock`, default **3.25s**); retry 503/429/403 с exponential backoff | нет (лимитер в `services/search/arxiv_rate_limit.py`) |
 | **SearXNG** (legacy fallback) | `SEARXNG_BASE_URL` | локальный Docker `docker compose up -d searxng` | лимиты engines (Google/Bing) у провайдера | нет |
-| **Gemini** (tutor, Flash, опц. grounding / web) | `GEMINI_API_KEY` или `GEMINI_API_KEYS` | [Google AI Studio](https://aistudio.google.com/apikey) | RPM/RPD по модели (free tier) | `GEMINI_QUOTA_TRACK` → `.runs/gemini_quota_state.json`; `python -m knowledge_engine.scripts.check_gemini_quotas` |
+| **Gemini** (tutor, Flash, опц. grounding / web) | `GEMINI_API_KEY` или `GEMINI_API_KEYS` | [Google AI Studio](https://aistudio.google.com/apikey) | RPM/RPD по модели (free tier) | `GEMINI_QUOTA_TRACK` → `.runs/gemini_quota_state.json`; `python -m knowledge_engine.scripts.search_diagnostics.check_gemini_quotas` |
 | **Consensus** (опц. академика) | сессия браузера | `consensus-login.sh`, не API key | ручной логин Playwright | нет |
 
 ### Проверка локальных лимитов curriculum
 
 ```bash
-python -m knowledge_engine.scripts.check_curriculum_quotas
-python -m knowledge_engine.scripts.check_curriculum_quotas --json
+python -m knowledge_engine.scripts.search_diagnostics.check_curriculum_quotas
+python -m knowledge_engine.scripts.search_diagnostics.check_curriculum_quotas --json
 ```
 
 Сброс счётчиков: новый UTC-день автоматически, или удалить `knowledge_engine/.runs/curriculum_api_quota_state.json`.
@@ -68,11 +68,11 @@ GOOGLE_CSE_DAILY_LIMIT=100
 
 ```bash
 # Сначала — что живо среди поисковиков
-python -m knowledge_engine.scripts.check_curriculum_search_providers --goal "kafka replication"
+python -m knowledge_engine.scripts.search_diagnostics.check_curriculum_search_providers --goal "kafka replication"
 
-python -m knowledge_engine.scripts.smoke_curriculum_sources
-python -m knowledge_engine.scripts.smoke_curriculum_sources --with-collect --policy hybrid
-python -m knowledge_engine.scripts.smoke_curriculum_sources --json
+python -m knowledge_engine.scripts.search_diagnostics.smoke_curriculum_sources
+python -m knowledge_engine.scripts.search_diagnostics.smoke_curriculum_sources --with-collect --policy hybrid
+python -m knowledge_engine.scripts.search_diagnostics.smoke_curriculum_sources --json
 ```
 
 По умолчанию: SS search + paper probe, arXiv, CSE/DDGS, academic/practical fetch (без Playwright). `--with-collect` — полный `collect_sources_by_policy` (web/grounding выключены).

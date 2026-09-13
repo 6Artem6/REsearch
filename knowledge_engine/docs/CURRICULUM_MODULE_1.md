@@ -47,11 +47,11 @@ Content-Type: application/json
 
 `CURRICULUM_GEMINI_WEB_HARVEST_ENABLED=false` — не открывать gemini.google.com через Playwright (тогда только архив + SearXNG fallback).
 
-Перед первым web-harvest: `python -m knowledge_engine.main browser-login` (persistent `.browser_state`).
+Перед первым web-harvest: `python -m knowledge_engine.src.app.main browser-login` (persistent `.browser_state`).
 
 Модели Search grounding (env): `GEMINI_GROUNDING_MODEL`, `CURRICULUM_GEMINI_GROUNDING_MODEL`, `CURRICULUM_GEMINI_GROUNDING_FALLBACK_MODELS`. Не использовать Gemini 3.x для Google Search tool (Search grounding 0/0 в free tier).
 
-**Диагностика tooling:** `make check-gemini-grounding` или `python -m knowledge_engine.scripts.check_gemini_grounding` — один запрос с `google_search` на каждую модель из chain; `--list-models` — что видит ключ в API; `--all-candidates --compare-plain` — расширенный прогон. JSON: `knowledge_engine/.runs/gemini_grounding_probe.json`.
+**Диагностика tooling:** `make check-gemini-grounding` или `python -m knowledge_engine.scripts.search_diagnostics.check_gemini_grounding` — один запрос с `google_search` на каждую модель из chain; `--list-models` — что видит ключ в API; `--all-candidates --compare-plain` — расширенный прогон. JSON: `knowledge_engine/.runs/gemini_grounding_probe.json`.
 
 ## Расширение графа (expand)
 
@@ -62,7 +62,7 @@ Content-Type: application/json
 3. **Flash** — `new_nodes`, `new_edges` на объединённом пуле выдержек.
 4. **Merge** — существующие ноды и прогресс в `session_store` не сбрасываются.
 
-Legacy: `knowledge_engine.services.curriculum_service.expand_curriculum(...)`.
+Legacy: `knowledge_engine.src.domains.curriculum.curriculum_service.expand_curriculum(...)`.
 
 ## Ответ (legacy enrich)
 
@@ -78,13 +78,13 @@ Legacy: `knowledge_engine.services.curriculum_service.expand_curriculum(...)`.
 
 | Компонент | Путь |
 |-----------|------|
-| Схемы | `knowledge_engine/src/curriculum/schemas.py` |
-| Валидатор DAG | `knowledge_engine/src/curriculum/dag_validator.py` |
-| Reasoner | `knowledge_engine/src/curriculum/generator.py` |
-| Реестр + Lite enrich | `knowledge_engine/src/curriculum/source_enrichment.py`, `source_registry.py` |
+| Схемы | `knowledge_engine/src/domains/curriculum/schemas.py` |
+| Валидатор DAG | `knowledge_engine/src/domains/curriculum/dag_validator.py` |
+| Reasoner | `knowledge_engine/src/domains/curriculum/generator.py` |
+| Реестр + Lite enrich | `knowledge_engine/src/domains/curriculum/source_enrichment.py`, `source_registry.py` |
 | Пул источников (без дублей) | `knowledge_engine/docs/SOURCE_POOL.md`, `ARCHITECTURE_DEDUP.md` |
 | Search-First | `search_prestep.py`, `search_first_flash.py` |
-| HTTP | `knowledge_engine/api/routes/curriculum.py` |
+| HTTP | `knowledge_engine/src/entrypoints/api/routes/curriculum.py` |
 
 После генерации выполняется проверка: существующие `prerequisites`, отсутствие циклов, наличие слоёв `foundation` и `sota`. При ошибке — один повторный вызов Reasoner с подсказкой валидатора.
 
