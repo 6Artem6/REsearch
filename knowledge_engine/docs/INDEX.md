@@ -11,9 +11,12 @@
 
 | Документ | Тема | Соответствие коду |
 |----------|------|-------------------|
+| [PRODUCT_OVERVIEW.md](PRODUCT_OVERVIEW.md) | Поверхностный обзор для пользователя: что это, что даёт, на чём основано | Актуальна (2026-09-13) |
+| [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | Карта «зачем» ключевых решений всего проекта + mermaid-схемы, с явной пометкой задокументировано/восстановлено/не объяснено | Актуальна (2026-09-13); сама содержит раздел «Пробелы» |
 | [TUTOR_PIPELINES.md](TUTOR_PIPELINES.md) | Карта create / expand / тьютор | Актуальна (§8 = LangGraph) |
 | [NODE_DEEP_DIVE_MODULE_2.md](NODE_DEEP_DIVE_MODULE_2.md) | Модуль 2: DAG, MemorySaver, single-writer | Актуальна для оркестрации |
 | [TUTOR_PROMPT_AND_UI_TEXT.md](TUTOR_PROMPT_AND_UI_TEXT.md) | Контракт тьютора, режимы, BLOCK 1–3 | Актуальна для dialogue/lecture |
+| [STEERING_AND_TOPIC_QNA_ROADMAP.md](STEERING_AND_TOPIC_QNA_ROADMAP.md) | Control Axis (Штурвал, 2-gate HITL) + Node Grounding Gate (per-node, Habr RSS/Exa/academic) + Interaction Axis (`lecture_self_check`/`topic_qna`) — журнал внедрения, add-only поверх Autopilot | Актуальна (2026-09) |
 | [TUTOR_LANGGRAPH_MIGRATION.md](TUTOR_LANGGRAPH_MIGRATION.md) | ADR миграции | **Устарела как «Phase 0/1»** — граф уже полный |
 | [LLM_CONTRACTS.md](LLM_CONTRACTS.md) | Реестр Pydantic Gemini + регламент prompt/contract | Частично: нет `EvaluatorCritiqueContract`, `ArxivQueryParamsContract` |
 | [PROMPT_SYSTEM_REFERENCE.md](PROMPT_SYSTEM_REFERENCE.md) | Матрица моделей/контуров, режимы `prompt_factory.py`, реестр prompt-переменных, DEEP MAP/REDUCE/Dedup контракты, Evaluator Bypass guardrails, чек-лист расширения | Актуальна (2026-09-01) |
@@ -70,6 +73,8 @@ Host-слой тьютора (чипы, overlay, векторы) **не** опи
 
 | Задача | Документ |
 |--------|----------|
+| Понять продукт «на пальцах», без кода — что это и что даёт | [PRODUCT_OVERVIEW.md](PRODUCT_OVERVIEW.md) |
+| Понять «зачем» ключевых решений всего проекта, не только «как» | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) |
 | Поднять dev | [DEV_RUNBOOK.md](DEV_RUNBOOK.md) |
 | Найти CLI / maintenance-скрипт | [SCRIPTS.md](SCRIPTS.md) |
 | Понять продукт Skill Tree | [TUTOR_PIPELINES.md](TUTOR_PIPELINES.md) |

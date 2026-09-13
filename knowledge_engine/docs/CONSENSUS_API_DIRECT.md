@@ -103,22 +103,22 @@
 
 Legacy DOM: `CONSENSUS_USE_DIRECT_API=false`.
 
-Smoke: `PYTHONPATH=. python -m knowledge_engine.scripts.smoke_consensus_direct`
+Smoke: `PYTHONPATH=. python -m knowledge_engine.scripts.consensus.smoke_consensus_direct`
 
 ## Артефакты / команды
 
 ```bash
 # 1) HAR + JSON traffic
 PLAYWRIGHT_BROWSERS_PATH="$(.venv/bin/python -c "import pathlib,playwright;print(pathlib.Path(playwright.__file__).parent/'driver/package/.local-browsers')")" \
-PYTHONPATH=. .venv/bin/python -m knowledge_engine.scripts.check_consensus_playwright \
+PYTHONPATH=. .venv/bin/python -m knowledge_engine.scripts.consensus.check_consensus_playwright \
   --send --record-har --har-path consensus_network_trace.har
 
 # 2) Найти ручку + cURL
-PYTHONPATH=. .venv/bin/python -m knowledge_engine.scripts.analyze_consensus_har \
+PYTHONPATH=. .venv/bin/python -m knowledge_engine.scripts.consensus.analyze_consensus_har \
   --har consensus_network_trace.har --out consensus_api_endpoint.json
 
 # 3) POC без DOM
-PYTHONPATH=. .venv/bin/python -m knowledge_engine.scripts.poc_consensus_api \
+PYTHONPATH=. .venv/bin/python -m knowledge_engine.scripts.consensus.poc_consensus_api \
   --endpoint consensus_api_endpoint.json --via curl --query "your query"
 ```
 

@@ -18,6 +18,20 @@
 | `ready_for_transition` / `suggested_next_step` | Закрытие темы (`next_node` \| `deep_dive_optional`) |
 | Panel | `summary`, `referenced_diagram_id` → server resolves into `content.diagram` / `content.diagrams`, `references`, `node_status`, `introduced_terms`, `new_gap_to_record` |
 
+### Interaction Axis — ортогонально `interaction_mode`
+
+`interaction_axis` (`NodeDeepDiveRequest`, значения `lecture_self_check` |
+`topic_qna`) — независимая ось поверх любого `interaction_mode` ниже: она
+не меняет, КАКОЙ system prompt компонуется, а решает, какую JSON-схему
+даём Gemini. Для `topic_qna` `follow_up_question`/`question_sub_concept_id`
+(и `checkpoint_prompt` у `StructuredLectureResponse`) в схеме
+физически отсутствуют (`TopicQnaTutorContract`, `TopicQnaExplainContract`,
+`TopicQnaLectureResponse` — `schemas/llm_contracts/tutor.py`), кроме
+момента, пока открыт цикл самопроверки (`[mode:self_check]` /
+`has_pending_self_check` в `engine.py::_resolve_tutor_response_schema`).
+Подробности и журнал внедрения:
+[STEERING_AND_TOPIC_QNA_ROADMAP.md](STEERING_AND_TOPIC_QNA_ROADMAP.md).
+
 ### `tutor_message` — устарел в LLM-контракте
 
 - В `DeepDiveTutorContract` / system rules (`dialogue_prompt_en.py`): **поля `tutor_message` нет** («Do NOT include a `tutor_message` field»).

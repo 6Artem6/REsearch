@@ -35,7 +35,7 @@ Evaluator Bypass и чек-лист расширения.
 
 **Поправка к исходной таблице ТЗ:** Gemma в этой кодовой базе — **только Cloud**
 (`GemmaCloudClient`, `llm.py`), локальных инстансов/Ollama нет ни в одном
-контуре (см. очистку легаси-именования этой же сессией, `config.py`/`llm.py`
+контуре (см. очистку легаси-именования этой же сессией, `src/config/settings.py`/`llm.py`
 docstring «Gemma Cloud SSOT»). «REDUCE — Gemma / Flash Lite» из шаблона тоже
 неточно: обе REDUCE-фазы бьют в Gemma Cloud, Flash Lite там не участвует;
 Flash Lite занят в MAP-этапе только косвенно — через Domain Discovery/Content
@@ -129,9 +129,9 @@ system prompt (см. `prompt_factory.py`, ветка `mode == "lecture"`), а н
 
 | Переменная | Тип | Источник | Потребитель | Описание |
 |---|---|---|---|---|
-| `{chunk_text}` | `str`, ≤`BLOG_SPATIAL_MAP_MAX_TOKENS` (2800 ток, `config.py`, не env-переопределяемо) | `paragraph_token_splitter.py::TokenWindowChunk` (AST-границы при `CODE_PARSER_MODE=ast`, иначе linear) | MAP-промпт (`_prompt_for_window`, `blog_spatial_summarizer.py`) | Оконный фрагмент документа/кода перед MAP-вызовом |
+| `{chunk_text}` | `str`, ≤`BLOG_SPATIAL_MAP_MAX_TOKENS` (2800 ток, `src/config/settings.py`, не env-переопределяемо) | `paragraph_token_splitter.py::TokenWindowChunk` (AST-границы при `CODE_PARSER_MODE=ast`, иначе linear) | MAP-промпт (`_prompt_for_window`, `blog_spatial_summarizer.py`) | Оконный фрагмент документа/кода перед MAP-вызовом |
 | `{map_summaries_batch}` | `list[MapWindowResponse]` → `_format_reduce_summaries_block` | Результаты всех MAP-вызовов одного `MapReduceArticleJob` | REDUCE Phase 1/2 промпты | Сводки окон, объединяемые в один REDUCE-батч |
-| `{backfill_margin}` | `int` | `DEEP_INGEST_BACKFILL_MARGIN` (2, DEEP) / `LECTURE_PASSAGE_BACKFILL_MARGIN` (3, Lecture) — `config.py` | `replenish_valid_hits_until_cap` / `postprocess_exa_hits_for_external_recall` | Резерв кандидатов сверх целевого `cap`, из которого добирается замена при обнаружении near-duplicate (BGE-M3 Union-Find, cosine ≥ 0.80 на обеих сторонах); подробности — [RAG_PIPELNES.md §4.1](RAG_PIPELNES.md) |
+| `{backfill_margin}` | `int` | `DEEP_INGEST_BACKFILL_MARGIN` (2, DEEP) / `LECTURE_PASSAGE_BACKFILL_MARGIN` (3, Lecture) — `src/config/settings.py` | `replenish_valid_hits_until_cap` / `postprocess_exa_hits_for_external_recall` | Резерв кандидатов сверх целевого `cap`, из которого добирается замена при обнаружении near-duplicate (BGE-M3 Union-Find, cosine ≥ 0.80 на обеих сторонах); подробности — [RAG_PIPELNES.md §4.1](RAG_PIPELNES.md) |
 
 ---
 

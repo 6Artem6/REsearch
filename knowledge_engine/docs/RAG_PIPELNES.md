@@ -146,7 +146,7 @@ Gemma-вызовов (по числу отобранных источников)
 Flash Lite Content Quality Gate ниже видит уже дедуплицированный, разнообразный
 набор.
 
-### 2.5 Роли моделей (`config.py`)
+### 2.5 Роли моделей (`src/config/settings.py`)
 
 | Роль | Константа | Что делает |
 |------|-----------|------------|
@@ -240,7 +240,7 @@ flowchart TD
 кода per se", а детерминизм TPM-бюджета и prompt caching: `BLOG_SPATIAL_MAP_MAX_TOKENS
 = 2800` зафиксирован как константа (не env-переопределяемая), одинаковая
 «для каждого провайдера/модели», чтобы TPM-расчёт на окно был предсказуем
-(комментарий в `config.py`: *"MAP window size — fixed for every provider/model
+(комментарий в `src/config/settings.py`: *"MAP window size — fixed for every provider/model
 (Prompt Caching + TPM budget)"*). Из этого следуют два практических эффекта,
 важных именно для кода и edge cases:
 
@@ -404,4 +404,4 @@ flowchart LR
   не предусмотрено, кроме таймаута самой генерации (`LECTURE_GENERATION_TIMEOUT_SEC`).
 - DEEP: `MAX_CONCURRENT_MAP_REQUESTS=8` — размер волны кандидатов на
   попытку допуска, не гарантия параллелизма; реальная throughput всегда
-  ограничена TPM-headroom, см. предупреждающий комментарий в `config.py`.
+  ограничена TPM-headroom, см. предупреждающий комментарий в `src/config/settings.py`.

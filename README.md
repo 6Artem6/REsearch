@@ -2,6 +2,13 @@
 
 Локальный инженерный **Knowledge Engine**: из цели собирает учебный DAG, ищет источники (Exa + SearXNG + академика), затем ведёт интерактивного тьютора по ноде с RAG и structured JSON.
 
+Путь пользователя: цель → учебный граф (**Autopilot**, автоматически; либо
+**Штурвал** — та же генерация, но с личным утверждением источников для
+одной глубокой ноды на двух шагах одобрения) → нода → тьютор либо
+экзаменует по self-check вопросам (**Lecture & Self-Check**), либо
+отвечает как эксперт-консультант без квиза (**Topic Q&A**) — прогресс по
+каждой подтеме трекается отдельно (mastery).
+
 Две линии продукта:
 
 | Линия | Что это | UI |
@@ -9,7 +16,9 @@
 | **Skill Tree / Tutor** | Curriculum → нода → чат / лекция / mastery | `/app/skill-tree` |
 | **Research graphs v0.4–v0.8** | Декомпозиция → поиск горизонтов → матрица / Consensus | `/app`, CLI analyses |
 
+Обзор для пользователя без кода (что это и что даёт): [PRODUCT_OVERVIEW.md](knowledge_engine/docs/PRODUCT_OVERVIEW.md).  
 Каталог документации и аудит пробелов: [knowledge_engine/docs/INDEX.md](knowledge_engine/docs/INDEX.md).  
+Зачем всё сделано именно так (карта решений + mermaid): [ARCHITECTURE_DECISIONS.md](knowledge_engine/docs/ARCHITECTURE_DECISIONS.md).  
 Пакетный README (legacy CLI / Docker): [knowledge_engine/README.md](knowledge_engine/README.md).
 
 ---
@@ -79,6 +88,8 @@ flowchart LR
 
 `source_policy`: `hybrid` | `practical_only` | `academic_only`. В UI «Consensus» часто = `academic_only` + `generation_mode=consensus`.
 
+Ось `Control Axis`: `Autopilot` (по умолчанию) | `Штурвал` — `Mode 1` (`per_node`, дефолт Штурвала, строит курс как Autopilot) | `Mode 2` (`standalone_digest`, реальный 2-gate сценарий: теги/хабы → Gate 1 → дайджесты → Gate 2 → Map-Reduce по всем approved-статьям → **одна** глубокая нода). Заземление DEEP-нод (у Autopilot и Mode 1 одинаково) — **Node Grounding Gate** (Habr genuine RSS + Exa + академика). [STEERING_AND_TOPIC_QNA_ROADMAP.md](knowledge_engine/docs/STEERING_AND_TOPIC_QNA_ROADMAP.md).
+
 **Практика (блоги / engineering):** **Exa** (6 векторов EN/RU, whitelist) → добор **SearXNG**. [EXA_SEARCH.md](knowledge_engine/docs/EXA_SEARCH.md).
 
 **Наука (статьи):** цель **переформулируется** в English literature query, затем papers. Полный поток: [ACADEMIC_AND_CONSENSUS.md](knowledge_engine/docs/ACADEMIC_AND_CONSENSUS.md).
@@ -124,6 +135,7 @@ On-demand: reuse уже проиндексированных papers, live Consen
 **Инвариант coverage:** LLM не пишет статусы карты; `sub_concept_eval` предлагает, `commit_turn` фиксирует `concept_map_state`.
 
 Контракт диалога `DeepDiveTutorContract`: `feedback_on_answer` + `technical_explanation` + `follow_up_question` (поля `tutor_message` в JSON модели нет).  
+Ось `interaction_axis`: `lecture_self_check` (по умолчанию) | `topic_qna` (эксперт-консультант, вопрос только по кнопке «Самопроверка» — отдельные контракты без поля вопроса). [STEERING_AND_TOPIC_QNA_ROADMAP.md](knowledge_engine/docs/STEERING_AND_TOPIC_QNA_ROADMAP.md).  
 Промпты и BLOCK 1–3 (Gemini prefix cache): [TUTOR_PROMPT_AND_UI_TEXT.md](knowledge_engine/docs/TUTOR_PROMPT_AND_UI_TEXT.md).  
 Реестр всех structured-схем: [LLM_CONTRACTS.md](knowledge_engine/docs/LLM_CONTRACTS.md).
 
@@ -174,7 +186,7 @@ UI drawer, SSE explain (`[R*]` важнее `[S*]`): [SKILL_TREE_UI.md](knowledg
 | Semantic Scholar / arXiv | academic primary + fallback |
 | LanceDB | чанки статей, RAG, intent / socratic / edge-case векторы |
 
-Конфигурация: `knowledge_engine/config.py`, шаблон `.env.example`, обзор [ENV_VARIABLES.md](knowledge_engine/docs/ENV_VARIABLES.md).
+Конфигурация: `knowledge_engine/src/config/settings.py`, шаблон `.env.example`, обзор [ENV_VARIABLES.md](knowledge_engine/docs/ENV_VARIABLES.md).
 
 ---
 

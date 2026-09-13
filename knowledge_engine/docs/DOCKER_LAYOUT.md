@@ -31,7 +31,7 @@ pydantic-settings — БЕЗ PyTorch/CUDA/sentence-transformers/exa-py осно�
 `requirements.txt`), не общий `x-ke-python-image`/`entrypoint.sh` с
 `knowledge-api` — иммутабельный, baked-at-build-time, без runtime venv-volume.
 
-Переключатели бэкенда (см. `knowledge_engine/config.py`, `.env.example`):
+Переключатели бэкенда (см. `knowledge_engine/src/config/settings.py`, `.env.example`):
 `VECTOR_STORE_BACKEND` (`postgres` дефолт | `qdrant` fallback),
 `GRAPH_CHECKPOINTER_BACKEND` (`postgres` дефолт | `memory` fallback,
 RAM-only, теряется при рестарте). Оба легаси-пути (Qdrant-client/LanceDB,

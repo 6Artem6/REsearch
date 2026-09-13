@@ -34,7 +34,7 @@ export SKIP_GEMINI=true
 export MAX_FETCH_URLS=2
 export MULTI_SEARCH_SKIP_VISION=true
 
-python -m knowledge_engine.main analyze -c "…" "…" --matrix-only
+python -m knowledge_engine.src.app.main analyze -c "…" "…" --matrix-only
 ```
 
 Ожидание: **~3–8 мин** до матрицы на Metal (зависит от сети), не 20+.
@@ -58,7 +58,7 @@ python -m knowledge_engine.main analyze -c "…" "…" --matrix-only
 
 ## Token & Rate Governor (Gemini pacing)
 
-`knowledge_engine/services/token_rate_governor.py::TokenRateGovernor` — единая
+`knowledge_engine/src/shared/rate_limiting/token_rate_governor.py::TokenRateGovernor` — единая
 sync-точка контроля RPM/TPM для Gemini-вызовов через
 `gemini_stateless.py::_call_with_model_fallback` (и через
 `gemini_search_grounding.py`).

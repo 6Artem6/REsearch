@@ -53,24 +53,24 @@ chmod +x knowledge_engine/scripts/dev-native.sh
 | Что | Где |
 |-----|-----|
 | Персистентность | `knowledge_engine/.runs/v07_runs.json` (до 80 run, JSON) |
-| В процессе API | `V07RunStore` в памяти (`knowledge_engine/services/v07_run_store.py`), при старте читает JSON |
+| В процессе API | `V07RunStore` в памяти (`knowledge_engine/src/domains/curriculum/v07_run_store.py`), при старте читает JSON |
 | Поля | `status` (`pending` / `running` / `completed` / `failed`), `current_step`, `result` (partial state), `error`, `log_path` |
 | Кто пишет | `v07_run_service.run_v07_job` — финал; `publish_web_run_progress` — шаги L2a…reasoner; `merge_result` — частичный `result` |
 | API | `GET /api/v1/v07/runs/{id}` — poll; `GET …/view` — UI (`partial` пока `status != completed`) |
 
 SQLite в проекте — **domain trust** и **source archive** (`domains.sqlite`, `links.sqlite`), а также ingestion схем источников (`.runs/article_diagrams.db`). Web-runs в SQLite не хранятся; подробнее о схемах: [ARTICLE_DIAGRAMS.md](ARTICLE_DIAGRAMS.md).
 
-Ручной правка: править JSON или `python -c "from knowledge_engine.services.v07_run_store import …"` **после остановки API** (или перезапустить `dev-native.sh`), иначе в памяти процесса останется старый статус.
+Ручной правка: править JSON или `python -c "from knowledge_engine.src.domains.curriculum.v07_run_store import …"` **после остановки API** (или перезапустить `dev-native.sh`), иначе в памяти процесса останется старый статус.
 
 Тема Monokai Pro в сайдбаре; снимок версии: [V0_8_SNAPSHOT.md](V0_8_SNAPSHOT.md).
-**Consensus (один раз):** остановите API → `./knowledge_engine/scripts/consensus-login.sh` (или `python -m knowledge_engine.main consensus-login` с тем же `PLAYWRIGHT_BROWSERS_PATH`, что в dev-native). Не `browser-login` (Gemini).
+**Consensus (один раз):** остановите API → `./knowledge_engine/scripts/consensus-login.sh` (или `python -m knowledge_engine.src.app.main consensus-login` с тем же `PLAYWRIGHT_BROWSERS_PATH`, что в dev-native). Не `browser-login` (Gemini).
 
 Альтернатива без reload:
 
 ```bash
 export PYTHONPATH="$(pwd)"
 source .venv/bin/activate
-python -m knowledge_engine.api
+python -m knowledge_engine.src.entrypoints.api
 # Entry point sets KE_PROCESS_ROLE=api (do not load BGE/CE in uvicorn import-string mode).
 ```
 
@@ -117,7 +117,7 @@ curl -s -X POST http://127.0.0.1:8765/api/v1/search/test \
 ```bash
 export PYTHONPATH="$(pwd)"
 source .venv/bin/activate
-python -m knowledge_engine.main analyze -c "Mac M1, LanceDB" "Кэш эмбеддингов в RAG"
+python -m knowledge_engine.src.app.main analyze -c "Mac M1, LanceDB" "Кэш эмбеддингов в RAG"
 ```
 
 ## 6. Prod-like API в Docker (CI / без нативного Python)

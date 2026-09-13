@@ -159,7 +159,7 @@ decomposition → local_rag_check → (RAG ok?) → matrix
 
 ### CLI
 
-- `python -m knowledge_engine.main browser-login` — ручная авторизация в `.browser_state/`
+- `python -m knowledge_engine.src.app.main browser-login` — ручная авторизация в `.browser_state/`
 
 ### Затронутые файлы
 
@@ -220,13 +220,13 @@ decomposition (7B) → react_search (1.5B) ⇄ [до 3 итераций] → mat
 ```bash
 source knowledge_engine/.venv/bin/activate
 export PYTHONPATH="$(pwd)"
-python -m knowledge_engine.main -c "ограничения" "инженерная задача"
+python -m knowledge_engine.src.app.main -c "ограничения" "инженерная задача"
 ```
 
 Эквивалент с явной подкомандой:
 
 ```bash
-python -m knowledge_engine.main analyze "задача" -c "ограничения"
+python -m knowledge_engine.src.app.main analyze "задача" -c "ограничения"
 ```
 
 ---

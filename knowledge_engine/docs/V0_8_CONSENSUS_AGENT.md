@@ -25,9 +25,9 @@ Playwright **persistent profile** в `knowledge_engine/.browser_state/<chromium|
 HAR reverse-engineering: ручка **`POST /api/paper_search/`**. Отчёт и POC:
 
 - [CONSENSUS_API_DIRECT.md](CONSENSUS_API_DIRECT.md)
-- `python -m knowledge_engine.scripts.check_consensus_playwright --send --record-har`
-- `python -m knowledge_engine.scripts.analyze_consensus_har`
-- `python -m knowledge_engine.scripts.poc_consensus_api --via curl`
+- `python -m knowledge_engine.scripts.consensus.check_consensus_playwright --send --record-har`
+- `python -m knowledge_engine.scripts.consensus.analyze_consensus_har`
+- `python -m knowledge_engine.scripts.consensus.poc_consensus_api --via curl`
 
 Auth: Cloudflare `cf_clearance` + Clerk `__session` (Bearer для `curl_cffi`, TTL ~60s) — нужен периодический Playwright prefetch.
 
