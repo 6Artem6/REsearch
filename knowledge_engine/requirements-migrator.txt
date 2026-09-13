@@ -1,0 +1,13 @@
+# Зависимости ТОЛЬКО для сервиса migrator (Phase 3, см. prompt.txt) — без
+# PyTorch/CUDA/sentence-transformers/exa-py и прочих ML-пакетов основного
+# requirements.txt. langchain-core нужен транзитивно (knowledge_engine/__init__.py
+# глушит LangChainPendingDeprecationWarning) — версия совпадает с requirements.txt,
+# чтобы не тащить второй несовместимый пин.
+alembic>=1.19.0,<1.20.0
+SQLAlchemy>=2.0.0,<3.0.0
+asyncpg>=0.31.0,<0.32.0
+psycopg[binary]>=3.3.0,<3.4.0
+pgvector>=0.5.0,<0.6.0
+pydantic>=2.0,<3.0
+pydantic-settings>=2.15.0,<3.0.0
+langchain-core>=0.3.0,<0.4.0
