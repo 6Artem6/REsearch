@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from knowledge_engine.db.base import Base
+from knowledge_engine.src.adapters.db.base import Base
 
 
 class ArticleDiagram(Base):

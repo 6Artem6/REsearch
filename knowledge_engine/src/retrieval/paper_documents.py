@@ -5,14 +5,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 
-from knowledge_engine.src.fetcher import fetch_document
-from knowledge_engine.src.fetcher.academic import extract_doi
+from knowledge_engine.src.adapters.search_providers.fetcher import fetch_document
+from knowledge_engine.src.adapters.search_providers.fetcher.academic import extract_doi
+from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.retrieval.semantic_scholar import (
     ScholarPaper,
     paper_to_document_text,
 )
 from knowledge_engine.src.state import ScrapedDocument
-from knowledge_engine.ui.run_log import trace
 
 
 def _doc_id(url: str, prefix: str) -> str:
@@ -25,7 +25,9 @@ async def fetch_paper_document(
     *,
     abstract_only: bool = False,
 ) -> ScrapedDocument | None:
-    from knowledge_engine.src.fetcher.context import fast_academic_fetch_enabled
+    from knowledge_engine.src.adapters.search_providers.fetcher.context import (
+        fast_academic_fetch_enabled,
+    )
 
     if abstract_only or fast_academic_fetch_enabled():
         text = paper_to_document_text(paper)

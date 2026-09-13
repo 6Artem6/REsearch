@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field
 
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
+from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.source_evaluator.evaluator_prompt import (
     build_evaluator_system_instruction,
     build_evaluator_user_message,
@@ -17,7 +18,6 @@ from knowledge_engine.src.source_evaluator.whitelist import (
     APPROVED_SOURCES_WHITELIST,
     format_whitelist_detailed,
 )
-from knowledge_engine.ui.run_log import trace
 
 _MD_URL_RE = re.compile(r"\((https?://[^)\s]+)\)")
 
@@ -123,7 +123,7 @@ def evaluate_source(
     user_msg = build_evaluator_user_message(url_clean, thesis_clean, excerpt_clean)
     trace(f"SOURCE_EVAL ▶ Lite | {url_clean[:80]}…")
 
-    from knowledge_engine.schemas.llm_contracts.source_eval import (
+    from knowledge_engine.src.domains.curriculum.source_eval import (
         SourceEvaluatorLiteContract,
     )
 

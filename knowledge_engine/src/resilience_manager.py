@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from knowledge_engine.src.node_deep_dive.intent_definitions import INTENT_RULES
-from knowledge_engine.ui.run_log import trace
+from knowledge_engine.src.core.run_log import trace
+from knowledge_engine.src.domains.grounding.intent_definitions import INTENT_RULES
 
 MAX_FSM_HOPS_PER_TURN = 5
 
@@ -46,7 +46,10 @@ def is_tutor_contract_validation_error(exc: BaseException) -> bool:
     low = str(exc).lower()
     if "gemini json" in low and "валидац" in low:
         return True
-    if "validation error" not in low and "validationerror" not in type(exc).__name__.lower():
+    if (
+        "validation error" not in low
+        and "validationerror" not in type(exc).__name__.lower()
+    ):
         return False
     markers = (
         "theory_body",
@@ -119,7 +122,7 @@ def core_ready_for_overlay(memory: object) -> bool:
     score = int(getattr(memory, "topic_mastery_score", 0) or 0)
     if score < 100:
         return False
-    from knowledge_engine.src.node_deep_dive.concept_map_state import (
+    from knowledge_engine.src.domains.grounding.concept_map_state import (
         sub_concept_coverage_complete,
     )
 

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.guardrails.personal_context import (
     PersonalContext,
     run_personal_context_stage,
 )
-from knowledge_engine.ui.run_log import trace
 
 
 async def run_stage_0(user_query: str, user_profile_md: str = "") -> PersonalContext:

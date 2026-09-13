@@ -1,60 +1,17 @@
-"""Knowledge Engine v0.7 core modules (locks, state, fetcher, dedup)."""
+"""Пакетный корень для всего кода knowledge_engine/src (DDA-дерево).
 
-from knowledge_engine.src.analytics.chunker import extract_structured_chunks
-from knowledge_engine.src.analytics.profiler import (
-    build_concept_graph,
-    build_profile_gap_map,
-    build_tradeoff_matrix,
-)
-from knowledge_engine.src.dedup import (
-    ChunkDedupStore,
-    compute_density_delta,
-    ingest_document_chunks,
-    should_terminate_search,
-)
-from knowledge_engine.src.fetcher import fetch_document
-from knowledge_engine.src.graph import (
-    compile_v07_graph,
-    knowledge_engine_v07_graph,
-    run_knowledge_engine_v07,
-)
-from knowledge_engine.src.guardrails import run_personal_context_stage, run_stage_0
-from knowledge_engine.src.locks import (
-    staged_uma_lock,
-    staged_uma_lock_decorator,
-    uma_resource_lock,
-)
-from knowledge_engine.src.state import (
-    KnowledgeEngineState,
-    PersonalContext,
-    ScrapedDocument,
-    StructuredChunk,
-    ValidatedQuerySpec,
-    empty_v07_state,
-)
+Раньше здесь были eager-реэкспорты v0.7 research-pipeline (analytics/dedup/
+fetcher/graph/guardrails/locks/state) — но ни один вызывающий код в проекте
+не импортирует их через `from knowledge_engine.src import X` (все идут по
+полному пути вида `knowledge_engine.src.graph.compile_v07_graph`), поэтому
+эти реэкспорты были мёртвым весом. При этом любой импорт ЛЮБОГО модуля под
+`knowledge_engine.src.*` (включая новые src/config, src/core, src/domains и
+т.д.) заставлял Python сначала выполнить этот файл — то есть транзитивно
+тянул весь v0.7-пайплайн и его тяжёлые зависимости (LangGraph и т.д.) туда,
+где они не нужны и не установлены (например, минимальный Docker-образ
+migrator). Реэкспорты убраны как часть переноса config.py под src/config/ —
+поведение существующих вызывающих мест не меняется, т.к. они уже используют
+полные пути.
+"""
 
-__all__ = [
-    "build_concept_graph",
-    "build_profile_gap_map",
-    "build_tradeoff_matrix",
-    "extract_structured_chunks",
-    "run_personal_context_stage",
-    "run_stage_0",
-    "compile_v07_graph",
-    "knowledge_engine_v07_graph",
-    "run_knowledge_engine_v07",
-    "ChunkDedupStore",
-    "fetch_document",
-    "KnowledgeEngineState",
-    "PersonalContext",
-    "ScrapedDocument",
-    "StructuredChunk",
-    "ValidatedQuerySpec",
-    "compute_density_delta",
-    "empty_v07_state",
-    "ingest_document_chunks",
-    "should_terminate_search",
-    "staged_uma_lock",
-    "staged_uma_lock_decorator",
-    "uma_resource_lock",
-]
+from __future__ import annotations

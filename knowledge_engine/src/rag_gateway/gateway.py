@@ -7,16 +7,13 @@ import time
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
-from knowledge_engine.config import (
+from knowledge_engine.src.config.settings import (
     KE_RAG_TIMEOUT_SEC,
     RAG_GATEWAY_FINISH_MARGIN_SEC,
     RAG_LATENCY_WARN_MS,
     RAG_RETRIEVAL_PER_DIRECTION,
 )
-from knowledge_engine.services.ml_memory_guard import (
-    rag_request_scope,
-    spawn_warmup_task,
-)
+from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.locks import run_under_uma_lock
 from knowledge_engine.src.memory.light_rag import LightRAG
 from knowledge_engine.src.rag_gateway.cross_encoder import score_relevance_pairs
@@ -28,7 +25,10 @@ from knowledge_engine.src.rag_gateway.schemas import (
     RankedMemoryFact,
     SaveUserFactRequest,
 )
-from knowledge_engine.ui.run_log import trace
+from knowledge_engine.src.shared.ml_runtime.ml_memory_guard import (
+    rag_request_scope,
+    spawn_warmup_task,
+)
 
 _DEDUP_OVERLAP = 0.90
 

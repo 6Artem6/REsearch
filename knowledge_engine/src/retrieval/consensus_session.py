@@ -9,7 +9,10 @@ from urllib.parse import quote_plus, urlencode
 
 from playwright.async_api import BrowserContext, Page, Playwright, async_playwright
 
-from knowledge_engine.config import (
+from knowledge_engine.src.adapters.search_providers.playwright_launch import (
+    launch_persistent_context_async,
+)
+from knowledge_engine.src.config.settings import (
     BROWSER_PROFILE_PATH,
     CONSENSUS_AUTH_RECOVERY_CYCLES,
     CONSENSUS_BOOTSTRAP_INPUT_TIMEOUT_SEC,
@@ -40,9 +43,8 @@ from knowledge_engine.config import (
     CONSENSUS_USE_DIRECT_API,
     CONSENSUS_USE_QUICK_PAPER_SEARCH,
 )
-from knowledge_engine.services.search.playwright_launch import (
-    launch_persistent_context_async,
-)
+from knowledge_engine.src.core.logging_setup import get_logger
+from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.retrieval.consensus_capture import (
     papers_from_json_text_relaxed,
 )
@@ -53,8 +55,6 @@ from knowledge_engine.src.retrieval.consensus_papers import (
 )
 from knowledge_engine.src.retrieval.consensus_types import ConsensusMessageResult
 from knowledge_engine.src.retrieval.semantic_scholar import ScholarPaper
-from knowledge_engine.logging_setup import get_logger
-from knowledge_engine.ui.run_log import trace
 
 logger = get_logger(__name__)
 
@@ -113,7 +113,7 @@ async def shutdown_shared_consensus_session() -> None:
             await _shared_session.close()
             _shared_session = None
     try:
-        from knowledge_engine.services.search.consensus_direct_client import (
+        from knowledge_engine.src.adapters.search_providers.consensus_direct_client import (
             shutdown_consensus_direct_client,
         )
 
@@ -457,7 +457,7 @@ class ConsensusSessionManager:
 
     async def _send_direct_api_once(self, prompt_text: str) -> ConsensusMessageResult:
         """Hybrid Direct API: curl_cffi + Playwright warmup (без DOM/кликов)."""
-        from knowledge_engine.services.search.consensus_direct_client import (
+        from knowledge_engine.src.adapters.search_providers.consensus_direct_client import (
             acquire_consensus_direct_client,
             papers_to_raw_text,
         )
@@ -468,7 +468,7 @@ class ConsensusSessionManager:
         papers = await client.search_papers(q, limit=20)
         text = papers_to_raw_text(papers, q)
         self._api_papers = list(papers)
-        from knowledge_engine.ui.llm_trace import trace_plain_io
+        from knowledge_engine.src.core.llm_trace import trace_plain_io
 
         trace_plain_io("Consensus (direct API)", q, text[:8000])
         trace(f"Consensus ✓ direct API | papers={len(papers)} text={len(text)} sym")
@@ -500,7 +500,7 @@ class ConsensusSessionManager:
             merge_scholar_papers(self._api_papers, dom_papers),
             text_papers,
         )
-        from knowledge_engine.ui.llm_trace import trace_plain_io
+        from knowledge_engine.src.core.llm_trace import trace_plain_io
 
         trace_plain_io("Consensus (quick paper search)", q, text[:8000])
         trace(f"Consensus ✓ quick search | text={len(text)} sym | papers={len(papers)}")
@@ -690,7 +690,7 @@ class ConsensusSessionManager:
         page = self.page
         if page is None:
             return list(self._api_papers)
-        from knowledge_engine.config import CURRICULUM_V08_PAPER_POOL_SIZE
+        from knowledge_engine.src.config.settings import CURRICULUM_V08_PAPER_POOL_SIZE
 
         target = max(15, min(CURRICULUM_V08_PAPER_POOL_SIZE, 100))
         passes = max(1, CONSENSUS_PAPER_HARVEST_PASSES)
@@ -819,7 +819,7 @@ class ConsensusSessionManager:
             "Consensus: требуется вход — recovery "
             f"исчерпан ({CONSENSUS_AUTH_RECOVERY_CYCLES} циклов). "
             "Один раз: остановите API и выполните "
-            "`python -m knowledge_engine.main consensus-login` "
+            "`python -m knowledge_engine.src.app.main consensus-login` "
             f"(профиль {BROWSER_PROFILE_PATH}). "
             "browser-login открывает Gemini, не Consensus."
         ) from last_err
@@ -873,7 +873,7 @@ class ConsensusSessionManager:
             merge_scholar_papers(self._api_papers, dom_papers),
             text_papers,
         )
-        from knowledge_engine.ui.llm_trace import trace_plain_io
+        from knowledge_engine.src.core.llm_trace import trace_plain_io
 
         trace_plain_io(
             "Consensus (Playwright UI)",

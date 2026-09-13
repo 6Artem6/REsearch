@@ -37,7 +37,7 @@ def _pre_map_dedup_triage_passthrough_by_default(request, monkeypatch):
     if request.node.get_closest_marker("real_triage"):
         return
     try:
-        import knowledge_engine.src.deduplication.pre_map_deduplicator as pmd
+        import knowledge_engine.src.domains.ingestion.deduplication.pre_map_deduplicator as pmd
     except Exception:
         return
 
@@ -51,7 +51,7 @@ def _pre_map_dedup_triage_passthrough_by_default(request, monkeypatch):
     monkeypatch.setattr(pmd, "_flash_lite_triage_core_units_batch", _passthrough_batch)
 
     try:
-        import knowledge_engine.src.deduplication.code_deduplicator as cd
+        import knowledge_engine.src.domains.ingestion.deduplication.code_deduplicator as cd
     except Exception:
         return
 

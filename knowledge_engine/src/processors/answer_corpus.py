@@ -6,11 +6,11 @@ import re
 import uuid
 from typing import Any
 
+from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.processors.source_anchors import (
     expand_source_tags_to_markdown_links,
     strip_source_anchor_tags,
 )
-from knowledge_engine.ui.run_log import trace
 
 _SOURCE_TAG_RE = re.compile(r"\[S(\d+)\]", re.I)
 _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")

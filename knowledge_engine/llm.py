@@ -9,8 +9,11 @@ from typing import Any, Iterator, TypeVar
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field
 
-from knowledge_engine.config import GEMMA_PRIMARY_MODEL, gemma_cloud_api_key_available
-from knowledge_engine.ui.run_log import gemma_cloud_invoke
+from knowledge_engine.src.config.settings import (
+    GEMMA_PRIMARY_MODEL,
+    gemma_cloud_api_key_available,
+)
+from knowledge_engine.src.core.run_log import gemma_cloud_invoke
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -45,17 +48,13 @@ def _messages_to_system_user(messages: list[BaseMessage]) -> tuple[str, str]:
 
 
 def _client(model: str | None = None):
-    from knowledge_engine.services.llm.gemma_client import GemmaCloudClient
+    from knowledge_engine.src.adapters.llm_providers.gemma_client import (
+        GemmaCloudClient,
+    )
 
     chosen = (model or "").strip()
     low = chosen.lower()
-    if (
-        not chosen
-        or "qwen" in low
-        or "ollama" in low
-        or ":1.5b" in low
-        or ":7b" in low
-    ):
+    if not chosen or "qwen" in low or "ollama" in low or ":1.5b" in low or ":7b" in low:
         chosen = GEMMA_PRIMARY_MODEL
     return GemmaCloudClient(model=chosen)
 
@@ -69,7 +68,9 @@ async def complete_structured_async(
     model: str | None = None,
 ) -> T | None:
     if not gemma_cloud_api_key_available():
-        raise RuntimeError("Gemma Cloud API key missing (GEMINI_API_KEY / GEMMA_API_KEY)")
+        raise RuntimeError(
+            "Gemma Cloud API key missing (GEMINI_API_KEY / GEMMA_API_KEY)"
+        )
     return await _client(model).complete_structured(system, user, schema, label=label)
 
 
@@ -185,7 +186,7 @@ def stream_chat(
     temperature: float = 0.2,
     label: str = "LLM",
 ) -> str:
-    from knowledge_engine.ui.logger import append_stream_token, clear_stream
+    from knowledge_engine.src.core.logger import append_stream_token, clear_stream
 
     clear_stream()
     llm = chat_llm(model, temperature)

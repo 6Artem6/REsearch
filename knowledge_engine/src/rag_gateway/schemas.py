@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
-from knowledge_engine.config import RAG_DEFAULT_MAX_FACTS, RAG_DEFAULT_MIN_RELEVANCE
+from knowledge_engine.src.config.settings import (
+    RAG_DEFAULT_MAX_FACTS,
+    RAG_DEFAULT_MIN_RELEVANCE,
+)
 from knowledge_engine.src.rag_gateway.fact_text import (
     FACT_MAX_CHARS,
     truncate_fact_at_word_boundary,

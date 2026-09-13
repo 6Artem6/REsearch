@@ -22,7 +22,7 @@ dev:
 	./knowledge_engine/scripts/dev-native.sh
 
 worker:
-	$(PYTHON) -m knowledge_engine.worker
+	$(PYTHON) -m knowledge_engine.src.app.worker
 
 api:
 	docker compose --profile api up -d knowledge-api
@@ -71,10 +71,10 @@ skill-tree-ui:
 	./knowledge_engine/scripts/build-skill-tree-ui.sh
 
 check-gemini-grounding:
-	$(PYTHON) -m knowledge_engine.scripts.check_gemini_grounding --save
+	$(PYTHON) -m knowledge_engine.scripts.search_diagnostics.check_gemini_grounding --save
 
 check-gemini-grounding-all:
-	$(PYTHON) -m knowledge_engine.scripts.check_gemini_grounding --all-candidates --compare-plain --metadata --save
+	$(PYTHON) -m knowledge_engine.scripts.search_diagnostics.check_gemini_grounding --all-candidates --compare-plain --metadata --save
 
 # git add . + commit + push origin main (на commit — pre-commit: autoflake/isort/black/flake8)
 # Пример: make ship MSG="fix: redis worker pubsub"

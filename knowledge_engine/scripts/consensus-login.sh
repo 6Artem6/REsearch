@@ -26,4 +26,4 @@ if [ ! -d "${PLAYWRIGHT_BROWSERS_PATH}" ]; then
 fi
 
 echo "PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH}"
-exec "${ROOT}/.venv/bin/python" -m knowledge_engine.main consensus-login
+exec "${ROOT}/.venv/bin/python" -m knowledge_engine.src.app.main consensus-login

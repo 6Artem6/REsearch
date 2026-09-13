@@ -50,7 +50,7 @@ echo "saved: $LAST"
 echo ""
 
 if [ -x "$PYTHON" ]; then
-  "$PYTHON" -m knowledge_engine.cli.job_view -f "$LAST" --no-interactive
+  "$PYTHON" -m knowledge_engine.src.app.cli -f "$LAST" --no-interactive
 else
   cat "$LAST" | jq .
 fi
