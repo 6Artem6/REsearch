@@ -92,7 +92,7 @@ If the Cross-Encoder is unavailable, ranking degrades to BGE-M3 cosine.
 
 On error or an empty selection a fallback chain runs: **Cross-Encoder (`bge-reranker-v2-m3`) → threshold 0.50 → MMR**. For per-turn RAG over knowledge atoms the Cross-Encoder is optional (`DIALOG_ATOMS_*` flags, off by default).
 
-Parameters and logs: [LECTURE_RAG_CONTEXT.md](knowledge_engine/docs/LECTURE_RAG_CONTEXT.md) (some parameter descriptions are not yet updated for pgvector), [RAG_GATEWAY_MODULE_3.md](knowledge_engine/docs/RAG_GATEWAY_MODULE_3.md).
+Parameters and logs: [LECTURE_RAG_CONTEXT.md](knowledge_engine/docs/LECTURE_RAG_CONTEXT.md), [RAG_GATEWAY_MODULE_3.md](knowledge_engine/docs/RAG_GATEWAY_MODULE_3.md).
 
 ---
 

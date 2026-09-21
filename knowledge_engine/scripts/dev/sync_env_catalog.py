@@ -1,4 +1,4 @@
-"""Синхронизация каталога env: дефолты из config.py → .env.example и блок каталога в .env."""
+"""Синхронизация каталога env: дефолты из src/config/settings.py → .env.example и блок каталога в .env."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ import re
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[3]
 KE = REPO / "knowledge_engine"
-CONFIG = KE / "config.py"
+CONFIG = KE / "src" / "config" / "settings.py"
 ENV_EXAMPLE = REPO / ".env.example"
 ENV_FILE = REPO / ".env"
 

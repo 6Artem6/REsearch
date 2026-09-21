@@ -90,7 +90,7 @@
 
 При ошибке или пустом выборе включается запасная цепочка **Cross-Encoder (`bge-reranker-v2-m3`) → порог 0.50 → MMR**. Для пер-ходового RAG по атомам знаний Cross-Encoder подключается опционально (флаги `DIALOG_ATOMS_*`, по умолчанию выключены).
 
-Параметры и логи: [LECTURE_RAG_CONTEXT.md](knowledge_engine/docs/LECTURE_RAG_CONTEXT.md) (описание части параметров ещё не обновлено под pgvector), [RAG_GATEWAY_MODULE_3.md](knowledge_engine/docs/RAG_GATEWAY_MODULE_3.md).
+Параметры и логи: [LECTURE_RAG_CONTEXT.md](knowledge_engine/docs/LECTURE_RAG_CONTEXT.md), [RAG_GATEWAY_MODULE_3.md](knowledge_engine/docs/RAG_GATEWAY_MODULE_3.md).
 
 ---
 

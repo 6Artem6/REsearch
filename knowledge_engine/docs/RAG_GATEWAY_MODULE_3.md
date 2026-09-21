@@ -1,6 +1,6 @@
 # Модуль 3 — Directional RAG Gateway (Background Memory Engine)
 
-Детерминированный брокер памяти: LanceDB + BGE-M3 embeddings + локальный Cross-Encoder. **Без LLM.** Выполняется **только в KE worker**; HTTP API ставит `WorkJobKind.RAG_GATEWAY` и ждёт результат (API не загружает веса моделей).
+Детерминированный брокер памяти: векторное хранилище (`VECTOR_STORE_BACKEND`, по умолчанию pgvector) + BGE-M3 embeddings + локальный Cross-Encoder. **Без LLM.** Выполняется **только в KE worker**; HTTP API ставит `WorkJobKind.RAG_GATEWAY` и ждёт результат (API не загружает веса моделей).
 
 ## Пайплайн
 
@@ -69,6 +69,6 @@ POST /api/v1/rag-gateway/facts
 
 Модуль 2 вызывает `query_directional_rag` на `init` и `save_user_fact` при пробелах (**в процессе worker**, не API).
 
-Отладка через HTTP: `POST /rag-gateway/query` и `/facts` → очередь `rag_gateway`. `GET /memory-status` считает строки LanceDB без эмбеддера.
+Отладка через HTTP: `POST /rag-gateway/query` и `/facts` → очередь `rag_gateway`. `GET /memory-status` считает строки `light_rag_facts` без эмбеддера.
 
 Установка: `pip install -r knowledge_engine/requirements.txt` (добавлен `sentence-transformers`).

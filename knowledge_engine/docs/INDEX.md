@@ -28,7 +28,7 @@
 | [SCRIPTS.md](SCRIPTS.md) | Все 52 setup / diagnostic / maintenance / legacy CLI из `scripts/` | Актуальна; ключи сверены с кодом |
 | [CURRICULUM_MODULE_1.md](CURRICULUM_MODULE_1.md) | Модуль 1 curriculum | Актуальна |
 | [RAG_GATEWAY_MODULE_3.md](RAG_GATEWAY_MODULE_3.md) | Directional RAG | Актуальна |
-| [LECTURE_RAG_CONTEXT.md](LECTURE_RAG_CONTEXT.md) | Dense: LanceDB → CE → MMR | Актуальна |
+| [LECTURE_RAG_CONTEXT.md](LECTURE_RAG_CONTEXT.md) | Dense: pgvector (BGE-M3) → knee-cutoff → якорь/MMR; CE → MMR как запасная цепочка | Актуальна (2026-09-21) |
 | [SKILL_TREE_UI.md](SKILL_TREE_UI.md) | UI / worker / explain SSE | Частично: нет ActionChips / overlay / Gloss |
 | [ARTICLE_DIAGRAMS.md](ARTICLE_DIAGRAMS.md) | Mermaid / VLM у ноды | Актуальна |
 | [ARTICLE_ETL_AND_FIGURE_EXTRACTION.md](ARTICLE_ETL_AND_FIGURE_EXTRACTION.md) | ETL фигур | Актуальна |
@@ -51,7 +51,7 @@ Host-слой тьютора (чипы, overlay, векторы) **не** опи
 | Подсистема | Код | Что документировать |
 |------------|-----|---------------------|
 | Control intents / chips | `intent_definitions.py`, `control_intent.py` | Gloss / HOW / MECH / lecture / skip; `[mode:]` / `[action:]` |
-| Vector intent router | `vector_intent_router.py`, `db/intent_vectors_schema.py` | LanceDB `intent_vectors`, cosine, `VECTOR_INTENT_*` |
+| Vector intent router | `vector_intent_router.py`, `db/intent_vectors_schema.py` | таблица `intent_vectors` (pgvector), cosine, `VECTOR_INTENT_*` |
 | Prompt factory | `prompt_factory.py` + `*_prompt.py` (gloss, how, mech, deep_*) | Изолированные system prompts поверх compositor |
 | Star Task FSM | `star_task_fsm.py` | Overlay L4 `advanced_analysis` / L5–L6 `deep_design` |
 | Socratic poles | `socratic_poles.py`, `db/socratic_poles_schema.py` | repulsion / attraction, FACT_* в payload |
