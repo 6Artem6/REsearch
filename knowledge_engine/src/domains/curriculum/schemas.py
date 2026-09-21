@@ -143,9 +143,11 @@ class NodeCurriculumBreakdown(BaseModel):
         default_factory=list,
         max_length=12,
         description=(
-            "4-12 подтем глубокого разбора (Штурвал Mode 2 standalone-нода) — "
-            "пусто для обычных Autopilot/Node-Gate узлов."
+            "4-12 deep-dive subtopics (Steering Wheel Mode 2 standalone "
+            "node) — empty for regular Autopilot/Node-Gate nodes."
         ),
+        # RU: 4-12 подтем глубокого разбора (Штурвал Mode 2) — пусто для
+        # обычных Autopilot/Node-Gate узлов.
     )
 
 
@@ -196,7 +198,8 @@ class CurriculumNode(BaseModel):
         min_length=2,
         max_length=80,
         pattern=r"^[a-z][a-z0-9_]*$",
-        description="Уникальный snake_case ID",
+        description="Unique snake_case ID",
+        # RU: уникальный snake_case ID.
     )
     title: str = Field(min_length=2, max_length=300)
     layer: LayerKind
@@ -207,7 +210,8 @@ class CurriculumNode(BaseModel):
     resource_urls: list[str] = Field(
         default_factory=list,
         max_length=12,
-        description="Прямые URL из генерации маршрута",
+        description="Direct URLs from route generation",
+        # RU: прямые URL из генерации маршрута.
     )
     learning_resources: list[CurriculumResourceRef] = Field(
         default_factory=list,
@@ -217,23 +221,27 @@ class CurriculumNode(BaseModel):
     primary_source_id: str = Field(
         default="",
         max_length=16,
-        description="Главный source_id из реестра (первый из mapped_source_ids)",
+        description="Primary source_id from the registry (first of mapped_source_ids)",
+        # RU: главный source_id из реестра (первый из mapped_source_ids).
     )
     mapped_source_ids: list[str] = Field(
         default_factory=list,
         description=(
-            "source_id из curriculum_sources_registry — до "
-            "CURRICULUM_DEEP_NODE_MAX_HITS для node_kind='standard', без "
-            "капа для node_kind='steering_standalone' (см. "
-            "_check_mapped_source_ids_cap ниже)."
+            "source_id from curriculum_sources_registry — capped at "
+            "CURRICULUM_DEEP_NODE_MAX_HITS for node_kind='standard', "
+            "uncapped for node_kind='steering_standalone' (see "
+            "_check_mapped_source_ids_cap below)."
         ),
+        # RU: source_id из curriculum_sources_registry — с капом для
+        # node_kind='standard', без капа для 'steering_standalone'.
     )
     learning_goal: str = Field(default="", max_length=600)
     source_ref: NodeSourceRef | None = None
     node_curriculum_breakdown: NodeCurriculumBreakdown | None = None
     node_risk_kind: NodeRiskKind = Field(
         default="BASE",
-        description="BASE — без веб-поиска; DEEP — требуется RAG",
+        description="BASE — no web search; DEEP — RAG required",
+        # RU: BASE — без веб-поиска; DEEP — требуется RAG.
     )
     grounding_status: GroundingStatus = Field(
         default="model_only",
@@ -242,11 +250,13 @@ class CurriculumNode(BaseModel):
     node_kind: NodeKind = Field(
         default="standard",
         description=(
-            "standard — обычный узел (Autopilot/Node Grounding Gate), "
-            "mapped_source_ids капается CURRICULUM_DEEP_NODE_MAX_HITS; "
-            "steering_standalone — Штурвал Mode 2, один узел держит ВСЕ "
-            "Gate-2-approved источники без капа."
+            "standard — a regular node (Autopilot/Node Grounding Gate), "
+            "mapped_source_ids capped at CURRICULUM_DEEP_NODE_MAX_HITS; "
+            "steering_standalone — Steering Wheel Mode 2, one node holds "
+            "ALL Gate-2-approved sources uncapped."
         ),
+        # RU: standard — обычный узел (капается CURRICULUM_DEEP_NODE_MAX_HITS);
+        # steering_standalone — Штурвал Mode 2, один узел без капа источников.
     )
 
     @field_validator("source_ref", "node_curriculum_breakdown", mode="before")

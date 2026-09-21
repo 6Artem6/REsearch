@@ -1,4 +1,4 @@
-# Лёгкий образ ТОЛЬКО для alembic-миграций (Phase 3, см. prompt.txt) —
+# Лёгкий образ ТОЛЬКО для alembic-миграций (Phase 3) —
 # явный список COPY, без PyTorch/CUDA/sentence-transformers/exa-py и прочих
 # ML-зависимостей основного Dockerfile. Деплой baked-at-build-time (не
 # runtime volume + entrypoint.sh, как knowledge-api) — иммутабельный

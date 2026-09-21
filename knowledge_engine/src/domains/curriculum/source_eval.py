@@ -13,7 +13,8 @@ class SourceEvaluatorLiteContract(BaseModel):
         description="APPROVED | REJECTED",
     )
     confidence_score: float = Field(default=0.5, ge=0.0, le=1.0)
-    reason: str = Field(default="", description="Причина на русском")
+    reason: str = Field(default="", description="Short reason, in Russian")
+    # RU: причина решения — заполняется моделью на русском.
     suggested_action: Literal["RETRY_WITH_NEW_SOURCE", "REMOVE_LINK", "KEEP"] = Field(
         default="KEEP",
     )

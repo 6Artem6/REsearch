@@ -215,7 +215,7 @@ async def synthesize_consensus_batches(
                     # shared TPM/RPM counter for any caller that omits
                     # gemma_rl (dead in the current pipeline, since
                     # map_reduce_jobs_pooled_async always builds one, but
-                    # prompt.txt asked for 100% coverage regardless of
+                    # asked for 100% coverage regardless of
                     # caller). complete_structured()'s own `limiter` kwarg
                     # only reconciles AFTER the call — it never blocks
                     # admission — so this path must acquire against the SAME

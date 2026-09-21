@@ -1,6 +1,6 @@
 """pgvector init
 
-Phase 1 (см. prompt.txt): CREATE EXTENSION vector + первые 3 векторные таблицы
+Phase 1: CREATE EXTENSION vector + первые 3 векторные таблицы
 (knowledge_atoms/intent_vectors/edge_case_vectors — остальные LanceDB-таблицы,
 найденные в аудите — socratic_poles/light_rag_facts/v07_chunks/domain_registry,
 получают ту же форму отдельными миграциями по мере переноса).
@@ -9,7 +9,7 @@ Raw SQL (op.execute), не SQLAlchemy ORM: PostgresVectorRepository работа
 asyncpg напрямую (см. db/repositories/postgres_vector_repository.py), поэтому
 autogenerate не задействован — этот файл самодостаточен и не читает
 config.VECTOR_HNSW_* в рантайме (стабильность миграции: значения здесь всегда
-буквальные m=16/ef_construction=64/dim=1024, как в prompt.txt Phase 1).
+буквальные m=16/ef_construction=64/dim=1024, как в Phase 1).
 
 Revision ID: e6ab12466e89
 Revises:

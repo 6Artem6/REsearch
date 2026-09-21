@@ -1,5 +1,5 @@
 """BaseVectorRepository — формальный ABC для switchable vector-бэкендов
-(Phase 3, см. prompt.txt: "Repository Switcher").
+(Phase 3: "Repository Switcher").
 
 Форма интерфейса намеренно повторяет то, что vector_store.py реально зовёт
 на все ~9 read/write путей (см. Phase 2) — ensure_collection/upsert_documents/

@@ -10,11 +10,13 @@ from pydantic import BaseModel, Field
 class LiteQueryPlanContract(BaseModel):
     selected_domains: list[str] = Field(
         default_factory=list,
-        description="3–5 whitelist доменов",
+        description="3-5 whitelisted domains",
+        # RU: 3-5 доменов из белого списка.
     )
     queries: list[str] = Field(
         default_factory=list,
-        description="SearXNG queries с site: dorks",
+        description="SearXNG queries with site: dorks",
+        # RU: SearXNG-запросы с dork'ами site:.
     )
 
 
@@ -52,7 +54,8 @@ class LiteAcademicQueryContract(BaseModel):
         ...,
         description="English literature search query 1–2 sentences",
     )
-    notes: str = Field(default="", description="Кратко на русском")
+    notes: str = Field(default="", description="Brief, in Russian")
+    # RU: кратко, на русском.
     arxiv_params: ArxivQueryParamsContract = Field(
         default_factory=ArxivQueryParamsContract,
         description="Precision arXiv query fields in the same LLM pass",
@@ -60,7 +63,8 @@ class LiteAcademicQueryContract(BaseModel):
 
 
 class LiteHitEvaluationContract(BaseModel):
-    id: int = Field(..., description="hit id из batch")
+    id: int = Field(..., description="hit id from the batch")
+    # RU: id хита из batch.
     is_sufficient: bool = Field(default=False)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     reason: str = Field(default="")
@@ -86,6 +90,7 @@ class LiteSiteSuggestionsContract(BaseModel):
     sites: list[str] = Field(
         default_factory=list,
         max_length=6,
-        description="Дополнительные домены для поиска",
+        description="Additional domains to search",
+        # RU: дополнительные домены для поиска.
     )
     rationale: str = Field(default="")

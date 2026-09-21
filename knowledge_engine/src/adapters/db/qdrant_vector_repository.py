@@ -1,5 +1,5 @@
 """QdrantVectorRepository — тонкая ABC-обёртка над уже рабочим
-services/qdrant_vector_store.py::QdrantVectorStore (Phase 3, см. prompt.txt:
+services/qdrant_vector_store.py::QdrantVectorStore (Phase 3):
 "Repository Switcher"). Чистое делегирование, ноль новой логики — Qdrant-клиент
 уже написан, протестирован и жив в проде как fallback (config.VECTOR_STORE_BACKEND
 == "qdrant"); эта обёртка только формализует его под BaseVectorRepository.
