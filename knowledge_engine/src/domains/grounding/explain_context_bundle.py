@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from knowledge_engine.src.adapters.db.knowledge_atoms_schema import (
+    COL_CORE_RELEVANCE_SCORE,
     COL_DOC_ID,
     COL_SCOPE,
     COL_STATEMENT,
@@ -141,6 +142,7 @@ def _rows_to_atoms_keep_score(
                 statement=stmt[:2000],
                 context_quote=None,
                 source_chunk_ids=[],
+                core_relevance_score=row.get(COL_CORE_RELEVANCE_SCORE),
             )
         except Exception:
             continue
@@ -160,7 +162,7 @@ def retrieve_explain_invariants(
     top_k: int | None = None,
     min_score: float | None = None,
 ) -> str:
-    """PRINCIPLE/MECHANIC atoms for Explainer (limit 2–3)."""
+    """CONCEPT/MECHANIC atoms for Explainer (limit 2–3)."""
     if not EXPLAIN_ATOMS_ENABLED:
         return ""
     q = (query or "").strip()

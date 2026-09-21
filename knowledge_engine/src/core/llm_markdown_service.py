@@ -76,6 +76,7 @@ def enrich_node_deep_dive_response(
         feedback_on_answer=resp.tutor_dialogue_feedback,
         technical_explanation=resp.tutor_dialogue_technical,
         follow_up_question=resp.tutor_dialogue_follow_up,
+        message_bullet_summary=resp.tutor_message_bullet_summary,
     )
     tutor_raw = repair_llm_display_text(composed.strip() or (resp.tutor_message or ""))
     content_data = present_node_content_for_client(resp.content, registry)

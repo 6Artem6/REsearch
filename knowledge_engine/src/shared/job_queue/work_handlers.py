@@ -75,9 +75,12 @@ def _run_curriculum_generate(payload: dict[str, Any]) -> dict[str, Any]:
         resolve_source_policy,
     )
 
+    import time
+
     goal_preview = str(payload.get("target_goal") or "")[:56]
     init_run_log(f"curriculum generate | {goal_preview}")
     trace(f"WORKER curriculum generate | log={get_run_log_path()}")
+    t_job = time.perf_counter()
 
     mode_raw = str(payload.get("generation_mode") or "fast").strip().lower()
     if mode_raw in ("deep", "consensus"):
@@ -119,6 +122,10 @@ def _run_curriculum_generate(payload: dict[str, Any]) -> dict[str, Any]:
     if log_path is not None:
         meta["run_log_path"] = str(log_path)
     out["meta"] = meta
+    trace(
+        f"WORKER curriculum generate ✓ | {graph.curriculum_id} | "
+        f"{time.perf_counter() - t_job:.1f}s"
+    )
     return out
 
 
@@ -201,8 +208,11 @@ def _run_steering_topic_digest(payload: dict[str, Any]) -> dict[str, Any]:
     )
 
     goal_preview = str(payload.get("target_goal") or "")[:56]
+    import time
+
     init_run_log(f"steering topic_digest | {goal_preview}")
     trace(f"WORKER steering topic_digest | log={get_run_log_path()}")
+    t_job = time.perf_counter()
 
     target_goal = str(payload.get("target_goal") or "").strip()
     digests = SurfaceDigestResponse.model_validate(payload.get("surface_digests") or {})
@@ -233,6 +243,10 @@ def _run_steering_topic_digest(payload: dict[str, Any]) -> dict[str, Any]:
     log_path = get_run_log_path()
     if log_path is not None:
         out["run_log_path"] = str(log_path)
+    trace(
+        f"WORKER steering topic_digest ✓ | {graph.curriculum_id} | "
+        f"{time.perf_counter() - t_job:.1f}s"
+    )
     return out
 
 

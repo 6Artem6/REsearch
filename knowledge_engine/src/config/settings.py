@@ -766,7 +766,7 @@ VECTOR_HNSW_M: int = postgres_settings.vector_hnsw_m
 VECTOR_HNSW_EF_CONSTRUCTION: int = postgres_settings.vector_hnsw_ef_construction
 VECTOR_HNSW_EF_SEARCH: int = postgres_settings.vector_hnsw_ef_search
 
-# Phase 2 (см. prompt.txt): переключатель бэкенда vector_store.py. "postgres" —
+# Phase 2: переключатель бэкенда vector_store.py. "postgres" —
 # новый путь через PostgresVectorRepository (дефолт); "qdrant" — старый путь,
 # оставлен как fallback (см. services/postgres_vector_store_adapter.py) —
 # ОБА пути не удаляются в этом Phase, переключаются одним флагом.
@@ -1535,6 +1535,33 @@ LECTURE_RAG_PROMPT_MAX_CHARS: int = int(
     os.getenv("LECTURE_RAG_PROMPT_MAX_CHARS", "9000")
 )
 CHAT_SESSION_API_TURNS_MAX: int = int(os.getenv("CHAT_SESSION_API_TURNS_MAX", "8"))
+# Hybrid Context Buffer (add-only, default OFF) — 3-layer dialogue history for
+# lite models: RAW_HISTORY_DEPTH raw messages at the tail, up to
+# COMPRESSED_BLOCK_SIZE older messages as message_bullet_summary (existing
+# Windowed History), and once that middle layer would exceed
+# COMPRESSED_BLOCK_SIZE the OLDEST such block is collapsed in one LLM call
+# into a LEARNER_PROGRESS_SUMMARY digest (memory.learner_progress_blocks,
+# capped at MAX_COMPRESSED_BLOCKS) instead of being dropped — see
+# history_block_collapse.py. When OFF, the prior behavior (hard drop past
+# CHAT_SESSION_API_TURNS_MAX, no summary) is unchanged.
+DIALOG_BLOCK_COLLAPSE_ENABLED: bool = os.getenv(
+    "DIALOG_BLOCK_COLLAPSE_ENABLED", "false"
+).lower() in ("1", "true", "yes", "on")
+RAW_HISTORY_DEPTH: int = int(os.getenv("RAW_HISTORY_DEPTH", "6"))
+COMPRESSED_BLOCK_SIZE: int = int(os.getenv("COMPRESSED_BLOCK_SIZE", "10"))
+MAX_COMPRESSED_BLOCKS: int = int(os.getenv("MAX_COMPRESSED_BLOCKS", "5"))
+# Pydantic ceiling for StoredChatSession.api_turns — must fit RAW_HISTORY_DEPTH
+# + COMPRESSED_BLOCK_SIZE + a small safety margin for the turn just appended
+# before collapse runs, regardless of which retention mode is active.
+API_TURNS_HARD_CEILING: int = max(
+    CHAT_SESSION_API_TURNS_MAX, RAW_HISTORY_DEPTH + COMPRESSED_BLOCK_SIZE + 4
+)
+# Block-collapse digest call (history_block_collapse.py): a short 2-3
+# sentence summary, not a MAP/REDUCE-scale generation — deliberately smaller
+# than GEMMA_MAP_MAX_OUTPUT_TOKENS/GEMMA_REDUCE_MAX_OUTPUT_TOKENS.
+HISTORY_BLOCK_SUMMARY_MAX_OUTPUT_TOKENS: int = int(
+    os.getenv("HISTORY_BLOCK_SUMMARY_MAX_OUTPUT_TOKENS", "300")
+)
 LECTURE_RAG_MMR_LAMBDA: float = float(os.getenv("LECTURE_RAG_MMR_LAMBDA", "0.62"))
 # Chunk cross-attention + MMR перед Reduce (services/chunk_cross_attention_mmr.py)
 LECTURE_CHUNK_CA_TOP_K: int = int(os.getenv("LECTURE_CHUNK_CA_TOP_K", "10"))
@@ -1620,6 +1647,15 @@ LECTURE_PASSAGE_MIN_CHARS: int = int(os.getenv("LECTURE_PASSAGE_MIN_CHARS", "60"
 STEERING_DIGEST_FETCH_TIMEOUT_SEC: float = float(
     os.getenv("STEERING_DIGEST_FETCH_TIMEOUT_SEC", "8.0")
 )
+# Topic Q&A (interaction_axis="topic_qna") is a free-form consultation, not a
+# mandatory mastery gate — after this many consecutive failed Self-Check
+# attempts on the same sub_concept, stop re-probing it (give up, do not
+# credit) instead of looping the same question forever. lecture_self_check
+# keeps the stricter anti-gaming behavior (off-topic/refusal still graded as
+# wrong) unchanged — see sub_concept_eval.py.
+TOPIC_QNA_SELF_CHECK_MAX_ATTEMPTS: int = int(
+    os.getenv("TOPIC_QNA_SELF_CHECK_MAX_ATTEMPTS", "3")
+)
 # Сколько разнообразных релевантных абзацев на источник отбирает MMR —
 # меньше, чем CURRICULUM_PREFLIGHT_MMR_TOP_K=6 (тот пишет в полноценный
 # ingest-документ; здесь — короткий snippet в лекционный промпт).
@@ -1668,6 +1704,65 @@ DIALOG_ATOMS_ENABLED: bool = os.getenv("DIALOG_ATOMS_ENABLED", "true").lower() i
     "true",
     "yes",
     "on",
+)
+# Two-Stage Fact Relevance & Anchor Filtering (add-only, default OFF — see
+# knowledge_engine/tests/benchmarks/test_fact_relevance_pipeline.py for the
+# validated A/B results this graduated from).
+# Retrieval-time Hybrid Rerank (query CE score + stored core_relevance_score)
+# on dialog_atoms_rag.py's per-turn tutor RAG — currently a no-LLM/no-CE hot
+# path; flip on only after confirming the added per-turn CE latency is OK.
+DIALOG_ATOMS_HYBRID_RERANK_ENABLED: bool = os.getenv(
+    "DIALOG_ATOMS_HYBRID_RERANK_ENABLED", "false"
+).lower() in ("1", "true", "yes", "on")
+DIALOG_ATOMS_HYBRID_ALPHA: float = float(os.getenv("DIALOG_ATOMS_HYBRID_ALPHA", "0.7"))
+# Pedagogical-Aware RAG Reranking (add-only, default OFF) — depth-of-
+# understanding boost (PRINCIPLE/MECHANIC/INSTANCE per intro/deep_dive/
+# practice) + novelty rotation (recently-used atom/article penalties) on
+# top of the plain hybrid rerank above. Takes precedence over
+# DIALOG_ATOMS_HYBRID_RERANK_ENABLED when both are on and a
+# RetrievalPedagogicalContext is passed — see pedagogical_reranker.py and
+# tests/benchmarks/test_pedagogical_rag_session.py (4-turn A/B session).
+DIALOG_ATOMS_PEDAGOGICAL_BOOST_ENABLED: bool = os.getenv(
+    "DIALOG_ATOMS_PEDAGOGICAL_BOOST_ENABLED", "false"
+).lower() in ("1", "true", "yes", "on")
+# Mastery-Guided Concept Affinity (add-only, default OFF) — repulsion/attraction
+# concept-level weighting (socratic_poles.py Mastery Gate) + Multiperspective
+# Shift (response_depth_signal) on top of the pedagogical boost above. See
+# pedagogical_reranker.py::calculate_concept_affinity_weight /
+# calculate_multiperspective_shift_weight and tests/benchmarks/test_concept_affinity_rag.py.
+DIALOG_ATOMS_CONCEPT_AFFINITY_ENABLED: bool = os.getenv(
+    "DIALOG_ATOMS_CONCEPT_AFFINITY_ENABLED", "false"
+).lower() in ("1", "true", "yes", "on")
+# Windowed History (Zero-Overhead Summarization, add-only, default OFF) —
+# older api_turns get substituted with message_bullet_summary (tutor) /
+# SubConceptRecord status (user) instead of raw text; last exchange stays
+# raw. See chat_session_manager.py::get_or_create_live_chat.
+DIALOG_WINDOWED_HISTORY_ENABLED: bool = os.getenv(
+    "DIALOG_WINDOWED_HISTORY_ENABLED", "false"
+).lower() in ("1", "true", "yes", "on")
+# Sub-thread Context Isolation (add-only, default OFF) — api_turns tagged by
+# sub_concept_id; turns from a DIFFERENT sub_concept than the current one
+# are collapsed to their bullet summary (global layer) instead of full
+# local history. See chat_session_manager.py::get_or_create_live_chat.
+DIALOG_SUBTHREAD_ISOLATION_ENABLED: bool = os.getenv(
+    "DIALOG_SUBTHREAD_ISOLATION_ENABLED", "false"
+).lower() in ("1", "true", "yes", "on")
+# CoT Execution Plan (add-only, default OFF) — a hidden `execution_plan` field
+# (short Mermaid causal graph) generated FIRST, before technical_explanation,
+# so a lightweight model plans the causal chain (and marks the withheld
+# SHADOW consequence) before writing prose. Never sent to the client — see
+# tutor.py::DeepDiveTutorWithPlanContract, engine.py::_resolve_tutor_response_schema.
+ENABLE_TUTOR_EXECUTION_PLAN: bool = os.getenv(
+    "ENABLE_TUTOR_EXECUTION_PLAN", "false"
+).lower() in ("1", "true", "yes", "on")
+# Ingest-time Static Anchor Filtering (Synthetic Anchor = Title+Lead, CE cut
+# before REDUCE) — off by default: dropped-at-ingest atoms are not
+# re-derivable later without a full MAP re-run, unlike retrieval reordering.
+BLOG_SPATIAL_ANCHOR_FILTER_ENABLED: bool = os.getenv(
+    "BLOG_SPATIAL_ANCHOR_FILTER_ENABLED", "false"
+).lower() in ("1", "true", "yes", "on")
+BLOG_SPATIAL_ANCHOR_FILTER_THRESHOLD: float = float(
+    os.getenv("BLOG_SPATIAL_ANCHOR_FILTER_THRESHOLD", "0.35")
 )
 # Selection Explainer: Target Anchor + PRINCIPLE/MECHANIC atoms + causal facts.
 EXPLAIN_ATOMS_ENABLED: bool = os.getenv("EXPLAIN_ATOMS_ENABLED", "true").lower() in (

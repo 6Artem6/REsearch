@@ -1,6 +1,6 @@
 """TutorGraphService — async-безопасный lifecycle для AsyncPostgresSaver.
 
-Phase 2 (см. prompt.txt): врезан в живой граф — graph.tutor_graph_session()
+Phase 2: врезан в живой граф — graph.tutor_graph_session()
 (node_deep_dive/graph/__init__.py) открывает TutorGraphService НА КАЖДЫЙ ход
 и закрывает его в конце того же вызова, а не держит один долгоживущий
 инстанс на весь процесс. Причина: воркер создаёт новый event loop

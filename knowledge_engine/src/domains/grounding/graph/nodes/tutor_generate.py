@@ -50,7 +50,13 @@ def _tutor_generate_node_impl(
     req = state["request"]
     memory = state["memory"]
     node = req.node_data
-    anchor = state["anchor"]
+    from knowledge_engine.src.domains.grounding.node_session_reset import (
+        node_deep_dive_anchor,
+    )
+
+    anchor = state.get("anchor") or node_deep_dive_anchor(
+        req.curriculum_id, node.node_id
+    )
     action = (req.user_action or "").strip().lower()
     # Keep [mode:…] prefixes — Prompt Factory in _invoke_tutor selects
     # the isolated system prompt and strips the tag for the LLM body.
@@ -138,6 +144,19 @@ def _tutor_generate_node_impl(
             ready_for_transition=False,
         )
 
+    from knowledge_engine.src.domains.grounding.history_block_collapse import (
+        maybe_collapse_old_block,
+    )
+
+    for _label in (
+        "node_deep_dive/tutor",
+        "node_deep_dive/tutor_deep_analysis",
+        "node_deep_dive/drill_active",
+        "node_deep_dive/drill_complete",
+    ):
+        _stored = chat_mgr.get(_label)
+        if _stored is not None:
+            maybe_collapse_old_block(_stored, memory)
     memory.chat_sessions = chat_mgr.to_memory_blob()
     if content is not None:
         content = _merge_content(

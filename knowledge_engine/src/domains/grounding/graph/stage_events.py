@@ -1,5 +1,5 @@
-"""Эмиссия FSM stage-progress событий из узлов графа тьютора (см. prompt.txt:
-"Интеграция FSM-статусов LangGraph c SSE-стримингом").
+"""Эмиссия FSM stage-progress событий из узлов графа тьютора:
+"Интеграция FSM-статусов LangGraph c SSE-стримингом".
 
 Паттерн — тот же, что уже используется для token-стриминга
 (tutor_generate.py::_stream_from_config): callback лежит в

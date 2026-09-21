@@ -13,9 +13,10 @@ DEEP_DIVE_HOW_PROMPT = (
     "3. MANDATORY: End your response with EXACTLY ONE question testing architectural "
     "trade-offs. Name in that question every invariant the Evaluator may require.\n\n"
     "STRICT RULE: DO NOT write any completion phrases or transition prompts.\n"
-    "Chip processing is already done by the Python host before this turn. "
-    "Host owns orchestration flags. Put the practice question in follow_up_question "
-    "and set question_sub_concept_id to the active sub-topic id from the payload.\n"
+    "Chip processing is already resolved before this turn. "
+    "Orchestration flags are set separately. Put the practice question in "
+    "follow_up_question and set question_sub_concept_id to the active "
+    "sub-topic id from the payload.\n"
 )
 """
 RU (пояснение): изолированный system prompt для [mode:deep_dive_how].

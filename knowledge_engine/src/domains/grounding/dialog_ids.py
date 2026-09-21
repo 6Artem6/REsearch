@@ -30,10 +30,16 @@ def max_msg_id(messages: list[dict[str, Any]] | None) -> int:
     return best
 
 
-def dialog_message(role: str, content: str, msg_id: int) -> dict[str, str]:
+def dialog_message(
+    role: str, content: str, msg_id: int, sub_concept_id: str = ""
+) -> dict[str, str]:
     r = role if role in ("user", "tutor") else "tutor"
     text = (content or "").strip()
-    return {"role": r, "content": text, MSG_ID_KEY: str(msg_id)}
+    out = {"role": r, "content": text, MSG_ID_KEY: str(msg_id)}
+    sid = (sub_concept_id or "").strip()
+    if sid:
+        out["sub_concept_id"] = sid
+    return out
 
 
 def ensure_msg_ids(

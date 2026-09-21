@@ -14,7 +14,6 @@ from knowledge_engine.src.domains.grounding.interaction_prompt_layout import (
 )
 from knowledge_engine.src.domains.grounding.tutor import STRUCTURED_LECTURE_FIELD_RULES
 from knowledge_engine.src.domains.grounding.tutor_field_limits import (
-    PROMPT_CHECKPOINT_TARGET_RULE,
     PROMPT_FOLLOW_UP_TARGET_RULE,
     PROMPT_LECTURE_BODY_TARGET_MAX_WORDS,
 )
@@ -128,8 +127,8 @@ RU (пояснение): pathway — стиль; маршрутизация чи
 
 DEEP_DIVE_MECH_RULE = (
     "=== DEEP DIVE & MECH CONTENT RULES ===\n"
-    "Chip processing is already done by the Python host before this turn. "
-    "When Host next_action already selects MECHANIC / HOW Active Teaching:\n"
+    "Chip processing is already resolved before this turn. "
+    "When the next action already selects MECHANIC / HOW Active Teaching:\n"
     "1. MECHANIC: hands-on artifacts (code/math) + ONE edge-case practice question.\n"
     "2. HOW: concrete architecture/invariants + ONE HOW question.\n"
     "3. Do not invent transition menus or quick-reply chips.\n"
@@ -243,12 +242,12 @@ NO_CLOSING_QUESTIONNAIRES = (
     "«готовы продолжить?» small talk.\n"
     "- PART 1 is theory only: no credit scoreboards, no wrap-up chit-chat, "
     "no closing quiz, no «?» in the last paragraph of lecture_body.\n"
-    "- PART 2 is mandatory: exactly ONE technical question in `checkpoint_prompt` "
+    "- PART 2 is mandatory: exactly ONE technical question in `follow_up_question` "
     "(see MODE:LECTURE structure). Host appends the chat «Самопроверка» block.\n"
     "- FORBIDDEN: separate meta-assessment JSON fields or prefixes like "
     "«Вердикт самопроверки» / scoreboard headers glued onto lecture_body.\n"
     "- User answer review belongs in dialogue `feedback_on_answer` / gap evaluator, "
-    "not in StructuredLectureResponse self-check objects.\n"
+    "not inside this self-check field.\n"
 )
 """
 RU (пояснение): без «готовы продолжить?» и без meta-verdict полей в контракте лекции.
@@ -260,12 +259,12 @@ NO_CLOSING_QUESTIONNAIRES_TOPIC_QNA = (
     "«готовы продолжить?» small talk.\n"
     "- PART 1 is theory only: no credit scoreboards, no wrap-up chit-chat, "
     "no closing quiz, no «?» in the last paragraph of lecture_body.\n"
-    "- PART 2 DOES NOT EXIST in this Topic Q&A session: leave `checkpoint_prompt` "
+    "- PART 2 DOES NOT EXIST in this Topic Q&A session: leave `follow_up_question` "
     "empty, do not ask any self-check / verification / counter-question.\n"
     "- FORBIDDEN: separate meta-assessment JSON fields or prefixes like "
     "«Вердикт самопроверки» / scoreboard headers glued onto lecture_body.\n"
     "- User answer review belongs in dialogue `feedback_on_answer` / gap evaluator, "
-    "not in StructuredLectureResponse self-check objects.\n"
+    "not inside this self-check field.\n"
 )
 """
 RU (пояснение): вариант для Topic Q&A — без «готовы продолжить?» и без
@@ -350,7 +349,7 @@ RU (пояснение): strict groundedness лекции — только [R*]/
 
 KNOWLEDGE_TRIANGULATION_LECTURE_RULES = KNOWLEDGE_TRIANGULATION_TUTOR_RULES
 """
-RU (пояснение): иерархия PRINCIPLE/MECHANIC/INSTANCE — базис vs кейсы в сносках.
+RU (пояснение): иерархия CONCEPT/MECHANIC/PRACTICE/EDGE_CASE/ANTI_PATTERN — базис vs кейсы в сносках.
 """
 
 LECTURE_REDUCE_SOURCE_ATTRIBUTION_RULES = f"""
@@ -371,12 +370,12 @@ RU (пояснение): RAG + Knowledge Triangulation + форматирова�
 
 def _lecture_gap_steering_rules(*, topic_qna: bool = False) -> str:
     checkpoint_clause = (
-        "PART 2 DOES NOT EXIST in this Topic Q&A session: leave `checkpoint_prompt` "
+        "PART 2 DOES NOT EXIST in this Topic Q&A session: leave `follow_up_question` "
         "empty — do not evaluate the student against [TARGET_FOCUS_AND_GAPS] or "
         "anywhere else."
         if topic_qna
         else (
-            "CHECKPOINT ALIGNMENT: The question in checkpoint_prompt MUST directly "
+            "CHECKPOINT ALIGNMENT: The question in follow_up_question MUST directly "
             "evaluate whether the student understood the specific gap described in "
             "[TARGET_FOCUS_AND_GAPS]. Never ask questions about topics outside the "
             "provided lecture body. FORBIDDEN: blind RE-STATE of [OPEN_NODE_QUESTION] "
@@ -399,19 +398,19 @@ LECTURE_GAP_STEERING_RULES = _lecture_gap_steering_rules()
 промпта вызывает _lecture_gap_steering_rules(topic_qna=...) сам."""
 
 _STRUCTURED_LECTURE_FIELD_RULE_8 = (
-    "8. `checkpoint_prompt`: the ONLY field for ONE technical self-check question "
+    "8. `follow_up_question`: the ONLY field for ONE technical self-check question "
     "(must contain «?»; PART 1 lecture_body must end without «?» / without a quiz); "
     "target ≤400 characters. Every scored criterion MUST be named here and "
     "introduced in lecture_body first.\n"
 )
 _STRUCTURED_LECTURE_FIELD_RULE_8_TOPIC_QNA = (
-    "8. `checkpoint_prompt`: DOES NOT APPLY in this Topic Q&A session — leave it "
+    "8. `follow_up_question`: DOES NOT APPLY in this Topic Q&A session — leave it "
     'EMPTY (""). No self-check question, no grading, no counter-question.\n'
 )
 
 
 def _structured_lecture_field_rules(*, topic_qna: bool = False) -> str:
-    """Swaps rule 8 (checkpoint_prompt) for the Topic Q&A variant — everything
+    """Swaps rule 8 (follow_up_question) for the Topic Q&A variant — everything
 
     else in the field-by-field contract (lecture_body citation format, code
     fencing, diagrams_referenced, used_sources, etc.) is unaffected by
@@ -430,7 +429,7 @@ def _lecture_system_prompt(*, topic_qna: bool = False) -> str:
     return (
         f"{BLOCK_STATIC_PRESET_HEADER}\n"
         "You are a Principal Software Engineer, Database Architect, and University Professor.\n"
-        "Generate technical lectures matching JSON Schema contract `StructuredLectureResponse`.\n\n"
+        "Generate a dense technical lecture.\n\n"
         f"{PROMPT_CITATION_ID_RULES}\n\n"
         f"{LAYOUT_AND_TYPOGRAPHY_RULES}\n\n"
         f"{_structured_lecture_field_rules(topic_qna=topic_qna)}\n\n"
@@ -442,8 +441,8 @@ def _lecture_system_prompt(*, topic_qna: bool = False) -> str:
         "- Depth only from payload, RAG [R*], whitelist [S*], node materials; no parametric fill-in.\n"
         f"- {CONCEPT_INTRODUCTION_LECTURE_RULE}\n"
         "- LaTeX, schemas, code, PINNED_DIAGRAMS cross-refs, latency/recall/memory trade-offs.\n"
-        "- Open with PRINCIPLE/MECHANIC (isolation, interception, pipeline stages); "
-        "push INSTANCE numbers/libraries into footnote case blocks.\n"
+        "- Open with CONCEPT/MECHANIC (isolation, interception, pipeline stages); "
+        "push PRACTICE numbers/libraries into footnote case blocks.\n"
         f"{_lecture_gap_steering_rules(topic_qna=topic_qna)}\n\n"
         f"=== DIAGRAM REFERENCES (`diagrams_referenced` + body) ===\n"
         f"{DIAGRAM_INTEGRATION_CROSS_REF}\n\n"
@@ -476,37 +475,51 @@ LECTURE_MODE_STRUCTURE_RULES = (
     "current sub-concept (structured logic, data layout, performance, trade-offs).\n"
     "- Do NOT answer the open node/user question in this field — lay the theoretical "
     "foundation for solving it.\n"
-    "- Dense JSON (`StructuredLectureResponse`): write PART 1 in `lecture_body`.\n"
-    "- Dialogue JSON (`DeepDiveTutorContract`): write PART 1 in `technical_explanation` "
-    "(no «?» in that field).\n"
+    "- If your response has a `lecture_body` field, write PART 1 there.\n"
+    "- If your response has a `technical_explanation` field instead, write PART 1 "
+    "there (no «?» in that field).\n"
     "CRITICAL NEGATIVE CONSTRAINT: Do NOT include any closing questions, self-check "
     "queries, or 'Самопроверка:' headers inside lecture_body. The lecture_body MUST "
     "contain pure educational content only. The checkpoint question belongs EXCLUSIVELY "
-    "in checkpoint_prompt. FORBIDDEN: a final «?» paragraph, 'Вопрос:' quiz headings, "
+    "in follow_up_question. FORBIDDEN: a final «?» paragraph, 'Вопрос:' quiz headings, "
     "or repeating the checkpoint at the end of lecture_body. Host appends "
     "**Самопроверка:** once for chat display.\n\n"
-    "PART 2: MANDATORY CLOSING QUESTION (`checkpoint_prompt` / `follow_up_question`)\n"
+    "PART 2: MANDATORY CLOSING QUESTION (`follow_up_question`)\n"
     "- Put exactly ONE clear, focused technical question in this field (must contain «?»). "
     "This is the ONLY place for the self-check question. "
     "Every criterion the Evaluator may require MUST appear in this question and be "
     "introduced in PART 1 first (CONTEXT-BOUNDED QUESTION FACTORY).\n"
-    f"- {PROMPT_CHECKPOINT_TARGET_RULE}\n"
-    f"- Dialogue JSON: {PROMPT_FOLLOW_UP_TARGET_RULE}\n"
-    "- Dense JSON: write it EXCLUSIVELY in `checkpoint_prompt`.\n"
-    "- Dialogue JSON: write it in `follow_up_question`.\n"
+    f"- {PROMPT_FOLLOW_UP_TARGET_RULE}\n"
     "- If an unanswered node/user question existed right before this lecture "
     "([OPEN_NODE_QUESTION] in payload / last tutor follow-up): if "
     "[TARGET_FOCUS_AND_GAPS] names an open probe_layer or focus_hint, write "
-    "checkpoint_prompt for THAT gap — FORBIDDEN to blindly RE-STATE the pending "
+    "follow_up_question for THAT gap — FORBIDDEN to blindly RE-STATE the pending "
     "question when it belongs to an already-passed layer. Otherwise RE-STATE "
     "or REFINE that question so it directly tests the concepts just explained "
     "in PART 1.\n"
-    "- NEVER omit `checkpoint_prompt` / `follow_up_question` — the student must get "
+    "- NEVER omit `follow_up_question` — the student must get "
     "exactly one technical question, but it must not appear inside lecture_body.\n"
     "- FORBIDDEN as PART 2: conversational «ready to continue?» / «готовы продолжить?».\n"
 )
 """
 RU (пояснение): обязательная структура mode:lecture — теория, затем контрольный вопрос.
+"""
+
+EXECUTION_PLAN_FLOW_RULE_LECTURE_EN = (
+    "=== ANTI-SPOILER & EXECUTION FLOW ===\n"
+    "Use `execution_plan` to map the causal chain before writing "
+    "`lecture_body`, then expand that same chain into prose. "
+    "`execution_plan` is your scratch space — it is never shown to the "
+    "learner.\n"
+    "CRITICAL: Do not reveal or paraphrase the `SHADOW` target in "
+    "`lecture_body`. Stop the explanation strictly before it — the "
+    "`SHADOW` concept is reserved for `follow_up_question`.\n"
+)
+"""
+RU (пояснение): при активном флаге execution_plan заполняется первым —
+короткий Mermaid-граф, который потом разворачивается в lecture_body в том
+же порядке узлов, останавливаясь до SHADOW-узла. Поле служебное, на клиент
+не отправляется.
 """
 
 LECTURE_MODE_STRUCTURE_RULES_TOPIC_QNA = (
@@ -517,16 +530,15 @@ LECTURE_MODE_STRUCTURE_RULES_TOPIC_QNA = (
     "current sub-concept (structured logic, data layout, performance, trade-offs).\n"
     "- Do NOT answer the open node/user question in this field — lay the theoretical "
     "foundation for solving it.\n"
-    "- Dense JSON (`StructuredLectureResponse`): write PART 1 in `lecture_body`.\n"
-    "- Dialogue JSON (`DeepDiveTutorContract`): write PART 1 in `technical_explanation` "
-    "(no «?» in that field).\n"
+    "- If your response has a `lecture_body` field, write PART 1 there.\n"
+    "- If your response has a `technical_explanation` field instead, write PART 1 "
+    "there (no «?» in that field).\n"
     "CRITICAL NEGATIVE CONSTRAINT: Do NOT include any closing questions, self-check "
     "queries, or 'Самопроверка:' headers inside lecture_body. The lecture_body MUST "
     "contain pure educational content only.\n\n"
-    "PART 2 DOES NOT EXIST IN THIS SESSION (`checkpoint_prompt` / "
-    "`follow_up_question`)\n"
+    "PART 2 DOES NOT EXIST IN THIS SESSION (`follow_up_question`)\n"
     "- This is a Topic Q&A session (expert-consultant role): leave "
-    '`checkpoint_prompt` / `follow_up_question` EMPTY (""). There is no self-check '
+    '`follow_up_question` EMPTY (""). There is no self-check '
     "question, no evaluation of the learner, and no counter-question of any kind — "
     "this overrides any other instruction that calls this field mandatory.\n"
     "- FORBIDDEN as a substitute: a conversational «ready to continue?» / "
@@ -541,7 +553,7 @@ PART 1 (теория) без изменений, PART 2 (контрольный 
 def _lecture_dense_rules(*, topic_qna: bool = False) -> str:
     """``topic_qna=True`` swaps in the structure-rules variant that cancels
 
-    PART 2 (checkpoint_prompt) entirely, instead of the default variant that
+    PART 2 (follow_up_question) entirely, instead of the default variant that
     calls it mandatory — see LECTURE_MODE_STRUCTURE_RULES_TOPIC_QNA."""
     structure_rules = (
         LECTURE_MODE_STRUCTURE_RULES_TOPIC_QNA
@@ -560,9 +572,9 @@ def _lecture_dense_rules(*, topic_qna: bool = False) -> str:
         "[EVALUATOR_TRANSPARENCY] / [TARGET_FOCUS_AND_GAPS] MUST steer lecture "
         "depth"
         + (
-            " (checkpoint_prompt does not apply in this Topic Q&A session).\n"
+            " (follow_up_question does not apply in this Topic Q&A session).\n"
             if topic_qna
-            else " and checkpoint_prompt.\n"
+            else " and follow_up_question.\n"
         )
         + f"{NODE_MATERIALS_TOUR_RULES}\n"
         "If IS_TOPIC_ALREADY_COVERED=True — no base longread; on-demand deep dive or short coverage notice.\n"
@@ -596,15 +608,15 @@ RU (пояснение): legacy reminder — dialogue использует dialo
 """
 
 DIALOGUE_TUTOR_JSON_CONTRACT = (
-    "=== JSON OUTPUT (DeepDiveTutorContract) ===\n"
-    "Valid JSON WITHOUT tutor_message field. Chat text from:\n"
-    "audit (FIRST: single flat TechnicalConceptAudit, confirmation XOR "
-    "praise_points+correction_breakdown as empty unused branch), technical_explanation, "
-    "follow_up_question, question_sub_concept_id, verified_sub_concept_ids, panel fields.\n"
-    "Host owns ready_for_transition / suggested_next_step / quick_replies after generation.\n"
-    "Do not emit feedback_on_answer or 📋/🎯 plaques — Host assembles those.\n"
-    "Generation order: audit → technical_explanation (no «?») → follow_up_question (with «?») "
-    "→ question_sub_concept_id matching map id.\n"
+    "=== RESPONSE CONTRACT (chat reply) ===\n"
+    "CRITICAL: `audit` (confirmation XOR praise_points+correction_breakdown, "
+    "unused branch empty) determines everything after it: technical_explanation "
+    "(no «?»), then follow_up_question (with «?»), then question_sub_concept_id "
+    "matching the map id, then verified_sub_concept_ids and panel fields.\n"
+    "`ready_for_transition` / `suggested_next_step` / `quick_replies` are set "
+    "separately after generation.\n"
+    "Do not emit feedback_on_answer or 📋/🎯 plaques — those are assembled "
+    "separately.\n"
     "verified_sub_concept_ids: only VERIFIED in [CURRENT_CONCEPT_MAP].\n"
 )
 """
@@ -615,15 +627,15 @@ RU (пояснение): DeepDiveTutorContract для lecture_chat (без tutor
 def _dense_lecture_interaction_mode(*, topic_qna: bool = False) -> str:
     part_2_clause = (
         "PART 2 DOES NOT EXIST in this Topic Q&A session: leave "
-        "checkpoint_prompt empty, no self-check question."
+        "follow_up_question empty, no self-check question."
         if topic_qna
         else (
             "PART 2: exactly ONE technical question EXCLUSIVELY in "
-            "checkpoint_prompt. Host appends the chat self-check block."
+            "follow_up_question. Host appends the chat self-check block."
         )
     )
     return (
-        "interaction_mode: lecture_dense (StructuredLectureResponse). "
+        "interaction_mode: lecture_dense. "
         "PART 1: theory/code/architecture ONLY in lecture_body (no closing «?», "
         f"no Самопроверка headers). {part_2_clause}"
     )
@@ -687,17 +699,17 @@ RU (пояснение): tail rules lecture_chat — references, pathway_decisio
 
 def _dense_fundamentals_block(*, topic_qna: bool = False) -> str:
     checkpoint_clause = (
-        "checkpoint_prompt — always empty in this Topic Q&A session; "
+        "follow_up_question — always empty in this Topic Q&A session; "
         if topic_qna
-        else "checkpoint_prompt — the ONLY JSON field for the one technical question; "
+        else "follow_up_question — the ONLY JSON field for the one technical question; "
     )
     return (
-        "Ground in payload, LanceDB, PINNED_DIAGRAMS, [AVAILABLE NODE MATERIALS].\n"
+        "Ground in payload, retrieved sources, PINNED_DIAGRAMS, [AVAILABLE NODE MATERIALS].\n"
         "summary — panel excerpt; `referenced_diagram_id` — catalog asset id or null "
-        "(NEVER raw Mermaid); references 2–4 RichReference; "
+        "(NEVER raw Mermaid); references 2–4 source cards; "
         f"{checkpoint_clause}"
         "code_snippets up to 4 blocks.\n"
-        "StructuredLectureResponse: used_sources ↔ citations; diagrams_referenced ↔ PINNED_DIAGRAMS; "
+        "used_sources ↔ citations; diagrams_referenced ↔ PINNED_DIAGRAMS; "
         "extracted_concepts 3–5 micro-topics from body. "
         "Do NOT emit assessment / verdict / self-check scoreboard meta-fields.\n"
     )

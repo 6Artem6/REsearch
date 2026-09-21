@@ -209,7 +209,7 @@ def test_select_deep_analysis_includes_session_flags() -> None:
     assert mode == "deep_analysis"
     assert deep_analysis_hard_guard_block().strip() in system
     assert "node_completed: false" in system
-    assert "DeepDiveDeepAnalysisContract" in system
+    assert "Deep Design mode" in system
     assert "TOPIC COMPLETION" not in system
     policy = deep_analysis_context_policy()
     assert policy["node_completed"] is False

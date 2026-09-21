@@ -143,7 +143,7 @@ def test_claim_dedup_mode_none_skips_pipeline(monkeypatch):
     assert calls == []
 
     atom = KnowledgeAtom(
-        scope=ScopeType.INSTANCE,
+        scope=ScopeType.PRACTICE,
         statement="FastAPI provides routing.",
         source_chunk_ids=["c1"],
     )
@@ -429,7 +429,7 @@ def test_two_phase_reduce_skips_consensus_when_mode_none(monkeypatch):
     )
 
     atom = KnowledgeAtom(
-        scope=ScopeType.PRINCIPLE,
+        scope=ScopeType.CONCEPT,
         statement="Governed hooks must run before tool dispatch",
         source_chunk_ids=["paper_map_1"],
     )
@@ -526,19 +526,19 @@ def test_raw_facts_from_atoms_uses_cluster_key_for_grouping():
     atom's group key unique, defeating pre-partitioning just as badly."""
     atoms = [
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement="GIL serializes bytecode execution across threads.",
             cluster_key="gil_lock",
             source_chunk_ids=["c1"],
         ),
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement="GIL is released during blocking I/O calls.",
             cluster_key="GIL_Lock",
             source_chunk_ids=["c2"],
         ),
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement="ceval.c dispatches bytecode instructions in a loop.",
             cluster_key="cpylex",
             source_chunk_ids=["c3"],
@@ -575,13 +575,13 @@ def test_apply_entity_consensus_singleton_shortcut_skips_llm(monkeypatch):
 
     atoms = [
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement="FastAPI serves ASGI routing.",
             cluster_key="fastapi",
             source_chunk_ids=["c1"],
         ),
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement="Pydantic validates JSON models.",
             cluster_key="pydantic",
             source_chunk_ids=["c2"],
@@ -641,19 +641,19 @@ def test_apply_entity_consensus_merged_cluster_still_goes_to_llm(monkeypatch):
 
     atoms = [
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement="FastAPI is a fast web framework.",
             cluster_key="fastapi",
             source_chunk_ids=["c1"],
         ),
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement="FastAPI is a high performance framework.",
             cluster_key="fastapi",
             source_chunk_ids=["c2"],
         ),
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement="Pydantic validates JSON models.",
             cluster_key="pydantic",
             source_chunk_ids=["c3"],
@@ -669,10 +669,10 @@ def test_apply_entity_consensus_merged_cluster_still_goes_to_llm(monkeypatch):
 
 
 def test_knowledge_atom_cluster_key_defaults_and_normalizes():
-    atom = KnowledgeAtom(scope=ScopeType.PRINCIPLE, statement="x" * 10)
+    atom = KnowledgeAtom(scope=ScopeType.CONCEPT, statement="x" * 10)
     assert atom.cluster_key == "general"
     atom2 = KnowledgeAtom(
-        scope=ScopeType.PRINCIPLE, statement="x" * 10, cluster_key="  GIL Lock  "
+        scope=ScopeType.CONCEPT, statement="x" * 10, cluster_key="  GIL Lock  "
     )
     assert atom2.cluster_key == "gil lock"
 
@@ -699,7 +699,7 @@ def test_two_phase_reduce_uses_consensus_when_enabled(monkeypatch):
     consensus_calls: list[int] = []
 
     atom = KnowledgeAtom(
-        scope=ScopeType.PRINCIPLE,
+        scope=ScopeType.CONCEPT,
         statement="Governed hooks must run before tool dispatch",
         source_chunk_ids=["paper_map_1"],
     )

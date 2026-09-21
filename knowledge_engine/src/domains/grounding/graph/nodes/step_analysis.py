@@ -36,8 +36,14 @@ def _step_analysis_node_impl(state: TutorGraphState) -> TutorGraphState:
     """Deterministic chip→intent (0 LLM calls) + LLM matrix patch; no gap eval, no active_window append."""
     req = state["request"]
     memory = state["memory"]
-    anchor = state["anchor"]
     node = req.node_data
+    from knowledge_engine.src.domains.grounding.node_session_reset import (
+        node_deep_dive_anchor,
+    )
+
+    anchor = state.get("anchor") or node_deep_dive_anchor(
+        req.curriculum_id, node.node_id
+    )
     user_message = (req.user_message or "").strip()
     action = (req.user_action or "").strip().lower()
 

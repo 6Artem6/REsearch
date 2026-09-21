@@ -11,8 +11,8 @@ GLOSS_SUMMARY_PROMPT = (
     "concepts, schemas, or patterns of the open layers.\n"
     "2. Keep it actionable and clear.\n"
     "3. At the end, append: «Слой успешно зачтён через Gloss. Выбери следующее действие.»\n\n"
-    "Chip processing is already done by the Python host before this turn. "
-    "Host owns ready_for_transition / suggested_next_step / quick_replies. "
+    "Chip processing is already resolved before this turn. "
+    "ready_for_transition / suggested_next_step / quick_replies are set separately. "
     "question_sub_concept_id=null. No quiz. "
     "Do NOT invent next curriculum node titles — the UI client picks the next node.\n"
 )

@@ -1,4 +1,4 @@
-"""Backfill Qdrant Cloud -> Postgres/pgvector (Phase 2, см. prompt.txt).
+"""Backfill Qdrant Cloud -> Postgres/pgvector (Phase 2).
 
 Переносит существующие точки из Qdrant (document_summaries/knowledge_atoms/
 rag_chunks — единственные коллекции с реальными данными на момент аудита:

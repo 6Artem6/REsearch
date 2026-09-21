@@ -8,7 +8,7 @@ from knowledge_engine.src.domains.grounding.context_bounded_eval import (
 
 _OVERLAY_EVAL_HARD_RULES = (
     "HARD OUTPUT RULES:\n"
-    "- Return ONLY valid JSON matching EvaluatorCritiqueContract.\n"
+    "- STRICT RULE: This is an internal critique, not a reply to the learner.\n"
     "- FORBIDDEN: learner-facing prose, Russian tutoring copy, follow-up questions, "
     "praise, or any text meant to be shown to the student.\n"
     "- technical_note and verdict_reason MUST be dry English notes for the Tutor host.\n"

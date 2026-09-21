@@ -19,6 +19,8 @@ from knowledge_engine.src.adapters.llm_providers.gemma_client import (
     resolve_gemma_map_max_output_tokens,
 )
 from knowledge_engine.src.config.settings import (
+    BLOG_SPATIAL_ANCHOR_FILTER_ENABLED,
+    BLOG_SPATIAL_ANCHOR_FILTER_THRESHOLD,
     BLOG_SPATIAL_MAP_MAX_TOKENS,
     BLOG_SPATIAL_MAP_PROVIDER,
     BLOG_SPATIAL_TIMEOUT_SEC,
@@ -41,6 +43,10 @@ from knowledge_engine.src.config.settings import (
     map_pipeline_concurrency,
 )
 from knowledge_engine.src.core.run_log import trace
+from knowledge_engine.src.domains.ingestion.article_ingestion.anchor_relevance import (
+    AtomAnchorFilterService,
+    get_synthetic_anchor,
+)
 from knowledge_engine.src.domains.ingestion.article_ingestion.blog_spatial_schemas import (
     BlogArticleSummaryResponse,
     DeduplicatedAtomsResponse,
@@ -118,7 +124,7 @@ _MAP_SYSTEM = (
     "You MUST fill knowledge_atoms — aim for the TARGET_FACTS count given in "
     "<article_context> (a soft target scaled to this window's size, not a "
     "hard cap; fewer is fine if the window genuinely has less to extract): "
-    "{scope: PRINCIPLE|MECHANIC|INSTANCE, statement, context_quote, cluster_key}.\n"
+    "{scope: CONCEPT|MECHANIC|PRACTICE|EDGE_CASE|ANTI_PATTERN, statement, context_quote, cluster_key}.\n"
     "cluster_key — a short (1-3 word) lowercase entity/topic tag for this atom, "
     "e.g. 'cpylex', 'gil_lock' (used downstream to group near-duplicate atoms "
     "before dedup — pick the specific subject the statement is about, not a "
@@ -148,7 +154,7 @@ _MAP_SYSTEM_CODE = (
     "You MUST fill knowledge_atoms — aim for the TARGET_FACTS count given in "
     "<article_context> (a soft target scaled to this window's size, not a "
     "hard cap; fewer is fine if the window genuinely has less to extract): "
-    "{scope: PRINCIPLE|MECHANIC|INSTANCE, statement, context_quote, cluster_key}.\n"
+    "{scope: CONCEPT|MECHANIC|PRACTICE|EDGE_CASE|ANTI_PATTERN, statement, context_quote, cluster_key}.\n"
     "cluster_key — a short (1-3 word) lowercase entity/topic tag for this atom, "
     "e.g. 'cpylex', 'gil_lock' (used downstream to group near-duplicate atoms "
     "before dedup — pick the specific subject the statement is about, not a "
@@ -169,7 +175,7 @@ _REDUCE_SYSTEM = (
     "Figures are already explained inside window text — do not drop them when compressing.\n"
     f"{SCOPE_TAGGING_PROMPT_RULES}\n"
     "Aggregate knowledge_atoms from all windows, PRESERVING original scope tags "
-    "(Reduce must not rewrite PRINCIPLE↔INSTANCE).\n"
+    "(Reduce must not rewrite scope tags across the 5-category taxonomy).\n"
     "key_takeaways — 3–7 compressed synthesis lines of the form «[SCOPE: …] …» "
     "(not a dump of knowledge_atoms; the full catalog stays in knowledge_atoms).\n"
     "Strictly follow the <critical_reduce_rules> block at the end of the user message.\n"
@@ -190,8 +196,10 @@ _REDUCE_DEDUP_SYSTEM = (
     "that keeps all exact numbers, formulas, model/library names, and parameters.\n"
     "3. When merging duplicate or overlapping atoms, UNION their source_chunk_ids "
     "into one unique list — preserve references to ALL source chunks.\n"
-    "4. Prefer the stronger scope when reconciling the same principle "
-    "(PRINCIPLE > MECHANIC > INSTANCE).\n"
+    "4. Prefer the stronger scope when reconciling the same claim "
+    "(CONCEPT > MECHANIC > ANTI_PATTERN > EDGE_CASE > PRACTICE). Never silently "
+    "drop an ANTI_PATTERN or EDGE_CASE distinction by merging it into a plain "
+    "PRACTICE atom — the warning / boundary framing is the informative part.\n"
     "5. Return full KnowledgeAtom objects (not bare strings).\n"
     "6. context_quote may be the best supporting quote among merges (or empty).\n"
     f"{SCOPE_TAGGING_PROMPT_RULES}\n"
@@ -219,7 +227,7 @@ _REDUCE_SYNTHESIS_SYSTEM = (
     "3. Use window_summary ONLY as structural context to write "
     "executive_summary (1–2 coherent paragraphs) and key_takeaways "
     "(3–7 lines of the form «[SCOPE: …] …»).\n"
-    "4. Keep exact numbers / names from atoms inside INSTANCE takeaways; "
+    "4. Keep exact numbers / names from atoms inside PRACTICE takeaways; "
     "do not promote them to industry-wide standards.\n"
     "5. target_diagrams_for_vlm — always [].\n"
     f"{SCOPE_TAGGING_PROMPT_RULES}\n"
@@ -228,15 +236,15 @@ _REDUCE_SYNTHESIS_SYSTEM = (
 
 _CRITICAL_REDUCE_RULES = (
     "1. Keep exact numbers, units, benchmark and model names inside "
-    "[SCOPE: INSTANCE]; do not present them as industry-wide standards in "
+    "[SCOPE: PRACTICE]; do not present them as industry-wide standards in "
     "executive_summary.\n"
     "2. Deduplicate facts: one canonical claim; merge overlapping windows without "
     "repeats; do not downgrade the winning scope tag "
-    "(PRINCIPLE > MECHANIC > INSTANCE when reconciling the same principle).\n"
+    "(CONCEPT > MECHANIC > ANTI_PATTERN > EDGE_CASE > PRACTICE when reconciling the same claim).\n"
     "3. Architecture and figures belong inside executive_summary, not a separate FIG list.\n"
     "4. key_takeaways: 3–7 compressed synthesis items prefixed with "
-    "[SCOPE: PRINCIPLE|MECHANIC|INSTANCE]; "
-    "experiment numbers / libraries / limits — INSTANCE only. "
+    "[SCOPE: CONCEPT|MECHANIC|PRACTICE|EDGE_CASE|ANTI_PATTERN]; "
+    "experiment numbers / libraries / limits — PRACTICE or EDGE_CASE only. "
     "Do not dump the full knowledge_atoms catalog into takeaways.\n"
     "5. knowledge_atoms is the full fact catalog (separate from key_takeaways).\n"
     "6. target_diagrams_for_vlm — always []."
@@ -914,6 +922,52 @@ def _annotate_reduce_anchor_citations(
     return final
 
 
+async def _apply_static_anchor_filter(
+    job: MapReduceArticleJob,
+    map_results: list[MapWindowResponse | None],
+) -> list[MapWindowResponse | None]:
+    """Static Anchor Filtering (validated Variant A — see anchor_relevance.py
+    module docstring): Synthetic Anchor (Title + Lead) scores every raw MAP
+    atom via the Cross-Encoder BEFORE REDUCE; atoms below
+    ``BLOG_SPATIAL_ANCHOR_FILTER_THRESHOLD`` never reach REDUCE/storage.
+    Gated by ``BLOG_SPATIAL_ANCHOR_FILTER_ENABLED`` (default off) — call site
+    already checks the flag, this always runs when called."""
+    lead = ""
+    for w in job.windows:
+        body = (w.body or "").strip()
+        if body:
+            lead = body[:500]
+            break
+    anchor = get_synthetic_anchor(job.title, lead)
+    if not anchor:
+        return map_results
+
+    service = AtomAnchorFilterService()
+    out: list[MapWindowResponse | None] = []
+    total_in = 0
+    total_out = 0
+    for mw in map_results:
+        if mw is None:
+            out.append(None)
+            continue
+        atoms = list(mw.knowledge_atoms or [])
+        total_in += len(atoms)
+        kept = await service.filter_atoms_by_anchor(
+            atoms, anchor, BLOG_SPATIAL_ANCHOR_FILTER_THRESHOLD
+        )
+        total_out += len(kept)
+        out.append(
+            mw
+            if len(kept) == len(atoms)
+            else mw.model_copy(update={"knowledge_atoms": kept})
+        )
+    trace(
+        f"BLOG_SPATIAL anchor_filter ✓ | atoms {total_in}→{total_out} "
+        f"threshold={BLOG_SPATIAL_ANCHOR_FILTER_THRESHOLD} | {job.url[:55]}"
+    )
+    return out
+
+
 async def _reduce_final_from_maps(
     job: MapReduceArticleJob,
     map_results: list[MapWindowResponse | None],
@@ -925,6 +979,9 @@ async def _reduce_final_from_maps(
     if not valid_maps:
         trace(f"BLOG_SPATIAL map ✗ | all windows failed | {job.url[:50]}")
         return None
+
+    if BLOG_SPATIAL_ANCHOR_FILTER_ENABLED:
+        map_results = await _apply_static_anchor_filter(job, map_results)
 
     final = await run_reduce(
         job,

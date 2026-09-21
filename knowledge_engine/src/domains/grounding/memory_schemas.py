@@ -199,6 +199,26 @@ class SubConceptRecord(BaseModel):
         """Accumulate credited theses; never wipe prior credit with a last-turn digest."""
         self.evidence = accumulate_evidence_text(self.evidence, incoming)
 
+    def compact_status_line(self) -> str:
+        """Windowed History (DIALOG_WINDOWED_HISTORY_ENABLED) — replaces an
+        older raw user turn with e.g. 'Ответ по [иерархические_структуры]:
+        verified, grade=EXACT_AND_CORRECT' — status reflects the CURRENT
+        SubConceptRecord state, not the state at the time the turn happened
+        (a concept verified in a LATER turn retroactively shows as verified
+        for an earlier turn about it too — intentional, see
+        chat_session_manager.py::_build_history_content)."""
+        label = (self.label or self.id or "").strip()
+        grade = (self.last_accuracy_grade or "").strip()
+        grade_part = f", grade={grade}" if grade else ""
+        return f"Ответ по [{label}]: {self.status}{grade_part}"
+
+
+def build_sub_concept_status_lookup(
+    sub_concepts: list[SubConceptRecord] | None,
+) -> dict[str, str]:
+    """id -> compact_status_line(), for Windowed History user-turn substitution."""
+    return {sc.id: sc.compact_status_line() for sc in sub_concepts or [] if sc.id}
+
 
 class OverlayMasteryRecord(BaseModel):
     """Asterisk-question overlay award for one sub-concept (L4 or L5/L6)."""
@@ -367,6 +387,37 @@ class SessionMemory(BaseModel):
             "только этот концепт может быть оценён следующим сообщением пользователя"
         ),
     )
+    pending_evaluation_interaction_axis: str = Field(
+        default="",
+        max_length=32,
+        description=(
+            "interaction_axis хода, который выставил pending_evaluation_concept_id. "
+            "Если следующее сообщение пришло уже в другой interaction_axis "
+            "(пользователь переключился, напр. Лекция → Topic Q&A), "
+            "pending считается протухшим и не оценивается как ответ."
+        ),
+    )
+    learner_progress_blocks: list[str] = Field(
+        default_factory=list,
+        max_length=50,
+        description=(
+            "Hybrid Context Buffer (DIALOG_BLOCK_COLLAPSE_ENABLED) — 2-3 "
+            "sentence digests, oldest first, one per collapsed history "
+            "block; capped at MAX_COMPRESSED_BLOCKS by "
+            "history_block_collapse.py (oldest text dropped past that "
+            "cap — verified ids are never lost, see "
+            "learner_progress_verified_ids)."
+        ),
+    )
+    learner_progress_verified_ids: list[str] = Field(
+        default_factory=list,
+        max_length=256,
+        description=(
+            "Union of verified_sub_concept_ids folded into ANY collapsed "
+            "history block so far — never pruned, even once "
+            "learner_progress_blocks itself gets capped."
+        ),
+    )
     pending_eval_kind: PendingEvalKind = Field(
         default="",
         description=(
@@ -491,6 +542,27 @@ class SessionMemory(BaseModel):
         max_length=24,
         description=(
             "Turn stash: knowledge_atoms row ids for [R1]… this Asterisk-question turn."
+        ),
+    )
+    recent_dialog_atom_ids: list[str] = Field(
+        default_factory=list,
+        max_length=64,
+        description=(
+            "Rolling W_novelty history for REGULAR (non-star_guard) "
+            "node_deep_dive turns — knowledge_atoms row ids surfaced in "
+            "recent turns, feeds RetrievalPedagogicalContext.recently_used_atom_ids "
+            "when DIALOG_ATOMS_PEDAGOGICAL_BOOST_ENABLED / "
+            "DIALOG_ATOMS_CONCEPT_AFFINITY_ENABLED is on. Separate from "
+            "deep_analysis_used_atom_keys (star_guard-only, different "
+            "exclusion semantics — hard exclude vs soft novelty penalty)."
+        ),
+    )
+    recent_dialog_article_ids: list[str] = Field(
+        default_factory=list,
+        max_length=32,
+        description=(
+            "Rolling W_novelty history (article_id) for REGULAR node_deep_dive "
+            "turns — see recent_dialog_atom_ids."
         ),
     )
     socratic_poles_snapshot: dict[str, Any] = Field(

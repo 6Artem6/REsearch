@@ -253,7 +253,7 @@ async def test_upsert_knowledge_atoms_via_vector_store_is_idempotent(
 
     atoms = [
         KnowledgeAtom(
-            scope=ScopeType.PRINCIPLE,
+            scope=ScopeType.CONCEPT,
             statement="idempotency regression test statement",
         )
     ]

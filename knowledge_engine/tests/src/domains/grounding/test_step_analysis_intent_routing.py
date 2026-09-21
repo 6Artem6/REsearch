@@ -1,6 +1,6 @@
 """step_analysis intent is now deterministic (VectorIntentRouter), not LLM-guessed.
 
-Covers the refactor from prompt.txt: intent classification is removed from the
+Covers the refactor: intent classification is removed from the
 Gemini step_analysis call and resolved via classify_control_chip upstream.
 """
 

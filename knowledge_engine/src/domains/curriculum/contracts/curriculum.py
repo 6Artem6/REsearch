@@ -8,32 +8,43 @@ from knowledge_engine.src.domains.curriculum.schemas import CurriculumNode
 
 
 class FlashSourceRefContract(BaseModel):
-    source_id: str = Field(default="", description="src_N из registry")
-    url: str = Field(default="", description="URL источника")
+    source_id: str = Field(default="", description="src_N from the registry")
+    # RU: src_N из реестра.
+    url: str = Field(default="", description="Source URL")
+    # RU: URL источника.
     relevant_extracts: list[str] = Field(
         default_factory=list,
-        description="Выдержки релевантные ноде",
+        description="Excerpts relevant to the node",
+        # RU: выдержки, релевантные ноде.
     )
 
 
 class FlashBreakdownContract(BaseModel):
     key_concepts: list[str] = Field(
-        default_factory=list, description="Ключевые концепты"
+        default_factory=list,
+        description="Key concepts",
+        # RU: ключевые концепты.
     )
     architectural_focus: str = Field(
         default="",
-        description="Архитектурный фокус ноды",
+        description="Architectural focus of the node",
+        # RU: архитектурный фокус ноды.
     )
 
 
 class FlashNodeContract(BaseModel):
     node_id: str = Field(..., description="snake_case id")
-    title: str = Field(..., description="Название ноды")
+    title: str = Field(..., description="Node title")
+    # RU: название ноды.
     layer: str = Field(default="foundation", description="foundation | advanced | sota")
-    category: str = Field(default="", description="Категория DAG")
-    brief_summary: str = Field(default="", description="Краткое описание")
+    category: str = Field(default="", description="DAG category")
+    # RU: категория DAG.
+    brief_summary: str = Field(default="", description="Brief summary")
+    # RU: краткое описание.
     prerequisites: list[str] = Field(
-        default_factory=list, description="node_id предков"
+        default_factory=list,
+        description="Prerequisite node_ids",
+        # RU: node_id предков.
     )
     source_ref: FlashSourceRefContract = Field(default_factory=FlashSourceRefContract)
     node_curriculum_breakdown: FlashBreakdownContract = Field(
@@ -42,12 +53,16 @@ class FlashNodeContract(BaseModel):
 
 
 class FlashCurriculumPayloadContract(BaseModel):
-    curriculum_id: str = Field(default="", description="slug curriculum")
-    title: str = Field(default="", description="Название маршрута")
-    description: str = Field(default="", description="Описание цели")
+    curriculum_id: str = Field(default="", description="Curriculum slug")
+    # RU: slug курса.
+    title: str = Field(default="", description="Route title")
+    # RU: название маршрута.
+    description: str = Field(default="", description="Goal description")
+    # RU: описание цели.
     nodes: list[FlashNodeContract] = Field(
         default_factory=list,
-        description="Узлы DAG с prerequisites",
+        description="DAG nodes with prerequisites",
+        # RU: узлы DAG с prerequisites.
     )
 
 
@@ -195,13 +210,15 @@ class CurriculumDAGContract(BaseModel):
 
 
 class CurriculumReasonerContract(BaseModel):
-    curriculum_id: str = Field(default="", description="Уникальный slug")
+    curriculum_id: str = Field(default="", description="Unique slug")
+    # RU: уникальный slug.
     title: str = Field(default="")
     description: str = Field(default="")
     total_nodes: int = Field(default=0, ge=0)
     nodes: list[CurriculumNode] = Field(
         default_factory=list,
-        description="Полные CurriculumNode для DAG",
+        description="Full CurriculumNode objects for the DAG",
+        # RU: полные CurriculumNode для DAG.
     )
 
 
@@ -243,11 +260,13 @@ class GeminiNodePatchContract(BaseModel):
 class GeminiSourcesEnrichmentContract(BaseModel):
     curriculum_sources_registry: list[GeminiRegistryEntryContract] = Field(
         default_factory=list,
-        description="8–15 ресурсов whitelist",
+        description="8-15 whitelisted resources",
+        # RU: 8-15 ресурсов из белого списка.
     )
     nodes: list[GeminiNodePatchContract] = Field(
         default_factory=list,
-        description="Патч mapped_source_ids per node",
+        description="mapped_source_ids patch per node",
+        # RU: патч mapped_source_ids по каждой ноде.
     )
 
 
@@ -256,7 +275,8 @@ class ExpansionVectorContract(BaseModel):
         ...,
         min_length=20,
         max_length=4000,
-        description="Текстовый вектор углубления без URL и списка нод",
+        description="Text expansion vector, no URLs or node list",
+        # RU: текстовый вектор углубления без URL и списка нод.
     )
 
 
@@ -268,7 +288,8 @@ class FlashExpansionEdgeContract(BaseModel):
 class FlashExpansionPatchContract(BaseModel):
     new_nodes: list[FlashNodeContract] = Field(
         default_factory=list,
-        description="2–3 атомарные new_nodes",
+        description="2-3 atomic new_nodes",
+        # RU: 2-3 атомарных new_nodes.
     )
     new_edges: list[FlashExpansionEdgeContract] = Field(
         default_factory=list,

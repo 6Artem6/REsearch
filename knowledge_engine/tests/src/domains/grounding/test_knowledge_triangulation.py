@@ -23,15 +23,15 @@ from knowledge_engine.src.shared.extraction import (
 
 def test_knowledge_atom_format_and_parse():
     atom = KnowledgeAtom(
-        scope=ScopeType.INSTANCE,
+        scope=ScopeType.PRACTICE,
         statement="AJV: задержка 8.3 мс",
         context_quote="latency table",
     )
     tagged = atom.format_tagged()
-    assert tagged.startswith("[SCOPE: INSTANCE]")
+    assert tagged.startswith("[SCOPE: PRACTICE]")
     parsed = KnowledgeAtom.from_tagged_line(tagged)
     assert parsed is not None
-    assert parsed.scope is ScopeType.INSTANCE
+    assert parsed.scope is ScopeType.PRACTICE
     assert "8.3" in parsed.statement
 
 
@@ -39,24 +39,24 @@ def test_tutor_prompt_includes_triangulation_hierarchy():
     assert "KNOWLEDGE TRIANGULATION" in KNOWLEDGE_TRIANGULATION_TUTOR_RULES
     assert "KNOWLEDGE TRIANGULATION" in KNOWLEDGE_TRIANGULATION_LECTURE_RULES
     assert "KNOWLEDGE TRIANGULATION" in LECTURE_SYSTEM_PROMPT
-    assert "[SCOPE: INSTANCE]" in LECTURE_SYSTEM_PROMPT
+    assert "[SCOPE: PRACTICE]" in LECTURE_SYSTEM_PROMPT
 
     dense = compose_system_prompt(
         InteractionPromptMode.LECTURE_DENSE,
         context=PromptComposeContext(),
     )
     assert "KNOWLEDGE TRIANGULATION" in dense
-    assert "70%" in dense or "PRINCIPLE" in dense
+    assert "CONCEPT" in dense
 
 
 def test_aggregated_buckets_preserve_order_classes():
     kb = AggregatedKnowledgeBase.from_atoms(
         [
             KnowledgeAtom(
-                scope=ScopeType.INSTANCE, statement="Цифра эксперимента 8.3 мс"
+                scope=ScopeType.PRACTICE, statement="Цифра эксперимента 8.3 мс"
             ),
             KnowledgeAtom(
-                scope=ScopeType.PRINCIPLE,
+                scope=ScopeType.CONCEPT,
                 statement="Изоляция агентов снижает blast radius",
             ),
             KnowledgeAtom(
@@ -65,9 +65,9 @@ def test_aggregated_buckets_preserve_order_classes():
             ),
         ]
     )
-    assert kb.principles[0].scope is ScopeType.PRINCIPLE
+    assert kb.concepts[0].scope is ScopeType.CONCEPT
     assert kb.mechanics[0].scope is ScopeType.MECHANIC
-    assert kb.evidence_cases[0].scope is ScopeType.INSTANCE
+    assert kb.practices[0].scope is ScopeType.PRACTICE
     blocks = kb.format_tutor_blocks()
-    # принцип-блок идёт раньше кейсов
-    assert blocks.index("FUNDAMENTAL PRINCIPLES") < blocks.index("PRACTICAL CASES")
+    # концепт-блок идёт раньше кейсов
+    assert blocks.index("FUNDAMENTAL CONCEPTS") < blocks.index("ROUTINE PRACTICE")

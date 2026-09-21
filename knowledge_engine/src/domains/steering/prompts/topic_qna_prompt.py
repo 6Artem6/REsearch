@@ -1,7 +1,7 @@
 """Topic Q&A — изолированный system prompt для Interaction Axis "topic_qna".
 
 Live-сшивка (см. docs/STEERING_AND_TOPIC_QNA_ROADMAP.md, "Interaction Axis
-подключён" + prompt.log задача "Устранить системные проблемы... и
+подключён" + задача "Устранить системные проблемы... и
 скорректировать работу режима Topic Q&A"): ``TOPIC_QNA_SYSTEM_PROMPT``
 добавляется поверх обычного dense-system в ``generate_dense_material``
 (``select_interaction_axis_system_prompt`` в ``prompt_factory.py``), а

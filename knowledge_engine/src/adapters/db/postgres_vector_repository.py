@@ -1,5 +1,5 @@
 """PostgresVectorRepository — асинхронный доступ к pgvector-таблицам через
-SQLAlchemy 2.0 Core + pgvector.sqlalchemy (Phase 3, см. prompt.txt).
+SQLAlchemy 2.0 Core + pgvector.sqlalchemy (Phase 3).
 
 Переписано с сырых asyncpg SQL-строк (Phase 2) на select()/insert()
 Query Builder — убирает целый класс багов с ручной нумерацией $1/$2 (см.

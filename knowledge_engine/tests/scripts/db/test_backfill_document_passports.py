@@ -28,7 +28,7 @@ def test_remap_atom_source_chunk_ids() -> None:
     synth0 = map_window_chunk_id(doc_id, 0)
     synth1 = map_window_chunk_id(doc_id, 1)
     atom = KnowledgeAtom(
-        scope=ScopeType.PRINCIPLE,
+        scope=ScopeType.CONCEPT,
         statement="Isolation reduces blast radius across agents",
         source_chunk_ids=[synth0, synth1],
     )

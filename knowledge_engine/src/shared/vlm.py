@@ -10,18 +10,36 @@ DiagramKind = Literal["architecture", "benchmark_chart", "none"]
 
 
 class VlmDiagramItemContract(BaseModel):
-    index: int = Field(ge=0, le=20, description="Индекс в батче 0..N-1")
+    index: int = Field(
+        ge=0,
+        le=20,
+        description="Index within the batch, 0..N-1",
+        # RU: индекс в батче 0..N-1.
+    )
     is_diagram: bool = Field(
         default=False,
-        description="true если архитектура или benchmark chart",
+        description="true if this is an architecture or benchmark chart",
+        # RU: true, если это архитектурная схема или benchmark-график.
     )
     diagram_kind: DiagramKind = Field(
         default="none",
         description="architecture | benchmark_chart | none",
     )
-    title: str = Field(default="", description="Подпись схемы")
-    mermaid: str = Field(default="", description="Mermaid flowchart или xychart-beta")
-    summary: str = Field(default="", description="2–3 предложения на русском")
+    title: str = Field(
+        default="",
+        description="Diagram caption",
+        # RU: подпись схемы.
+    )
+    mermaid: str = Field(
+        default="",
+        description="Mermaid flowchart or xychart-beta",
+        # RU: Mermaid flowchart или xychart-beta.
+    )
+    summary: str = Field(
+        default="",
+        description="2-3 sentences, in Russian",
+        # RU: 2-3 предложения на русском.
+    )
 
     @field_validator("title", "mermaid", "summary", mode="before")
     @classmethod
@@ -44,5 +62,6 @@ class VlmDiagramItemContract(BaseModel):
 class VlmBatchResponseContract(BaseModel):
     items: list[VlmDiagramItemContract] = Field(
         default_factory=list,
-        description="Один item на каждое изображение в батче",
+        description="One item per image in the batch",
+        # RU: один item на каждое изображение в батче.
     )

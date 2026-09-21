@@ -339,7 +339,7 @@ def format_lecture_target_focus_and_gaps(
 
     Distinct from ``[EVALUATOR_TRANSPARENCY]`` (dialogue plaque contract):
     this block tells dense lecture how to spend ``lecture_body`` budget and
-    what ``checkpoint_prompt`` must test.
+    what ``follow_up_question`` must test.
     """
     directive = (memory.last_eval_directive or "").strip()
     probe_layer = probe_layer_from_directive(directive)
@@ -358,7 +358,7 @@ def format_lecture_target_focus_and_gaps(
         "mechanics (C-structures, memory, invariants, race conditions). "
         "Credited last_evaluator_evidence is brief context only — do not "
         "re-teach already passed layers.",
-        "CHECKPOINT: checkpoint_prompt MUST test this gap / probe_layer. "
+        "CHECKPOINT: follow_up_question MUST test this gap / probe_layer. "
         "FORBIDDEN: blind RE-STATE of [OPEN_NODE_QUESTION] if it belongs "
         "to an already-passed layer.",
         "Do not copy 📋/🎯 scoreboard strings into lecture_body.",
@@ -553,6 +553,8 @@ def resolve_pending_evaluation_id(
 def set_pending_evaluation_for_tutor_turn(
     memory: SessionMemory,
     focus_sub_concept_id: str,
+    *,
+    interaction_axis: str = "",
 ) -> str:
     cid = (focus_sub_concept_id or "").strip()
     if not cid:
@@ -585,10 +587,26 @@ def set_pending_evaluation_for_tutor_turn(
             return ""
     memory.asked_question_sub_concept_id = cid
     memory.pending_evaluation_concept_id = cid
+    memory.pending_evaluation_interaction_axis = (interaction_axis or "").strip().lower()
     memory.last_tutor_sub_concept_id = cid
     # Generation focus stays on the asked id until VERIFIED
     memory.next_question_concept_id = cid
     return cid
+
+
+def clear_pending_evaluation_state(memory: SessionMemory) -> None:
+    """Drop a Self-Check pending target — the next user message will NOT be
+
+    graded against it. Use whenever the incoming message is provably not an
+    attempt to answer: a lecture/dense-material request, or the session
+    switched interaction_axis since the question was asked (see
+    pending_evaluation_interaction_axis)."""
+    memory.pending_evaluation_concept_id = ""
+    memory.pending_evaluation_interaction_axis = ""
+    memory.pending_eval_kind = ""
+    memory.next_question_concept_id = ""
+    memory.last_tutor_sub_concept_id = ""
+    memory.asked_question_sub_concept_id = ""
 
 
 def select_next_sub_concept(

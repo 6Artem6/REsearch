@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Response, status
@@ -206,6 +207,8 @@ async def post_node_init_stream(body: NodeSessionBody) -> StreamingResponse:
             "stream": True,
         }
         job_id = enqueue_node_deep_dive(payload)
+        # Фронт по job_id раз в 30 с опрашивает /work-jobs/{id} (статус ноды).
+        yield f"data: {json.dumps({'type': 'job', 'job_id': job_id})}\n\n"
         try:
             async for evt in iter_job_stream_events(
                 job_id,
@@ -547,6 +550,7 @@ async def post_node_grounding_digest(body: NodeGate1ApprovePayload) -> dict[str,
         f"API ▶ POST /node/grounding-digest | {body.curriculum_id}/{node.node_id} "
         f"approved={len(body.approved_urls)}"
     )
+    t_job = time.perf_counter()
     digests = await generate_node_digests(
         body.approved_urls,
         node_title=node.title,
@@ -554,6 +558,10 @@ async def post_node_grounding_digest(body: NodeGate1ApprovePayload) -> dict[str,
         curriculum_id=body.curriculum_id,
         node_id=node.node_id,
         anchor=f"node_gate_digest:{body.curriculum_id}:{node.node_id}",
+    )
+    trace(
+        f"API ▶ POST /node/grounding-digest ✓ | {body.curriculum_id}/"
+        f"{node.node_id} | {time.perf_counter() - t_job:.1f}s"
     )
     return digests.model_dump()
 
@@ -606,8 +614,13 @@ async def post_node_grounding_finalize(body: NodeGate2ApprovePayload) -> dict[st
         f"API ▶ POST /node/grounding-finalize | {body.curriculum_id}/{body.node_id} "
         f"approved={len(body.approved_urls)}"
     )
+    t_job = time.perf_counter()
     graph, updated_node = await finalize_node_grounding(
         graph, node, body.approved_urls, target_goal=target_goal
+    )
+    trace(
+        f"API ▶ POST /node/grounding-finalize ✓ | {body.curriculum_id}/"
+        f"{body.node_id} | {time.perf_counter() - t_job:.1f}s"
     )
     save_curriculum_record(
         graph,
@@ -666,6 +679,7 @@ async def post_node_ensure_steering_sources(body: NodeSessionBody) -> dict[str, 
     meta = get_curriculum_meta(body.curriculum_id) or {}
     target_goal = str(meta.get("target_goal") or graph.description or "").strip()
 
+    t_job = time.perf_counter()
     updated_graph, updated_node = await ensure_node_steering_sources_ingested(
         graph, node, target_goal=target_goal
     )
@@ -674,7 +688,7 @@ async def post_node_ensure_steering_sources(body: NodeSessionBody) -> dict[str, 
 
     trace(
         f"API ▶ POST /node/ensure-steering-sources ✓ | {body.curriculum_id}/"
-        f"{node.node_id}"
+        f"{node.node_id} | {time.perf_counter() - t_job:.1f}s"
     )
     save_curriculum_record(
         updated_graph,

@@ -17,38 +17,33 @@ from knowledge_engine.src.domains.grounding.memory_schemas import (
 from knowledge_engine.src.domains.grounding.schemas import DeepDiveLLMOutput
 
 _ACTIVE_DRILL_JSON_TAIL = (
-    "=== JSON OUTPUT (ActiveDrillStepResponse) — HARD ===\n"
-    "Alias: StandardDrillTutorOutput. "
-    "Ignore DeepDiveTutorContract / DeepDiveDeepAnalysisContract.\n"
-    "Return strictly valid JSON matching ActiveDrillStepResponse and nothing else.\n"
+    "=== RESPONSE STRUCTURE — HARD ===\n"
     "Required keys: audit, status_header, theory_body, next_question.\n"
-    "Fill audit FIRST (single flat TechnicalConceptAudit, not oneOf):\n"
+    "CRITICAL: The audit verdict determines the branch:\n"
     "  EXACT → confirmation; unused correction_breakdown / praise_points empty.\n"
     "  PARTIAL → praise_points (correct theses) + correction_breakdown "
     "(missing fragment); unused confirmation = empty string.\n"
     "  NEEDS_CORRECTION / MISUNDERSTANDING → correction_breakdown; "
     "confirmation empty; praise_points optional.\n"
     "Match last_eval_directive (PASSED_* → EXACT; PROBE_* → NEEDS_CORRECTION).\n"
-    "Do not emit 📋/🎯 or feedback_on_answer — Host assembles those.\n"
+    "Do not emit 📋/🎯 or feedback_on_answer — the system assembles those separately.\n"
     "There is NO top-level feedback_on_previous praise field.\n"
     "There is NO summary_feedback, suggested_action_chips, node_completed_message, "
     "or ready_for_transition field — do not invent them.\n"
     "theory_body: aim for ~300 Russian words; MUST be at least 150 "
-    "(host warns if under 300, does not reject).\n"
+    "(a shorter answer is flagged, not rejected).\n"
     "next_question MUST be exactly one checkpoint question (must contain «?»).\n"
     "User-facing string fields MUST be in natural Russian.\n"
 )
 
 _LAYER_COMPLETION_JSON_TAIL = (
-    "=== JSON OUTPUT (LayerCompletionTutorOutput) — HARD ===\n"
-    "Ignore DeepDiveTutorContract / DeepDiveDeepAnalysisContract / "
-    "ActiveDrillStepResponse.\n"
-    "Return strictly valid JSON matching LayerCompletionTutorOutput and nothing else.\n"
+    "=== RESPONSE STRUCTURE — HARD ===\n"
     "Required keys: praise, layer_summary, transition_framing.\n"
     "There is NO next_question, theory_body, follow_up_question, "
     "status_header, or suggested_action_chips field — do not invent them.\n"
     "transition_framing invites HOW/MECH/Advanced/Deep vs next topic; "
-    "it is not a technical checkpoint. Host owns chips and ready_for_transition.\n"
+    "it is not a technical checkpoint. Chips and transition state are set "
+    "by the system afterward.\n"
     "User-facing string fields MUST be in natural Russian.\n"
 )
 

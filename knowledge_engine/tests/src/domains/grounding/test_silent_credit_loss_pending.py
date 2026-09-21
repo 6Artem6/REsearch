@@ -137,7 +137,7 @@ def test_dense_llm_output_prefers_structured_checkpoint():
         "и почему GIL работает как мьютекс выполнения байт-кода?"
     )
     theory = ("GIL сериализует выполнение байт-кода в CPython. " * 120) + q
-    dense = DenseMaterialOutput(lecture_body=theory, checkpoint_prompt=q)
+    dense = DenseMaterialOutput(lecture_body=theory, follow_up_question=q)
     tutor = _compose_dense_chat_message(dense)
     out = deep_dive_llm_output_from_chat_text(
         tutor,

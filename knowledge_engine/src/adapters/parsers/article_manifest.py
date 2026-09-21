@@ -42,11 +42,14 @@ class ArticleResourceManifest(BaseModel):
 class PDFLinkValidationResponse(BaseModel):
     best_pdf_url: Optional[str] = Field(
         None,
-        description="URL файла или страницы-просмотрщика",
+        description="URL of the file or the viewer page",
+        # RU: URL файла или страницы-просмотрщика.
     )
     kind: Literal["direct_pdf", "html_reader"] = Field(
         "direct_pdf",
-        description="Тип найденного ресурса",
+        description="Type of resource found",
+        # RU: тип найденного ресурса.
     )
     confidence: float = Field(..., ge=0.0, le=1.0)
-    reason: str = Field(..., description="Причина выбора ссылки")
+    reason: str = Field(..., description="Reason for choosing this link")
+    # RU: причина выбора ссылки.

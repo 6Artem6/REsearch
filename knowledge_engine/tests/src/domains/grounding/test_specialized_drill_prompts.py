@@ -151,8 +151,8 @@ def test_select_system_prompt_injects_specialized_how_drill() -> None:
     assert "DO NOT declare the node or layer complete" in system
     assert "300" in system
     assert "WHY DRILL — SPECIALIZED" not in system
-    assert "JSON OUTPUT (ActiveDrillStepResponse)" in system
-    assert "JSON OUTPUT (DeepDiveTutorContract)" not in system
+    assert "Required keys: audit, status_header, theory_body, next_question" in system
+    assert "RESPONSE CONTRACT (chat reply)" not in system
     assert "ANTI-SYCOPHANCY INVARIANTS" in system
     assert "status_header" in system
     assert "theory_body" in system

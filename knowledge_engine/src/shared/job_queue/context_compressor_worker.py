@@ -21,12 +21,17 @@ CAS / optimistic locking: см. ``SessionMemory.manifest_version`` и
 ``session_store.apply_fact_manifest_patch``. Изначально при несовпадении
 ``expected_manifest_version`` запись абортилась целиком ("защита от гонки"
 из исходного тикета) — но живой прогон показал ложные срабатывания: один
-ход пользователя может вызвать ``rotate_window_after_message`` дважды
-(эвикция user- и tutor-сообщения ОДНОГО хода), оба enqueue стартуют с
-одинаковой ``expected_manifest_version``, и второй job всегда получал
+ход пользователя мог вызвать ``rotate_window_after_message`` с 2 эвикциями
+за раз (user- и tutor-сообщение ОДНОГО хода, каждое — отдельный enqueue с
+одинаковой ``expected_manifest_version``), и второй job всегда получал
 mismatch сразу после того, как первый уже применился — хотя реальной
-гонки с пользователем тут не было. ``merge_manifest`` аддитивна (union
-списков с dedup), поэтому теперь ``apply_fact_manifest_patch`` всегда
+гонки с пользователем тут не было. Эта причина устранена на источнике:
+``rotate_window_after_message`` теперь собирает все эвикции одной ротации
+в ОДИН batched payload → ОДНА job на ход (см.
+``fact_manifest.prepare_evicted_batch_for_manifest_extraction``). CAS
+остаётся некритичным (лог, не abort) на случай настоящей внешней гонки
+(например, параллельный сброс/реген сессии) — ``merge_manifest`` аддитивна
+(union списков с dedup), поэтому ``apply_fact_manifest_patch`` всегда
 мёржит результат поверх СВЕЖЕГО текущего ``fact_manifest`` (не enqueue-time
 снимка) и растит версию монотонно — несовпадение версии только логируется,
 данные не теряются.

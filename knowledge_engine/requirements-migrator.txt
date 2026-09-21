@@ -1,4 +1,4 @@
-# Зависимости ТОЛЬКО для сервиса migrator (Phase 3, см. prompt.txt) — без
+# Зависимости ТОЛЬКО для сервиса migrator (Phase 3) — без
 # PyTorch/CUDA/sentence-transformers/exa-py и прочих ML-пакетов основного
 # requirements.txt. langchain-core нужен транзитивно (knowledge_engine/__init__.py
 # глушит LangChainPendingDeprecationWarning) — версия совпадает с requirements.txt,

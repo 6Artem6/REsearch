@@ -80,6 +80,66 @@ def test_empty_updates_applies_degraded_not_silent():
     assert "evaluator_degraded" in (row.evidence or "")
 
 
+def test_correct_claims_validation_error_retries_before_degrading():
+    """Regression: a live PROBE_NEXT_LAYER failure showed the lite model
+
+    setting accuracy_grade=PARTIAL without correct_claims, raising
+    pydantic.ValidationError ("PARTIAL requires non-empty correct_claims"),
+    which fell straight through to apply_degraded_threshold on the very
+    first attempt — no retry, unlike engine.py's analogous star_guard /
+    drill_schema contract-retry loop. This locks in a single targeted
+    retry with an explicit hint before giving up."""
+    from knowledge_engine.src.domains.grounding.tutor import SubConceptStatusUpdate
+
+    mem = _mem_pending()
+    node = _node()
+    good = MagicMock()
+    good.updates = [
+        SubConceptStatusUpdate(
+            id="иерархия_агентов",
+            why_passed=True,
+            how_passed=False,
+            mechanic_passed=False,
+            accuracy_grade="PARTIAL",
+            detected_errors_or_misconceptions=[],
+            correct_claims=["Иерархия агентов снижает связность модулей."],
+            evidence="partial answer",
+            focus_hint="Не разобран механизм делегирования задач.",
+        )
+    ]
+    calls = {"n": 0}
+
+    def _fake_call(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError(
+                "Gemini JSON не прошёл валидацию (node_deep_dive / "
+                "sub_concept_gap): 1 validation error for "
+                "SubConceptGapEvalContract\nupdates.0\n  Value error, "
+                "PARTIAL requires non-empty correct_claims (theses that "
+                "were already right)."
+            )
+        return good
+
+    with patch(
+        "knowledge_engine.src.domains.grounding.sub_concept_evaluator."
+        "run_gemini_structured_with_chain",
+        side_effect=_fake_call,
+    ):
+        d = run_sub_concept_gap_eval(
+            "Достаточно длинный ответ про иерархию агентов и делегирование.",
+            mem,
+            node,
+            "test_anchor",
+            concept_id="иерархия_агентов",
+        )
+    assert calls["n"] == 2
+    row = mem.sub_concepts[0]
+    assert d == "PROBE_NEXT_LAYER:WHY"
+    assert row.status == "partial"
+    assert "evaluator_degraded" not in (row.evidence or "")
+
+
 def test_id_mismatch_single_update_soft_accepted():
     from knowledge_engine.src.domains.grounding.tutor import SubConceptStatusUpdate
 

@@ -3,7 +3,7 @@
 Map-Reduce по ВСЕМ Gate 2 approved URL → ОДНА сфокусированная нода
 (``node_kind=graph_kind="steering_standalone"``, см.
 docs/STEERING_AND_TOPIC_QNA_ROADMAP.md, "Разделение на Mode 1/Mode 2" +
-prompt.log "КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ"). Заменяет более раннюю версию с
+"КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ"). Заменяет более раннюю версию с
 искусственным делением на ≥3 ноды-бакета — удалена по прямому запросу.
 
 ``summarize_whitelist_blog_hits_async``/``enrich_search_hits_with_extracts_

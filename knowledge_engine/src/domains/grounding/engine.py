@@ -100,6 +100,7 @@ from knowledge_engine.src.domains.grounding.lecture_search_orchestrator import (
 from knowledge_engine.src.domains.grounding.memory_schemas import (
     SessionMemory,
     UserIntent,
+    build_sub_concept_status_lookup,
 )
 from knowledge_engine.src.domains.grounding.node_content_generator import (
     generate_dense_material,
@@ -148,6 +149,7 @@ from knowledge_engine.src.domains.grounding.tutor_dialogue import (
     coerce_deep_dive_llm_output,
     compose_tutor_dialogue_from_output,
     deep_dive_llm_output_from_chat_text,
+    format_thesis_block,
     resolve_tutor_display_message,
 )
 from knowledge_engine.src.domains.grounding.tutor_prompt_builder import (
@@ -270,7 +272,16 @@ def _compose_dense_chat_message(dense: DenseMaterialOutput) -> str:
 
     body = (dense.lecture_body or "").strip() or (dense.summary or "").strip()
     body = repair_llm_display_text(strip_lecture_credit_scoreboard(body))
-    checkpoint = (dense.checkpoint_prompt or "").strip()
+    # Тезисы after the body, before the checkpoint question — matches where
+    # Gemini actually writes message_bullet_summary in the JSON (after
+    # lecture_body, before follow_up_question) and where live streaming
+    # already stops (lecture_body streams token-by-token; the thesis list
+    # isn't a streamable string field). The final swap then only APPENDS
+    # text after what was already read instead of reflowing it above.
+    thesis = format_thesis_block(dense.message_bullet_summary)
+    if thesis:
+        body = f"{body}\n\n{thesis}" if body else thesis
+    checkpoint = (dense.follow_up_question or "").strip()
     return clip_lecture_keeping_checkpoint(body, checkpoint)
 
 
@@ -589,7 +600,7 @@ def _resolve_tutor_response_schema(
     follow_up_question EXCEPT for cases where a question is genuinely
     required and cannot be phrased any other way:
     - the [mode:self_check] turn itself (SELF_CHECK_MODE_PROMPT formulates
-      the check question — see prompt.log "self_check_node" task);
+      the check question — see "self_check_node" task);
     - any turn while a Self-Check question is still pending an answer
       (has_pending_self_check) — e.g. the learner presses "Переформулируй
       вопрос" (intent "clarify"). That message is itself a UI quick-reply
@@ -607,19 +618,30 @@ def _resolve_tutor_response_schema(
       follow_up_question unconditionally for topic_qna (the first version
       of this fix) broke exactly this retry path — confirmed live.
     """
+    from knowledge_engine.src.config.settings import ENABLE_TUTOR_EXECUTION_PLAN
     from knowledge_engine.src.domains.grounding.tutor import (
         DeepDiveDeepAnalysisContract,
         DeepDiveExplainContract,
+        DeepDiveTutorWithPlanContract,
         TopicQnaExplainContract,
         TopicQnaTutorContract,
     )
+
+    def _plan_gated(schema: type) -> type:
+        # RU: за флагом ENABLE_TUTOR_EXECUTION_PLAN подменяем только
+        # DeepDiveTutorContract на его CoT-вариант с execution_plan —
+        # остальные схемы (TopicQnaTutorContract, *ExplainContract,
+        # drill_schema, DeepDiveDeepAnalysisContract) не затрагиваются.
+        if schema is DeepDiveTutorContract and ENABLE_TUTOR_EXECUTION_PLAN:
+            return DeepDiveTutorWithPlanContract
+        return schema
 
     is_topic_qna = (interaction_axis or "").strip().lower() == "topic_qna"
     if evaluator_skipped:
         # RU: TopicQnaExplainContract — та же причина, что у
         # TopicQnaLectureResponse (dense_material): "Optional follow_up_
         # question... if set" без axis-условия — тот же класс бага, что уже
-        # был у checkpoint_prompt. Исключения — сам ход [mode:self_check] и
+        # был у follow_up_question. Исключения — сам ход [mode:self_check] и
         # любой ход, пока self-check ещё не отвечен (has_pending_self_check,
         # например «Переформулируй вопрос»): им нужно поле follow_up_question,
         # чтобы задать/переформулировать контрольный вопрос, не переключая
@@ -642,8 +664,12 @@ def _resolve_tutor_response_schema(
         # остаёмся на DeepDiveTutorContract (default ниже).
         if (last_eval_directive or "").strip() in _TOPIC_QNA_RESOLVED_EVAL_DIRECTIVES:
             return TopicQnaTutorContract
-        return DeepDiveTutorContract
-    return DeepDiveDeepAnalysisContract if star_guard else DeepDiveTutorContract
+        return _plan_gated(DeepDiveTutorContract)
+    return (
+        DeepDiveDeepAnalysisContract
+        if star_guard
+        else _plan_gated(DeepDiveTutorContract)
+    )
 
 
 def _invoke_tutor(
@@ -798,6 +824,84 @@ def _invoke_tutor(
             base_q = mutate_deep_analysis_query(base_q, memory)
             knobs = deep_analysis_retrieval_knobs(memory)
 
+        pedagogical_context = None
+        from knowledge_engine.src.config.settings import (
+            DIALOG_ATOMS_CONCEPT_AFFINITY_ENABLED,
+            DIALOG_ATOMS_PEDAGOGICAL_BOOST_ENABLED,
+        )
+
+        # PEDAGOGICAL_BOOST_ENABLED alone (without Concept Affinity) still
+        # gets a real, non-empty pedagogical_context here: depth-based
+        # W_pedagogy plus W_novelty seeded from recent_dialog_atom_ids /
+        # recent_dialog_article_ids (below) — previously this branch only
+        # ran under DIALOG_ATOMS_CONCEPT_AFFINITY_ENABLED, which left
+        # PEDAGOGICAL_BOOST_ENABLED inert on its own for regular turns
+        # (pedagogical_context was never built at all, so
+        # apply_pedagogical_weights was never reached — same class of gap
+        # as the one CONCEPT_AFFINITY_ENABLED's wiring fixed for itself).
+        if (
+            DIALOG_ATOMS_CONCEPT_AFFINITY_ENABLED
+            or DIALOG_ATOMS_PEDAGOGICAL_BOOST_ENABLED
+        ):
+            from knowledge_engine.src.domains.grounding.schemas import (
+                RetrievalPedagogicalContext,
+            )
+
+            repulsion_claims: list[str] = []
+            attraction_claims: list[str] = []
+            depth_signal = None
+            if DIALOG_ATOMS_CONCEPT_AFFINITY_ENABLED:
+                from knowledge_engine.src.domains.grounding.pedagogical_reranker import (
+                    derive_response_depth_signal,
+                )
+                from knowledge_engine.src.domains.grounding.socratic_poles import (
+                    _local_attraction_facts,
+                    _local_repulsion_facts,
+                    search_cross_node_poles,
+                )
+
+                nid = node_for_tutor.node_id
+                cid = (curriculum_id or "").strip()
+                repulsion = _local_repulsion_facts(memory, node_id=nid)
+                attraction = _local_attraction_facts(memory, node_id=nid)
+                if cid:
+                    try:
+                        cross_rep, cross_att = search_cross_node_poles(
+                            cid, dlg_focus or user_msg, exclude_node_id=nid
+                        )
+                        repulsion = repulsion + cross_rep
+                        attraction = attraction + cross_att
+                    except Exception as exc:
+                        trace(f"CONCEPT_AFFINITY cross-node skip | {exc}")
+
+                active_id = (memory.asked_question_sub_concept_id or "").strip()
+                if active_id:
+                    active_sc = next(
+                        (sc for sc in memory.sub_concepts or [] if sc.id == active_id),
+                        None,
+                    )
+                    if active_sc is not None:
+                        depth_signal = derive_response_depth_signal(
+                            active_sc.why_passed,
+                            active_sc.how_passed,
+                            active_sc.mechanic_passed,
+                        )
+                repulsion_claims = [r["claim"] for r in repulsion if r.get("claim")][
+                    :32
+                ]
+                attraction_claims = [a["claim"] for a in attraction if a.get("claim")][
+                    :32
+                ]
+
+            pedagogical_context = RetrievalPedagogicalContext(
+                depth_level="deep_dive",
+                recently_used_atom_ids=set(memory.recent_dialog_atom_ids or []),
+                recently_used_article_ids=set(memory.recent_dialog_article_ids or []),
+                repulsion_claims=repulsion_claims,
+                attraction_claims=attraction_claims,
+                response_depth_signal=depth_signal,
+            )
+
         atoms_result = retrieve_dialog_knowledge_atoms_detailed(
             user_msg,
             node_for_tutor,
@@ -820,9 +924,34 @@ def _invoke_tutor(
             query_noise=float(knobs["query_noise"]),
             stochastic_sample=bool(knobs["stochastic_sample"]),
             pool_mult=int(knobs["pool_mult"]),
+            pedagogical_context=pedagogical_context,
         )
         atoms_block = atoms_result.block
         rag_exhausted = bool(atoms_result.rag_exhausted)
+        if (
+            DIALOG_ATOMS_CONCEPT_AFFINITY_ENABLED
+            or DIALOG_ATOMS_PEDAGOGICAL_BOOST_ENABLED
+        ):
+            # Rolling W_novelty history for the NEXT turn's pedagogical_context
+            # above — merge-then-cap (new ids first, de-duplicated) rather than
+            # replace, so novelty penalties accumulate across the whole node
+            # session, not just the immediately preceding turn.
+            merged_atoms = list(atoms_result.atom_ids or []) + list(
+                memory.recent_dialog_atom_ids or []
+            )
+            seen_atoms: set[str] = set()
+            memory.recent_dialog_atom_ids = [
+                a for a in merged_atoms if not (a in seen_atoms or seen_atoms.add(a))
+            ][:64]
+            merged_articles = list(atoms_result.article_ids or []) + list(
+                memory.recent_dialog_article_ids or []
+            )
+            seen_articles: set[str] = set()
+            memory.recent_dialog_article_ids = [
+                a
+                for a in merged_articles
+                if not (a in seen_articles or seen_articles.add(a))
+            ][:32]
         if star_guard:
             memory.last_deep_analysis_atom_keys = list(atoms_result.atom_keys or [])[
                 :24
@@ -1072,6 +1201,10 @@ def _invoke_tutor(
                 layer2_context=layer2,
                 node_session_key=(node_session_key or "").strip()
                 or f"{curriculum_id}/{node_for_tutor.node_id}",
+                sub_concept_id=memory.asked_question_sub_concept_id,
+                sub_concept_status_lookup=build_sub_concept_status_lookup(
+                    memory.sub_concepts
+                ),
             )
             break
         except Exception as exc:
@@ -1527,7 +1660,9 @@ async def _deliver_lazy_intro(
         mark_awaiting_mode_selection(memory)
     else:
         focus = select_next_sub_concept(memory)
-        set_pending_evaluation_for_tutor_turn(memory, focus.id if focus else "")
+        set_pending_evaluation_for_tutor_turn(
+            memory, focus.id if focus else "", interaction_axis=req.interaction_axis
+        )
         memory.intro_question_pending = True
     memory.chat_sessions = chat_mgr.to_memory_blob()
     llm_out = deep_dive_llm_output_from_chat_text(
@@ -1619,7 +1754,9 @@ async def _finalize_node_deep_dive(
             follow = (llm_out.follow_up_question or "").strip()
             qid = (llm_out.question_sub_concept_id or "").strip()
             if follow and qid:
-                cid = set_pending_evaluation_for_tutor_turn(memory, qid)
+                cid = set_pending_evaluation_for_tutor_turn(
+                    memory, qid, interaction_axis=req.interaction_axis
+                )
                 if cid:
                     trace(
                         f"NODE_DIVE pending question set | concept={cid} "
@@ -1641,7 +1778,13 @@ async def _finalize_node_deep_dive(
         window_tutor = tutor_content_for_active_window(
             llm_out, fallback_compose_text=tutor
         )
-        append_to_active_window(memory, "tutor", window_tutor or tutor)
+        append_to_active_window(
+            memory,
+            "tutor",
+            window_tutor or tutor,
+            getattr(llm_out, "question_sub_concept_id", "")
+            or memory.asked_question_sub_concept_id,
+        )
         rotate_window_after_message(memory, anchor, req.curriculum_id, node.node_id)
         from knowledge_engine.src.domains.curriculum.global_tracker import (
             infer_question_angle,
@@ -1953,6 +2096,7 @@ async def finalize_graph_chat_response(state: dict[str, Any]) -> NodeDeepDiveRes
         tutor_dialogue_feedback=dlg_fb,
         tutor_dialogue_technical=dlg_tech,
         tutor_dialogue_follow_up=dlg_fu,
+        tutor_message_bullet_summary=list(llm_out.message_bullet_summary or []),
         quick_replies=host_quick,
         ready_for_transition=ready_tr,
         last_eval_directive=(
@@ -2122,7 +2266,9 @@ async def run_lazy_intro_turn(state: dict[str, Any]) -> dict[str, Any]:
         mark_awaiting_mode_selection(memory)
     else:
         focus = select_next_sub_concept(memory)
-        set_pending_evaluation_for_tutor_turn(memory, focus.id if focus else "")
+        set_pending_evaluation_for_tutor_turn(
+            memory, focus.id if focus else "", interaction_axis=req.interaction_axis
+        )
         memory.intro_question_pending = True
     memory.chat_sessions = chat_mgr.to_memory_blob()
     llm_out = deep_dive_llm_output_from_chat_text(
@@ -2510,26 +2656,37 @@ async def run_dense_lecture_turn(
             "lecture without map anchor (silent credit loss risk)"
         )
 
-    checkpoint = (dense.checkpoint_prompt or "").strip()
+    checkpoint = (dense.follow_up_question or "").strip()
     llm_kwargs: dict[str, Any] = {}
     if focus_id:
         llm_kwargs["question_sub_concept_id"] = focus_id
-    # Dense lecture: bind semantic fields from StructuredLectureResponse, not chat-text
-    # heuristics (single-paragraph lectures otherwise fill follow_up_question).
+    if dense.message_bullet_summary:
+        llm_kwargs["message_bullet_summary"] = list(dense.message_bullet_summary)
+    # Dense lecture: always bind technical_explanation from the CLEAN lecture
+    # body (never the thesis-prepended `tutor` text) — otherwise the
+    # chat-text heuristic in deep_dive_llm_output_from_chat_text would fold
+    # the "**Тезисы:**" block into technical_explanation too, duplicating it
+    # once more when the HTML view re-renders message_bullet_summary as its
+    # own block. Historically this bind was checkpoint-only (single-paragraph
+    # lectures otherwise mis-detected follow_up_question); technical_explanation
+    # no longer depends on that guard, follow_up_question still does.
+    from knowledge_engine.src.domains.grounding.lecture_body_format import (
+        strip_lecture_credit_scoreboard,
+        strip_trailing_checkpoint_from_lecture_body,
+    )
+
+    lecture_body = repair_llm_display_text(
+        strip_lecture_credit_scoreboard((dense.lecture_body or "").strip())
+    )
+    tech = (
+        strip_trailing_checkpoint_from_lecture_body(lecture_body, checkpoint)
+        if checkpoint
+        else lecture_body
+    )
+    llm_kwargs["technical_explanation"] = (
+        tech or lecture_body or (dense.summary or "").strip()
+    )
     if checkpoint:
-        from knowledge_engine.src.domains.grounding.lecture_body_format import (
-            strip_lecture_credit_scoreboard,
-        )
-
-        lecture_body = repair_llm_display_text(
-            strip_lecture_credit_scoreboard((dense.lecture_body or "").strip())
-        )
-        from knowledge_engine.src.domains.grounding.lecture_body_format import (
-            strip_trailing_checkpoint_from_lecture_body,
-        )
-
-        tech = strip_trailing_checkpoint_from_lecture_body(lecture_body, checkpoint)
-        llm_kwargs["technical_explanation"] = tech or lecture_body
         llm_kwargs["follow_up_question"] = checkpoint
     llm_out = deep_dive_llm_output_from_chat_text(tutor, **llm_kwargs)
     if focus_id and not (llm_out.question_sub_concept_id or "").strip():

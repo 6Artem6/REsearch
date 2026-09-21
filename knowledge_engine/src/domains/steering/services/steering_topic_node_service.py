@@ -2,7 +2,7 @@
 
 docs/STEERING_AND_TOPIC_QNA_ROADMAP.md, "Разделение на Mode 1/Mode 2").
 
-Итерация 2 (по прямому запросу пользователя, prompt.log "КРИТИЧЕСКОЕ
+Итерация 2 (по прямому запросу пользователя, "КРИТИЧЕСКОЕ
 ИСПРАВЛЕНИЕ"): убрано искусственное деление approved-статей на ≥3
 ноды-"бакета" ради валидатора ``CurriculumGraph.nodes``. Теперь результат —
 РОВНО ОДНА сфокусированная нода (``node_kind="steering_standalone"``),
@@ -105,11 +105,13 @@ class _StandaloneNodeContent(BaseModel):
         min_length=1,
         max_length=12,
         description=(
-            "4-12 в норме (см. промпт) — min_length=1, а не 4, чтобы не "
-            "заставлять LLM выдумывать подтемы, когда approved-статей "
-            "заведомо мало (fallback-путь строит по одной подтеме на "
-            "статью, тем же контрактом)."
+            "4-12 is the norm (see prompt) — min_length=1, not 4, so the "
+            "LLM is never forced to invent subtopics when approved articles "
+            "are genuinely few (the fallback path builds one subtopic per "
+            "article, same contract)."
         ),
+        # RU: норма 4-12 (см. промпт); min_length=1 намеренно ниже, чтобы
+        # не заставлять модель выдумывать подтемы при малом числе статей.
     )
 
 

@@ -12,8 +12,8 @@ NEXT_MODULE_PROMPT = (
     "owns the node-switch controller and picks the next node.\n"
     '4. Leave the top-level summary field empty ("") and references empty '
     "([]) — the wrap-up text belongs in technical_explanation only.\n\n"
-    "Chip processing is already done by the Python host before this turn. "
-    "Host owns ready_for_transition / suggested_next_step / quick_replies. "
+    "Chip processing is already resolved before this turn. "
+    "ready_for_transition / suggested_next_step / quick_replies are set separately. "
     "question_sub_concept_id=null. No quiz this turn.\n"
 )
 """

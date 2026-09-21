@@ -11,7 +11,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from knowledge_engine.src.config.settings import CHAT_SESSION_API_TURNS_MAX
+from knowledge_engine.src.config.settings import (
+    API_TURNS_HARD_CEILING,
+    CHAT_SESSION_API_TURNS_MAX,
+)
 from knowledge_engine.src.core.run_log import trace
 
 ContextType = Literal["Fresh", "Summary"]
@@ -38,9 +41,15 @@ class StoredChatSession(BaseModel):
     label: str = Field(min_length=1, max_length=200)
     context_type: ContextType = "Fresh"
     turns: int = Field(default=0, ge=0, le=500)
-    api_turns: list[dict[str, str]] = Field(
+    api_turns: list[dict[str, Any]] = Field(
         default_factory=list,
-        max_length=CHAT_SESSION_API_TURNS_MAX,
+        max_length=API_TURNS_HARD_CEILING,
+        description=(
+            'Each entry: {"role", "content"} plus optional '
+            '{"sub_concept_id": str, "bullet_summary": list[str]} for '
+            "Windowed History / Sub-thread Isolation (see settings.py "
+            "DIALOG_WINDOWED_HISTORY_ENABLED / DIALOG_SUBTHREAD_ISOLATION_ENABLED)."
+        ),
     )
     last_pinned_hash: str = Field(
         default="",
@@ -57,7 +66,7 @@ class StoredChatSession(BaseModel):
             "Ось, под которую создана эта сессия (lecture_self_check | "
             "topic_qna) — при смене оси для того же label сессия "
             "пересоздаётся (см. resolve_for_model), иначе прежние api_turns "
-            "(например, лекция с checkpoint_prompt-вопросами) реплеятся как "
+            "(например, лекция с follow_up_question-вопросами) реплеятся как "
             "history в новый Gemini chat и модель имитирует свой же старый "
             "паттерн вопреки текущему system_instruction."
         ),
@@ -158,6 +167,28 @@ def _fallback_pinned_blob(
     if PINNED_CONTEXT_TAG in body:
         return body
     return f"{PINNED_CONTEXT_TAG}\n\n{body}"
+
+
+def _extract_bullet_summary(
+    text: str, response_schema: type | None
+) -> list[str] | None:
+    """Best-effort re-validate ``text`` (already-fetched structured JSON)
+    against ``response_schema`` to pull ``message_bullet_summary`` — avoids
+    threading the parsed Pydantic object through the whole
+    run_gemini_structured_with_chain → send_chat_message* call chain just
+    for this one field (the caller there only has the raw JSON ``text`` at
+    the point record_turn fires). Silent None on any failure — a missing
+    bullet summary must never break turn recording."""
+    if response_schema is None or not text:
+        return None
+    try:
+        parsed = response_schema.model_validate_json(text)
+    except Exception:
+        return None
+    bullets = getattr(parsed, "message_bullet_summary", None)
+    if not bullets:
+        return None
+    return [str(b).strip() for b in bullets if str(b).strip()]
 
 
 def _clear_explicit_cache_fields(stored: StoredChatSession) -> None:
@@ -271,7 +302,7 @@ class ChatSessionManager:
         ):
             # RU: смена оси (lecture_self_check ↔ topic_qna) для того же label
             # обязана начать НОВУЮ сессию — иначе api_turns прежней оси
-            # (например, лекции с checkpoint_prompt-вопросами) реплеятся как
+            # (например, лекции с follow_up_question-вопросами) реплеятся как
             # history в новый Gemini chat, и модель имитирует свой же
             # прошлый паттерн вопреки текущему system_instruction (см.
             # StoredChatSession.interaction_axis).
@@ -285,7 +316,18 @@ class ChatSessionManager:
         return cur
 
     def _trim_api_turns(self, stored: StoredChatSession) -> None:
-        cap = max(2, CHAT_SESSION_API_TURNS_MAX)
+        from knowledge_engine.src.config.settings import DIALOG_BLOCK_COLLAPSE_ENABLED
+
+        if DIALOG_BLOCK_COLLAPSE_ENABLED:
+            # RU: Hybrid Context Buffer владеет удержанием истории (см.
+            # history_block_collapse.py) — старые ходы схлопываются в
+            # LEARNER_PROGRESS_SUMMARY, а не отбрасываются. Здесь только
+            # аварийный potолок на случай сбоя схлопывания (никогда не даём
+            # api_turns вырасти до Pydantic max_length и уронить сессию при
+            # следующей from_memory_blob).
+            cap = max(2, API_TURNS_HARD_CEILING - 1)
+        else:
+            cap = max(2, CHAT_SESSION_API_TURNS_MAX)
         if len(stored.api_turns) > cap:
             stored.api_turns = stored.api_turns[-cap:]
 
@@ -294,16 +336,30 @@ class ChatSessionManager:
         label: str,
         user_text: str,
         assistant_text: str,
+        *,
+        bullet_summary: list[str] | None = None,
+        sub_concept_id: str = "",
     ) -> None:
         stored = self._sessions.get(label)
         if not stored:
             return
         u = (user_text or "").strip()
         a = (assistant_text or "").strip()
+        sid = (sub_concept_id or "").strip()
         if u:
-            stored.api_turns.append({"role": "user", "content": u[:8000]})
+            entry: dict[str, Any] = {"role": "user", "content": u[:8000]}
+            if sid:
+                entry["sub_concept_id"] = sid
+            stored.api_turns.append(entry)
         if a:
-            stored.api_turns.append({"role": "model", "content": a[:8000]})
+            entry = {"role": "model", "content": a[:8000]}
+            if sid:
+                entry["sub_concept_id"] = sid
+            if bullet_summary:
+                entry["bullet_summary"] = [
+                    str(b).strip() for b in bullet_summary if str(b).strip()
+                ]
+            stored.api_turns.append(entry)
         stored.turns += 1
         self._trim_api_turns(stored)
 
@@ -498,6 +554,93 @@ class ChatSessionManager:
     def _invalidate_live_chat(self, label: str) -> None:
         self.invalidate_live_chat(label)
 
+    def _build_history_content(
+        self,
+        types_module: Any,
+        api_turns: list[dict[str, Any]],
+        *,
+        current_sub_concept_id: str = "",
+        sub_concept_status_lookup: dict[str, str] | None = None,
+    ) -> list[Any]:
+        """Convert stored api_turns → Gemini ``types.Content`` history.
+
+        Windowed History (``DIALOG_WINDOWED_HISTORY_ENABLED``): the raw tail
+        (last ``RAW_HISTORY_DEPTH`` messages when the Hybrid Context Buffer
+        is on — see ``DIALOG_BLOCK_COLLAPSE_ENABLED`` — else just the final
+        user+model pair, matching the prior behavior) is always sent raw;
+        older turns substitute the tutor's own ``message_bullet_summary``
+        (model turns) or a compact ``SubConceptRecord`` status line (user
+        turns, via ``sub_concept_status_lookup``) — falling back to a
+        400-char truncation when neither is available. Turns older than
+        that compressed layer have already been physically removed from
+        ``api_turns`` by ``history_block_collapse.py`` and replaced with a
+        persistent ``LEARNER_PROGRESS_SUMMARY`` (see ``dialog_context.py``),
+        so this function never sees them.
+
+        Sub-thread Isolation (``DIALOG_SUBTHREAD_ISOLATION_ENABLED``): a
+        turn tagged with a DIFFERENT ``sub_concept_id`` than the current one
+        collapses to its bullet summary (global layer) regardless of
+        recency — only turns matching (or untagged, i.e. legacy/pre-feature)
+        the current sub-concept keep local/raw treatment.
+
+        Both flags are independent and compose: isolation decides whether a
+        turn belongs to the "local" window at all; windowed history then
+        decides, within that local window, whether it is part of the raw
+        tail or an older summarized turn.
+        """
+        from knowledge_engine.src.config.settings import (
+            DIALOG_BLOCK_COLLAPSE_ENABLED,
+            DIALOG_SUBTHREAD_ISOLATION_ENABLED,
+            DIALOG_WINDOWED_HISTORY_ENABLED,
+            RAW_HISTORY_DEPTH,
+        )
+
+        cur_sid = (current_sub_concept_id or "").strip()
+        isolation_on = DIALOG_SUBTHREAD_ISOLATION_ENABLED and bool(cur_sid)
+        windowed_on = DIALOG_WINDOWED_HISTORY_ENABLED
+        raw_tail_depth = max(2, RAW_HISTORY_DEPTH) if DIALOG_BLOCK_COLLAPSE_ENABLED else 2
+        last_pair_start = max(0, len(api_turns) - raw_tail_depth)
+
+        def _bullet_or_truncate(turn: dict[str, Any], raw_text: str) -> str:
+            bullets = turn.get("bullet_summary")
+            if bullets:
+                return "\n".join(f"- {b}" for b in bullets if str(b).strip())
+            return raw_text[:400]
+
+        history: list[Any] = []
+        for i, turn in enumerate(api_turns):
+            role = turn.get("role") or "user"
+            raw_text = (turn.get("content") or "").strip()
+            if not raw_text:
+                continue
+            is_model_turn = role in ("model", "tutor")
+            turn_sid = (turn.get("sub_concept_id") or "").strip()
+            is_last_pair = i >= last_pair_start
+
+            text = raw_text
+            if isolation_on and not is_last_pair and turn_sid and turn_sid != cur_sid:
+                # Foreign sub-concept turn: global layer only, never full local text.
+                text = _bullet_or_truncate(turn, raw_text)
+            elif windowed_on and not is_last_pair:
+                if is_model_turn:
+                    text = _bullet_or_truncate(turn, raw_text)
+                else:
+                    status_text = (
+                        (sub_concept_status_lookup or {}).get(turn_sid)
+                        if turn_sid
+                        else None
+                    )
+                    text = status_text or raw_text[:400]
+
+            gemini_role = "model" if is_model_turn else "user"
+            history.append(
+                types_module.Content(
+                    role=gemini_role,
+                    parts=[types_module.Part.from_text(text=text)],
+                )
+            )
+        return history
+
     def get_or_create_live_chat(
         self,
         client: Any,
@@ -512,6 +655,8 @@ class ChatSessionManager:
         explicit_cache: Any | None = None,
         force_recreate: bool = False,
         interaction_axis: str = "lecture_self_check",
+        current_sub_concept_id: str = "",
+        sub_concept_status_lookup: dict[str, str] | None = None,
     ) -> tuple[StoredChatSession, Any]:
         from google.genai import types
 
@@ -554,19 +699,12 @@ class ChatSessionManager:
             temperature=temperature,
         )
 
-        history: list[Any] = []
-        for turn in stored.api_turns:
-            role = turn.get("role") or "user"
-            text = (turn.get("content") or "").strip()
-            if not text:
-                continue
-            gemini_role = "model" if role == "model" or role == "tutor" else "user"
-            history.append(
-                types.Content(
-                    role=gemini_role,
-                    parts=[types.Part.from_text(text=text)],
-                )
-            )
+        history = self._build_history_content(
+            types,
+            stored.api_turns,
+            current_sub_concept_id=current_sub_concept_id,
+            sub_concept_status_lookup=sub_concept_status_lookup,
+        )
 
         chat = client.chats.create(
             model=stored.model_name,
@@ -607,6 +745,8 @@ class ChatSessionManager:
         stream_callback: Callable[[str], None] | None = None,
         payload_meta: UserPayloadBuildMeta | None = None,
         interaction_axis: str = "lecture_self_check",
+        sub_concept_id: str = "",
+        sub_concept_status_lookup: dict[str, str] | None = None,
     ) -> tuple[str, StoredChatSession, Any, str, UserPayloadBuildMeta]:
         from knowledge_engine.src.adapters.llm_providers.gemini_cache_manager import (
             ExplicitCacheResult,
@@ -640,6 +780,8 @@ class ChatSessionManager:
             temperature=temperature,
             explicit_cache=cache,
             interaction_axis=interaction_axis,
+            current_sub_concept_id=sub_concept_id,
+            sub_concept_status_lookup=sub_concept_status_lookup,
         )
         lab = label or "gemini_chat"
 
@@ -716,6 +858,8 @@ class ChatSessionManager:
                 explicit_cache=None,
                 force_recreate=True,
                 interaction_axis=interaction_axis,
+                current_sub_concept_id=sub_concept_id,
+                sub_concept_status_lookup=sub_concept_status_lookup,
             )
             if stream:
                 return (
@@ -768,6 +912,8 @@ class ChatSessionManager:
         layer2_context: str = "",
         payload_meta: UserPayloadBuildMeta | None = None,
         interaction_axis: str = "lecture_self_check",
+        sub_concept_id: str = "",
+        sub_concept_status_lookup: dict[str, str] | None = None,
     ) -> str:
         from knowledge_engine.src.adapters.llm_providers.gemini_stateless import (
             reset_actual_usage,
@@ -798,6 +944,8 @@ class ChatSessionManager:
                 stream=False,
                 payload_meta=payload_meta,
                 interaction_axis=interaction_axis,
+                sub_concept_id=sub_concept_id,
+                sub_concept_status_lookup=sub_concept_status_lookup,
             )
         )
         meta = sent_meta or payload_meta or UserPayloadBuildMeta()
@@ -840,7 +988,13 @@ class ChatSessionManager:
             model=stored.model_name,
         )
         to_record = (record_user_text or message or "").strip()
-        self.record_turn(label, to_record, text)
+        self.record_turn(
+            label,
+            to_record,
+            text,
+            bullet_summary=_extract_bullet_summary(text, response_schema),
+            sub_concept_id=sub_concept_id,
+        )
         return text
 
     def send_chat_message_stream(
@@ -867,6 +1021,8 @@ class ChatSessionManager:
         layer2_context: str = "",
         payload_meta: UserPayloadBuildMeta | None = None,
         interaction_axis: str = "lecture_self_check",
+        sub_concept_id: str = "",
+        sub_concept_status_lookup: dict[str, str] | None = None,
     ) -> str:
         from knowledge_engine.src.adapters.llm_providers.gemini_stateless import (
             reset_actual_usage,
@@ -894,9 +1050,18 @@ class ChatSessionManager:
         field = (stream_text_field or "").strip()
         field_filter: JsonFieldStreamFilter | None = None
         if (
-            schema_name in ("DeepDiveTutorContract", "DeepDiveDeepAnalysisContract")
+            schema_name
+            in (
+                "DeepDiveTutorContract",
+                "DeepDiveTutorWithPlanContract",
+                "DeepDiveDeepAnalysisContract",
+            )
             and stream_callback is not None
         ):
+            # RU: DeepDiveTutorWithPlanContract (ENABLE_TUTOR_EXECUTION_PLAN)
+            # намеренно идёт через тот же default TUTOR_DIALOGUE_STREAM_FIELDS
+            # фильтр — execution_plan в этот tuple не входит, значит никогда
+            # не попадёт в стрим клиенту, даже частично.
             field_filter = wrap_stream_callback_for_tutor_dialogue_fields(
                 stream_callback
             )
@@ -990,6 +1155,8 @@ class ChatSessionManager:
             temperature=temperature,
             explicit_cache=cache,
             interaction_axis=interaction_axis,
+            current_sub_concept_id=sub_concept_id,
+            sub_concept_status_lookup=sub_concept_status_lookup,
         )
         try:
             text, last_chunk = _run_stream(chat, msg)
@@ -1034,6 +1201,8 @@ class ChatSessionManager:
                 explicit_cache=None,
                 force_recreate=True,
                 interaction_axis=interaction_axis,
+                current_sub_concept_id=sub_concept_id,
+                sub_concept_status_lookup=sub_concept_status_lookup,
             )
             text, last_chunk = _run_stream(chat, sent_msg)
         trace_ctx = self._merge_prompt_trace(
@@ -1079,5 +1248,11 @@ class ChatSessionManager:
             model=stored.model_name,
         )
         to_record = (record_user_text or message or "").strip()
-        self.record_turn(label, to_record, text)
+        self.record_turn(
+            label,
+            to_record,
+            text,
+            bullet_summary=_extract_bullet_summary(text, response_schema),
+            sub_concept_id=sub_concept_id,
+        )
         return text

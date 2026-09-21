@@ -1,6 +1,6 @@
 """remaining lancedb tables to pgvector
 
-Phase 2 (см. prompt.txt): оставшиеся 4 таблицы из аудита ingest/indexing
+Phase 2: оставшиеся 4 таблицы из аудита ingest/indexing
 пайплайна — socratic_poles/light_rag_facts/v07_chunks/domain_registry. Та же
 единая форма (id/embed_model/embedding/payload/created_at), что и в
 e6ab12466e89 — переиспользуем helper оттуда буквально (Alembic-миграции

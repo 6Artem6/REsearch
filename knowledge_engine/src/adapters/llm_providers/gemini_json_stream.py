@@ -328,10 +328,15 @@ def structured_stream_text_field(response_schema: type | None) -> str | None:
     if response_schema is None:
         return None
     name = getattr(response_schema, "__name__", "") or ""
-    if name == "DenseMaterialOutput" or name == "StructuredLectureResponse":
+    if name in (
+        "DenseMaterialOutput",
+        "StructuredLectureResponse",
+        "StructuredLectureResponseWithPlanContract",
+    ):
         return "lecture_body"
     if name in (
         "DeepDiveTutorContract",
+        "DeepDiveTutorWithPlanContract",
         "DeepDiveDeepAnalysisContract",
         "DeepDiveExplainContract",
         "TopicQnaTutorContract",

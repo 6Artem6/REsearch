@@ -5,9 +5,9 @@
 безусловно — из-за этого Штурвал Mode 2 (``node_kind="steering_standalone"``,
 узел со ВСЕМИ Gate-2-approved источниками, см. steering_topic_node_service.py)
 падал на валидации при открытии/чате: "List should have at most 4 items
-after validation, not 8" (см. prompt.log). Условная валидация в
-``CurriculumNode`` (src/curriculum/schemas.py) уже это чинила для самого
-графа — этот файл проверяет тот же mirror-фикс в ``NodeDataInput``."""
+after validation, not 8". Условная валидация в ``CurriculumNode``
+(src/curriculum/schemas.py) уже это чинила для самого графа — этот файл
+проверяет тот же mirror-фикс в ``NodeDataInput``."""
 
 from __future__ import annotations
 

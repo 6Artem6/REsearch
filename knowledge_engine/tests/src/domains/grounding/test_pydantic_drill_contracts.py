@@ -195,8 +195,8 @@ def test_prompt_factory_isolates_active_drill_json_contract() -> None:
         default_system_prompt="DEFAULT",
         memory=mem,
     )
-    assert "JSON OUTPUT (ActiveDrillStepResponse)" in system
-    assert "JSON OUTPUT (DeepDiveTutorContract)" not in system
+    assert "Required keys: audit, status_header, theory_body, next_question" in system
+    assert "RESPONSE CONTRACT (chat reply)" not in system
     assert "ANTI-SYCOPHANCY INVARIANTS" in system
     assert "audit" in system
     assert "DEFAULT" not in system

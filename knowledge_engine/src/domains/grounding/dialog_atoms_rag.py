@@ -8,17 +8,31 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from knowledge_engine.src.adapters.db.knowledge_atoms_schema import (
+    COL_CORE_RELEVANCE_SCORE,
+    COL_DOC_ID,
+    COL_ID,
     COL_SCOPE,
     COL_SOURCE_CHUNK_IDS,
     COL_STATEMENT,
 )
 from knowledge_engine.src.config.settings import (
+    DIALOG_ATOMS_CONCEPT_AFFINITY_ENABLED,
     DIALOG_ATOMS_ENABLED,
+    DIALOG_ATOMS_HYBRID_ALPHA,
+    DIALOG_ATOMS_HYBRID_RERANK_ENABLED,
     DIALOG_ATOMS_MIN_SCORE,
+    DIALOG_ATOMS_PEDAGOGICAL_BOOST_ENABLED,
     DIALOG_ATOMS_TOP_K,
 )
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.grounding.deep_analysis_coverage import atom_key
+from knowledge_engine.src.domains.grounding.pedagogical_reranker import (
+    apply_pedagogical_weights,
+)
+from knowledge_engine.src.domains.grounding.schemas import RetrievalPedagogicalContext
+from knowledge_engine.src.domains.ingestion.article_ingestion.anchor_relevance import (
+    AtomAnchorFilterService,
+)
 from knowledge_engine.src.shared.extraction import (
     KnowledgeAtom,
     ScopeType,
@@ -46,18 +60,25 @@ _GENERIC_FOCUS_RE = re.compile(
     re.I,
 )
 
-DIALOG_PREFERRED_SCOPES = frozenset({ScopeType.PRINCIPLE, ScopeType.MECHANIC})
-DIALOG_DETAIL_SCOPES = frozenset({ScopeType.INSTANCE})
+DIALOG_PREFERRED_SCOPES = frozenset(
+    {ScopeType.CONCEPT, ScopeType.MECHANIC, ScopeType.ANTI_PATTERN}
+)
+DIALOG_DETAIL_SCOPES = frozenset({ScopeType.PRACTICE, ScopeType.EDGE_CASE})
 
-# Aliases beyond ScopeType enum (future / LLM typos).
+# Aliases beyond ScopeType enum (legacy 3-category values / LLM typos).
 _SCOPE_ALIASES_PREFERRED = {
-    "CONCEPT": ScopeType.PRINCIPLE,
-    "PRINCIPLES": ScopeType.PRINCIPLE,
+    "PRINCIPLE": ScopeType.CONCEPT,
+    "PRINCIPLES": ScopeType.CONCEPT,
+    "ERROR": ScopeType.ANTI_PATTERN,
+    "BAD_PRACTICE": ScopeType.ANTI_PATTERN,
 }
 _SCOPE_ALIASES_DETAIL = {
-    "IMPLEMENTATION": ScopeType.INSTANCE,
-    "CODE_DETAILS": ScopeType.INSTANCE,
-    "CODE": ScopeType.INSTANCE,
+    "INSTANCE": ScopeType.PRACTICE,
+    "IMPLEMENTATION": ScopeType.PRACTICE,
+    "CODE_DETAILS": ScopeType.PRACTICE,
+    "CODE": ScopeType.PRACTICE,
+    "LIMIT": ScopeType.EDGE_CASE,
+    "CORNER_CASE": ScopeType.EDGE_CASE,
 }
 
 
@@ -69,6 +90,7 @@ class DialogAtomsRetrieveResult:
     atom_keys: list[str] = field(default_factory=list)
     atom_ids: list[str] = field(default_factory=list)
     chunk_ids: list[str] = field(default_factory=list)
+    article_ids: list[str] = field(default_factory=list)
     rag_exhausted: bool = False
     unseen_count: int = 0
 
@@ -273,11 +295,76 @@ def _rows_to_atoms(rows: list[dict[str, Any]]) -> list[KnowledgeAtom]:
                     statement=stmt[:2000],
                     context_quote=None,
                     source_chunk_ids=chunk_ids,
+                    core_relevance_score=row.get(COL_CORE_RELEVANCE_SCORE),
+                    id=(
+                        (str(row.get(COL_ID)).strip() or None)
+                        if row.get(COL_ID)
+                        else None
+                    ),
+                    article_id=(
+                        (str(row.get(COL_DOC_ID)).strip() or None)
+                        if row.get(COL_DOC_ID)
+                        else None
+                    ),
                 )
             )
         except Exception:
             continue
     return out
+
+
+async def _hybrid_rerank_pairs_async(
+    query: str,
+    pairs: list[tuple[dict[str, Any], KnowledgeAtom]],
+    alpha: float,
+) -> list[tuple[dict[str, Any], KnowledgeAtom]]:
+    """Dynamic Topic Relevance (query CE score) combined with the stored
+    static ``core_relevance_score`` — see anchor_relevance.py.
+    ``core_relevance_score`` missing (atom ingested before this field, or
+    never anchor-scored) falls back to a neutral 0.5, per the validated
+    hybrid formula — NOT to pure query_score (unlike the benchmark harness),
+    since a production caller cannot tell "unscored" from "genuinely
+    average" at this call site."""
+    if not pairs:
+        return pairs
+    from knowledge_engine.src.rag_gateway.cross_encoder import score_relevance_pairs
+
+    statements = [atom.statement for _, atom in pairs]
+    # CRITICAL: score_relevance_pairs is a sync Cross-Encoder call — never
+    # call it directly inside an async def.
+    scores = await asyncio.to_thread(score_relevance_pairs, query, statements)
+    scored: list[tuple[float, dict[str, Any], KnowledgeAtom]] = []
+    for (row, atom), q_score in zip(pairs, scores):
+        core = (
+            atom.core_relevance_score if atom.core_relevance_score is not None else 0.5
+        )
+        final_score = AtomAnchorFilterService.calculate_hybrid_fact_score(
+            q_score, core, alpha
+        )
+        scored.append((final_score, row, atom))
+    scored.sort(key=lambda t: t[0], reverse=True)
+    return [(row, atom) for _, row, atom in scored]
+
+
+async def _pedagogical_rerank_pairs_async(
+    query: str,
+    pairs: list[tuple[dict[str, Any], KnowledgeAtom]],
+    context: RetrievalPedagogicalContext,
+    alpha: float,
+) -> list[tuple[dict[str, Any], KnowledgeAtom]]:
+    """Pedagogical-Aware RAG Reranking — see pedagogical_reranker.py.
+    Supersedes the plain hybrid rerank (computes the same base hybrid term
+    internally, then applies depth-of-understanding + novelty weights)."""
+    if not pairs:
+        return pairs
+    from knowledge_engine.src.rag_gateway.cross_encoder import score_relevance_pairs
+
+    statements = [atom.statement for _, atom in pairs]
+    scores = await asyncio.to_thread(score_relevance_pairs, query, statements)
+    row_by_atom_id = {id(atom): row for row, atom in pairs}
+    scored_atoms = [(atom, q_score) for (_, atom), q_score in zip(pairs, scores)]
+    ranked = apply_pedagogical_weights(scored_atoms, context, alpha=alpha)
+    return [(row_by_atom_id[id(atom)], atom) for atom, _ in ranked]
 
 
 def _exclude_atoms(
@@ -299,7 +386,6 @@ def _exclude_atoms(
 
 
 def _row_stable_ids(row: dict[str, Any]) -> tuple[str, list[str]]:
-    from knowledge_engine.src.adapters.db.knowledge_atoms_schema import COL_ID
     from knowledge_engine.src.shared.vector_store import VectorStore
 
     rid = str(row.get(COL_ID) or "").strip()
@@ -329,6 +415,7 @@ def retrieve_dialog_knowledge_atoms_detailed(
     stochastic_sample: bool = False,
     pool_mult: int = 3,
     rng_seed: int | None = None,
+    pedagogical_context: RetrievalPedagogicalContext | None = None,
 ) -> DialogAtomsRetrieveResult:
     """
     Sync retrieve + filter + format for tutor turn.
@@ -433,6 +520,34 @@ def retrieve_dialog_knowledge_atoms_detailed(
             continue
         unseen_pairs.append((row, atom))
 
+    # Pedagogical boost supersedes the plain hybrid rerank when either it or
+    # Concept Affinity is on (both live inside apply_pedagogical_weights —
+    # Concept Affinity is a set of extra multipliers layered on top of the
+    # same depth/novelty pass, not a separate reranker) and a context was
+    # actually passed — it computes the same base hybrid term internally,
+    # then layers depth/novelty (+ concept-affinity) weights on top.
+    if (
+        (
+            DIALOG_ATOMS_PEDAGOGICAL_BOOST_ENABLED
+            or DIALOG_ATOMS_CONCEPT_AFFINITY_ENABLED
+        )
+        and pedagogical_context is not None
+        and unseen_pairs
+    ):
+        # This function only runs via LangGraph's sync-node thread dispatch
+        # (no event loop of its own) — a dedicated asyncio.run() per rerank
+        # call is the same legitimate sync/async boundary already used
+        # above for the vector search.
+        unseen_pairs = asyncio.run(
+            _pedagogical_rerank_pairs_async(
+                query, unseen_pairs, pedagogical_context, DIALOG_ATOMS_HYBRID_ALPHA
+            )
+        )
+    elif DIALOG_ATOMS_HYBRID_RERANK_ENABLED and unseen_pairs:
+        unseen_pairs = asyncio.run(
+            _hybrid_rerank_pairs_async(query, unseen_pairs, DIALOG_ATOMS_HYBRID_ALPHA)
+        )
+
     selected_pairs = unseen_pairs[: max(0, int(cap))]
     rag_exhausted = (
         bool(excl or excl_chunks or excl_atom_ids) and len(selected_pairs) == 0
@@ -452,6 +567,11 @@ def retrieve_dialog_knowledge_atoms_detailed(
         for c in chunks:
             if c and c not in chunk_ids:
                 chunk_ids.append(c)
+    article_ids: list[str] = []
+    for atom in selected:
+        aid = (atom.article_id or "").strip()
+        if aid and aid not in article_ids:
+            article_ids.append(aid)
 
     block = format_dialog_atoms_block(selected, cite_r_index=cite_r_index)
     if block or rag_exhausted or excl or excl_chunks:
@@ -468,6 +588,7 @@ def retrieve_dialog_knowledge_atoms_detailed(
         atom_keys=keys,
         atom_ids=atom_ids,
         chunk_ids=chunk_ids,
+        article_ids=article_ids,
         rag_exhausted=rag_exhausted,
         unseen_count=len(unseen_pairs),
     )

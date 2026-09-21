@@ -49,7 +49,7 @@ class PostgresSettings(BaseSettings):
 
     @property
     def sqlalchemy_async_dsn(self) -> str:
-        """Для Alembic env.py (async-режим, см. prompt.txt Phase 0) — asyncpg."""
+        """Для Alembic env.py (async-режим, Phase 0) — asyncpg."""
         return self._with_scheme("postgresql+asyncpg")
 
     def _with_scheme(self, scheme: str) -> str:

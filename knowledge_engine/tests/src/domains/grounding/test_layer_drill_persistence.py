@@ -411,6 +411,6 @@ def test_completed_drill_prompt_forbids_next_question() -> None:
         memory=mem,
     )
     assert "LAYER COMPLETION" in system
-    assert "LayerCompletionTutorOutput" in system
+    assert "RESPONSE STRUCTURE — HARD" in system
     assert "There is NO next_question" in system
-    assert "JSON OUTPUT (ActiveDrillStepResponse)" not in system
+    assert "Required keys: audit, status_header, theory_body, next_question" not in system

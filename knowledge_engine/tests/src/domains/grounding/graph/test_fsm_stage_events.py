@@ -1,5 +1,5 @@
-"""FSM stage-progress events (schemas/fsm.py + graph/stage_events.py) — см.
-prompt.txt: "Интеграция FSM-статусов LangGraph c SSE-стримингом"."""
+"""FSM stage-progress events (schemas/fsm.py + graph/stage_events.py):
+"Интеграция FSM-статусов LangGraph c SSE-стримингом"."""
 
 from __future__ import annotations
 

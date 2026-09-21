@@ -20,6 +20,9 @@ from knowledge_engine.src.adapters.db.knowledge_atoms_schema import (
     COL_CONTEXT_QUOTE as KA_COL_CONTEXT_QUOTE,
 )
 from knowledge_engine.src.adapters.db.knowledge_atoms_schema import (
+    COL_CORE_RELEVANCE_SCORE as KA_COL_CORE_RELEVANCE_SCORE,
+)
+from knowledge_engine.src.adapters.db.knowledge_atoms_schema import (
     COL_DOC_ID as KA_COL_DOC_ID,
 )
 from knowledge_engine.src.adapters.db.knowledge_atoms_schema import COL_ID as KA_COL_ID
@@ -461,6 +464,7 @@ class VectorStore:
                         KA_COL_SCOPE: atom.scope.value,
                         KA_COL_SOURCE_CHUNK_IDS: list(atom.source_chunk_ids or []),
                         KA_COL_CONTEXT_QUOTE: (atom.context_quote or "")[:800],
+                        KA_COL_CORE_RELEVANCE_SCORE: atom.core_relevance_score,
                         # Kept in payload (unlike rag_chunks/document_summaries):
                         # search_knowledge_atoms' MMR needs per-candidate vectors,
                         # not just similarity-to-query.
@@ -1027,6 +1031,22 @@ class VectorStore:
                 f"kept={len(out)} (before CE/MMR)"
             )
         return out
+
+    async def fetch_knowledge_atoms_by_doc_id(
+        self, doc_id: str, *, limit: int = 500
+    ) -> list[dict[str, Any]]:
+        """All knowledge_atoms rows for a doc_id (no ordering guarantee —
+        callers needing a stable order should sort by KA_COL_ID themselves).
+        Used by scripts/db/backfill_core_relevance_score.py."""
+        did = (doc_id or "").strip()
+        if not did:
+            return []
+        store = await _get_active_vector_store()
+        if store is None:
+            return []
+        return await store.fetch_all_by_field(
+            KNOWLEDGE_ATOMS_TABLE, KA_COL_DOC_ID, did, limit=limit
+        )
 
     async def fetch_rag_chunks_by_doc_id(self, doc_id: str) -> list[dict[str, Any]]:
         """All fine chunks for a parent document, ordered by chunk_index."""

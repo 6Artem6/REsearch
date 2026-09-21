@@ -74,9 +74,7 @@ def test_map_prompt_window_text_before_diagram_context():
 
 
 def test_map_reduce_prompts_require_scope_tags():
-    assert "[SCOPE: PRINCIPLE]" in _MAP_SYSTEM
-    assert "[SCOPE: MECHANIC]" in _MAP_SYSTEM
-    assert "[SCOPE: INSTANCE]" in _MAP_SYSTEM
+    assert "CONCEPT|MECHANIC|PRACTICE|EDGE_CASE|ANTI_PATTERN" in _MAP_SYSTEM
     assert "knowledge_atoms" in _MAP_SYSTEM
     assert "DO NOT output <thought>" in _MAP_SYSTEM
     assert "knowledge_atoms" in _REDUCE_SYSTEM
@@ -84,7 +82,10 @@ def test_map_reduce_prompts_require_scope_tags():
     assert "3–7 compressed synthesis" in _REDUCE_SYSTEM
     assert "full knowledge_atoms catalog" in _CRITICAL_REDUCE_RULES
     assert "must stay consistent with key_takeaways" not in _CRITICAL_REDUCE_RULES
-    assert "[SCOPE: PRINCIPLE|MECHANIC|INSTANCE]" in _CRITICAL_REDUCE_RULES
+    assert (
+        "[SCOPE: CONCEPT|MECHANIC|PRACTICE|EDGE_CASE|ANTI_PATTERN]"
+        in _CRITICAL_REDUCE_RULES
+    )
     assert "Do NOT drop any unique fact" in _REDUCE_DEDUP_SYSTEM
     assert "source_chunk_ids" in _REDUCE_DEDUP_SYSTEM
     assert "Do NOT extract new facts" in _REDUCE_SYNTHESIS_SYSTEM
@@ -102,7 +103,7 @@ def test_reduce_summaries_use_window_index_and_role():
             window_summary="Summary A",
             knowledge_atoms=[
                 KnowledgeAtom(
-                    scope=ScopeType.PRINCIPLE,
+                    scope=ScopeType.CONCEPT,
                     statement="Изоляция агента от хоста обязательна",
                 )
             ],
@@ -116,7 +117,7 @@ def test_reduce_summaries_use_window_index_and_role():
     assert "### Window 1" not in block
     assert "## Section: Intro" in block
     assert "## Section: Benchmarks" in block
-    assert "[SCOPE: PRINCIPLE]" in block
+    assert "[SCOPE: CONCEPT]" in block
 
 
 def test_reduce_user_prompt_has_critical_rules_at_end():
@@ -179,8 +180,8 @@ def test_paragraph_inspection_result_validates_atoms():
     }
     result = ParagraphInspectionResult.model_validate(raw)
     assert len(result.atoms) == 2
-    assert result.atoms[0].scope is ScopeType.PRINCIPLE
-    assert result.atoms[1].scope is ScopeType.INSTANCE
+    assert result.atoms[0].scope is ScopeType.CONCEPT
+    assert result.atoms[1].scope is ScopeType.PRACTICE
 
 
 def test_normalize_final_preserves_synthesis_takeaways():
@@ -193,7 +194,7 @@ def test_normalize_final_preserves_synthesis_takeaways():
                 statement="Валидация схем идёт до исполнения tool-call",
             ),
             KnowledgeAtom(
-                scope=ScopeType.INSTANCE,
+                scope=ScopeType.PRACTICE,
                 statement="Библиотека AJV: 8.3 мс на глубокой вложенности",
             ),
         ],
@@ -205,7 +206,7 @@ def test_normalize_final_preserves_synthesis_takeaways():
     assert out.executive_summary == "Обзор архитектуры изоляции агентов."
     assert len(out.knowledge_atoms) == 2
     assert out.knowledge_atoms[0].scope is ScopeType.MECHANIC
-    assert out.knowledge_atoms[1].scope is ScopeType.INSTANCE
+    assert out.knowledge_atoms[1].scope is ScopeType.PRACTICE
 
 
 def test_document_summary_from_final_copies_executive_summary():
@@ -219,7 +220,7 @@ def test_document_summary_from_final_copies_executive_summary():
         key_takeaways=["[SCOPE: PRINCIPLE] Изоляция на границе процесса"],
         knowledge_atoms=[
             KnowledgeAtom(
-                scope=ScopeType.PRINCIPLE,
+                scope=ScopeType.CONCEPT,
                 statement="Изоляция агента обязательна и это отдельный атом",
             )
         ],
@@ -244,7 +245,7 @@ def test_normalize_map_extracts_inline_scope_tags():
     )
     out = normalize_map_knowledge(mapped)
     assert len(out.knowledge_atoms) >= 1
-    assert out.knowledge_atoms[0].scope is ScopeType.PRINCIPLE
+    assert out.knowledge_atoms[0].scope is ScopeType.CONCEPT
 
 
 def test_tutor_context_splits_into_three_blocks():
@@ -254,14 +255,15 @@ def test_tutor_context_splits_into_three_blocks():
         "[SCOPE: INSTANCE] AJV: 8.3 мс при 32 уровнях",
     ]
     block = format_takeaways_for_tutor(takeaways)
-    assert "FUNDAMENTAL PRINCIPLES" in block
+    assert "FUNDAMENTAL CONCEPTS" in block
     assert "GENERALIZED MECHANICS" in block
-    assert "PRACTICAL CASES" in block
+    assert "ROUTINE PRACTICE" in block
     assert "AJV" in block
     kb = AggregatedKnowledgeBase.from_tagged_strings(takeaways)
-    assert len(kb.principles) == 1
+    # Legacy PRINCIPLE / INSTANCE tags resolve to CONCEPT / PRACTICE.
+    assert len(kb.concepts) == 1
     assert len(kb.mechanics) == 1
-    assert len(kb.evidence_cases) == 1
+    assert len(kb.practices) == 1
 
 
 def test_format_document_summary_uses_triangulation_blocks():
@@ -276,10 +278,10 @@ def test_format_document_summary_uses_triangulation_blocks():
     )
     text = _format_document_summary(ds, 1)
     exec_pos = text.index("Изоляция агента — базис")
-    take_pos = text.index("FUNDAMENTAL PRINCIPLES")
+    take_pos = text.index("FUNDAMENTAL CONCEPTS")
     assert exec_pos < take_pos
-    assert "FUNDAMENTAL PRINCIPLES" in text
-    assert "PRACTICAL CASES" in text
+    assert "FUNDAMENTAL CONCEPTS" in text
+    assert "ROUTINE PRACTICE" in text
     assert "8.3" in text
     assert "Выжимка:" not in text
 

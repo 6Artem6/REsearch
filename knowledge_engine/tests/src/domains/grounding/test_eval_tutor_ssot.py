@@ -252,11 +252,10 @@ def test_prompts_forbid_oneof_and_model_plaques() -> None:
         + FEEDBACK_TRANSPARENCY_REQUIREMENT_EN
         + EVALUATOR_SKIPPED_TUTOR_RULES
     )
-    assert "not a JSON-Schema oneOf" in ANTI_SYCOPHANCY_INVARIANTS.lower() or (
-        "NOT a JSON-Schema oneOf" in ANTI_SYCOPHANCY_INVARIANTS
-    )
-    assert "discriminated union on" not in blob.lower()
+    # Prompt cleanup: no Pydantic/JSON-Schema jargon leaks into the model-facing text.
+    assert "oneof" not in blob.lower()
+    assert "discriminated union" not in blob.lower()
     assert "Host prepends" in FEEDBACK_TRANSPARENCY_REQUIREMENT_EN or (
         "Host prepends" in ANTI_SYCOPHANCY_INVARIANTS
     )
-    assert "DeepDiveExplainContract" in EVALUATOR_SKIPPED_TUTOR_RULES
+    assert "Do NOT emit" in EVALUATOR_SKIPPED_TUTOR_RULES

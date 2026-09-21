@@ -13,3 +13,6 @@ COL_SOURCE_CHUNK_IDS = "source_chunk_ids"
 COL_CONTEXT_QUOTE = "context_quote"
 COL_VECTOR = "vector"
 COL_EMBED_MODEL = "embed_model"
+# Two-Stage Fact Relevance & Anchor Filtering (add-only) — Optional, missing
+# on rows written before this field existed; treat as unscored, not 0.0.
+COL_CORE_RELEVANCE_SCORE = "core_relevance_score"

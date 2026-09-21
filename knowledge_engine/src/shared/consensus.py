@@ -14,7 +14,8 @@ class AcademicQueryContract(BaseModel):
     )
     notes: str = Field(
         default="",
-        description="Что убрано/переведено из user question",
+        description="What was stripped/translated from the user question",
+        # RU: что убрано/переведено из вопроса пользователя.
     )
 
 
@@ -35,13 +36,15 @@ class ValidationResultContract(BaseModel):
         default=None,
         description="English follow-up for Consensus retry",
     )
-    reason: str = Field(default="", description="Объяснение статуса")
+    reason: str = Field(default="", description="Explanation of the status")
+    # RU: объяснение статуса.
 
 
 class ProfileApplicabilityContract(BaseModel):
     apply_personal_profile: bool = Field(
         ...,
-        description="Нужен ли personal profile в Reasoner",
+        description="Whether the Reasoner needs the personal profile",
+        # RU: нужен ли personal profile в Reasoner.
     )
     context_applicability: str = Field(
         default="",
@@ -53,5 +56,6 @@ class ProfileApplicabilityContract(BaseModel):
 class RefinementSanitizeContract(BaseModel):
     academic_query_en: str = Field(
         ...,
-        description="Очищенный English academic query (one line)",
+        description="Cleaned English academic query (one line)",
+        # RU: очищенный английский academic query (одна строка).
     )

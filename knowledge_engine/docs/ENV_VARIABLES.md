@@ -5,7 +5,7 @@
 
 Шаблон: `.env.example`. Секреты: `.env`.
 
-Полный машинный список (~272 ключей):
+Полный машинный список (~480 ключей; без флагов скрипт только печатает рассинхронизацию с `.env.example`, `--write-example` перезаписывает `.env.example`, `--merge-env` правит локальный `.env`):
 
 ```bash
 .venv/bin/python knowledge_engine/scripts/dev/sync_env_catalog.py --write-example
@@ -60,11 +60,11 @@ Settings), не голый `os.getenv`; `src/config/settings.py` реэкспо�
 | `KE_REDIS_LOG_MAX_LINES` | `20000` |
 | `KE_WORKER_POLL_SEC` | `0.4` |
 | `KE_WORKER_HEARTBEAT_SEC` | `10` |
-| `KE_WORKER_STALE_RUNNING_SEC` | `300` |
+| `KE_WORKER_STALE_RUNNING_SEC` | `7200` |
 | `KE_WORKER_INLINE_FALLBACK` | `false` (ignored for ML: API never loads BGE/CE) |
 | `KE_WORKER_RELOAD_DEBOUNCE_SEC` | `1.0` |
 | `KE_WORKER_STOP_TIMEOUT_SEC` | `30` |
-| `KE_NODE_DIVE_TIMEOUT_SEC` | `900` |
+| `KE_NODE_DIVE_TIMEOUT_SEC` | `3600` |
 
 ## Logging
 
@@ -88,22 +88,12 @@ Settings), не голый `os.getenv`; `src/config/settings.py` реэкспо�
 | `LOCAL_HEAVY_MODEL` | `qwen2.5-coder:7b` |
 | `LOCAL_L2_MODEL` | `qwen2.5-coder:7b` |
 | `REACT_EVAL_MODEL` | router |
-| `GUARDRAILS_OLLAMA_MODEL` | `qwen2.5-coder:7b` |
-| `GUARDRAILS_MODEL` | legacy alias |
+| `GUARDRAILS_MODEL` | `gemma-4-31b-it` (Gemma Cloud) |
 | `CONTEXT_EVAL_MODEL` | router (1.5b) |
 | `CONTEXT_EVAL_NUM_PREDICT` | `2048` |
-| `OLLAMA_ROUTER_NUM_CTX` | `2048` |
-| `OLLAMA_HEAVY_NUM_CTX` | `4096` |
-| `OLLAMA_NUM_CTX` | alias → heavy |
-| `OLLAMA_ROUTER_KEEP_ALIVE` | `2m` |
-| `OLLAMA_HEAVY_KEEP_ALIVE` | `2m` |
-| `OLLAMA_NUM_PREDICT` | `1024` |
-| `OLLAMA_GUARDRAILS_NUM_PREDICT` | `1536` |
-| `OLLAMA_STRUCTURE_NUM_PREDICT` | `3072` |
-| `SELECTION_PROMPTS_OLLAMA_MODEL` | `LOCAL_ROUTER_MODEL` |
-| `SELECTION_PROMPTS_TIMEOUT_SEC` | `3` |
+| `SELECTION_PROMPTS_TIMEOUT_SEC` | `60` |
 | `SELECTION_PROMPTS_NUM_PREDICT` | `256` |
-| `OLLAMA_NUM_PARALLEL` | `1` (сервер Ollama; для `BLOG_SPATIAL_MAP_CONCURRENCY>1` задайте `2`+) |
+| `OLLAMA_NUM_PARALLEL` | `1` (переменная самого сервера Ollama, код проекта её не читает; для `BLOG_SPATIAL_MAP_CONCURRENCY>1` задайте `2`+) |
 
 ### Blog spatial Map-Reduce (ingest)
 
@@ -113,7 +103,7 @@ Settings), не голый `os.getenv`; `src/config/settings.py` реэкспо�
 | `BLOG_SPATIAL_NUM_CTX` | `16384` |
 | `BLOG_SPATIAL_MAP_MAX_TOKENS` | `2800` |
 | `BLOG_SPATIAL_OVERLAP_TOKENS` | `400` |
-| `MAX_CONCURRENT_MAP_REQUESTS` | `4` (unified MAP in-flight for all models) |
+| `MAX_CONCURRENT_MAP_REQUESTS` | `8` (unified MAP in-flight for all models) |
 | `BLOG_SPATIAL_MAP_CONCURRENCY` | `= MAX_CONCURRENT_MAP_REQUESTS` |
 | `GEMMA_MAP_MAX_OUTPUT_TOKENS` | `4096` (fixed) |
 | `GEMMA_REDUCE_MAX_OUTPUT_TOKENS` | `4096` |
@@ -154,7 +144,6 @@ Settings), не голый `os.getenv`; `src/config/settings.py` реэкспо�
 
 | Variable | Default |
 |----------|---------|
-| `ARTICLE_DIAGRAM_FILTER_OLLAMA_MODEL` | `MAIN_MODEL` |
 | `ARTICLE_DIAGRAM_FILTER_TIMEOUT_SEC` | `45` |
 | `ARTICLE_DIAGRAM_FILTER_NUM_PREDICT` | `256` |
 | `ARTICLE_DIAGRAM_FILTER_NUM_CTX` | `4096` |
@@ -253,6 +242,55 @@ Settings), не голый `os.getenv`; `src/config/settings.py` реэкспо�
 | `RAG_MPS_REQUEST_COOLDOWN_SEC` | `900` | Idle-выгрузка ВСЕХ моделей по завершении ВСЕГО RAG-запроса (`rag_request_finished()`), не отдельного вызова embed/rerank; таймер сбрасывается каждым новым запросом (`rag_request_started()`) |
 | `LECTURE_RAG_*` | см. `src/config/settings.py` |
 | `LIGHT_RAG_MIN_COSINE_SIM` | `0.42` |
-| `KE_RAG_TIMEOUT_SEC` | `45` |
+| `KE_RAG_TIMEOUT_SEC` | `60` |
 | `VECTOR_ROUTER_COLD_TIMEOUT` | `15.0` | `vector_intent_router.py` — таймаут классификации, пока BGE-M3 ещё не загружен в память (`is_bge_m3_loaded()` false) |
 | `VECTOR_ROUTER_WARM_TIMEOUT` | `3.0` | Тот же router, но модель уже прогрета — короче, т.к. первый прогон уже оплатил cold-start |
+
+---
+
+## Подбор контекста RAG (лекция и Gateway)
+
+Главный путь лекции (`LECTURE_CHUNK_CA_ENABLED`): оценка на эмбеддингах BGE-M3 → knee-cutoff → якорь или MMR → dedup → positional reorder.
+Cross-Encoder (`RAG_CROSS_ENCODER_MODEL`) работает в RAG Gateway и в запасной цепочке CE → MMR. См. [LECTURE_RAG_CONTEXT.md](LECTURE_RAG_CONTEXT.md).
+
+| Variable | Default |
+|----------|---------|
+| `LECTURE_CHUNK_CA_ENABLED` | `1` — основной путь; при `0` или ошибке включается CE → MMR |
+| `LECTURE_CHUNK_CA_TOP_K` | `10` |
+| `LECTURE_CHUNK_CA_ALPHA` / `LECTURE_CHUNK_CA_BETA` | `0.7` / `0.3` — вес близости чанка и паспорта документа к теме |
+| `LECTURE_CHUNK_CA_GAMMA` | `0.55` — баланс релевантность / разнообразие в MMR |
+| `LECTURE_CHUNK_CA_MAX_PER_SOURCE` (`MAX_CHUNKS_PER_DOC`) | `2` |
+| `RAG_SCORE_MIN_FLOOR` | `0.30` — пол: если лучший чанк ниже, результат пустой |
+| `RAG_KNEE_DROP_RATIO` | `0.12` — срез хвоста по относительному перепаду |
+| `RAG_ANCHOR_THRESHOLD` | `0.70` — выше порога берётся документ-якорь |
+| `RAG_ANCHOR_SUPPLEMENT_MAX` | `2` |
+| `RAG_CHUNK_SEMANTIC_DEDUP` | `0.85` |
+| `LECTURE_RAG_CE_MIN_SCORE` | `0.50` — порог CE в запасной цепочке |
+| `RAG_TRUST_HARD_CUTOFF` | `true` (`RAG_TRUST_HARD_MIN_TRUST=0.2`, `RAG_TRUST_HARD_MIN_SIM=0.85`) |
+| `RAG_DEFAULT_MIN_RELEVANCE` | `0.55` — порог CE в Gateway |
+
+## Тьютор: контекст диалога и режимы (add-only, по умолчанию выключено)
+
+| Variable | Default |
+|----------|---------|
+| `DIALOG_WINDOWED_HISTORY_ENABLED` | `false` — старые реплики заменяются `message_bullet_summary` |
+| `DIALOG_SUBTHREAD_ISOLATION_ENABLED` | `false` — реплики другой подтемы схлопываются до тезисов |
+| `DIALOG_BLOCK_COLLAPSE_ENABLED` | `false` — блочное схлопывание старой ленты в `LEARNER_PROGRESS_SUMMARY` (суммаризация на Gemma: `GEMMA_PRIMARY_MODEL` → `GEMMA_FALLBACK_MODEL`) |
+| `RAW_HISTORY_DEPTH` | `6` — сколько последних реплик остаётся дословно |
+| `COMPRESSED_BLOCK_SIZE` | `10` — размер блока для схлопывания |
+| `MAX_COMPRESSED_BLOCKS` | `5` |
+| `HISTORY_BLOCK_SUMMARY_MAX_OUTPUT_TOKENS` | `300` |
+| `CHAT_SESSION_API_TURNS_MAX` | `8` (при включённом схлопывании аварийный потолок выводится из `RAW_HISTORY_DEPTH`, `COMPRESSED_BLOCK_SIZE`) |
+| `ENABLE_TUTOR_EXECUTION_PLAN` | `false` — скрытое поле `execution_plan` перед ответом |
+| `TOPIC_QNA_SELF_CHECK_MAX_ATTEMPTS` | `3` — circuit breaker: после N неверных попыток тьютор отвечает без оценки |
+| `GEMMA_PRIMARY_MODEL` / `GEMMA_FALLBACK_MODEL` | `gemma-4-31b-it` / `gemma-4-26b-a4b-it` |
+| `DIALOG_ATOMS_HYBRID_RERANK_ENABLED` | `false` — CE по атомам знаний в пер-ходовом RAG (`DIALOG_ATOMS_HYBRID_ALPHA=0.7`) |
+| `DIALOG_ATOMS_PEDAGOGICAL_BOOST_ENABLED` | `false` — педагогический буст и ротация новизны |
+| `DIALOG_ATOMS_CONCEPT_AFFINITY_ENABLED` | `false` — вес по мастерству подтемы |
+
+## Ingest: anchor-фильтр атомов
+
+| Variable | Default |
+|----------|---------|
+| `BLOG_SPATIAL_ANCHOR_FILTER_ENABLED` | `false` — отсечка атомов по Title+Lead перед REDUCE (необратима без повторного MAP) |
+| `BLOG_SPATIAL_ANCHOR_FILTER_THRESHOLD` | `0.35` |

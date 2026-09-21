@@ -49,7 +49,7 @@ services:
       # (версия-специфичная поддиректория внутри, см. pg_ctlcluster) — НЕ
       # .../data напрямую, это старая (pre-18) конвенция, ловили restart-loop.
       - ke_postgres_data:/var/lib/postgresql
-    # Лимиты, чтобы БД не утилизировала весь хост (см. prompt.txt: Phase 0).
+    # Лимиты, чтобы БД не утилизировала весь хост (Phase 0).
     # deploy.resources применяется и вне Swarm начиная с Docker Compose v2.
     deploy:
       resources:
@@ -76,7 +76,7 @@ services:
       timeout: 3s
       retries: 5
 
-  # Ephemeral init-контейнер (Phase 3, см. prompt.txt): накатывает Alembic
+  # Ephemeral init-контейнер (Phase 3): накатывает Alembic
   # до head и проверяет целостность (vector extension + HNSW-индексы) при
   # каждом `docker compose up` — без ручного вызова alembic. НЕ за profile
   # (в отличие от knowledge-api): должен применяться при простом

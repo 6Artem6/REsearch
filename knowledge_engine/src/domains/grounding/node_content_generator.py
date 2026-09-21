@@ -31,7 +31,10 @@ from knowledge_engine.src.domains.grounding.lecture_body_format import (
     strip_lecture_credit_scoreboard,
     strip_trailing_checkpoint_from_lecture_body,
 )
-from knowledge_engine.src.domains.grounding.memory_schemas import SessionMemory
+from knowledge_engine.src.domains.grounding.memory_schemas import (
+    SessionMemory,
+    build_sub_concept_status_lookup,
+)
 from knowledge_engine.src.domains.grounding.prompt_types import InteractionPromptMode
 from knowledge_engine.src.domains.grounding.schemas import (
     DenseMaterialOutput,
@@ -44,6 +47,7 @@ from knowledge_engine.src.domains.grounding.tiered_memory import (
 )
 from knowledge_engine.src.domains.grounding.tutor import (
     StructuredLectureResponse,
+    StructuredLectureResponseWithPlanContract,
     TopicQnaLectureResponse,
     structured_lecture_to_dense,
 )
@@ -79,7 +83,7 @@ def _sanitize_dense_output(
     _ = allowed_urls
     body = sanitize_lecture_body_markdown(dense.lecture_body or "")
     body = strip_lecture_credit_scoreboard(body)
-    checkpoint = (dense.checkpoint_prompt or "").strip()
+    checkpoint = (dense.follow_up_question or "").strip()
     body = strip_trailing_checkpoint_from_lecture_body(body, checkpoint)
     snippets = [
         sanitize_lecture_body_markdown(s) if "```" in (s or "") else (s or "")
@@ -156,17 +160,24 @@ def generate_dense_material(
     handoff = build_handoff_summary(memory)
 
     is_topic_qna = (interaction_axis or "").strip().lower() == "topic_qna"
-    # RU: checkpoint_prompt существует ТОЛЬКО в StructuredLectureResponse —
+    # RU: follow_up_question существует ТОЛЬКО в StructuredLectureResponse —
     # для topic_qna используется TopicQnaLectureResponse, у которой этого
     # поля вообще нет в JSON Schema, так что self-check вопрос физически
     # невозможно записать (см. _DenseLectureFieldsBase в tutor.py). Раньше
     # это запрещалось только текстом инструкции (system prompt + Field
-    # description) — Gemini всё равно его игнорировал (live-тест на sql_cte,
-    # prompt.log): известный на момент запроса инвариант должен быть
+    # description) — Gemini всё равно его игнорировал (live-тест на sql_cte):
+    # известный на момент запроса инвариант должен быть
     # закодирован в схеме, а не в условной инструкции.
-    response_schema = (
-        TopicQnaLectureResponse if is_topic_qna else StructuredLectureResponse
-    )
+    if is_topic_qna:
+        response_schema = TopicQnaLectureResponse
+    else:
+        from knowledge_engine.src.config.settings import ENABLE_TUTOR_EXECUTION_PLAN
+
+        response_schema = (
+            StructuredLectureResponseWithPlanContract
+            if ENABLE_TUTOR_EXECUTION_PLAN
+            else StructuredLectureResponse
+        )
 
     system = _dense_system_instruction(
         scope,
@@ -213,6 +224,10 @@ def generate_dense_material(
             max_output_tokens=LECTURE_MAX_OUTPUT_TOKENS,
             temperature=LECTURE_GENERATION_TEMPERATURE,
             interaction_axis=interaction_axis,
+            sub_concept_id=memory.asked_question_sub_concept_id,
+            sub_concept_status_lookup=build_sub_concept_status_lookup(
+                memory.sub_concepts
+            ),
         )
     except Exception as exc:
         trace(
@@ -247,7 +262,7 @@ def generate_dense_material(
     result = _sanitize_dense_output(result, allowed_urls or set())
     # Stream may have finished on raw lecture_body before host strips PART 2.
     if stream_callback is not None:
-        checkpoint = (result.checkpoint_prompt or "").strip()
+        checkpoint = (result.follow_up_question or "").strip()
         marker_block = format_self_check_block(checkpoint)
         if marker_block:
             raw_body = sanitize_lecture_body_markdown(
@@ -284,8 +299,8 @@ def merge_dense_material_delta(
     )
     summary = (delta.summary or "").strip() or (base.summary or "").strip()
     bridge = (delta.bridge_to_next or "").strip() or (base.bridge_to_next or "").strip()
-    checkpoint = (delta.checkpoint_prompt or "").strip() or (
-        base.checkpoint_prompt or ""
+    checkpoint = (delta.follow_up_question or "").strip() or (
+        base.follow_up_question or ""
     ).strip()
     concepts = list(base.extracted_concepts or [])
     for c in delta.extracted_concepts or []:
@@ -303,7 +318,7 @@ def merge_dense_material_delta(
             "references": refs[:6],
             "code_snippets": snippets[:4],
             "bridge_to_next": bridge,
-            "checkpoint_prompt": checkpoint,
+            "follow_up_question": checkpoint,
             "extracted_concepts": concepts[:5],
             "introduced_terms": terms[:24],
         }

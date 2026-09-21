@@ -770,17 +770,36 @@ def run_sub_concept_gap_eval(
     )
     label = "node_deep_dive / sub_concept_gap"
     try:
-        raw = run_gemini_structured_with_chain(
-            GEMINI_LITE_MODEL,
-            system,
-            payload,
-            anchor,
-            SubConceptGapEvalContract,
-            label,
-            rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
-            chat_manager=None,
-            max_output_tokens=GEMINI_LITE_MAX_OUTPUT_TOKENS,
-        )
+        raw = None
+        attempt_payload = payload
+        for attempt in range(2):
+            try:
+                raw = run_gemini_structured_with_chain(
+                    GEMINI_LITE_MODEL,
+                    system,
+                    attempt_payload,
+                    anchor,
+                    SubConceptGapEvalContract,
+                    label if attempt == 0 else f"{label} / contract_retry",
+                    rpm_pause=GEMINI_RPM_PAUSE_SEC > 0,
+                    chat_manager=None,
+                    max_output_tokens=GEMINI_LITE_MAX_OUTPUT_TOKENS,
+                )
+                break
+            except Exception as exc:
+                if attempt >= 1 or "correct_claims" not in str(exc):
+                    raise
+                trace(
+                    f"NODE_DIVE sub_concept_gap contract retry | {type(exc).__name__}"
+                )
+                attempt_payload = (
+                    f"{payload}\n\n"
+                    "### RETRY — previous JSON rejected (schema violation)\n"
+                    f"{type(exc).__name__}: {exc}\n"
+                    "accuracy_grade=PARTIAL requires non-empty correct_claims "
+                    "(the theses from THIS answer that were already right)."
+                )
+        assert raw is not None
         u0, soft = _select_gap_update(list(raw.updates or []), target.id)
         if u0 is None:
             logger.error(

@@ -1,4 +1,4 @@
-"""Init-container entrypoint (Phase 3, см. prompt.txt): накатывает Alembic
+"""Init-container entrypoint (Phase 3): накатывает Alembic
 до head и проверяет целостность (vector extension + HNSW-индексы) при
 старте docker-compose стека — без ручного вызова alembic. Используется
 сервисом `migrator` в docker-compose.yml; зависимые сервисы (`knowledge-api`)

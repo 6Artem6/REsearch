@@ -21,7 +21,7 @@ from knowledge_engine.src.domains.grounding.concept_map import (
 )
 from knowledge_engine.src.domains.grounding.fact_manifest import (
     format_fact_manifest_block,
-    prepare_evicted_for_manifest_extraction,
+    prepare_evicted_batch_for_manifest_extraction,
 )
 from knowledge_engine.src.domains.grounding.memory_schemas import (
     SessionMemory,
@@ -201,19 +201,32 @@ def rotate_window_after_message(
     fact_manifest ушла в фон (context_compressor_worker) — раньше
     update_manifest_from_evicted блокировал ответ пользователю доп.
     вызовом Gemini прямо на hot path.
+
+    В steady state (active_window уже заполнен ACTIVE_WINDOW_MAX) один ход
+    добавляет 2 сообщения (user+tutor) и поэтому вытесняет 2 — все
+    вытесненные за этот вызов сообщения собираются в ОДИН batch и ставятся
+    ОДНОЙ job'ой (см. prepare_evicted_batch_for_manifest_extraction), вместо
+    отдельной job на каждое вытесненное сообщение — раньше это удваивало
+    LLM-вызовы fact_manifest за ход.
     """
     from knowledge_engine.src.shared.job_queue.context_compressor_worker import (
         enqueue_dialog_summarize,
     )
 
+    evicted_list: list[dict[str, str]] = []
     while len(memory.active_window) > ACTIVE_WINDOW_MAX:
         evicted = pop_evicted_message(memory)
         if not evicted:
             break
-        payload = prepare_evicted_for_manifest_extraction(memory, evicted, anchor)
-        if payload is None:
-            continue
-        enqueue_dialog_summarize(curriculum_id, node_id, payload)
+        evicted_list.append(evicted)
+    if not evicted_list:
+        return
+    payload = prepare_evicted_batch_for_manifest_extraction(
+        memory, evicted_list, anchor
+    )
+    if payload is None:
+        return
+    enqueue_dialog_summarize(curriculum_id, node_id, payload)
 
 
 def process_user_message_pipeline(
@@ -267,6 +280,8 @@ def process_user_message_pipeline(
                 f"NODE_DIVE sub_concept evaluation FAILED | "
                 f"{type(exc).__name__}: {exc}"
             )
-    append_to_active_window(memory, "user", user_message)
+    append_to_active_window(
+        memory, "user", user_message, memory.asked_question_sub_concept_id
+    )
     rotate_window_after_message(memory, anchor)
     return intent, gap

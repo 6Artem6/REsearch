@@ -18,7 +18,6 @@ from knowledge_engine.src.domains.grounding.tutor_prompt_builder import (
 
 def test_dialogue_system_prompt_is_english_core():
     text = build_dialogue_system()
-    assert "DeepDiveTutorContract" in text
     assert "You are an expert technical Tutor" in text
     assert "fluent Russian" in text
     assert "technical_explanation" in text
@@ -40,7 +39,7 @@ def test_lecture_dense_rules_not_triplicated():
 
 def test_lecture_chat_uses_tutor_contract_not_structured_lecture():
     text = build_lecture_chat_system()
-    assert "DeepDiveTutorContract" in text
+    assert "RESPONSE CONTRACT (chat reply)" in text
     assert "FIELD-BY-FIELD GENERATION RULES" not in text
 
 
