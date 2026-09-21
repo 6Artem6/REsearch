@@ -65,7 +65,7 @@ from knowledge_engine.src.domains.ingestion.article_ingestion.paragraph_token_sp
     estimate_text_tokens,
     split_annotated_text_by_tokens,
 )
-from knowledge_engine.src.shared.extraction import (
+from knowledge_engine.src.shared.extraction_3_scopes import (
     SCOPE_TAGGING_PROMPT_RULES,
     KnowledgeAtom,
     reattach_source_chunk_ids_from_raw,
@@ -124,7 +124,7 @@ _MAP_SYSTEM = (
     "You MUST fill knowledge_atoms — aim for the TARGET_FACTS count given in "
     "<article_context> (a soft target scaled to this window's size, not a "
     "hard cap; fewer is fine if the window genuinely has less to extract): "
-    "{scope: CONCEPT|MECHANIC|PRACTICE|EDGE_CASE|ANTI_PATTERN, statement, context_quote, cluster_key}.\n"
+    "{scope: PRINCIPLE|MECHANIC|INSTANCE, statement, context_quote, cluster_key}.\n"
     "cluster_key — a short (1-3 word) lowercase entity/topic tag for this atom, "
     "e.g. 'cpylex', 'gil_lock' (used downstream to group near-duplicate atoms "
     "before dedup — pick the specific subject the statement is about, not a "
@@ -154,7 +154,7 @@ _MAP_SYSTEM_CODE = (
     "You MUST fill knowledge_atoms — aim for the TARGET_FACTS count given in "
     "<article_context> (a soft target scaled to this window's size, not a "
     "hard cap; fewer is fine if the window genuinely has less to extract): "
-    "{scope: CONCEPT|MECHANIC|PRACTICE|EDGE_CASE|ANTI_PATTERN, statement, context_quote, cluster_key}.\n"
+    "{scope: PRINCIPLE|MECHANIC|INSTANCE, statement, context_quote, cluster_key}.\n"
     "cluster_key — a short (1-3 word) lowercase entity/topic tag for this atom, "
     "e.g. 'cpylex', 'gil_lock' (used downstream to group near-duplicate atoms "
     "before dedup — pick the specific subject the statement is about, not a "
@@ -175,7 +175,7 @@ _REDUCE_SYSTEM = (
     "Figures are already explained inside window text — do not drop them when compressing.\n"
     f"{SCOPE_TAGGING_PROMPT_RULES}\n"
     "Aggregate knowledge_atoms from all windows, PRESERVING original scope tags "
-    "(Reduce must not rewrite scope tags across the 5-category taxonomy).\n"
+    "(Reduce must not rewrite PRINCIPLE↔INSTANCE).\n"
     "key_takeaways — 3–7 compressed synthesis lines of the form «[SCOPE: …] …» "
     "(not a dump of knowledge_atoms; the full catalog stays in knowledge_atoms).\n"
     "Strictly follow the <critical_reduce_rules> block at the end of the user message.\n"
@@ -196,10 +196,8 @@ _REDUCE_DEDUP_SYSTEM = (
     "that keeps all exact numbers, formulas, model/library names, and parameters.\n"
     "3. When merging duplicate or overlapping atoms, UNION their source_chunk_ids "
     "into one unique list — preserve references to ALL source chunks.\n"
-    "4. Prefer the stronger scope when reconciling the same claim "
-    "(CONCEPT > MECHANIC > ANTI_PATTERN > EDGE_CASE > PRACTICE). Never silently "
-    "drop an ANTI_PATTERN or EDGE_CASE distinction by merging it into a plain "
-    "PRACTICE atom — the warning / boundary framing is the informative part.\n"
+    "4. Prefer the stronger scope when reconciling the same principle "
+    "(PRINCIPLE > MECHANIC > INSTANCE).\n"
     "5. Return full KnowledgeAtom objects (not bare strings).\n"
     "6. context_quote may be the best supporting quote among merges (or empty).\n"
     f"{SCOPE_TAGGING_PROMPT_RULES}\n"
@@ -227,7 +225,7 @@ _REDUCE_SYNTHESIS_SYSTEM = (
     "3. Use window_summary ONLY as structural context to write "
     "executive_summary (1–2 coherent paragraphs) and key_takeaways "
     "(3–7 lines of the form «[SCOPE: …] …»).\n"
-    "4. Keep exact numbers / names from atoms inside PRACTICE takeaways; "
+    "4. Keep exact numbers / names from atoms inside INSTANCE takeaways; "
     "do not promote them to industry-wide standards.\n"
     "5. target_diagrams_for_vlm — always [].\n"
     f"{SCOPE_TAGGING_PROMPT_RULES}\n"
@@ -236,15 +234,15 @@ _REDUCE_SYNTHESIS_SYSTEM = (
 
 _CRITICAL_REDUCE_RULES = (
     "1. Keep exact numbers, units, benchmark and model names inside "
-    "[SCOPE: PRACTICE]; do not present them as industry-wide standards in "
+    "[SCOPE: INSTANCE]; do not present them as industry-wide standards in "
     "executive_summary.\n"
     "2. Deduplicate facts: one canonical claim; merge overlapping windows without "
     "repeats; do not downgrade the winning scope tag "
-    "(CONCEPT > MECHANIC > ANTI_PATTERN > EDGE_CASE > PRACTICE when reconciling the same claim).\n"
+    "(PRINCIPLE > MECHANIC > INSTANCE when reconciling the same principle).\n"
     "3. Architecture and figures belong inside executive_summary, not a separate FIG list.\n"
     "4. key_takeaways: 3–7 compressed synthesis items prefixed with "
-    "[SCOPE: CONCEPT|MECHANIC|PRACTICE|EDGE_CASE|ANTI_PATTERN]; "
-    "experiment numbers / libraries / limits — PRACTICE or EDGE_CASE only. "
+    "[SCOPE: PRINCIPLE|MECHANIC|INSTANCE]; "
+    "experiment numbers / libraries / limits — INSTANCE only. "
     "Do not dump the full knowledge_atoms catalog into takeaways.\n"
     "5. knowledge_atoms is the full fact catalog (separate from key_takeaways).\n"
     "6. target_diagrams_for_vlm — always []."

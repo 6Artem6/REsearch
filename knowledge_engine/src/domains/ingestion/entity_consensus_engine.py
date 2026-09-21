@@ -370,9 +370,7 @@ def consensus_nodes_to_atoms(
                 chunk_ids.append(str(meta["chunk_id"]))
             else:
                 chunk_ids.append(tag)
-        scope = (
-            ScopeType.PRINCIPLE if node.status == "consensus" else ScopeType.INSTANCE
-        )
+        scope = ScopeType.CONCEPT if node.status == "consensus" else ScopeType.PRACTICE
         statement = (node.summary_text or "").strip()
         if len(statement) < 8:
             statement = f"{statement} — {node.entity}".strip()

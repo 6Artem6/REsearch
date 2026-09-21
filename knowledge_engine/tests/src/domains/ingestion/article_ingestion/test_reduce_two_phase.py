@@ -33,14 +33,14 @@ from knowledge_engine.src.shared.extraction import (
 
 
 def test_coerce_scope_type_aliases() -> None:
-    assert coerce_scope_type("principle") == ScopeType.PRINCIPLE
+    assert coerce_scope_type("principle") == ScopeType.CONCEPT
     assert coerce_scope_type("MECHANICS") == ScopeType.MECHANIC
-    assert coerce_scope_type("instance") == ScopeType.INSTANCE
-    assert coerce_scope_type("Evidence") == ScopeType.INSTANCE
-    assert coerce_scope_type("nope") == ScopeType.PRINCIPLE
+    assert coerce_scope_type("instance") == ScopeType.PRACTICE
+    assert coerce_scope_type("Evidence") == ScopeType.PRACTICE
+    assert coerce_scope_type("nope") == ScopeType.CONCEPT
     assert KnowledgeAtom(
         scope="global", statement="Agent isolation is required"
-    ).scope == (ScopeType.PRINCIPLE)
+    ).scope == (ScopeType.CONCEPT)
 
 
 def test_final_response_soft_takeaways() -> None:
@@ -74,7 +74,7 @@ def test_deduplicated_atoms_schema() -> None:
         }
     )
     assert len(out.knowledge_atoms) == 1
-    assert out.knowledge_atoms[0].scope == ScopeType.INSTANCE
+    assert out.knowledge_atoms[0].scope == ScopeType.PRACTICE
 
 
 def test_reduce_prompt_constants_are_module_level() -> None:
@@ -147,12 +147,12 @@ def test_two_phase_pins_atoms_from_phase1(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(ke_config, "CLAIM_DEDUP_MODE", "none")
 
     atom_a = KnowledgeAtom(
-        scope=ScopeType.PRINCIPLE,
+        scope=ScopeType.CONCEPT,
         statement="Governed hooks must run before tool dispatch",
         source_chunk_ids=["paper_map_1"],
     )
     atom_b = KnowledgeAtom(
-        scope=ScopeType.INSTANCE,
+        scope=ScopeType.PRACTICE,
         statement="Latency measured at 8.3 ms on Apple Silicon",
         source_chunk_ids=["paper_map_1"],
     )
@@ -225,7 +225,7 @@ def test_reduce_synth_passes_shrinking_on_schema_retry(
 
     atoms = [
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement=f"Fact number {i}",
             source_chunk_ids=["paper_map_1"],
         )

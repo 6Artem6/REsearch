@@ -32,7 +32,7 @@ def test_map_window_chunk_id_matches_lancedb_convention() -> None:
 
 def test_knowledge_atom_source_chunk_ids_field() -> None:
     atom = KnowledgeAtom(
-        scope=ScopeType.PRINCIPLE,
+        scope=ScopeType.CONCEPT,
         statement="Isolation reduces blast radius across agents",
         source_chunk_ids=["doc_map_1", "doc_map_1", "doc_map_4"],
     )
@@ -56,12 +56,12 @@ def test_normalize_map_knowledge_attaches_chunk_id() -> None:
 
 def test_normalize_knowledge_atoms_merges_source_chunk_ids() -> None:
     a = KnowledgeAtom(
-        scope=ScopeType.PRINCIPLE,
+        scope=ScopeType.CONCEPT,
         statement="Same claim text for merge testing here",
         source_chunk_ids=["chunk_1"],
     )
     b = KnowledgeAtom(
-        scope=ScopeType.PRINCIPLE,
+        scope=ScopeType.CONCEPT,
         statement="Same claim text for merge testing here",
         source_chunk_ids=["chunk_4"],
     )
@@ -73,19 +73,19 @@ def test_normalize_knowledge_atoms_merges_source_chunk_ids() -> None:
 def test_reattach_source_chunk_ids_from_raw_after_dedup_drop() -> None:
     raw = [
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement="Latency is 8.3 ms on M1 silicon",
             source_chunk_ids=["chunk_1"],
         ),
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement="Latency is 8.3 ms on M1 silicon in table 2",
             source_chunk_ids=["chunk_4"],
         ),
     ]
     clean = [
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement="Latency is 8.3 ms on M1 silicon in table 2",
             source_chunk_ids=[],
         )
@@ -105,7 +105,7 @@ def test_format_atoms_json_includes_source_chunk_ids() -> None:
     block = _format_atoms_json_block(
         [
             KnowledgeAtom(
-                scope=ScopeType.PRINCIPLE,
+                scope=ScopeType.CONCEPT,
                 statement="Governed perimeter before execution path",
                 source_chunk_ids=["a_map_1", "a_map_3"],
             )
@@ -183,7 +183,7 @@ def test_upsert_knowledge_atoms_and_window_summary(monkeypatch) -> None:
     url = "https://example.com/persist-atoms"
     atoms = [
         KnowledgeAtom(
-            scope=ScopeType.INSTANCE,
+            scope=ScopeType.PRACTICE,
             statement="Measured end-to-end latency is 8.3 ms on M1",
             source_chunk_ids=["chunk_1", "chunk_4"],
         )
@@ -237,7 +237,7 @@ def test_persist_spatial_lancedb_upserts_atoms() -> None:
         diagram_descriptions=[],
     )
     atom = KnowledgeAtom(
-        scope=ScopeType.PRINCIPLE,
+        scope=ScopeType.CONCEPT,
         statement="Isolation is not a security boundary",
     )
     n = asyncio.run(

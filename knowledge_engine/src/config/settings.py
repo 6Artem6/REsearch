@@ -1669,6 +1669,15 @@ DIALOG_ATOMS_ENABLED: bool = os.getenv("DIALOG_ATOMS_ENABLED", "true").lower() i
     "yes",
     "on",
 )
+# Ingest-time Static Anchor Filtering (Synthetic Anchor = Title+Lead, CE cut
+# before REDUCE) — off by default: dropped-at-ingest atoms are not
+# re-derivable later without a full MAP re-run, unlike retrieval reordering.
+BLOG_SPATIAL_ANCHOR_FILTER_ENABLED: bool = os.getenv(
+    "BLOG_SPATIAL_ANCHOR_FILTER_ENABLED", "false"
+).lower() in ("1", "true", "yes", "on")
+BLOG_SPATIAL_ANCHOR_FILTER_THRESHOLD: float = float(
+    os.getenv("BLOG_SPATIAL_ANCHOR_FILTER_THRESHOLD", "0.35")
+)
 # Selection Explainer: Target Anchor + PRINCIPLE/MECHANIC atoms + causal facts.
 EXPLAIN_ATOMS_ENABLED: bool = os.getenv("EXPLAIN_ATOMS_ENABLED", "true").lower() in (
     "1",
