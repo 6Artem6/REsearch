@@ -16,6 +16,7 @@ export function CurriculumInputBar({
   workspaceBusy,
   genStatus,
   longWaitNotice,
+  genPollNotice,
   busyAction,
   onCreatePath,
   onExpandBranch,
@@ -143,8 +144,14 @@ export function CurriculumInputBar({
           { className: "muted skill-gen-status", role: "status" },
           genStatus,
         ),
-      // Мягкое доп. уведомление после долгого ожидания (см. prompt.log,
-      // "UX-уведомление о длительной обработке") — НЕ заменяет genStatus/
+      genPollNotice &&
+        React.createElement(
+          "p",
+          { className: "muted skill-gen-status skill-gen-poll", role: "status" },
+          genPollNotice,
+        ),
+      // Мягкое доп. уведомление после долгого ожидания:
+      // "UX-уведомление о длительной обработке" — НЕ заменяет genStatus/
       // индикатор прогресса, просто дополняет его отдельной строкой.
       longWaitNotice &&
         React.createElement(

@@ -1,7 +1,7 @@
 const API = "/api/v1";
 const LS_ACTIVE = "ke_skill_tree_active_curriculum";
 
-// RU (см. prompt.log, "Убрать жёсткий таймаут ожидания результатов"): раньше
+// RU ("Убрать жёсткий таймаут ожидания результатов"): раньше
 // это был ОДИН GET /work-jobs/{id}/wait?timeout_sec=600 — при 10-минутном
 // таймауте сервер отвечал timed_out=true, и клиент это трактовал как ошибку
 // ("Worker не завершил задачу"), хотя задача просто ещё выполнялась. Долгие
@@ -19,8 +19,19 @@ const LS_ACTIVE = "ke_skill_tree_active_curriculum";
 const WORK_JOB_POLL_TIMEOUT_SEC = 30;
 const WORK_JOB_LONG_WAIT_SEC = 300; // 5 минут
 
+/** Разовый снимок статуса job (pending / running / completed / failed). */
+export async function fetchWorkJob(jobId) {
+  const r = await fetch(`${API}/work-jobs/${encodeURIComponent(jobId)}`);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+
 export async function waitWorkJob(jobId, opts = {}) {
-  const { onLongWait } = opts;
+  const { onLongWait, onPoll } = opts;
+  const startedAt = Date.now();
   let elapsed = 0;
   let notified = false;
   for (;;) {
@@ -41,6 +52,13 @@ export async function waitWorkJob(jobId, opts = {}) {
     // timed_out (задача ещё running/pending за этот короткий раунд) — не
     // ошибка, просто продолжаем ждать следующим раундом.
     elapsed += typeof data.waited_sec === "number" ? data.waited_sec : WORK_JOB_POLL_TIMEOUT_SEC;
+    // Каждый 30-секундный раунд — живой статус для интерфейса.
+    if (onPoll) {
+      onPoll({
+        status: job.status,
+        elapsedSec: Math.round((Date.now() - startedAt) / 1000),
+      });
+    }
     if (!notified && elapsed >= WORK_JOB_LONG_WAIT_SEC) {
       notified = true;
       if (onLongWait) onLongWait();
@@ -95,6 +113,25 @@ export function rememberActiveCurriculumId(id) {
 
 export function readActiveCurriculumId() {
   return localStorage.getItem(LS_ACTIVE) || "";
+}
+
+const LS_AXIS_PREFIX = "skillTreeControlAxis:";
+
+/** Режим управления, выбранный при генерации курса ("autopilot" | "steering"). */
+export function rememberCurriculumControlAxis(id, axis) {
+  try {
+    if (id && axis) localStorage.setItem(LS_AXIS_PREFIX + id, axis);
+  } catch {
+    /* storage недоступен — режим просто не запомнится */
+  }
+}
+
+export function readCurriculumControlAxis(id) {
+  try {
+    return (id && localStorage.getItem(LS_AXIS_PREFIX + id)) || "";
+  } catch {
+    return "";
+  }
 }
 
 /** Исправляет legacy tutor→user на user→tutor (как на сервере). */
@@ -214,10 +251,25 @@ export function tutorHtmlMatchesContentForMessage(content, contentHtml) {
   return tutorHtmlMatchesContent(content, contentHtml);
 }
 
+// Mirrors backend tutor_dialogue.py::format_thesis_block — keep both in sync.
+function formatThesisBlock(items) {
+  const list = (Array.isArray(items) ? items : [])
+    .map((it) => String(it || "").trim())
+    .filter(Boolean);
+  if (!list.length) return "";
+  return "**Тезисы:**\n" + list.map((it) => `- ${it}`).join("\n");
+}
+
 export function composeTutorDisplayFromApi(res) {
+  // Order matches backend tutor_dialogue.py::compose_tutor_dialogue_message:
+  // evaluator feedback → technical → Тезисы (message_bullet_summary) →
+  // follow-up. Тезисы after the streamed body, before the question, so the
+  // post-stream swap only appends text instead of reflowing already-read
+  // content.
   const parts = [
     res?.tutor_dialogue_feedback,
     res?.tutor_dialogue_technical,
+    formatThesisBlock(res?.tutor_message_bullet_summary),
     res?.tutor_dialogue_follow_up,
   ]
     .map((p) => String(p || "").trim())

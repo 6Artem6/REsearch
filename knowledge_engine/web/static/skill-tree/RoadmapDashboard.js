@@ -14,6 +14,8 @@ import {
   setActiveCurriculum,
   rememberActiveCurriculumId,
   readActiveCurriculumId,
+  rememberCurriculumControlAxis,
+  readCurriculumControlAxis,
   hydrateSessionsFromServer,
   buildMessagesAfterChatComplete,
   sortDialogMessages,
@@ -32,6 +34,7 @@ import {
   steeringApproveGate1,
   steeringApproveGate2,
   waitWorkJob,
+  fetchWorkJob,
   nodeGroundingDiscover,
   nodeGroundingDigest,
   nodeGroundingFinalize,
@@ -50,6 +53,17 @@ function replaceSkillTreeSearchParams(patch) {
   window.history.replaceState(null, "", url.pathname + url.search);
 }
 
+const NODE_JOB_POLL_INTERVAL_MS = 30000;
+
+/** "Статус worker: running · прошло 2 мин 30 с" (+ текущая стадия, если есть). */
+function formatJobPollNotice({ status, elapsedSec }, stage = "") {
+  const mins = Math.floor(elapsedSec / 60);
+  const secs = elapsedSec % 60;
+  const elapsed = mins > 0 ? `${mins} мин ${secs} с` : `${secs} с`;
+  const head = stage ? `${stage} · ` : "";
+  return `${head}Статус worker: ${status} · прошло ${elapsed}`;
+}
+
 export function RoadmapDashboard() {
   const [goal, setGoal] = useState("");
   const [sourcePolicy, setSourcePolicy] = useState("practical_only");
@@ -63,12 +77,14 @@ export function RoadmapDashboard() {
   const [sessions, setSessions] = useState({});
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [genStatus, setGenStatus] = useState("");
-  // RU (prompt.log, "Убрать жёсткий таймаут ожидания..."): waitWorkJob
+  // RU ("Убрать жёсткий таймаут ожидания..."): waitWorkJob
   // больше не падает по истечении 10 минут — ждёт сколько нужно. Этот
   // текст — мягкое дополнительное уведомление (не блокирует genStatus/
   // индикатор), показывается один раз, когда суммарное ожидание одной
   // операции превысило 5 минут (см. onLongWait в api.js::waitWorkJob).
   const [longWaitNotice, setLongWaitNotice] = useState("");
+  /** Живой статус фонового job (опрос бэка раз в 30 с) при генерации графа. */
+  const [genPollNotice, setGenPollNotice] = useState("");
   const LONG_WAIT_MESSAGE =
     "Запрос идёт чуть дольше обычного. Пожалуйста, подождите, идёт глубокий аналитический сбор…";
   /** expand | create — какая кнопка запустила busy */
@@ -108,6 +124,10 @@ export function RoadmapDashboard() {
     );
   }
 
+  useEffect(() => {
+    if (genBusyAction === null) setGenPollNotice("");
+  }, [genBusyAction]);
+
   function persistColWidths() {
     localStorage.setItem("skillTreeColLeft", String(leftColRef.current));
     localStorage.setItem("skillTreeColRight", String(rightColRef.current));
@@ -129,6 +149,10 @@ export function RoadmapDashboard() {
       setSelectedMaterialId(null);
       await setActiveCurriculum(curriculumId);
       rememberActiveCurriculumId(curriculumId);
+      // Режим, с которым курс был создан, становится дефолтом переключателя;
+      // пользователь может сменить его для следующей открываемой ноды.
+      const savedAxis = readCurriculumControlAxis(curriculumId);
+      if (savedAxis) setControlAxis(savedAxis);
       setSourcePolicy("practical_only");
       replaceSkillTreeSearchParams({ curriculum: curriculumId });
       const list = await fetchCurriculaList();
@@ -215,6 +239,7 @@ export function RoadmapDashboard() {
         setGenStatus("Штурвал: ожидаем завершения Map-Reduce…");
         const job = await waitWorkJob(genJobId, {
           onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+          onPoll: (info) => setGenPollNotice(formatJobPollNotice(info)),
         });
         if (job?.result?.curriculum_id) {
           await loadWorkspace(job.result.curriculum_id);
@@ -325,8 +350,10 @@ export function RoadmapDashboard() {
     try {
       const graph = await createCurriculum(text, sourcePolicy, {
         onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+          onPoll: (info) => setGenPollNotice(formatJobPollNotice(info)),
       });
       setGoal(text);
+      rememberCurriculumControlAxis(graph.curriculum_id, "autopilot");
       await loadWorkspace(graph.curriculum_id);
     } catch (err) {
       setError(String(err.message || err));
@@ -387,10 +414,12 @@ export function RoadmapDashboard() {
         setGenStatus("Штурвал (по нодам): ожидаем worker…");
         const job = await waitWorkJob(res.work_job_id, {
           onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+          onPoll: (info) => setGenPollNotice(formatJobPollNotice(info)),
         });
         graph = job.result;
       }
       if (graph?.curriculum_id) {
+        rememberCurriculumControlAxis(graph.curriculum_id, "steering");
         await loadWorkspace(graph.curriculum_id);
       } else {
         setError("Штурвал: граф сгенерирован, но curriculum_id не найден.");
@@ -517,6 +546,7 @@ export function RoadmapDashboard() {
         setGenStatus("Штурвал: тяжёлый Map-Reduce по утверждённым источникам…");
         const job = await waitWorkJob(res.generation_job_id, {
           onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+          onPoll: (info) => setGenPollNotice(formatJobPollNotice(info)),
         });
         if (job?.result?.curriculum_id) {
           await loadWorkspace(job.result.curriculum_id);
@@ -567,7 +597,10 @@ export function RoadmapDashboard() {
         curriculum.curriculum_id,
         text,
         sourcePolicy,
-        { onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE) },
+        {
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+          onPoll: (info) => setGenPollNotice(formatJobPollNotice(info)),
+        },
       );
       setGoal("");
       setLayoutEpoch((n) => n + 1);
@@ -724,13 +757,17 @@ export function RoadmapDashboard() {
         return;
       }
 
-      // Node Grounding Gate: перехватываем ТОЛЬКО ещё не прогруженные
-      // DEEP-ноды — safety-гейт против неконтролируемого SOTA-override
+      // Node Grounding Gate: ручной выбор источников — только в режиме
+      // Штурвал (текущий переключатель). В Автопилоте нода ищет источники
+      // сама (lazy grounding в nodeInitStream). Перехватываем ТОЛЬКО ещё не
+      // прогруженные DEEP-ноды — safety-гейт против неконтролируемого SOTA-override
       // харвеста (см. docs/STEERING_AND_TOPIC_QNA_ROADMAP.md, Node
       // Grounding Gate). BASE-ноды и уже grounded DEEP-ноды идут прежним
       // путём без единого лишнего запроса.
       const needsNodeGate =
-        node.node_risk_kind === "DEEP" && node.grounding_status !== "grounded";
+        controlAxis === "steering" &&
+        node.node_risk_kind === "DEEP" &&
+        node.grounding_status !== "grounded";
       if (needsNodeGate) {
         setTutorBusyNodeId(sid);
         setError("");
@@ -778,16 +815,40 @@ export function RoadmapDashboard() {
         /* fail-open — идём в nodeInitStream с тем контентом, что есть */
       }
       setTutorStageMessage("");
+      let pollTimer = null;
       try {
         // nodeInitStream (не nodeInit) — та же SSE-инфраструктура, что чат
         // (job_stream.py relay), даёт FSM stage-события (см. schemas/fsm.py)
         // на "подготовку ноды", а не только на ответ тьютора.
         let finalRes = null;
+        let baseStage = "";
+        const initStartedAt = Date.now();
+        // Опрос бэка раз в 30 с (как waitWorkJob при генерации графа): job_id
+        // приходит первым SSE-событием, статус тянем из /work-jobs/{id}.
         await nodeInitStream(
           curriculum.curriculum_id,
           toNodeDataInput(node),
           (evt) => {
+            if (evt.type === "job" && evt.job_id && !pollTimer) {
+              pollTimer = setInterval(async () => {
+                try {
+                  const j = await fetchWorkJob(evt.job_id);
+                  setTutorStageMessage(
+                    formatJobPollNotice(
+                      {
+                        status: j.status,
+                        elapsedSec: Math.round((Date.now() - initStartedAt) / 1000),
+                      },
+                      baseStage,
+                    ),
+                  );
+                } catch {
+                  /* сбой опроса не должен ронять init-stream */
+                }
+              }, NODE_JOB_POLL_INTERVAL_MS);
+            }
             if (evt.type === "stage" && evt.message) {
+              baseStage = evt.message;
               setTutorStageMessage(evt.message);
             }
             if (evt.type === "complete" && evt.result) {
@@ -808,6 +869,7 @@ export function RoadmapDashboard() {
       } catch (err) {
         setError(String(err.message || err));
       } finally {
+        if (pollTimer) clearInterval(pollTimer);
         setTutorBusyNodeId(null);
       }
     },
@@ -817,6 +879,7 @@ export function RoadmapDashboard() {
       tutorBusyNodeId,
       applyNodeResponse,
       refreshCurriculumGraph,
+      controlAxis,
     ],
   );
 
@@ -1067,7 +1130,10 @@ export function RoadmapDashboard() {
       const res = await nodeRestart(
         curriculum.curriculum_id,
         toNodeDataInput(selectedNode),
-        { onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE) },
+        {
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+          onPoll: (info) => setTutorStageMessage(formatJobPollNotice(info)),
+        },
       );
       applyNodeResponse(nid, res);
       const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
@@ -1191,6 +1257,7 @@ export function RoadmapDashboard() {
         workspaceBusy,
         genStatus,
         longWaitNotice,
+        genPollNotice,
         busyAction: genBusyAction,
         onCreatePath: runCreatePath,
         onExpandBranch: runExpandBranch,

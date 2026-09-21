@@ -38010,6 +38010,7 @@ function CurriculumInputBar({
   workspaceBusy,
   genStatus,
   longWaitNotice,
+  genPollNotice,
   busyAction,
   onCreatePath,
   onExpandBranch,
@@ -38125,8 +38126,13 @@ function CurriculumInputBar({
         { className: "muted skill-gen-status", role: "status" },
         genStatus
       ),
-      // Мягкое доп. уведомление после долгого ожидания (см. prompt.log,
-      // "UX-уведомление о длительной обработке") — НЕ заменяет genStatus/
+      genPollNotice && import_react9.default.createElement(
+        "p",
+        { className: "muted skill-gen-status skill-gen-poll", role: "status" },
+        genPollNotice
+      ),
+      // Мягкое доп. уведомление после долгого ожидания:
+      // "UX-уведомление о длительной обработке" — НЕ заменяет genStatus/
       // индикатор прогресса, просто дополняет его отдельной строкой.
       longWaitNotice && import_react9.default.createElement(
         "p",
@@ -39222,8 +39228,17 @@ var API = "/api/v1";
 var LS_ACTIVE = "ke_skill_tree_active_curriculum";
 var WORK_JOB_POLL_TIMEOUT_SEC = 30;
 var WORK_JOB_LONG_WAIT_SEC = 300;
+async function fetchWorkJob(jobId) {
+  const r = await fetch(`${API}/work-jobs/${encodeURIComponent(jobId)}`);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
 async function waitWorkJob(jobId, opts = {}) {
-  const { onLongWait } = opts;
+  const { onLongWait, onPoll } = opts;
+  const startedAt = Date.now();
   let elapsed = 0;
   let notified = false;
   for (; ; ) {
@@ -39242,6 +39257,12 @@ async function waitWorkJob(jobId, opts = {}) {
       return job;
     }
     elapsed += typeof data.waited_sec === "number" ? data.waited_sec : WORK_JOB_POLL_TIMEOUT_SEC;
+    if (onPoll) {
+      onPoll({
+        status: job.status,
+        elapsedSec: Math.round((Date.now() - startedAt) / 1e3)
+      });
+    }
     if (!notified && elapsed >= WORK_JOB_LONG_WAIT_SEC) {
       notified = true;
       if (onLongWait) onLongWait();
@@ -39289,6 +39310,20 @@ function rememberActiveCurriculumId(id2) {
 }
 function readActiveCurriculumId() {
   return localStorage.getItem(LS_ACTIVE) || "";
+}
+var LS_AXIS_PREFIX = "skillTreeControlAxis:";
+function rememberCurriculumControlAxis(id2, axis) {
+  try {
+    if (id2 && axis) localStorage.setItem(LS_AXIS_PREFIX + id2, axis);
+  } catch {
+  }
+}
+function readCurriculumControlAxis(id2) {
+  try {
+    return id2 && localStorage.getItem(LS_AXIS_PREFIX + id2) || "";
+  } catch {
+    return "";
+  }
 }
 function historyItemHtml(item) {
   const raw = String(item.content_html || item.contentHtml || "").trim();
@@ -39377,10 +39412,16 @@ function tutorHtmlMatchesContent(content, html) {
 function tutorHtmlMatchesContentForMessage(content, contentHtml) {
   return tutorHtmlMatchesContent(content, contentHtml);
 }
+function formatThesisBlock(items) {
+  const list = (Array.isArray(items) ? items : []).map((it) => String(it || "").trim()).filter(Boolean);
+  if (!list.length) return "";
+  return "**\u0422\u0435\u0437\u0438\u0441\u044B:**\n" + list.map((it) => `- ${it}`).join("\n");
+}
 function composeTutorDisplayFromApi(res) {
   const parts = [
     res?.tutor_dialogue_feedback,
     res?.tutor_dialogue_technical,
+    formatThesisBlock(res?.tutor_message_bullet_summary),
     res?.tutor_dialogue_follow_up
   ].map((p) => String(p || "").trim()).filter(Boolean);
   if (parts.length) return parts.join("\n\n");
@@ -43158,6 +43199,14 @@ function replaceSkillTreeSearchParams(patch) {
   }
   window.history.replaceState(null, "", url.pathname + url.search);
 }
+var NODE_JOB_POLL_INTERVAL_MS = 3e4;
+function formatJobPollNotice({ status, elapsedSec }, stage = "") {
+  const mins = Math.floor(elapsedSec / 60);
+  const secs = elapsedSec % 60;
+  const elapsed = mins > 0 ? `${mins} \u043C\u0438\u043D ${secs} \u0441` : `${secs} \u0441`;
+  const head = stage ? `${stage} \xB7 ` : "";
+  return `${head}\u0421\u0442\u0430\u0442\u0443\u0441 worker: ${status} \xB7 \u043F\u0440\u043E\u0448\u043B\u043E ${elapsed}`;
+}
 function RoadmapDashboard() {
   const [goal, setGoal] = (0, import_react25.useState)("");
   const [sourcePolicy, setSourcePolicy] = (0, import_react25.useState)("practical_only");
@@ -43172,6 +43221,7 @@ function RoadmapDashboard() {
   const [workspaceBusy, setWorkspaceBusy] = (0, import_react25.useState)(false);
   const [genStatus, setGenStatus] = (0, import_react25.useState)("");
   const [longWaitNotice, setLongWaitNotice] = (0, import_react25.useState)("");
+  const [genPollNotice, setGenPollNotice] = (0, import_react25.useState)("");
   const LONG_WAIT_MESSAGE = "\u0417\u0430\u043F\u0440\u043E\u0441 \u0438\u0434\u0451\u0442 \u0447\u0443\u0442\u044C \u0434\u043E\u043B\u044C\u0448\u0435 \u043E\u0431\u044B\u0447\u043D\u043E\u0433\u043E. \u041F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430, \u043F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435, \u0438\u0434\u0451\u0442 \u0433\u043B\u0443\u0431\u043E\u043A\u0438\u0439 \u0430\u043D\u0430\u043B\u0438\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u0441\u0431\u043E\u0440\u2026";
   const [genBusyAction, setGenBusyAction] = (0, import_react25.useState)(null);
   const [tutorBusyNodeId, setTutorBusyNodeId] = (0, import_react25.useState)(null);
@@ -43203,6 +43253,9 @@ function RoadmapDashboard() {
       window.innerWidth - oppositeWidth - minCanvasWidth - dividerWidth
     );
   }
+  (0, import_react25.useEffect)(() => {
+    if (genBusyAction === null) setGenPollNotice("");
+  }, [genBusyAction]);
   function persistColWidths() {
     localStorage.setItem("skillTreeColLeft", String(leftColRef.current));
     localStorage.setItem("skillTreeColRight", String(rightColRef.current));
@@ -43223,6 +43276,8 @@ function RoadmapDashboard() {
       setSelectedMaterialId(null);
       await setActiveCurriculum(curriculumId);
       rememberActiveCurriculumId(curriculumId);
+      const savedAxis = readCurriculumControlAxis(curriculumId);
+      if (savedAxis) setControlAxis(savedAxis);
       setSourcePolicy("practical_only");
       replaceSkillTreeSearchParams({ curriculum: curriculumId });
       const list = await fetchCurriculaList();
@@ -43295,7 +43350,8 @@ function RoadmapDashboard() {
         setGenBusyAction("create");
         setGenStatus("\u0428\u0442\u0443\u0440\u0432\u0430\u043B: \u043E\u0436\u0438\u0434\u0430\u0435\u043C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F Map-Reduce\u2026");
         const job = await waitWorkJob(genJobId, {
-          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE)
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+          onPoll: (info) => setGenPollNotice(formatJobPollNotice(info))
         });
         if (job?.result?.curriculum_id) {
           await loadWorkspace(job.result.curriculum_id);
@@ -43396,9 +43452,11 @@ function RoadmapDashboard() {
     }, 12e3);
     try {
       const graph = await createCurriculum(text, sourcePolicy, {
-        onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE)
+        onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+        onPoll: (info) => setGenPollNotice(formatJobPollNotice(info))
       });
       setGoal(text);
+      rememberCurriculumControlAxis(graph.curriculum_id, "autopilot");
       await loadWorkspace(graph.curriculum_id);
     } catch (err) {
       setError(String(err.message || err));
@@ -43439,11 +43497,13 @@ function RoadmapDashboard() {
       if (!graph) {
         setGenStatus("\u0428\u0442\u0443\u0440\u0432\u0430\u043B (\u043F\u043E \u043D\u043E\u0434\u0430\u043C): \u043E\u0436\u0438\u0434\u0430\u0435\u043C worker\u2026");
         const job = await waitWorkJob(res.work_job_id, {
-          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE)
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+          onPoll: (info) => setGenPollNotice(formatJobPollNotice(info))
         });
         graph = job.result;
       }
       if (graph?.curriculum_id) {
+        rememberCurriculumControlAxis(graph.curriculum_id, "steering");
         await loadWorkspace(graph.curriculum_id);
       } else {
         setError("\u0428\u0442\u0443\u0440\u0432\u0430\u043B: \u0433\u0440\u0430\u0444 \u0441\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u043D, \u043D\u043E curriculum_id \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D.");
@@ -43548,7 +43608,8 @@ function RoadmapDashboard() {
         setGenBusyAction("create");
         setGenStatus("\u0428\u0442\u0443\u0440\u0432\u0430\u043B: \u0442\u044F\u0436\u0451\u043B\u044B\u0439 Map-Reduce \u043F\u043E \u0443\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D\u043D\u044B\u043C \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0430\u043C\u2026");
         const job = await waitWorkJob(res.generation_job_id, {
-          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE)
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+          onPoll: (info) => setGenPollNotice(formatJobPollNotice(info))
         });
         if (job?.result?.curriculum_id) {
           await loadWorkspace(job.result.curriculum_id);
@@ -43592,7 +43653,10 @@ function RoadmapDashboard() {
         curriculum.curriculum_id,
         text,
         sourcePolicy,
-        { onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE) }
+        {
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+          onPoll: (info) => setGenPollNotice(formatJobPollNotice(info))
+        }
       );
       setGoal("");
       setLayoutEpoch((n) => n + 1);
@@ -43715,7 +43779,7 @@ function RoadmapDashboard() {
       if (existingGateStatus === "awaiting_gate_1" || existingGateStatus === "awaiting_gate_2") {
         return;
       }
-      const needsNodeGate = node.node_risk_kind === "DEEP" && node.grounding_status !== "grounded";
+      const needsNodeGate = controlAxis === "steering" && node.node_risk_kind === "DEEP" && node.grounding_status !== "grounded";
       if (needsNodeGate) {
         setTutorBusyNodeId(sid);
         setError("");
@@ -43753,13 +43817,34 @@ function RoadmapDashboard() {
       } catch {
       }
       setTutorStageMessage("");
+      let pollTimer = null;
       try {
         let finalRes = null;
+        let baseStage = "";
+        const initStartedAt = Date.now();
         await nodeInitStream(
           curriculum.curriculum_id,
           toNodeDataInput(node),
           (evt) => {
+            if (evt.type === "job" && evt.job_id && !pollTimer) {
+              pollTimer = setInterval(async () => {
+                try {
+                  const j = await fetchWorkJob(evt.job_id);
+                  setTutorStageMessage(
+                    formatJobPollNotice(
+                      {
+                        status: j.status,
+                        elapsedSec: Math.round((Date.now() - initStartedAt) / 1e3)
+                      },
+                      baseStage
+                    )
+                  );
+                } catch {
+                }
+              }, NODE_JOB_POLL_INTERVAL_MS);
+            }
             if (evt.type === "stage" && evt.message) {
+              baseStage = evt.message;
               setTutorStageMessage(evt.message);
             }
             if (evt.type === "complete" && evt.result) {
@@ -43780,6 +43865,7 @@ function RoadmapDashboard() {
       } catch (err) {
         setError(String(err.message || err));
       } finally {
+        if (pollTimer) clearInterval(pollTimer);
         setTutorBusyNodeId(null);
       }
     },
@@ -43788,7 +43874,8 @@ function RoadmapDashboard() {
       sessions,
       tutorBusyNodeId,
       applyNodeResponse,
-      refreshCurriculumGraph
+      refreshCurriculumGraph,
+      controlAxis
     ]
   );
   async function handleNodeGateApprove(selectedUrls) {
@@ -44010,7 +44097,10 @@ function RoadmapDashboard() {
       const res = await nodeRestart(
         curriculum.curriculum_id,
         toNodeDataInput(selectedNode),
-        { onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE) }
+        {
+          onLongWait: () => setLongWaitNotice(LONG_WAIT_MESSAGE),
+          onPoll: (info) => setTutorStageMessage(formatJobPollNotice(info))
+        }
       );
       applyNodeResponse(nid, res);
       const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
@@ -44124,6 +44214,7 @@ function RoadmapDashboard() {
         workspaceBusy,
         genStatus,
         longWaitNotice,
+        genPollNotice,
         busyAction: genBusyAction,
         onCreatePath: runCreatePath,
         onExpandBranch: runExpandBranch,
