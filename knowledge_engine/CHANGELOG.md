@@ -2,6 +2,57 @@
 
 Документ фиксирует значимые изменения в коде и архитектуре. Спецификация MVP: `../init.md` в корне `REsearch`.
 
+## Изменения после v0.8 snapshot (по истории git, 2026-07-27 → 2026-09-13)
+
+Записи собраны по сообщениям коммитов, от новых к старым. Уровень детализации — тема коммита, не построчный diff.
+
+### 2026-09-13 — Clean/DDA layout, Control Axis, Topic Q&A
+
+- **Архитектура** (`8ee0f24`, `975d369`): физический переезд плоской структуры в `src/{app,config,core,adapters,domains,shared,entrypoints,legacy}` с зеркальным деревом в `tests/`. Логика не менялась, удалён мёртвый код (`infra/ollama_runtime.py`); импорты переуказаны на новый layout.
+- **Steering** (`460a610`): Control Axis (Штурвал) рядом с Autopilot — Mode 1 (`per_node`, дефолт) и Mode 2 (`standalone_digest`: Taxonomy/Discovery → Gate 1 → BatchDigest → Gate 2 → Map-Reduce → одна глубокая нода). Node Grounding Gate (`src/shared/node_grounding/`): пер-нодовое одобрение источников (Habr RSS, Exa, academic; coarse-filter → Cross-Encoder → Gemma digest) и фронтенд (SteeringStudio, SteeringGatePanel, TopicFocusView).
+- **Topic Q&A** (`460a610`): исправлен цикл самопроверки. Ограничение вынесено из текста промпта в схему: `TopicQnaTutorContract` и `TopicQnaExplainContract` не содержат поля вопроса. Исправлена диспетчеризация стрима в `gemini_json_stream.py`.
+- **Docs** (`300f47a`): обновлены под DDA layout, Control Axis и Topic Q&A.
+
+### 2026-09-04 — Postgres/pgvector, Qdrant, pre-MAP dedup, FSM
+
+- **Хранилище** (`d86b1b1`, `fe05993`, `f19ce86`): Postgres/pgvector, миграции Alembic, `PostgresVectorRepository` с фабрикой бэкенда, бэкенд Qdrant (путь миграции с LanceDB).
+- **Dedup** (`0b1a1f9`): модуль pre-MAP dedup (Flash Lite triage + code dedup).
+- **FSM** (`deced6b`, `7be9c9f`): FSM SSE-стриминг, подключение стадий LangGraph, промпт и поведение тьютора; баннер стадии FSM в UI, доработка ремонта цитат.
+- **Curriculum** (`0d8f8dd`): переработан пайплайн поиска и ingest, source pool, ETL статей.
+- **Инфраструктура LLM** (`5db0f04`): облачный кэш, context-compressor, устойчивость Redis.
+- **Docs** (`fd94c12`, `77d31e8`): обновление под Postgres/Qdrant/dedup/FSM; удалён устаревший design-док `step_2.md`.
+
+### 2026-08-23 — Drill, vector intent, ingest, consensus batching
+
+- **Тьютор** (`c74af26`): контракты drill, overlay глубокого анализа, маршрутизация векторных интентов. UI: раздельные панели прогресса skill-tree (`d38175c`).
+- **Ingest** (`605c12a`, `ff84c10`, `1bd3ae7`): GitHub Trees loader и tiered AST prune перед MAP; режим `extract_mode` на Pass 2 credibility; кэш Gemini `cached_content` для REDUCE (за флагом).
+- **Consensus** (`bf1ebf4`): упаковка до 10 фактов на батч в 3072 токена, параллельный запуск.
+- **Поиск** (`d7d1810`): батч-классификация доменов Exa, расширение деревьев официальных источников.
+- **RAG/инфра** (`ca8cdc4`, `e9dd430`): хиты curriculum сохраняются в каноническом пространстве BGE-M3; общий runtime LanceDB/HF.
+- **Прочее** (`c216545`, `1a56ed4`): Redis job streams, валидация Mermaid; документы для агентов, игнор локальных артефактов ingest.
+
+### 2026-08-14 — Документация и лицензия
+
+- README продукта, индекс docs, гайд по academic/Consensus (`65f9ab8`); лицензия CC BY-NC 4.0 (`636531d`).
+
+### 2026-08-11 — Академический поиск, Exa, Gemma map-reduce, Redis worker
+
+- **Поиск** (`c0614f9`, `648158d`, `b5afcc9`, `1756664`, `2eb185f`, `eace97a`, `9f918b8`): клиент Exa и transform-пайплайны; `ArxivClient` с cross-process flock; прямой клиент Consensus и session manager; hydration статей arXiv; hybrid academic rerank и relaxation cascade; precision-поиск arXiv; trust scoring OpenAlex по DOI/arXiv.
+- **Ingest** (`07711ba`): Gemma map-reduce ingest и парсеры диаграмм статей.
+- **Тьютор** (`44fc29c`): апгрейд оркестратора node deep dive и схем промптов.
+- **Инфраструктура** (`5aafa72`, `306d804`, `867b726`): Redis task worker, рантайм Gemini/Gemma, офлайн-токенайзеры; FastAPI-роуты, узлы графа, процессоры тьютора, web UI; коннекторы поиска, quota policy, RAG gateway.
+- **Контракты и конфиг** (`2000682`, `5b11b9f`): реестр LLM-контрактов, DTO запросов; env-конфиги и синхронизация каталога.
+- **Тесты, скрипты, docs** (`e7a4f66`, `2a966da`, `6828a19`, `7013cc5`): интеграционные тесты (RAG, Gemma, тьютор), unit-тесты arXiv/OpenAlex/rerank, ops/QA-скрипты, обновление runbook и RAG-докумов.
+
+### 2026-07-27 … 2026-07-31 — Skill Tree и тьютор
+
+- Initial commit: Knowledge Engine v0.8 с lint-инструментами (`00f9188`, 2026-07-27).
+- Skill tree с обучающим тьютором (`11330d7`, 2026-07-29).
+- Сокращение Lite-вызовов в curriculum source pipeline, этапы P0+P1 (`a4f7361`, 2026-07-29).
+- Улучшение curriculum и диалога тьютора, оптимизации (`f53630d`, 2026-07-31).
+
+---
+
 ## Статус (2026-07-26)
 
 **Версия:** **0.8 Consensus** (снимок зафиксирован) — `knowledge_engine/src/` + Web UI `/app`. Legacy API graphs: **0.4–0.7**.
