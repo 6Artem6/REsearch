@@ -495,11 +495,11 @@ def _next_action_and_pathway_for_mode(
         )
         part2 = (
             "PART 2 = exactly ONE closing technical question exclusively in "
-            "checkpoint_prompt. "
+            "follow_up_question. "
         )
         if gap_open:
             part2 += (
-                "checkpoint_prompt MUST test last_evaluator_focus_hint and "
+                "follow_up_question MUST test last_evaluator_focus_hint and "
                 f"probe_layer{f'={probe_layer}' if probe_layer else ''} "
                 "STRICTLY. FORBIDDEN: blind RE-STATE of [OPEN_NODE_QUESTION] "
                 "if that question belongs to an already-passed layer. "
@@ -579,6 +579,9 @@ def _next_action_and_pathway_for_mode(
             layer = directive.split(":", 1)[-1].strip().upper() or "WHY"
             return (
                 f"THRESHOLD {directive}: stay on the SAME sub_concept; "
+                f"technical_explanation MUST re-explain the mechanic of layer "
+                f"{layer} itself (not a restatement of correction_breakdown) — "
+                "this is the material follow_up_question will then probe. "
                 f"follow_up_question MUST probe ONLY layer {layer} "
                 "(do not demand deeper layers). "
                 "feedback_kind MUST be NEEDS_CORRECTION (Host already marked "
@@ -592,6 +595,9 @@ def _next_action_and_pathway_for_mode(
             hint = (row.focus_hint or "").strip()
             return (
                 "PARTIAL/GAP on current sub-topic: do NOT switch to a new sub_concept. "
+                "technical_explanation MUST re-explain the mechanic behind this gap"
+                + (f" («{hint[:200]}»)" if hint else "")
+                + " — do not leave it empty or repeat only correction_breakdown. "
                 "feedback_kind MUST be NEEDS_CORRECTION; Host prepends the "
                 "credited/missing plaque from focus_hint"
                 + (f": «{hint[:200]}»" if hint else "")

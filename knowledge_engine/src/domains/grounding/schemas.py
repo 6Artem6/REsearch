@@ -24,13 +24,14 @@ from knowledge_engine.src.domains.grounding.memory_schemas import (
 from knowledge_engine.src.domains.grounding.tutor_field_limits import (
     PROMPT_FOLLOW_UP_MAX_CHARS,
     SCHEMA_BRIDGE_TO_NEXT_MAX,
-    SCHEMA_CHECKPOINT_PROMPT_MAX,
+    SCHEMA_BULLET_SUMMARY_MAX_ITEMS,
     SCHEMA_FEEDBACK_ON_ANSWER_MAX,
     SCHEMA_FOLLOW_UP_QUESTION_MAX,
     SCHEMA_LECTURE_BODY_MAX,
     SCHEMA_SUMMARY_MAX,
     SCHEMA_TECHNICAL_EXPLANATION_MAX,
     SCHEMA_TUTOR_MESSAGE_MAX,
+    truncate_bullet_summary,
 )
 
 UserAction = Literal["init", "chat", "verify"]
@@ -336,6 +337,16 @@ class NodeDeepDiveResponse(BaseModel):
             f"target ≤{PROMPT_FOLLOW_UP_MAX_CHARS} chars"
         ),
     )
+    tutor_message_bullet_summary: list[str] = Field(
+        default_factory=list,
+        max_length=SCHEMA_BULLET_SUMMARY_MAX_ITEMS,
+        description=(
+            "Semantic field mirroring message_bullet_summary, for UI "
+            "assembly (Тезисы: block in tutor_message/tutor_message_html)."
+        ),
+        # RU: семантическое поле message_bullet_summary — для склейки на
+        # фронте блока «Тезисы:» в tutor_message/tutor_message_html.
+    )
     quick_replies: list[str] = Field(
         default_factory=list,
         max_length=4,
@@ -405,7 +416,7 @@ class DenseMaterialOutput(BaseModel):
     references: list[RichReferenceItem] = Field(default_factory=list, max_length=6)
     code_snippets: list[str] = Field(default_factory=list, max_length=4)
     bridge_to_next: str = Field(default="", max_length=SCHEMA_BRIDGE_TO_NEXT_MAX)
-    checkpoint_prompt: str = Field(default="", max_length=SCHEMA_CHECKPOINT_PROMPT_MAX)
+    follow_up_question: str = Field(default="", max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX)
     extracted_concepts: list[LectureExtractedConcept] = Field(
         default_factory=list,
         max_length=5,
@@ -416,6 +427,23 @@ class DenseMaterialOutput(BaseModel):
         max_length=24,
         description="Термины, впервые расшифрованные в этой лекции",
     )
+    message_bullet_summary: list[str] = Field(
+        default_factory=list,
+        max_length=SCHEMA_BULLET_SUMMARY_MAX_ITEMS,
+        description=(
+            "Carried over from StructuredLectureResponse/TopicQnaLectureResponse "
+            "for display in the lecture chat message (after the body, "
+            "before follow_up_question) — see structured_lecture_to_dense "
+            "/ _compose_dense_chat_message."
+        ),
+        # RU: проброс message_bullet_summary из сырого контракта лекции —
+        # отображается после тела лекции, перед вопросом самопроверки.
+    )
+
+    @field_validator("message_bullet_summary", mode="before")
+    @classmethod
+    def _clip_message_bullet_summary(cls, v: list[str]) -> list[str]:
+        return truncate_bullet_summary(v)
 
 
 class DeepDiveLLMOutput(BaseModel):
@@ -447,6 +475,23 @@ class DeepDiveLLMOutput(BaseModel):
     ready_for_transition: bool = False
     suggested_next_step: str | None = None
     quick_replies: list[str] = Field(default_factory=list, max_length=4)
+    message_bullet_summary: list[str] = Field(
+        default_factory=list,
+        max_length=SCHEMA_BULLET_SUMMARY_MAX_ITEMS,
+        description=(
+            "Carried over from the raw tutor contract (tutor.py) for display "
+            "in tutor_message, after technical_explanation and before "
+            "follow_up_question — see resolve_tutor_display_message / "
+            "compose_tutor_dialogue_message."
+        ),
+        # RU: проброс message_bullet_summary из сырого контракта тьютора —
+        # отображается после technical_explanation, перед follow_up_question.
+    )
+
+    @field_validator("message_bullet_summary", mode="before")
+    @classmethod
+    def _clip_message_bullet_summary(cls, v: list[str]) -> list[str]:
+        return truncate_bullet_summary(v)
 
     def compose_tutor_message(self) -> str:
         from knowledge_engine.src.domains.grounding.tutor_dialogue import (
@@ -454,3 +499,33 @@ class DeepDiveLLMOutput(BaseModel):
         )
 
         return compose_tutor_dialogue_from_output(self)
+
+
+DepthLevel = Literal["intro", "deep_dive", "practice", "advanced", "expert"]
+""" RU: intro = зачем (WHY), deep_dive = как устроено (HOW),
+practice = детали/edge-cases (MECH), advanced = Star Task ADVANCED_ASTERISK
+(Bloom L4, targeted weakness), expert = Star Task DEEP_ASTERISK (L5/L6,
+clean-core deep design) — см. pedagogical_reranker.py::depth_level_from_overlay_type. """
+
+
+class RetrievalPedagogicalContext(BaseModel):
+    """Pedagogical-Aware RAG Reranking context (add-only, off by default —
+    see pedagogical_reranker.py::apply_pedagogical_weights).
+
+    The caller (e.g. a LangGraph node) is responsible for accumulating
+    ``recently_used_atom_ids`` / ``recently_used_article_ids`` across a
+    dialog session — this schema does not itself read/write SessionMemory
+    or ``concept_map_state``.
+    """
+
+    current_subtopic_id: str | None = None
+    depth_level: DepthLevel = "intro"
+    recently_used_atom_ids: set[str] = Field(default_factory=set)
+    recently_used_article_ids: set[str] = Field(default_factory=set)
+    # Mastery-Guided Concept Affinity (add-only, gated by
+    # DIALOG_ATOMS_CONCEPT_AFFINITY_ENABLED) — see
+    # pedagogical_reranker.py::calculate_concept_affinity_weight /
+    # calculate_multiperspective_shift_weight.
+    repulsion_claims: list[str] = Field(default_factory=list, max_length=32)
+    attraction_claims: list[str] = Field(default_factory=list, max_length=32)
+    response_depth_signal: Literal["low", "high"] | None = None

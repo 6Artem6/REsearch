@@ -305,7 +305,9 @@ def derive_node_status(
     return "in_progress"
 
 
-def append_to_active_window(memory: SessionMemory, role: str, content: str) -> None:
+def append_to_active_window(
+    memory: SessionMemory, role: str, content: str, sub_concept_id: str = ""
+) -> None:
     text = (content or "").strip()
     if not text:
         return
@@ -316,7 +318,7 @@ def append_to_active_window(memory: SessionMemory, role: str, content: str) -> N
     )
 
     msg_id = next_msg_id(memory)
-    memory.active_window.append(dialog_message(r, text, msg_id))
+    memory.active_window.append(dialog_message(r, text, msg_id, sub_concept_id))
     memory.dialog_seq = msg_id
 
 

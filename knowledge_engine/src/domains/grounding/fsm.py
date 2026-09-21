@@ -1,4 +1,4 @@
-"""FSM stage-progress событий графа тьютора (см. prompt.txt: "Интеграция
+"""FSM stage-progress событий графа тьютора ("Интеграция
 FSM-статусов LangGraph c SSE-стримингом").
 
 Стримятся через ТОТ ЖЕ SSE-канал, что уже несёт token/complete/error

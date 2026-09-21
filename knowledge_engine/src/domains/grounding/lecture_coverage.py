@@ -210,7 +210,7 @@ def build_coverage_dense_output(
         references=[],
         code_snippets=[],
         bridge_to_next="",
-        checkpoint_prompt="",
+        follow_up_question="",
     )
 
 

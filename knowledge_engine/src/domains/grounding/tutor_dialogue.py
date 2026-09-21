@@ -14,17 +14,47 @@ _MIN_TRAILING_QUESTION_LEN = 20
 _MAX_FOLLOW_UP_PARAGRAPH_LEN = 800
 
 
+def format_thesis_block(message_bullet_summary: list[str] | None) -> str:
+    """Shared "**Тезисы:**\\n- ..." rendering — reused by the dialogue compose
+    below AND by the lecture path (engine.py::_compose_dense_chat_message),
+    so both surfaces format message_bullet_summary identically."""
+    items = [str(item or "").strip() for item in (message_bullet_summary or [])]
+    items = [item for item in items if item]
+    if not items:
+        return ""
+    lines = "\n".join(f"- {item}" for item in items)
+    return f"**Тезисы:**\n{lines}"
+
+
 def compose_tutor_dialogue_message(
     *,
     feedback_on_answer: str = "",
     technical_explanation: str = "",
     follow_up_question: str = "",
+    message_bullet_summary: list[str] | None = None,
 ) -> str:
+    # Order: evaluator feedback (plaque + audit) → technical explanation →
+    # Тезисы → follow-up question. Тезисы sits AFTER the fresh dialogue body
+    # and BEFORE the question — not at the top/middle — so it matches where
+    # Gemini actually writes it in the JSON (after technical_explanation,
+    # before follow_up_question) and lands where live streaming already
+    # stops appending: the stream shows feedback+technical continuously (no
+    # thesis support there — it's a list field, not a streamable string), and
+    # the final swap only APPENDS more text after what was already read
+    # instead of reflowing it.
     parts: list[str] = []
-    for block in (feedback_on_answer, technical_explanation, follow_up_question):
-        t = (block or "").strip()
-        if t:
-            parts.append(t)
+    fb = (feedback_on_answer or "").strip()
+    if fb:
+        parts.append(fb)
+    t = (technical_explanation or "").strip()
+    if t:
+        parts.append(t)
+    thesis = format_thesis_block(message_bullet_summary)
+    if thesis:
+        parts.append(thesis)
+    fu = (follow_up_question or "").strip()
+    if fu:
+        parts.append(fu)
     return "\n\n".join(parts)
 
 
@@ -35,6 +65,7 @@ def compose_tutor_dialogue_from_output(llm_out: DeepDiveLLMOutput | None) -> str
         feedback_on_answer=llm_out.feedback_on_answer,
         technical_explanation=llm_out.technical_explanation,
         follow_up_question=llm_out.follow_up_question,
+        message_bullet_summary=getattr(llm_out, "message_bullet_summary", None),
     )
 
 

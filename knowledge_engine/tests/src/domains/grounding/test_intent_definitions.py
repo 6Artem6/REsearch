@@ -174,9 +174,9 @@ def test_chips_and_paraphrases_classify_via_ssot():
 
 # ---------------------------------------------------------------------------
 # blitz / socratic / self_check / next_module — Intent Routing & Evaluator
-# Bypass refactor (see prompt.txt): [mode:...] tags must be recognized as
-# control chips (bypassing the sub-concept gap evaluator) instead of being
-# scored as if the user evaded the question.
+# Bypass refactor: [mode:...] tags must be recognized as control chips
+# (bypassing the sub-concept gap evaluator) instead of being scored as
+# if the user evaded the question.
 # ---------------------------------------------------------------------------
 
 

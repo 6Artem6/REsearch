@@ -87,39 +87,36 @@ _CHIP_MODE_TO_CHOICE = dict(FACTORY_MODE_TO_INTENT)
 _CHIP_MODE_TO_CHOICE_REVERSE = {v: k for k, v in _CHIP_MODE_TO_CHOICE.items()}
 
 _JSON_CONTRACT_TAIL = (
-    "=== JSON OUTPUT (DeepDiveTutorContract) ===\n"
-    "Strictly output valid JSON matching DeepDiveTutorContract. "
-    "No tutor_message field. "
-    "Generation order: audit (single flat TechnicalConceptAudit, not oneOf) "
-    "FIRST, then technical_explanation, then follow_up_question. "
-    "Learner-facing review lives inside audit: confirmation (EXACT) or "
-    "praise_points + correction_breakdown (PARTIAL / NEEDS_CORRECTION); "
-    "unused branch is empty string. "
-    "Do not emit feedback_on_answer or 📋/🎯 — Host assembles those. "
+    "=== RESPONSE STRUCTURE ===\n"
+    "CRITICAL: The audit verdict determines everything you write after "
+    "it. EXACT → confirmation. PARTIAL / NEEDS_CORRECTION → praise_points "
+    "+ correction_breakdown; leave the unused branch as an empty string. "
+    "That verdict also shapes technical_explanation and follow_up_question. "
+    "Do not emit feedback_on_answer or 📋/🎯 — the system assembles those "
+    "separately. "
     "User-facing text fields (audit confirmation/correction_breakdown, "
     "technical_explanation, follow_up_question) MUST be in natural Russian.\n"
     + ANTI_SYCOPHANCY_INVARIANTS
 )
 
 _EXPLAIN_JSON_TAIL = (
-    "=== JSON OUTPUT (DeepDiveExplainContract) — HARD ===\n"
-    "Host skipped Evaluator this turn. Return DeepDiveExplainContract only. "
-    "FORBIDDEN keys: audit, confirmation, correction_breakdown, "
-    "feedback_on_answer. Fill technical_explanation and optional "
-    "follow_up_question. User-facing strings in natural Russian.\n"
+    "=== RESPONSE STRUCTURE — NO EVALUATION THIS TURN ===\n"
+    "STRICT RULE: There is nothing to evaluate this turn — do not write an "
+    "audit, confirmation, correction_breakdown, or feedback_on_answer. "
+    "Fill technical_explanation and optional follow_up_question. "
+    "User-facing strings in natural Russian.\n"
 )
 
 _DEEP_ANALYSIS_JSON_TAIL = (
-    "=== JSON OUTPUT (DeepDiveDeepAnalysisContract) ===\n"
-    "Strictly output valid JSON matching DeepDiveDeepAnalysisContract. "
-    "No tutor_message field. "
-    "Generation order: audit (single flat TechnicalConceptAudit) FIRST, "
-    "then learner-facing fields. "
+    "=== RESPONSE STRUCTURE ===\n"
+    "CRITICAL: The audit verdict determines everything you write after "
+    "it. "
     "follow_up_question is REQUIRED (non-empty) — exactly ONE engineering "
     "design question from the Problem / Edge / Trade-off analysis. "
-    "Do not emit feedback_on_answer or 📋/🎯 — Host assembles those. "
+    "Do not emit feedback_on_answer or 📋/🎯 — the system assembles those "
+    "separately. "
     "User-facing text fields MUST be in natural Russian.\n"
-    "Host sets orchestration flags after generation — focus on analysis + question.\n"
+    "Orchestration flags are set after generation — focus on analysis + question.\n"
     "If SOURCE REGISTRY is empty: references MUST be [].\n" + ANTI_SYCOPHANCY_INVARIANTS
 )
 
@@ -427,19 +424,19 @@ def _compose_drill_prompt(
         ru_header=ru_header,
     )
     fields = (
-        "=== STRUCTURED OUTPUT (ActiveDrillStepResponse) ===\n"
-        "Do not write free-form tutor prose. Fill these JSON fields only:\n"
-        "- audit: single flat TechnicalConceptAudit FIRST (not oneOf) — "
-        "EXACT → confirmation (correction_breakdown and praise_points empty); "
+        "=== RESPONSE STRUCTURE ===\n"
+        "Do not write free-form tutor prose. Fill these fields only:\n"
+        "CRITICAL: The audit verdict determines the branch — EXACT → "
+        "confirmation (correction_breakdown and praise_points empty); "
         "PARTIAL → praise_points (correct theses) + correction_breakdown "
         "(missing fragment); confirmation empty. "
         "Must match last_eval_directive. Do not emit 📋/🎯.\n"
-        "- status_header: the one-line Russian progress header from Host orchestration.\n"
+        "- status_header: the one-line Russian progress header from orchestration.\n"
         "- theory_body: dense theory for the current sub-topic "
         "(target ~300 Russian words; never fewer than 150).\n"
         "- next_question: exactly one checkpoint question about theory_body "
         "(must include ?).\n"
-        "Host assembles UI markdown from the validated object. "
+        "The UI markdown is assembled separately from your fields. "
         "Do not wrap fields in extra headings.\n"
     )
     return "\n\n".join(
@@ -654,7 +651,7 @@ def build_deep_drill_prompt(
 
 
 LAYER_COMPLETION_PROMPT = (
-    "=== LAYER COMPLETION — FACILITATION (LayerCompletionTutorOutput) ===\n"
+    "=== LAYER COMPLETION — FACILITATION ===\n"
     "The Evaluator closed the current layer this turn. You are a facilitator, "
     "not an examiner.\n"
     "Fill only: praise, layer_summary, transition_framing — natural Russian.\n"

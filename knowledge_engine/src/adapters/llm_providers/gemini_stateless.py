@@ -1175,6 +1175,8 @@ def run_gemini_structured_with_chain(
     layer2_context: str = "",
     node_session_key: str = "",
     interaction_axis: str = "lecture_self_check",
+    sub_concept_id: str = "",
+    sub_concept_status_lookup: dict[str, str] | None = None,
 ) -> T:
     """Structured JSON с retry (503/5xx) и fallback: primary → GEMINI_MODEL → FALLBACKS."""
     static_body = user_payload.strip()
@@ -1237,6 +1239,8 @@ def run_gemini_structured_with_chain(
                     layer2_context=layer2_context,
                     payload_meta=payload_meta,
                     interaction_axis=interaction_axis,
+                    sub_concept_id=sub_concept_id,
+                    sub_concept_status_lookup=sub_concept_status_lookup,
                 )
             return chat_manager.send_chat_message(
                 client,
@@ -1258,6 +1262,8 @@ def run_gemini_structured_with_chain(
                 layer2_context=layer2_context,
                 payload_meta=payload_meta,
                 interaction_axis=interaction_axis,
+                sub_concept_id=sub_concept_id,
+                sub_concept_status_lookup=sub_concept_status_lookup,
             )
         full_context = movable
         if pinned_context.strip():

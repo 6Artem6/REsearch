@@ -21,7 +21,10 @@ from knowledge_engine.src.domains.grounding.tutor_reply_sanitize import (
 
 _FACT_EXTRACT_SYSTEM = (
     f"{RUSSIAN_OUTPUT_RULE}\n\n"
-    "Extract engineering facts from an evicted dialogue turn (skill tree node).\n"
+    "Extract engineering facts from one or more evicted dialogue turns (skill "
+    "tree node), given as numbered ### evicted_message_N blocks — they were "
+    "evicted from the SAME active window rotation and must be merged into "
+    "ONE resulting patch (not judged independently).\n"
     "Structured JSON only — not prose summary.\n"
     "- agreed_concepts: accepted stack/algorithms/metrics.\n"
     "- rejected_options: rejected alternatives.\n"
@@ -88,17 +91,16 @@ def _evicted_tutor_needs_question_strip(
 def prepare_evicted_for_manifest_extraction(
     memory: SessionMemory,
     evicted: dict[str, str],
-    anchor: str,
-) -> dict | None:
-    """Синхронная (без LLM) часть: guard-проверки + сборка payload для
-    background-экстракции (context_compressor_worker.run_dialog_summarize_job).
+) -> dict[str, str] | None:
+    """Guard-проверки для ОДНОГО вытесненного сообщения — читают ЖИВОЕ
+    состояние memory на момент eviction (их нельзя откладывать в фон, т.к. к
+    моменту выполнения job'а pending_eval_kind/last_tutor_sub_concept_id могут
+    уже измениться). Возвращает ``{"role", "content"}`` или None, если
+    сообщение нужно молча пропустить.
 
-    Guard-проверки (star_task/overlay, question-strip) читают ЖИВОЕ состояние
-    memory на момент eviction — их нельзя откладывать в фон, т.к. к моменту
-    выполнения job'а pending_eval_kind/last_tutor_sub_concept_id могут уже
-    измениться. Возвращает None, если сообщение нужно молча пропустить
-    (тот же контракт, что раньше был у early-return внутри
-    update_manifest_from_evicted).
+    Batch-уровневые поля (anchor/prev_manifest/expected_manifest_version)
+    собираются один раз на весь batch — см.
+    ``prepare_evicted_batch_for_manifest_extraction``.
     """
     role = (evicted.get("role") or "").strip()
     content = (evicted.get("content") or "").strip()
@@ -121,10 +123,39 @@ def prepare_evicted_for_manifest_extraction(
     if _evicted_tutor_needs_question_strip(memory, evicted):
         content = sanitize_evicted_tutor_content_for_manifest(content)
         trace("NODE_DIVE fact_manifest | sanitized unanswered tutor tail in evicted")
+    return {"role": role, "content": content[:2500]}
+
+
+def prepare_evicted_batch_for_manifest_extraction(
+    memory: SessionMemory,
+    evicted_list: list[dict[str, str]],
+    anchor: str,
+) -> dict | None:
+    """Синхронная (без LLM) часть: guard-проверки по КАЖДОМУ вытесненному
+    сообщению + сборка ОДНОГО payload для background-экстракции
+    (context_compressor_worker.run_dialog_summarize_job).
+
+    Раньше ``rotate_window_after_message`` ставил отдельную job (и отдельный
+    Gemini-вызов) на каждое вытесненное сообщение — обычно 2 за ход в steady
+    state (active_window заполнен → user- и tutor-эвикция одного хода), что
+    удваивало стоимость и дублировало ``previous_manifest`` в промпте.
+    Теперь все сообщения одной ротации собираются в ОДИН payload → один
+    LLM-вызов, один merge, один CAS-коммит.
+
+    Возвращает None, если после guard-фильтрации не осталось ни одного
+    сообщения (тот же контракт, что раньше был у early-return внутри
+    update_manifest_from_evicted).
+    """
+    messages: list[dict[str, str]] = []
+    for evicted in evicted_list:
+        prepared = prepare_evicted_for_manifest_extraction(memory, evicted)
+        if prepared is not None:
+            messages.append(prepared)
+    if not messages:
+        return None
     return {
         "anchor": anchor,
-        "role": role,
-        "content": content[:2500],
+        "messages": messages,
         "prev_manifest": memory.fact_manifest.model_dump(),
         "learning_phase": memory.learning_phase,
         "learning_mode": memory.learning_mode,
@@ -137,17 +168,24 @@ def run_fact_manifest_extraction(payload: dict) -> DialogueFactManifest:
     функция из этого модуля, которую можно безопасно звать из фонового
     воркера (см. services/context_compressor_worker.py). Не вызывать с hot
     path тьютора — именно этот вызов раньше блокировал ответ пользователю.
+
+    ``payload["messages"]`` — список ``{"role", "content"}`` одной ротации
+    (обычно 1-2 сообщения); все они идут в ОДИН промпт и ОДИН merge-проход.
     """
     prev = DialogueFactManifest.model_validate(payload.get("prev_manifest") or {})
-    role = str(payload.get("role") or "")
-    content = str(payload.get("content") or "")[:2500]
+    messages = payload.get("messages") or []
     anchor = str(payload.get("anchor") or "")
+    evicted_block = "\n".join(
+        f"### evicted_message_{i + 1}\n{m.get('role', '')}: {m.get('content', '')}"
+        for i, m in enumerate(messages)
+    )
     llm_payload = (
         f"### previous_manifest\n{prev.model_dump_json()}\n\n"
-        f"### evicted_message\n{role}: {content}\n"
+        f"{evicted_block}\n\n"
         f"### learning_phase\n{payload.get('learning_phase', '')}\n"
         f"### learning_mode\n{payload.get('learning_mode', '')}\n"
     )
+    combined_content = " ".join(str(m.get("content", "")) for m in messages)
     try:
         patch = run_gemini_structured_with_chain(
             GEMINI_LITE_MODEL,
@@ -164,7 +202,7 @@ def run_fact_manifest_extraction(payload: dict) -> DialogueFactManifest:
         )
     except Exception as exc:
         trace(f"NODE_DIVE fact_manifest fallback | {exc}")
-        return _heuristic_merge_manifest(prev, content)
+        return _heuristic_merge_manifest(prev, combined_content)
 
 
 def update_manifest_from_evicted(
@@ -175,9 +213,10 @@ def update_manifest_from_evicted(
     """Синхронный convenience-wrapper (guard + extraction + merge за один
     вызов) — оставлен для тестов/вызовов вне hot path тьютора. Hot path
     (rotate_window_after_message) больше НЕ вызывает эту функцию: он
-    публикует job через context_compressor_worker и возвращается сразу.
+    публикует ОДНУ batched job через context_compressor_worker (см.
+    prepare_evicted_batch_for_manifest_extraction) и возвращается сразу.
     """
-    payload = prepare_evicted_for_manifest_extraction(memory, evicted, anchor)
+    payload = prepare_evicted_batch_for_manifest_extraction(memory, [evicted], anchor)
     if payload is None:
         return
     memory.fact_manifest = run_fact_manifest_extraction(payload)

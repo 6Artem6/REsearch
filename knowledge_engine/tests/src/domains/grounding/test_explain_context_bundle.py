@@ -26,14 +26,14 @@ from knowledge_engine.src.shared.extraction import KnowledgeAtom, ScopeType
 
 def test_format_explain_invariants_block_limits_and_header():
     atoms = [
-        KnowledgeAtom(scope=ScopeType.PRINCIPLE, statement="Invariant A holds under X"),
+        KnowledgeAtom(scope=ScopeType.CONCEPT, statement="Invariant A holds under X"),
         KnowledgeAtom(scope=ScopeType.MECHANIC, statement="Mechanic B causes Y"),
-        KnowledgeAtom(scope=ScopeType.INSTANCE, statement="code-only detail"),
+        KnowledgeAtom(scope=ScopeType.PRACTICE, statement="code-only detail"),
     ]
-    # INSTANCE excluded by filter_atoms_for_dialog upstream; format still prints what given.
+    # PRACTICE excluded by filter_atoms_for_dialog upstream; format still prints what given.
     block = format_explain_invariants_block(atoms[:2])
     assert "### fundamental_invariants" in block
-    assert "[ФАКТ (PRINCIPLE)]:" in block
+    assert "[ФАКТ (CONCEPT)]:" in block
     assert "[ФАКТ (MECHANIC)]:" in block
     assert "code-only" not in block
 
@@ -113,7 +113,7 @@ def test_retrieve_invariants_uses_mock_store(monkeypatch):
         top_k=3,
     )
     assert "### fundamental_invariants" in block
-    assert "PRINCIPLE" in block
+    assert "CONCEPT" in block
     assert "MECHANIC" in block
     assert "print(fsync" not in block
 

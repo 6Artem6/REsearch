@@ -53,3 +53,31 @@ CONTEXT_BOUNDED_QUESTION_RULES = (
 """
 RU (пояснение): вопрос обязан назвать и зафиксировать слой всех критериев, которые потом оценит Evaluator.
 """
+
+ANTI_SPOILER_SOCRATIC_RULES = (
+    "=== ANTI-SPOILER & SOCRATIC SCAFFOLDING (UNIVERSAL INVARIANT) ===\n"
+    "1. ANTI-SPOILER RULE:\n"
+    "   The explanatory text (`technical_explanation` / `lecture_body`) describes "
+    "the physics/mechanics of HOW the system works. The closing question "
+    "(`follow_up_question`) asks about a CONSEQUENCE, "
+    "TRADE-OFF, or ARCHITECTURAL COST that the reader must derive THEMSELVES "
+    "from that mechanic — never state that consequence/trade-off/cost as a "
+    "conclusion in the explanatory text.\n"
+    "   FORBIDDEN: writing the answer to the closing question anywhere in "
+    "technical_explanation/lecture_body, even paraphrased.\n"
+    "2. SOCRATIC MICRO-QUESTIONING:\n"
+    "   Inside the explanatory text, use 1-2 short rhetorical micro-questions to "
+    "build the causal chain before stating the mechanic, e.g. 'Can the engine "
+    "just insert the row directly? No, because...'. Each micro-question must "
+    "be answered in the SAME paragraph — these are NOT the closing question "
+    "and must not contain the final '?' paragraph.\n"
+    "3. NO ORPHANED CONCEPTS:\n"
+    "   Every term/mechanism the closing question references MUST already be "
+    "named and explained at the mechanic/physics level in the explanatory "
+    "text — never introduce a new term only inside the question.\n"
+)
+"""
+RU (пояснение): анти-спойлер (текст = механика, вопрос = следствие/цена,
+которую пользователь выводит сам) + сократические микро-вопросы в тексте +
+запрет вводить термин только в вопросе, без объяснения в тексте.
+"""

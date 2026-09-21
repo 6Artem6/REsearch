@@ -8,6 +8,7 @@ from knowledge_engine.src.domains.grounding.concept_map_state import (  # noqa: 
     advance_sub_concepts_after_user_answer,
     apply_sub_concept_updates,
     build_coverage_summary,
+    clear_pending_evaluation_state,
     core_sub_concepts,
     ensure_sub_concept_map,
     find_sub_concept,
@@ -462,11 +463,7 @@ def orchestrate_tutor_llm_output(
     if not transition:
         return llm_out.model_copy(update=_host_hold_orchestration())
     step = _host_suggested_next_step(memory, node_layer=node_layer, choice=choice)
-    memory.pending_evaluation_concept_id = ""
-    memory.pending_eval_kind = ""
-    memory.next_question_concept_id = ""
-    memory.last_tutor_sub_concept_id = ""
-    memory.asked_question_sub_concept_id = ""
+    clear_pending_evaluation_state(memory)
     _clear_optional_teaching(memory)
     if (complete or layer_done) and memory.learning_phase in (
         "checkpoint",

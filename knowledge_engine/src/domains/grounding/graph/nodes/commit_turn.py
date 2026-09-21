@@ -98,6 +98,7 @@ def _bind_pending_for_follow_up(
     llm_out,
     *,
     focus_sub_concept_id: str = "",
+    interaction_axis: str = "",
 ) -> object:
     """Unconditionally bind pending when a follow-up question exists + focus id."""
     from knowledge_engine.src.domains.grounding.subconcept_invariants import (
@@ -132,7 +133,9 @@ def _bind_pending_for_follow_up(
         )
         return llm_out
 
-    cid = set_pending_evaluation_for_tutor_turn(memory, bind_id)
+    cid = set_pending_evaluation_for_tutor_turn(
+        memory, bind_id, interaction_axis=interaction_axis
+    )
     llm_out = llm_out.model_copy(update={"question_sub_concept_id": bind_id})
     if cid:
         source = (
@@ -189,7 +192,13 @@ def commit_turn_node(state: TutorGraphState) -> TutorGraphState:
     t0 = time.perf_counter()
     req = state["request"]
     memory = state["memory"]
-    anchor = state["anchor"]
+    from knowledge_engine.src.domains.grounding.node_session_reset import (
+        node_deep_dive_anchor,
+    )
+
+    anchor = state.get("anchor") or node_deep_dive_anchor(
+        req.curriculum_id, req.node_data.node_id
+    )
     action = (req.user_action or "").strip().lower()
     raw_user = (req.user_message or "").strip()
     focus_id = (state.get("focus_sub_concept_id") or "").strip()
@@ -260,7 +269,10 @@ def commit_turn_node(state: TutorGraphState) -> TutorGraphState:
 
     if not llm_out.ready_for_transition:
         llm_out = _bind_pending_for_follow_up(
-            memory, llm_out, focus_sub_concept_id=focus_id
+            memory,
+            llm_out,
+            focus_sub_concept_id=focus_id,
+            interaction_axis=req.interaction_axis,
         )
         # Mark overlay asterisk-question pending for specialized evaluator + FSM.
         if (
@@ -344,7 +356,9 @@ def commit_turn_node(state: TutorGraphState) -> TutorGraphState:
             if not qid:
                 qid = focus_id
             if qid:
-                cid = set_pending_evaluation_for_tutor_turn(memory, qid)
+                cid = set_pending_evaluation_for_tutor_turn(
+                    memory, qid, interaction_axis=req.interaction_axis
+                )
                 llm_out = llm_out.model_copy(update={"question_sub_concept_id": qid})
                 if cid:
                     trace(
@@ -363,7 +377,9 @@ def commit_turn_node(state: TutorGraphState) -> TutorGraphState:
             qid = (llm_out.question_sub_concept_id or "").strip() or focus_id
             cid = start_overlay_push(memory, kind, concept_id=qid)
             if cid:
-                bound = set_pending_evaluation_for_tutor_turn(memory, cid)
+                bound = set_pending_evaluation_for_tutor_turn(
+                    memory, cid, interaction_axis=req.interaction_axis
+                )
                 llm_out = llm_out.model_copy(update={"question_sub_concept_id": cid})
                 if bound:
                     trace(

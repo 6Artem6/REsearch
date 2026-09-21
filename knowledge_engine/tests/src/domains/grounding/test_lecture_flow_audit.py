@@ -136,7 +136,7 @@ def test_lecture_mode_generates_theory_then_question() -> None:
     )
     dense = DenseMaterialOutput(
         lecture_body=theory,
-        checkpoint_prompt=checkpoint,
+        follow_up_question=checkpoint,
         summary="arena/pool/block",
     )
     chat = _compose_dense_chat_message(dense)
@@ -234,3 +234,46 @@ def test_lecture_payload_passes_evaluator_transparency_and_anchors_checkpoint() 
     assert "blind RE-STATE" in next_action
     assert "Самопроверка" in next_action
     assert "exclusively" in next_action.lower()
+
+
+def test_compose_dense_chat_message_puts_thesis_block_after_body():
+    """Тезисы go AFTER lecture_body, before follow_up_question — matching
+    where Gemini actually writes message_bullet_summary in the JSON, and
+    where live streaming (lecture_body streams token-by-token) already
+    stops: the post-stream swap only appends text instead of reflowing
+    already-read content above it. See engine.py::_compose_dense_chat_message."""
+    dense = DenseMaterialOutput(
+        lecture_body="Колоночное хранение разделяет столбцы. [R1]",
+        summary="колоночное хранение",
+        follow_up_question="Почему это важно для OLAP?",
+        message_bullet_summary=["claim one [R1]", "claim two [R2]"],
+    )
+    chat = _compose_dense_chat_message(dense)
+    assert chat.index("Колоночное хранение") < chat.index("Тезисы")
+    assert chat.index("Тезисы") < chat.index("Почему это важно")
+    assert "- claim one [R1]\n- claim two [R2]" in chat
+
+
+def test_compose_dense_chat_message_omits_thesis_block_when_empty():
+    dense = DenseMaterialOutput(
+        lecture_body="Колоночное хранение разделяет столбцы.",
+        summary="колоночное хранение",
+    )
+    chat = _compose_dense_chat_message(dense)
+    assert "Тезисы" not in chat
+    assert chat.startswith("Колоночное хранение")
+
+
+def test_structured_lecture_to_dense_carries_message_bullet_summary():
+    from knowledge_engine.src.domains.grounding.tutor import (
+        StructuredLectureResponse,
+        structured_lecture_to_dense,
+    )
+
+    raw = StructuredLectureResponse(
+        lecture_body="body",
+        next_recommended_subtopics=["a", "b", "c"],
+        message_bullet_summary=["claim one [S1]"],
+    )
+    dense = structured_lecture_to_dense(raw)
+    assert dense.message_bullet_summary == ["claim one [S1]"]

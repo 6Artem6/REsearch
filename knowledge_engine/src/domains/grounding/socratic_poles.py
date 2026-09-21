@@ -26,7 +26,10 @@ from knowledge_engine.src.adapters.db.socratic_poles_schema import (
 )
 from knowledge_engine.src.config.settings import EMBED_MODEL, LANCE_DB_PATH
 from knowledge_engine.src.core.run_log import trace
-from knowledge_engine.src.domains.grounding.memory_schemas import SessionMemory
+from knowledge_engine.src.domains.grounding.memory_schemas import (
+    SessionMemory,
+    SubConceptRecord,
+)
 
 Polarity = Literal["repulsion", "attraction"]
 
@@ -88,6 +91,32 @@ def format_fact_attraction(
     )
 
 
+def mastery_gate_filter(
+    sub_concepts: list[SubConceptRecord],
+) -> list[SubConceptRecord]:
+    """Mastery Gate: keep only concepts eligible for REPULSION (already
+    mastered by this learner) — ``status == "verified"`` OR any of
+    ``why_passed`` / ``how_passed`` / ``mechanic_passed`` already True.
+
+    A concept merely mentioned/discussed (``status`` still "unchecked",
+    "partial", or "gap", with no layer passed) is NEVER eligible here —
+    only ``sub_concept_evaluator.py``'s real answer-accuracy assessment
+    (``AnswerAccuracyGrade``) can flip a status to "verified" or set a
+    layer flag. This is the exact predicate ``_local_repulsion_facts`` used
+    inline before this extraction — pulled out standalone so it is
+    independently unit-testable and reusable (Concept Affinity wiring in
+    ``engine.py``) without depending on the full local-facts machinery.
+    """
+    return [
+        sc
+        for sc in sub_concepts
+        if sc.status == "verified"
+        or sc.why_passed
+        or sc.how_passed
+        or sc.mechanic_passed
+    ]
+
+
 def _local_repulsion_facts(
     memory: SessionMemory,
     *,
@@ -96,10 +125,7 @@ def _local_repulsion_facts(
 ) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     nid = (node_id or "").strip() or "node"
-    for sc in memory.sub_concepts or []:
-        layers_ok = bool(sc.why_passed or sc.how_passed or sc.mechanic_passed)
-        if sc.status != "verified" and not layers_ok:
-            continue
+    for sc in mastery_gate_filter(memory.sub_concepts or []):
         claim = (sc.evidence or "").strip() or _layers_claim(sc)
         cid = (sc.id or "").strip() or "concept"
         line = format_fact_repulsion(node=nid, concept_id=cid, claim=claim)

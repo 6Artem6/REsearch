@@ -15,9 +15,10 @@ DEEP_DIVE_MECH_PROMPT = (
     "deeper-layer detail.\n\n"
     "STRICT RULE: DO NOT write any completion phrases like «Нода освоена на 100%» "
     "or «Выбери следующее действие». You are in the middle of an active deep dive session.\n"
-    "Chip processing is already done by the Python host before this turn. "
-    "Host owns orchestration flags. Put the practice question in follow_up_question "
-    "and set question_sub_concept_id to the active sub-topic id from the payload.\n"
+    "Chip processing is already resolved before this turn. "
+    "Orchestration flags are set separately. Put the practice question in "
+    "follow_up_question and set question_sub_concept_id to the active "
+    "sub-topic id from the payload.\n"
 )
 """
 RU (пояснение): изолированный system prompt для [mode:deep_dive_mech].

@@ -21,6 +21,7 @@ from knowledge_engine.src.domains.curriculum.curriculum_whitelist_prompt import 
     _TUTOR_NEIGHBORHOOD_RULES,
 )
 from knowledge_engine.src.domains.grounding.context_bounded_eval import (
+    ANTI_SPOILER_SOCRATIC_RULES,
     CONTEXT_BOUNDED_QUESTION_RULES,
 )
 from knowledge_engine.src.domains.grounding.dialogue_prompt_en import (
@@ -42,6 +43,7 @@ from knowledge_engine.src.domains.grounding.lecture_prompt_en import (
     DIAGRAM_SELECTION_RULES,
     DIALOGUE_PEDAGOGICAL_FLOW,
     DIALOGUE_TUTOR_JSON_CONTRACT,
+    EXECUTION_PLAN_FLOW_RULE_LECTURE_EN,
     EXTERNAL_SEARCH_TOOL_RULE,
     GLOBAL_REGISTRY_PROMPT_RULES,
     GROUNDED_ARCHITECTURE_RULE,
@@ -238,6 +240,8 @@ def build_critical_rules_recency_tail(
     if lite:
         pass  # deprecated; ignored
 
+    from knowledge_engine.src.config.settings import ENABLE_TUTOR_EXECUTION_PLAN
+
     parts: list[str] = [
         "=== CRITICAL_RULES_RECENCY (highest priority — obey over earlier sections) ===",
         GLOBAL_ENGINEERING_CRITERIA.strip(),
@@ -248,10 +252,18 @@ def build_critical_rules_recency_tail(
 
     if mode == InteractionPromptMode.DIALOGUE_FEEDBACK:
         parts.append(DIALOGUE_RECENCY_REMINDERS_EN)
+        parts.append(ANTI_SPOILER_SOCRATIC_RULES)
+        if ENABLE_TUTOR_EXECUTION_PLAN:
+            from knowledge_engine.src.domains.grounding.dialogue_prompt_en import (
+                EXECUTION_PLAN_FLOW_RULE_EN,
+            )
+
+            parts.append(EXECUTION_PLAN_FLOW_RULE_EN)
     elif mode == InteractionPromptMode.LECTURE_CHAT:
         parts.extend(
             [
                 LECTURE_MODE_STRUCTURE_RULES,
+                ANTI_SPOILER_SOCRATIC_RULES,
                 NO_CLOSING_QUESTIONNAIRES,
                 CONCEPT_INTRODUCTION_LECTURE_RULE,
                 DIAGRAM_INTEGRATION_CROSS_REF,
@@ -259,10 +271,13 @@ def build_critical_rules_recency_tail(
                 PINNED_DIAGRAMS_GUIDING_RULES,
             ]
         )
+        if ENABLE_TUTOR_EXECUTION_PLAN:
+            parts.append(EXECUTION_PLAN_FLOW_RULE_LECTURE_EN)
     elif mode == InteractionPromptMode.LECTURE_DENSE:
         parts.extend(
             [
                 LECTURE_MODE_STRUCTURE_RULES,
+                ANTI_SPOILER_SOCRATIC_RULES,
                 LECTURE_GAP_STEERING_RULES,
                 NO_CLOSING_QUESTIONNAIRES,
                 CONCEPT_INTRODUCTION_LECTURE_RULE,
@@ -271,6 +286,8 @@ def build_critical_rules_recency_tail(
                 PINNED_DIAGRAMS_GUIDING_RULES,
             ]
         )
+        if ENABLE_TUTOR_EXECUTION_PLAN:
+            parts.append(EXECUTION_PLAN_FLOW_RULE_LECTURE_EN)
         if topic_already_covered:
             parts.append(
                 "IS_TOPIC_ALREADY_COVERED=True: Deep Dive On-Demand only — "

@@ -31,21 +31,23 @@ def test_select_interaction_axis_system_prompt_topic_qna() -> None:
     assert select_interaction_axis_system_prompt("topic_qna") == TOPIC_QNA_SYSTEM_PROMPT
 
 
-def test_topic_qna_uses_a_schema_with_no_checkpoint_field_at_all() -> None:
+def test_topic_qna_uses_a_schema_with_no_follow_up_field_at_all() -> None:
     """Regression, escalated twice: a text override telling the model to
 
-    leave checkpoint_prompt empty was ignored (it referenced the wrong
-    field name — follow_up_question — at first, then the right one).
-    Softening the Field(description=...) was ALSO ignored live (confirmed
-    on a brand-new node, sql_cte, via prompt.log — checkpoint_prompt came
-    back filled despite a clean system prompt and a fresh, uncontaminated
-    chat session). Both attempts relied on the model choosing to obey a
-    conditional instruction for an invariant that was already known at
-    request time. The actual fix: TopicQnaLectureResponse has NO
-    checkpoint_prompt field in its JSON Schema — Gemini structured output
-    cannot write to a slot that isn't there, independent of prompt
-    wording. StructuredLectureResponse (lecture_self_check) is untouched
-    and still has the field, mandatory-by-convention as before."""
+    leave the closing-question field empty was ignored (it referenced the
+    wrong field name at first — the lecture contract used to call this
+    field `checkpoint_prompt`, later unified to `follow_up_question` across
+    both dialogue and lecture contracts — then the right one). Softening
+    the Field(description=...) was ALSO ignored live (confirmed on a
+    brand-new node, sql_cte — the field came back filled despite a clean
+    system prompt and a fresh, uncontaminated chat session). Both attempts
+    relied on the model choosing to obey a conditional instruction for an
+    invariant that was already known at request time. The actual fix:
+    TopicQnaLectureResponse has NO follow_up_question field in its JSON
+    Schema — Gemini structured output cannot write to a slot that isn't
+    there, independent of prompt wording. StructuredLectureResponse
+    (lecture_self_check) is untouched and still has the field,
+    mandatory-by-convention as before."""
     from knowledge_engine.src.domains.grounding.tutor import (
         StructuredLectureResponse,
         TopicQnaLectureResponse,
@@ -54,20 +56,24 @@ def test_topic_qna_uses_a_schema_with_no_checkpoint_field_at_all() -> None:
         TOPIC_QNA_SYSTEM_PROMPT,
     )
 
-    assert "checkpoint_prompt" not in TopicQnaLectureResponse.model_fields
     assert "follow_up_question" not in TopicQnaLectureResponse.model_fields
-    assert "checkpoint_prompt" in StructuredLectureResponse.model_fields
-    shared = set(TopicQnaLectureResponse.model_fields) - {"checkpoint_prompt"}
-    assert shared == set(StructuredLectureResponse.model_fields) - {"checkpoint_prompt"}
-    assert "checkpoint_prompt" not in TOPIC_QNA_SYSTEM_PROMPT
+    assert "follow_up_question" in StructuredLectureResponse.model_fields
+    shared = set(TopicQnaLectureResponse.model_fields) - {"follow_up_question"}
+    assert shared == set(StructuredLectureResponse.model_fields) - {"follow_up_question"}
+    assert "follow_up_question" not in TOPIC_QNA_SYSTEM_PROMPT
 
 
-def test_generate_dense_material_picks_schema_by_interaction_axis() -> None:
+def test_generate_dense_material_picks_schema_by_interaction_axis(monkeypatch) -> None:
     """generate_dense_material must select response_schema by axis, not
 
     just compose a matching system prompt — otherwise Gemini is still
     given the field-bearing StructuredLectureResponse schema and the
     schema split above buys nothing."""
+    # Explicit, not relied-on-default: this must hold regardless of the real
+    # .env's ENABLE_TUTOR_EXECUTION_PLAN (dev machines may have it on).
+    monkeypatch.setattr(
+        "knowledge_engine.src.config.settings.ENABLE_TUTOR_EXECUTION_PLAN", False
+    )
     from knowledge_engine.src.domains.grounding import node_content_generator as svc
     from knowledge_engine.src.domains.grounding.memory_schemas import SessionMemory
     from knowledge_engine.src.domains.grounding.schemas import NodeDataInput
@@ -109,7 +115,7 @@ def test_topic_qna_chat_turn_also_uses_a_schema_with_no_follow_up_field() -> Non
     """The dense_material ("Дай плотный материал по теме") schema split
 
     fixed only ONE of the two paths a Topic Q&A session actually takes —
-    confirmed live via prompt.log on the sql_cte node: free-form chat
+    confirmed live on the sql_cte node: free-form chat
     turns (the user just asking questions, not requesting a lecture) kept
     ending in a technical question anyway. Root cause: engine.py's
     _invoke_tutor routes evaluator_skipped turns to DeepDiveExplainContract,
@@ -220,11 +226,11 @@ def test_build_dense_system_strips_all_mandatory_checkpoint_directives_for_topic
 
     on top of build_dense_system's output (see generate_dense_material) —
     but the base dense-system prompt independently baked "mandatory
-    checkpoint_prompt" directives into FIVE separate fragments
+    follow_up_question" directives into FIVE separate fragments
     (LECTURE_MODE_STRUCTURE_RULES / STRUCTURED_LECTURE_FIELD_RULES rule 8 /
     NO_CLOSING_QUESTIONNAIRES / DENSE_FUNDAMENTALS_BLOCK /
     LECTURE_GAP_STEERING_RULES / DENSE_LECTURE_INTERACTION_MODE — found one
-    at a time via live testing, see prompt.log). A single appended
+    at a time via live testing). A single appended
     "override" sentence does not reliably beat several independently-worded
     MANDATORY/MUST directives baked into the base prompt itself — the fix is
     to never generate the conflicting fragment for topic_qna in the first
@@ -246,8 +252,8 @@ def test_build_dense_system_strips_all_mandatory_checkpoint_directives_for_topic
         "NEVER omit",
         "the ONLY JSON field for the one technical question",
         "exactly ONE technical question EXCLUSIVELY",
-        "CHECKPOINT ALIGNMENT: The question in checkpoint_prompt MUST directly",
-        "MUST steer lecture depth and checkpoint_prompt",
+        "CHECKPOINT ALIGNMENT: The question in follow_up_question MUST directly",
+        "MUST steer lecture depth and follow_up_question",
     ]
     for phrase in mandatory_checkpoint_phrases:
         assert (
@@ -263,7 +269,7 @@ def test_sub_concept_eval_node_evaluates_a_pending_self_check_answer_in_topic_qn
 ):
     """Regression: the earlier unconditional topic_qna skip in
 
-    sub_concept_eval.py was itself the bug the prompt.log "self_check_node"
+    sub_concept_eval.py was itself the bug "self_check_node"
     task reported — "чтобы зачесть подтему, пользователю приходится
     вручную переключать селектор на Лекцию". With TopicQnaLectureResponse /
     TopicQnaExplainContract structurally unable to ask a question, ordinary
@@ -333,8 +339,185 @@ def test_sub_concept_eval_node_still_skips_topic_qna_with_no_pending() -> None:
     assert out["memory"].evaluator_skipped is True
 
 
+def test_sub_concept_eval_node_resets_stale_pending_after_axis_switch() -> None:
+    """Regression: Self-Check was asked in lecture_self_check (pending +
+
+    pending_evaluation_interaction_axis="lecture_self_check" bound), the
+    learner switched the session to Topic Q&A without answering it, and
+    asked a brand-new question instead. Grading that unrelated message as
+    the Self-Check answer produced exactly the reported symptom — an
+    evaluation plaque + a fresh follow_up_question in what the learner
+    experiences as plain Q&A. The axis mismatch must clear pending and
+    skip evaluation instead."""
+    from knowledge_engine.src.domains.grounding.graph.nodes.sub_concept_eval import (
+        _sub_concept_eval_node_impl,
+    )
+    from knowledge_engine.src.domains.grounding.memory_schemas import (
+        SessionMemory,
+        SubConceptRecord,
+    )
+    from knowledge_engine.src.domains.grounding.schemas import NodeDataInput
+
+    node = NodeDataInput(
+        node_id="n1", title="Test", layer="foundation", core_concepts=["sc1"]
+    )
+    memory = SessionMemory()
+    memory.sub_concepts = [SubConceptRecord(id="sc1", label="Sub Concept 1")]
+    memory.pending_evaluation_concept_id = "sc1"
+    memory.asked_question_sub_concept_id = "sc1"
+    memory.pending_evaluation_interaction_axis = "lecture_self_check"
+    req = NodeDeepDiveRequest(
+        curriculum_id="cur-1",
+        node_data=node,
+        user_action="chat",
+        user_message="А как вообще работает партиционирование в этой БД?",
+        interaction_axis="topic_qna",
+    )
+    state = {"request": req, "memory": memory}
+
+    out = _sub_concept_eval_node_impl(state)
+
+    assert out["memory"].evaluator_skipped is True
+    assert out["memory"].pending_evaluation_concept_id == ""
+    assert out["memory"].pending_evaluation_interaction_axis == ""
+
+
+def test_sub_concept_eval_node_resets_pending_on_lecture_request() -> None:
+    """Regression: a lecture/dense-material request right after Self-Check
+
+    must drop the pending target, not just skip grading for this one turn —
+    otherwise the NEXT ordinary message (still seeing pending set) gets
+    graded as the abandoned Self-Check answer."""
+    from knowledge_engine.src.domains.grounding.graph.nodes.sub_concept_eval import (
+        _sub_concept_eval_node_impl,
+    )
+    from knowledge_engine.src.domains.grounding.memory_schemas import (
+        SessionMemory,
+        SubConceptRecord,
+    )
+    from knowledge_engine.src.domains.grounding.schemas import NodeDataInput
+
+    node = NodeDataInput(
+        node_id="n1", title="Test", layer="foundation", core_concepts=["sc1"]
+    )
+    memory = SessionMemory()
+    memory.sub_concepts = [SubConceptRecord(id="sc1", label="Sub Concept 1")]
+    memory.pending_evaluation_concept_id = "sc1"
+    memory.asked_question_sub_concept_id = "sc1"
+    memory.pending_evaluation_interaction_axis = "lecture_self_check"
+    req = NodeDeepDiveRequest(
+        curriculum_id="cur-1",
+        node_data=node,
+        user_action="chat",
+        user_message="[mode:lecture] Дай плотный материал по теме.",
+        interaction_axis="lecture_self_check",
+    )
+    state = {"request": req, "memory": memory}
+
+    out = _sub_concept_eval_node_impl(state)
+
+    assert out["memory"].evaluator_skipped is True
+    assert out["memory"].pending_evaluation_concept_id == ""
+    assert out["memory"].pending_evaluation_interaction_axis == ""
+
+
+def test_sub_concept_eval_node_gives_up_in_topic_qna_after_max_failed_attempts() -> (
+    None
+):
+    """Regression: a live session (clickhouse_mergetree_f32db532a801/
+
+    clickhouse) got stuck re-probing the same sub_concept in Topic Q&A —
+    failed_attempts reached 5, each turn the learner asked a clarifying
+    counter-question instead of answering, and each one was graded as a
+    wrong attempt and re-asked (GAP_EVAL_SYSTEM deliberately scores
+    off-topic/refusal as wrong, by design, to stop gaming the mandatory
+    lecture_self_check path). Topic Q&A is a free consultation, not a
+    mastery gate, so after TOPIC_QNA_SELF_CHECK_MAX_ATTEMPTS consecutive
+    fails it must give up on that sub_concept (clear pending, stop
+    re-probing) WITHOUT crediting it — status stays whatever it already
+    was (never forced to verified)."""
+    from knowledge_engine.src.domains.grounding.graph.nodes.sub_concept_eval import (
+        _sub_concept_eval_node_impl,
+    )
+    from knowledge_engine.src.domains.grounding.memory_schemas import (
+        SessionMemory,
+        SubConceptRecord,
+    )
+    from knowledge_engine.src.domains.grounding.schemas import NodeDataInput
+
+    node = NodeDataInput(
+        node_id="n1", title="Test", layer="foundation", core_concepts=["sc1"]
+    )
+    memory = SessionMemory()
+    memory.sub_concepts = [
+        SubConceptRecord(
+            id="sc1", label="Sub Concept 1", status="partial", failed_attempts=3
+        )
+    ]
+    memory.pending_evaluation_concept_id = "sc1"
+    memory.asked_question_sub_concept_id = "sc1"
+    memory.pending_evaluation_interaction_axis = "topic_qna"
+    req = NodeDeepDiveRequest(
+        curriculum_id="cur-1",
+        node_data=node,
+        user_action="chat",
+        user_message="А как вообще работает партиционирование в этой БД?",
+        interaction_axis="topic_qna",
+    )
+    state = {"request": req, "memory": memory}
+
+    out = _sub_concept_eval_node_impl(state)
+
+    assert out["memory"].evaluator_skipped is True
+    assert out["memory"].pending_evaluation_concept_id == ""
+    assert out["memory"].sub_concepts[0].status == "partial"
+    assert out["memory"].sub_concepts[0].failed_attempts == 3
+
+
+def test_sub_concept_eval_node_still_evaluates_topic_qna_below_attempt_ceiling() -> (
+    None
+):
+    """Control: below the attempt ceiling, Topic Q&A Self-Check retries
+
+    still evaluate normally — the circuit breaker only trips once the
+    threshold is actually reached, it is not a blanket topic_qna skip."""
+    from knowledge_engine.src.domains.grounding.graph.nodes.sub_concept_eval import (
+        _sub_concept_eval_node_impl,
+    )
+    from knowledge_engine.src.domains.grounding.memory_schemas import (
+        SessionMemory,
+        SubConceptRecord,
+    )
+    from knowledge_engine.src.domains.grounding.schemas import NodeDataInput
+
+    node = NodeDataInput(
+        node_id="n1", title="Test", layer="foundation", core_concepts=["sc1"]
+    )
+    memory = SessionMemory()
+    memory.sub_concepts = [
+        SubConceptRecord(
+            id="sc1", label="Sub Concept 1", status="partial", failed_attempts=2
+        )
+    ]
+    memory.pending_evaluation_concept_id = "sc1"
+    memory.asked_question_sub_concept_id = "sc1"
+    memory.pending_evaluation_interaction_axis = "topic_qna"
+    req = NodeDeepDiveRequest(
+        curriculum_id="cur-1",
+        node_data=node,
+        user_action="chat",
+        user_message="Материализация кэширует промежуточный набор строк.",
+        interaction_axis="topic_qna",
+    )
+    state = {"request": req, "memory": memory}
+
+    out = _sub_concept_eval_node_impl(state)
+
+    assert out["memory"].evaluator_skipped is False
+
+
 def test_dialogue_turn_also_uses_schemas_with_no_follow_up_field_in_topic_qna() -> None:
-    """Confirmed live via prompt.log on the sql_cte node: free-form chat
+    """Confirmed live on the sql_cte node: free-form chat
 
     turns (not "Дай плотный материал по теме") kept ending in a technical
     question too. Root cause: engine.py._invoke_tutor routes
@@ -362,9 +545,9 @@ def test_dialogue_turn_also_uses_schemas_with_no_follow_up_field_in_topic_qna() 
     assert "ready_for_transition" in TopicQnaTutorContract.model_fields
 
 
-def test_resolve_tutor_response_schema_keeps_asking_when_self_check_not_credited() -> (
-    None
-):
+def test_resolve_tutor_response_schema_keeps_asking_when_self_check_not_credited(
+    monkeypatch,
+) -> None:
     """Regression: the first version of the DeepDiveTutorContract split used
 
     TopicQnaTutorContract (no follow_up_question) for EVERY evaluated
@@ -375,6 +558,11 @@ def test_resolve_tutor_response_schema_keeps_asking_when_self_check_not_credited
     TERMINAL eval directive (subtopic actually passed) should drop the
     question field; "PROBE_NEXT_LAYER:*" (same layer still open) must keep
     DeepDiveTutorContract so the Self-Check loop can continue."""
+    # Explicit, not relied-on-default: this must hold regardless of the real
+    # .env's ENABLE_TUTOR_EXECUTION_PLAN (dev machines may have it on).
+    monkeypatch.setattr(
+        "knowledge_engine.src.config.settings.ENABLE_TUTOR_EXECUTION_PLAN", False
+    )
     from knowledge_engine.src.domains.grounding.engine import (
         _resolve_tutor_response_schema,
     )
@@ -477,7 +665,7 @@ def test_resolve_tutor_response_schema_keeps_question_while_self_check_pending()
 
     while a Self-Check question was awaiting an answer was correctly
     recognized (confirmed via worker trace: chip=clarify), but the reply
-    had no question at all — confirmed live via prompt.log. Root cause:
+    had no question at all — confirmed live. Root cause:
     "clarify" is classified by is_quick_reply_control_message as a UI
     control chip, so sub_concept_eval_node skips it (not a scored answer)
     WITHOUT clearing pending_evaluation_concept_id — the self-check is
@@ -487,7 +675,7 @@ def test_resolve_tutor_response_schema_keeps_question_while_self_check_pending()
     through to the field-less TopicQnaExplainContract with nowhere to put
     a rephrased question. has_pending_self_check covers every such chip
     generically, not just "clarify" by name — consistent with the
-    "no hardcoded per-intent text matching" constraint from prompt.log."""
+    "no hardcoded per-intent text matching" constraint."""
     from knowledge_engine.src.domains.grounding.engine import (
         _resolve_tutor_response_schema,
     )
@@ -509,13 +697,13 @@ def test_resolve_for_model_starts_new_session_on_interaction_axis_switch() -> No
     """Regression: even with a fully-clean topic_qna system prompt, the
 
     model kept ending Topic Q&A responses with a checkpoint question
-    (confirmed live via prompt.log against the sql_cte_group_by node) —
+    (confirmed live against the sql_cte_group_by node) —
     root cause was that ChatSessionManager.resolve_for_model only compared
     model_name, so switching interaction_axis for the same chat label
     (e.g. "node_deep_dive/dense_material") reused the OLD StoredChatSession
     and replayed its accumulated api_turns — raw JSON responses from
     earlier lecture_self_check turns, each ending in a filled
-    checkpoint_prompt — as conversation history into the new Gemini chat.
+    follow_up_question — as conversation history into the new Gemini chat.
     The model then imitated its own established pattern regardless of the
     current system_instruction. The fix: an interaction_axis mismatch must
     start a new session (Summary handoff, same as a model-name mismatch),
@@ -532,7 +720,7 @@ def test_resolve_for_model_starts_new_session_on_interaction_axis_switch() -> No
     mgr.record_turn(
         label,
         "Дай плотный материал по теме.",
-        '{"checkpoint_prompt": "Как дефицит work_mem провоцирует spill-to-disk?"}',
+        '{"follow_up_question": "Как дефицит work_mem провоцирует spill-to-disk?"}',
     )
     s2 = mgr.get(label)
     assert s2 is not None and s2.session_id == s1.session_id
@@ -546,12 +734,12 @@ def test_resolve_for_model_starts_new_session_on_interaction_axis_switch() -> No
     assert len(s3.api_turns) == 2
 
     # Переключение оси на topic_qna для ТОГО ЖЕ label — новая сессия, старые
-    # api_turns (с checkpoint_prompt-вопросами) не реплеятся как history.
+    # api_turns (с follow_up_question-вопросами) не реплеятся как history.
     s4 = mgr.resolve_for_model(label, model, "handoff", interaction_axis="topic_qna")
     assert s4.session_id != s2.session_id
     assert s4.interaction_axis == "topic_qna"
     assert not any(
-        "checkpoint_prompt" in (t.get("content") or "") for t in s4.api_turns
+        "follow_up_question" in (t.get("content") or "") for t in s4.api_turns
     )
 
     # Обратное переключение снова стартует новую сессию (не восстанавливает s2).

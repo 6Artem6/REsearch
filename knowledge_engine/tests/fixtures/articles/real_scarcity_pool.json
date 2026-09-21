@@ -1,0 +1,114 @@
+{
+  "principle": [
+    {
+      "url": "https://github.com/python/cpython/blob/c2370763793734aa6be8dbc326b70132770eaeaa/Python/ceval.c",
+      "statement": "Функция `PyEval_SetProfileAllThreads` в API трассировки используется для установки функции профилирования для всех потоков.",
+      "id": "7f053226-d8c5-49e8-b54f-9d1cc4c23717"
+    },
+    {
+      "url": "https://github.com/python/cpython/blob/c2370763793734aa6be8dbc326b70132770eaeaa/Python/ceval.c",
+      "statement": "В состоянии трассировки указатель стека (`stack_pointer`) извлекается с помощью `_PyFrame_GetStackPointer(frame)`, а поле `frame->stacktop` устанавливается в значение -1.",
+      "id": "a1a5445f-7cc6-4933-a37b-02222c82c2a9"
+    },
+    {
+      "url": "https://github.com/python/cpython/blob/c2370763793734aa6be8dbc326b70132770eaeaa/Python/ceval.c",
+      "statement": "Массив `binary_ops` содержит сопоставления бинарных операций (например, `NB_ADD`, `NB_AND`) с соответствующими функциями, такими как `PyNumber_Add` и `PyNumber_And`.",
+      "id": "5bbe37d8-0e7e-4c09-8fed-2ff3894f585c"
+    },
+    {
+      "url": "https://github.com/python/cpython/blob/c2370763793734aa6be8dbc326b70132770eaeaa/Python/ceval.c",
+      "statement": "При проверке соответствия исключений: если `PyErr_GivenExceptionMatches` не находит совпадения, создается группа исключений через `_PyExc_CreateExceptionGroup` и результат записывается в `match`.",
+      "id": "516c174d-4028-4206-9064-e042c08054f5"
+    },
+    {
+      "url": "https://github.com/python/cpython/blob/f23a1837/InternalDocs/interpreter.md",
+      "statement": "Встроенный кэш (inline cache) состоит из одной или нескольких двухбайтовых записей, которые включаются в массив байт-кода в качестве дополнительных слов, следующих за парой opcode/oparg. Размер встроенного кэша для конкретной инструкции фиксируется её кодом операции (opcode).",
+      "id": "57a4a513-1637-4f4b-a4e8-aab3af6cab8f"
+    },
+    {
+      "url": "https://github.com/postgres/postgres/blob/92268b35d04c2de416279f187d12f264afa22614/src/backend/access/brin/brin_revmap.c",
+      "statement": "Структура `brin_revmap_struct` (BrinRevmap) содержит следующие поля: `rm_irel` (Relation), `rm_pagesPerRange` (BlockNumber), `rm_lastRevmapPage` (BlockNumber, кэшированное из метастраницы), `rm_metaBuf` (Buffer) и `rm_currBuf` (Buffer).",
+      "id": "a5c14653-562f-55f3-ba05-b92c9a1fd318"
+    },
+    {
+      "url": "https://github.com/python/cpython/blob/master/Objects/obmalloc.c",
+      "statement": "Отладочные аллокаторы определяются через макрос PYDBGRAW_ALLOC, который инициализирует структуру с использованием _PyRuntime.allocators.debug.raw и функции _PyMem_DebugRawMalloc.",
+      "id": "2a9914e5-6a7b-590e-a39e-50d00a0b6612"
+    },
+    {
+      "url": "https://github.com/python/cpython/blob/master/Objects/obmalloc.c",
+      "statement": "Интеграция mimalloc реализована таким образом, что если функция _PyMem_MimallocEnabled() возвращает истину, вызывается get_mimalloc_allocated_blocks для получения выделенных блоков интерпретатора.",
+      "id": "cb280f69-f996-51d5-bad5-6a96ecac91c5"
+    }
+  ],
+  "instance": [
+    {
+      "url": "https://habr.com/ru/companies/postgrespro/articles/911492/",
+      "atoms": [
+        {
+          "statement": "list_partitioning states Признаком секционирования в этом случае является значение ключа, сопоставляемое с заданным списком значений.",
+          "id": "4a1afab9-a9b3-595a-b593-cd00b4ef7757"
+        },
+        {
+          "statement": "ddl_optimization states Создание такого ограничения заранее существенно ускоряет подключение секции. Фраза NOT VALID позволяет не производить сразу валидацию, которая предполагает полное сканирование таблицы.",
+          "id": "5ed28193-5d45-52f8-a180-4a42b9aef8c9"
+        },
+        {
+          "statement": "range_partitioning states При создании каждой секции мы объявляем интервал, который она покрывает... Причём первое значение указывается включительно, а второе нет.",
+          "id": "7a440263-db0e-53cd-ba3f-460972bb36e6"
+        }
+      ]
+    },
+    {
+      "url": "https://kariernik.ru/blog/rekursivnye-cte-sql",
+      "atoms": [
+        {
+          "statement": "recursive_cte_definition states Рекурсивный CTE — запрос, который ссылается сам на себя. ... Состоит из anchor (начальный набор) и рекурсивной части, объединённых через UNION ALL.",
+          "id": "22efee58-fd04-5680-a154-de184eeb6bb9"
+        },
+        {
+          "statement": "date_gap_filling states Без рекурсивного CTE дни без заказов пропадут из отчёта. С ним — все дни на месте, пропуски заполнены нулями.",
+          "id": "2c4d4cb9-ce37-53df-ad30-bb131db47b45"
+        },
+        {
+          "statement": "postgresql_generate_series states В PostgreSQL проще: generate_series('2025-01-01', '2025-01-31', '1 day') .",
+          "id": "4f115fd0-f8f6-51be-af41-d4cee310149b"
+        }
+      ]
+    },
+    {
+      "url": "https://www.postgresql.org/docs/18/gin.html",
+      "atoms": [
+        {
+          "statement": "gin_comparison states Alternatively, if the operator class does not provide a compare method, GIN will look up the default btree operator class for the index key data type, and use its comparison function.",
+          "id": "0988962e-3a12-5d10-8d72-8163a5c418a9"
+        },
+        {
+          "statement": "gin_operator_classes states The core PostgreSQL distribution includes the GIN operator classes shown in Table 65.3. array_ops... jsonb_ops... jsonb_path_ops... tsvector_ops",
+          "id": "28c3a36f-7452-5dfc-b87b-0f0cbe9c6190"
+        },
+        {
+          "statement": "jsonb_gin states Of the two operator classes for type jsonb , jsonb_ops is the default. jsonb_path_ops supports fewer operators but offers better performance for those operators.",
+          "id": "321adec0-ad67-5dca-ac08-002b63ae003e"
+        }
+      ]
+    },
+    {
+      "url": "https://habr.com/ru/companies/yandex/articles/959432/",
+      "atoms": [
+        {
+          "statement": "general states Размещение пользователей по шардам может основываться на продуктовой логике",
+          "id": "00f20b8e-e92f-50bd-a8f3-336d0b5cc0ef"
+        },
+        {
+          "statement": "sharpei_sla states стандартное SLA предполагает 99,99% доступности... минимальная задержка при получении информации о шардировании: не более 5 мс на 95-м перцентиле.",
+          "id": "132240ea-f463-5cc9-bbd0-3e339715e9a0"
+        },
+        {
+          "statement": "scaling_strategy states В случае с Oracle мы масштабировались вертикально, в случае с PostgreSQL масштабируемся горизонтально. Это повысило надёжность",
+          "id": "19495ee3-4b09-5078-8b08-f40f7d4f62d7"
+        }
+      ]
+    }
+  ]
+}

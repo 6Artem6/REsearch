@@ -135,7 +135,9 @@ def test_dense_prompt_caching_structure():
     )
     assert PROMPT_CITATION_ID_RULES.split("\n")[0] in system
     assert LAYOUT_AND_TYPOGRAPHY_RULES.split("\n")[0] in system
-    assert system.index(LECTURE_DENSE_RULES) < system.index("StructuredLectureResponse")
+    assert system.index(LECTURE_DENSE_RULES) < system.index(
+        "Generate a dense technical lecture."
+    )
 
     rag = "### [R1] chunk text"
     payload = build_lecture_generation_payload(

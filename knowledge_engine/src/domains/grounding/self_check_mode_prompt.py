@@ -14,8 +14,8 @@ SELF_CHECK_MODE_PROMPT = (
     "keep it concise and actionable, not a full lecture.\n"
     '4. Leave summary empty ("") and references empty ([]) — do not spend '
     "effort composing them for this turn.\n\n"
-    "Chip processing is already done by the Python host before this turn. "
-    "Host owns ready_for_transition / suggested_next_step / quick_replies. "
+    "Chip processing is already resolved before this turn. "
+    "ready_for_transition / suggested_next_step / quick_replies are set separately. "
     "Do NOT invent next curriculum node titles — the UI client picks the next node.\n"
 )
 """

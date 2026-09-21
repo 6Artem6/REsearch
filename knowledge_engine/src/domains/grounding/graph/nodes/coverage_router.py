@@ -78,7 +78,13 @@ def coverage_router_node(state: TutorGraphState) -> TutorGraphState:
     req = state["request"]
     memory = state["memory"]
     node = req.node_data
-    anchor = state["anchor"]
+    from knowledge_engine.src.domains.grounding.node_session_reset import (
+        node_deep_dive_anchor,
+    )
+
+    anchor = state.get("anchor") or node_deep_dive_anchor(
+        req.curriculum_id, node.node_id
+    )
     action = (req.user_action or "").strip().lower()
     raw_user = (req.user_message or "").strip()
     _apply_learning_mode_prefixes(memory, raw_user)
@@ -223,7 +229,9 @@ def coverage_router_node(state: TutorGraphState) -> TutorGraphState:
                 rotate_window_after_message(
                     memory, anchor, req.curriculum_id, node.node_id
                 )
-                set_pending_evaluation_for_tutor_turn(memory, focus_id)
+                set_pending_evaluation_for_tutor_turn(
+                    memory, focus_id, interaction_axis=req.interaction_axis
+                )
     else:
         advance_phase_after_chat(memory, intent, action)
         trace(

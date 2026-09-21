@@ -178,7 +178,7 @@ def test_gil_internals_trace_duplicate_is_stripped_once():
 
     dense = DenseMaterialOutput(
         lecture_body=f"{theory}\n\n{body_q}",
-        checkpoint_prompt=q,
+        follow_up_question=q,
         summary="GIL",
     )
     chat = _compose_dense_chat_message(dense)
@@ -207,7 +207,7 @@ def test_lecture_prompts_forbid_checkpoint_inside_lecture_body():
     lecture_desc = (
         StructuredLectureResponse.model_fields["lecture_body"].description or ""
     )
-    assert "checkpoint_prompt" in lecture_desc
+    assert "follow_up_question" in lecture_desc
     assert "FORBIDDEN" in lecture_desc
 
     mode = resolve_tutor_mode(
@@ -218,4 +218,4 @@ def test_lecture_prompts_forbid_checkpoint_inside_lecture_body():
         "ANSWER", "chat", "lecture", "dense_material", "[mode:lecture] лекция"
     )
     assert "mirrored" not in state["next_action"].lower()
-    assert "exclusively in checkpoint_prompt" in state["next_action"]
+    assert "exclusively in follow_up_question" in state["next_action"]

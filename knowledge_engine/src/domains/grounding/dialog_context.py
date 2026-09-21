@@ -359,6 +359,14 @@ def build_shared_session_context_block(
     if memory is None:
         return ""
     parts: list[str] = [SHARED_SESSION_CONTEXT_TAG, build_anchor_and_manifest(memory)]
+    if memory.learner_progress_blocks:
+        from knowledge_engine.src.domains.grounding.history_block_collapse import (
+            build_learner_progress_summary_block,
+        )
+
+        progress_block = build_learner_progress_summary_block(memory)
+        if progress_block:
+            parts.append(progress_block)
     if include_sliding_window and (memory.active_window or []):
         parts.append(build_sliding_window_block(memory))
     msg = (user_message or "").strip()

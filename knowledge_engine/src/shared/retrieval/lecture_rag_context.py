@@ -1625,7 +1625,7 @@ def build_lecture_generation_payload(
                 "An unanswered node/user question was pending before this lecture:\n"
                 f"{open_q[:2000]}\n"
                 "If [TARGET_FOCUS_AND_GAPS] names an open probe_layer or "
-                "focus_hint, PART 2 checkpoint_prompt MUST test that gap — "
+                "focus_hint, PART 2 follow_up_question MUST test that gap — "
                 "do not blindly re-state this question when it belongs to an "
                 "already-passed layer. Otherwise RE-STATE or REFINE this "
                 "question so it tests the concepts explained in PART 1. "
