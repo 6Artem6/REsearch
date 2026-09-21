@@ -703,6 +703,88 @@ def _parse_structured(
         raise RuntimeError(f"Gemini JSON не прошёл валидацию ({label}): {exc}") from exc
 
 
+_JSON_REPAIR_SYSTEM_INSTRUCTION = """
+You are a strict JSON repair tool. A previous model call had to output ONE
+JSON object matching a fixed schema, but the raw response below failed to
+parse.
+
+You receive:
+1. PARSER_ERROR — the exact error (message, line/column/char) pinpointing
+   where parsing broke.
+2. BROKEN_JSON — the full raw response text that failed to parse.
+
+Your ONLY job: fix the syntax problem(s) named in PARSER_ERROR (e.g. a
+missing/extra comma, an unescaped quote inside a string, a stray control
+character, an unterminated string/array/object) so the WHOLE text parses as
+valid JSON matching the schema.
+
+Rules:
+- Preserve every field and value exactly as intended by the original text —
+  do not invent, drop, reorder, paraphrase, or re-derive content beyond what
+  is strictly required to fix the named syntax error(s).
+- If a value is genuinely truncated (cut off near the very end with no more
+  content available), close it as tersely as valid JSON allows rather than
+  inventing new content to fill it.
+- Output ONLY the corrected JSON object — no markdown fences, no commentary.
+""".strip()
+
+
+def _repair_broken_structured_json(
+    model: str,
+    broken_text: str,
+    parse_error: str,
+    response_schema: Type[T],
+    label: str,
+) -> T:
+    """One targeted repair call — hand the model its own broken JSON plus the
+    exact parser error — instead of blindly re-running the original
+    (potentially large/expensive) generation request from scratch."""
+    repair_label = f"{label} / json_repair"
+    payload = f"PARSER_ERROR:\n{parse_error}\n\nBROKEN_JSON:\n{broken_text}"
+    text = _generate_once(
+        model,
+        payload,
+        _JSON_REPAIR_SYSTEM_INSTRUCTION,
+        response_schema,
+        repair_label,
+    )
+    return _parse_structured(text, response_schema, repair_label)
+
+
+def _parse_structured_with_repair(
+    text: str,
+    response_schema: Type[T] | None,
+    label: str,
+    repair_model: str,
+) -> Union[str, T]:
+    """Repair only genuine JSON *syntax* failures (json.JSONDecodeError) —
+    e.g. a stray comma from a truncated/glitched response. Pydantic
+    ValidationError (JSON parsed fine, schema/business rules didn't) is left
+    alone: callers such as engine.py's star_guard retry loop already handle
+    those with a targeted, context-aware retry hint, and this generic repair
+    call has no such context to add."""
+    try:
+        return _parse_structured(text, response_schema, label)
+    except Exception as exc:
+        cause = exc.__cause__
+        if (
+            response_schema is None
+            or not repair_model
+            or not isinstance(cause, json.JSONDecodeError)
+        ):
+            raise
+        trace(f"GEMINI JSON repair ▶ {label} | model={repair_model} | {exc}")
+        try:
+            repaired = _repair_broken_structured_json(
+                repair_model, text, str(cause), response_schema, label
+            )
+        except Exception as repair_exc:
+            trace(f"GEMINI JSON repair ✗ {label} | {repair_exc}")
+            raise exc from repair_exc
+        trace(f"GEMINI JSON repair ✓ {label}")
+        return repaired
+
+
 def _combine_anchor(global_anchor: str, body: str) -> str:
     return (
         f"GLOBAL ANCHOR (задача и контекст, не игнорировать):\n{global_anchor.strip()}\n\n"
@@ -1051,7 +1133,10 @@ def run_stateless_gemini(
         f"{user_payload.strip()}"
     )
 
+    used_model: dict[str, str] = {}
+
     def _gen(model: str) -> str:
+        used_model["model"] = model
         return _generate_once(
             model, combined_user, system_instruction, response_schema, label
         )
@@ -1060,7 +1145,9 @@ def run_stateless_gemini(
     text = _call_with_model_fallback(
         label, _gen, rpm_pause=rpm_pause, estimated_tokens=est_tokens
     )
-    return _parse_structured(text, response_schema, label)
+    return _parse_structured_with_repair(
+        text, response_schema, label, used_model.get("model", "")
+    )
 
 
 def run_gemini_structured_with_chain(
@@ -1099,8 +1186,10 @@ def run_gemini_structured_with_chain(
     field = (stream_text_field or "").strip() or structured_stream_text_field(
         response_schema
     )
+    used_model: dict[str, str] = {}
 
     def _gen(model: str) -> str:
+        used_model["model"] = model
         if chat_manager is not None:
             from knowledge_engine.src.adapters.llm_providers.gemini_cache_manager import (
                 get_or_create_explicit_cache,
@@ -1220,7 +1309,9 @@ def run_gemini_structured_with_chain(
         estimated_tokens=est_tokens,
         interaction_axis=interaction_axis,
     )
-    return _parse_structured(text, response_schema, label)
+    return _parse_structured_with_repair(
+        text, response_schema, label, used_model.get("model", "")
+    )
 
 
 def run_gemini_text_with_chain(
