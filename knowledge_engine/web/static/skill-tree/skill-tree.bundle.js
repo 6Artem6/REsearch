@@ -39342,7 +39342,7 @@ function sortDialogMessages(messages) {
   return [...messages || []];
 }
 function stripModePrefix(text) {
-  return String(text || "").replace(/^\[mode:\w+\]\s*/i, "").trim();
+  return String(text || "").replace(/^\[mode:\w+\]\s*/i, "").replace(/^\[(?:action|intent):[^\]]+\]\s*/i, "").trim();
 }
 function normalizeUserDialogContent(text) {
   return stripModePrefix(repairLlMText(String(text || "")).trim());
@@ -39524,9 +39524,31 @@ function buildMessagesAfterChatComplete(res, userMsg, oldMessages, streamMsgId) 
     res
   );
 }
-function hydrateSessionsFromServer(sessions) {
+var LS_NODE_AXIS_PREFIX = "skillTreeInteractionAxis:";
+var INTERACTION_AXES = /* @__PURE__ */ new Set(["lecture_self_check", "topic_qna"]);
+function rememberNodeInteractionAxis(curriculumId, nodeId, axis) {
+  try {
+    if (curriculumId && nodeId && INTERACTION_AXES.has(axis)) {
+      localStorage.setItem(`${LS_NODE_AXIS_PREFIX}${curriculumId}:${nodeId}`, axis);
+    }
+  } catch {
+  }
+}
+function readNodeInteractionAxis(curriculumId, nodeId) {
+  try {
+    const v = localStorage.getItem(`${LS_NODE_AXIS_PREFIX}${curriculumId}:${nodeId}`);
+    return INTERACTION_AXES.has(v) ? v : "";
+  } catch {
+    return "";
+  }
+}
+function hydrateSessionsFromServer(sessions, curriculumId = "") {
   const out = {};
   for (const [nodeId, blob] of Object.entries(sessions || {})) {
+    const pendingAxis = String(
+      blob.memory?.pending_evaluation_interaction_axis || ""
+    ).trim();
+    const interactionAxis = INTERACTION_AXES.has(pendingAxis) ? pendingAxis : readNodeInteractionAxis(curriculumId, nodeId);
     const history = blob.history || [];
     const content = blob.content || {};
     const hasMemory = Boolean(blob.memory_prepared || blob.memory);
@@ -39545,7 +39567,8 @@ function hydrateSessionsFromServer(sessions) {
       lectureRagInspector: blob.lecture_rag_inspector || [],
       readyForTransition: Boolean(blob.ready_for_transition),
       lastEvalDirective: String(blob.last_eval_directive || "").trim(),
-      quickReplies: Array.isArray(blob.quick_replies) ? blob.quick_replies : []
+      quickReplies: Array.isArray(blob.quick_replies) ? blob.quick_replies : [],
+      ...interactionAxis ? { interactionAxis } : {}
     };
   }
   return out;
@@ -39664,7 +39687,14 @@ async function fetchNodeSourceRegistry(curriculumId, nodeId) {
   if (!r.ok) return { source_registry: [] };
   return r.json();
 }
-async function nodeGroundingDiscover(curriculumId, nodeData) {
+async function resolveNodeGroundingJob(data, opts = {}) {
+  if (data && data.job_id) {
+    const job = await waitWorkJob(data.job_id, opts);
+    return job.result;
+  }
+  return data;
+}
+async function nodeGroundingDiscover(curriculumId, nodeData, opts = {}) {
   const r = await fetch(`${API}/node/grounding-discover`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -39674,9 +39704,9 @@ async function nodeGroundingDiscover(curriculumId, nodeData) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return r.json();
+  return resolveNodeGroundingJob(await r.json(), opts);
 }
-async function nodeGroundingDigest(curriculumId, nodeId, approvedUrls) {
+async function nodeGroundingDigest(curriculumId, nodeId, approvedUrls, opts = {}) {
   const r = await fetch(`${API}/node/grounding-digest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -39690,9 +39720,9 @@ async function nodeGroundingDigest(curriculumId, nodeId, approvedUrls) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return r.json();
+  return resolveNodeGroundingJob(await r.json(), opts);
 }
-async function nodeGroundingFinalize(curriculumId, nodeId, approvedUrls) {
+async function nodeGroundingFinalize(curriculumId, nodeId, approvedUrls, opts = {}) {
   const r = await fetch(`${API}/node/grounding-finalize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -39706,7 +39736,7 @@ async function nodeGroundingFinalize(curriculumId, nodeId, approvedUrls) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return r.json();
+  return resolveNodeGroundingJob(await r.json(), opts);
 }
 async function ensureSteeringSourcesIngested(curriculumId, nodeData) {
   const r = await fetch(`${API}/node/ensure-steering-sources`, {
@@ -39792,13 +39822,14 @@ async function nodeChatStream(curriculumId, nodeData, userMessage, onEvent, inte
     onEvent
   );
 }
-async function nodeInitStream(curriculumId, nodeData, onEvent, interactionAxis = "lecture_self_check") {
+async function nodeInitStream(curriculumId, nodeData, onEvent, interactionAxis = "lecture_self_check", controlAxis = null) {
   return readNodeSsePost(
     `${API}/node/init-stream`,
     {
       curriculum_id: curriculumId,
       node_data: nodeData,
-      interaction_axis: interactionAxis
+      interaction_axis: interactionAxis,
+      control_axis: controlAxis || null
     },
     onEvent
   );
@@ -41854,11 +41885,10 @@ function SteeringGatePanel({
   const items = isGate1 ? candidates || [] : isGate2 ? digests || [] : [];
   const itemUrls = (0, import_react18.useMemo)(() => items.map((it) => it.url), [items]);
   const hasCap = typeof maxApproved === "number" && maxApproved > 0;
-  const [selected2, setSelected] = (0, import_react18.useState)(
-    () => isGate2 ? new Set(itemUrls) : /* @__PURE__ */ new Set()
-  );
+  const defaultSelection = () => isGate2 && (!hasCap || itemUrls.length <= maxApproved) ? new Set(itemUrls) : /* @__PURE__ */ new Set();
+  const [selected2, setSelected] = (0, import_react18.useState)(defaultSelection);
   (0, import_react18.useEffect)(() => {
-    setSelected(isGate2 ? new Set(itemUrls) : /* @__PURE__ */ new Set());
+    setSelected(defaultSelection());
   }, [itemUrls.join("|"), isGate2]);
   if (!isGate1 && !isGate2) return null;
   function toggle(url) {
@@ -41886,7 +41916,7 @@ function SteeringGatePanel({
     import_react18.default.createElement(
       "p",
       { className: "muted small drawer-hint" },
-      isGate1 ? kind === "node" ? "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0441\u0442\u0430\u0442\u044C\u0438, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u043E\u0439\u0434\u0443\u0442 \u0432 \u0434\u0430\u0439\u0434\u0436\u0435\u0441\u0442 (\u0448\u0430\u0433 2 \u2014 \u0442\u043E\u0447\u0435\u0447\u043D\u044B\u0439 \u0440\u0430\u0437\u0431\u043E\u0440)." : "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0441\u0442\u0430\u0442\u044C\u0438, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u043E\u0439\u0434\u0443\u0442 \u0432 \u0434\u0430\u0439\u0434\u0436\u0435\u0441\u0442 (\u0448\u0430\u0433 2 \u2014 Batch Digest)." : kind === "node" ? "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0441\u0442\u0430\u0442\u044C\u0438, \u0434\u0430\u0439\u0434\u0436\u0435\u0441\u0442 \u043A\u043E\u0442\u043E\u0440\u044B\u0445 \u0432\u043E\u0439\u0434\u0451\u0442 \u0432 \u0431\u0430\u0437\u0443 \u0437\u043D\u0430\u043D\u0438\u0439 \u043D\u043E\u0434\u044B." : "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0441\u0442\u0430\u0442\u044C\u0438, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u043E\u0439\u0434\u0443\u0442 \u0432 \u0444\u0438\u043D\u0430\u043B\u044C\u043D\u0443\u044E \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044E \u043A\u0443\u0440\u0441\u0430."
+      isGate1 ? kind === "node" ? "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0441\u0442\u0430\u0442\u044C\u0438 \u0434\u043B\u044F \u0434\u0430\u0439\u0434\u0436\u0435\u0441\u0442\u0430 \u2014 \u0441\u043A\u043E\u043B\u044C\u043A\u043E \u0443\u0433\u043E\u0434\u043D\u043E; \u0432 \u043F\u043E\u043B\u043D\u044B\u0439 \u0440\u0430\u0437\u0431\u043E\u0440 \u043D\u0430 Gate 2 \u043F\u0440\u043E\u0439\u0434\u0443\u0442 \u0434\u043E 4." : "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0441\u0442\u0430\u0442\u044C\u0438, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u043E\u0439\u0434\u0443\u0442 \u0432 \u0434\u0430\u0439\u0434\u0436\u0435\u0441\u0442 (\u0448\u0430\u0433 2 \u2014 Batch Digest)." : kind === "node" ? "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0434\u043E 4 \u0441\u0442\u0430\u0442\u0435\u0439 \u2014 \u043E\u043D\u0438 \u043F\u0440\u043E\u0439\u0434\u0443\u0442 \u043F\u043E\u043B\u043D\u044B\u0439 \u0440\u0430\u0437\u0431\u043E\u0440 (Map-Reduce) \u0432 \u0431\u0430\u0437\u0443 \u0437\u043D\u0430\u043D\u0438\u0439 \u043D\u043E\u0434\u044B." : "\u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0441\u0442\u0430\u0442\u044C\u0438, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u043E\u0439\u0434\u0443\u0442 \u0432 \u0444\u0438\u043D\u0430\u043B\u044C\u043D\u0443\u044E \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044E \u043A\u0443\u0440\u0441\u0430."
     ),
     hasCap && import_react18.default.createElement(
       "p",
@@ -42348,6 +42378,7 @@ function NodeDrawer({
   onRestart,
   composeLocked,
   nodeGenerating,
+  tutorBusy,
   sessions,
   selectedMaterialId,
   materialViewMode,
@@ -42401,7 +42432,7 @@ function NodeDrawer({
           status: session.steeringStatus,
           candidates: session.steeringCandidates,
           digests: session.steeringDigests,
-          busy: composeLocked || nodeGenerating,
+          busy: Boolean(tutorBusy),
           approvedCount: session.steeringApprovedCount,
           onApprove: onGateApprove
         }),
@@ -42410,8 +42441,10 @@ function NodeDrawer({
           status: session.nodeGateStatus,
           candidates: session.nodeGateCandidates,
           digests: session.nodeGateDigests,
-          busy: composeLocked || nodeGenerating,
-          maxApproved: 4,
+          busy: Boolean(tutorBusy),
+          // Gate 1 — в дайджест сколько угодно статей; Gate 2 — в полный
+          // пайплайн (Map-Reduce) не больше NODE_GATE2_MAX_APPROVED = 4.
+          maxApproved: session.nodeGateStatus === "awaiting_gate_2" ? 4 : void 0,
           approvedCount: session.nodeGateApprovedCount,
           onApprove: onNodeGateApprove
         }),
@@ -42962,6 +42995,10 @@ var QUICK = [
     text: "[mode:next_module] \u0427\u0442\u043E \u044F \u0443\u0441\u0432\u043E\u0438\u043B \u0438 \u043A\u0443\u0434\u0430 \u043B\u043E\u0433\u0438\u0447\u043D\u043E \u043F\u0435\u0440\u0435\u0439\u0442\u0438 \u0434\u0430\u043B\u044C\u0448\u0435?"
   }
 ];
+var NEXT_SUBTOPIC_CHIP = {
+  label: "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0430\u044F \u043F\u043E\u0434\u0442\u0435\u043C\u0430 (\u0431\u0435\u0437 \u0437\u0430\u0447\u0451\u0442\u0430)",
+  text: "[action:next_subtopic] \u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0430\u044F \u043F\u043E\u0434\u0442\u0435\u043C\u0430 (\u0431\u0435\u0437 \u0437\u0430\u0447\u0451\u0442\u0430)"
+};
 function lastTutorMsgId(messages) {
   const list = sortDialogMessages(messages || []);
   for (let i = list.length - 1; i >= 0; i -= 1) {
@@ -43117,7 +43154,10 @@ function NodeTutorChat({
       import_react23.default.createElement(
         "div",
         { className: "quick-chips" },
-        QUICK.map(
+        [
+          ...QUICK,
+          ...session?.interactionAxis === "topic_qna" ? [NEXT_SUBTOPIC_CHIP] : []
+        ].map(
           (q) => import_react23.default.createElement(
             "button",
             {
@@ -43271,12 +43311,12 @@ function RoadmapDashboard() {
       setStatuses(
         mergeNodeStatuses(ws.curriculum, ws.statuses || {})
       );
-      setSessions(hydrateSessionsFromServer(ws.sessions));
+      setSessions(hydrateSessionsFromServer(ws.sessions, curriculumId));
       setSelectedNode(null);
       setSelectedMaterialId(null);
       await setActiveCurriculum(curriculumId);
       rememberActiveCurriculumId(curriculumId);
-      const savedAxis = readCurriculumControlAxis(curriculumId);
+      const savedAxis = ws.meta?.control_axis === "steering" ? "steering" : readCurriculumControlAxis(curriculumId);
       if (savedAxis) setControlAxis(savedAxis);
       setSourcePolicy("practical_only");
       replaceSkillTreeSearchParams({ curriculum: curriculumId });
@@ -43625,6 +43665,7 @@ function RoadmapDashboard() {
     }
   }
   function setNodeInteractionAxis(nodeId, axis) {
+    rememberNodeInteractionAxis(curriculum?.curriculum_id, nodeId, axis);
     setSessions((prev) => ({
       ...prev,
       [nodeId]: { ...prev[nodeId] || { messages: [] }, interactionAxis: axis }
@@ -43748,11 +43789,15 @@ function RoadmapDashboard() {
     });
   }, []);
   const openNode = (0, import_react25.useCallback)(
-    async (node) => {
+    // afterGate: вызов из handleNodeGateApprove сразу после finalize. Его
+    // замыкание видит состояние ДО setTutorBusyNodeId(null)/удаления сессии
+    // гейта (React применит их только к следующему рендеру) — без флага
+    // проверки «занято» и «гейт уже идёт» ниже выходили, init не стартовал.
+    async (node, { afterGate = false } = {}) => {
       if (!curriculum || !node?.node_id) return;
       const sid = node.node_id;
-      const initialized2 = Boolean(sessions[sid]?.initialized);
-      if (tutorBusyNodeId !== null && !initialized2) return;
+      const initialized2 = afterGate ? false : Boolean(sessions[sid]?.initialized);
+      if (!afterGate && tutorBusyNodeId !== null && !initialized2) return;
       setSelectedNode(node);
       setSelectedMaterialId(null);
       replaceSkillTreeSearchParams({ node: sid, material: "" });
@@ -43775,7 +43820,7 @@ function RoadmapDashboard() {
         }
         return;
       }
-      const existingGateStatus = sessions[sid]?.nodeGateStatus;
+      const existingGateStatus = afterGate ? null : sessions[sid]?.nodeGateStatus;
       if (existingGateStatus === "awaiting_gate_1" || existingGateStatus === "awaiting_gate_2") {
         return;
       }
@@ -43788,15 +43833,17 @@ function RoadmapDashboard() {
             curriculum.curriculum_id,
             toNodeDataInput(node)
           );
-          if ((disc.candidates || []).length > 0) {
+          const resumeGate2 = disc.status === "awaiting_gate_2" && (disc.digests || []).length > 0;
+          if (resumeGate2 || (disc.candidates || []).length > 0) {
             setSessions((prev) => ({
               ...prev,
               [sid]: {
                 ...prev[sid] || { messages: [] },
                 initialized: false,
-                nodeGateStatus: "awaiting_gate_1",
-                nodeGateCandidates: disc.candidates,
-                nodeGateDigests: []
+                nodeGateStatus: resumeGate2 ? "awaiting_gate_2" : "awaiting_gate_1",
+                nodeGateCandidates: disc.candidates || [],
+                nodeGateDigests: resumeGate2 ? disc.digests : [],
+                nodeGateApprovedCount: resumeGate2 ? (disc.approved_urls || []).length : void 0
               }
             }));
             return;
@@ -43854,7 +43901,10 @@ function RoadmapDashboard() {
               throw new Error(evt.detail || "init-stream error");
             }
           },
-          sessions[sid]?.interactionAxis || "lecture_self_check"
+          sessions[sid]?.interactionAxis || "lecture_self_check",
+          // Штурвал → сервер не запускает автопилотный поиск источников,
+          // даже если гейт выше был пропущен (0 кандидатов / сбой discover).
+          controlAxis
         );
         applyNodeResponse(sid, finalRes || {});
         const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
@@ -43906,7 +43956,12 @@ function RoadmapDashboard() {
         await nodeGroundingFinalize(
           curriculum.curriculum_id,
           node.node_id,
-          selectedUrls
+          selectedUrls,
+          {
+            onPoll: (info) => setTutorStageMessage(
+              `\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u044B \u0432 \u043D\u043E\u0434\u0443 (Map-Reduce)\u2026 ${info.elapsedSec} \u0441`
+            )
+          }
         );
         setSessions((prev) => {
           const next = { ...prev };
@@ -43918,7 +43973,7 @@ function RoadmapDashboard() {
         setSelectedNode(freshNode);
         setTutorBusyNodeId(null);
         setTutorStageMessage("");
-        await openNode(freshNode);
+        await openNode(freshNode, { afterGate: true });
         return;
       }
     } catch (err) {
@@ -44306,6 +44361,10 @@ function RoadmapDashboard() {
         onRestart: restartSelectedNode,
         composeLocked,
         nodeGenerating,
+        // Гейт показывается ДО init ноды (сессия ещё не initialized),
+        // поэтому composeLocked его блокировал бы всегда — гейту нужен
+        // только флаг «идёт запрос тьютора/гейта».
+        tutorBusy,
         sessions,
         selectedMaterialId,
         materialViewMode,
