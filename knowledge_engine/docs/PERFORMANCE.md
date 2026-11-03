@@ -140,6 +140,42 @@ overflow срабатывает немедленно, не складывая о
 это отдельная забота (какую модель вообще пробовать в chain), не пейсинг
 внутри одной модели; Governor теперь единственный источник задержки.
 
+### Gemma: зависшие попытки, circuit breaker, failover пула (2026-11)
+
+**Что наблюдали:** `gemma-4-31b-it` висел ~57 с и отвечал 500/503. Запрос
+ждал зависшую попытку, tenacity-ретрай ждал слот до новой минуты, а пул
+`RateLimitedLLMClient` после отказа снова начинал перебор с primary, так что
+fallback не включался. Следующие запросы снова шли в сломанную модель.
+
+`adapters/llm_providers/gemma_client.py::post_with_hedging` (заменил tenacity):
+
+| Механизм | Поведение | Настройка |
+|---|---|---|
+| Параллельная попытка | Если попытка молчит дольше порога, запускается новая параллельно, но только при свободном слоте лимитера этой модели (ожидание слота не блокирует идущую попытку). Побеждает первый ответ | `GEMMA_HEDGE_AFTER_SEC=45`, `GEMMA_HEDGE_SLOT_WAIT_SEC=60` |
+| Лимит попыток | Всего HTTP-попыток на вызов (повторы после 5xx/429 и параллельные) | `GEMMA_MAX_ATTEMPTS=3` |
+| Circuit breaker | Все попытки к модели провалились (5xx/таймаут) → модель «открыта»: `_pick_slot` ставит её в конец очереди. Первый успешный ответ закрывает. Состояние процесс-локальное (API и worker раздельно) | `GEMMA_CIRCUIT_OPEN_SEC=180` |
+| Failover пула | Модели, уже отказавшие в этом запросе, исключаются из перебора (`exclude`). Если есть не опробованная альтернатива, отказавшую модель повторяют только при свободном прямо сейчас слоте (`_retry_slot_wait` → 0), иначе запрос сразу уходит в fallback | `GEMMA_FALLBACK_MODEL` |
+
+Параллельные попытки работают только при вызове с `limiter` (через пул).
+Для preacquired MAP-волн слоты уже распределены, поэтому там остаётся только
+повтор после отказа.
+
+**Через пул идут:** MAP/REDUCE ingest, дайджесты Node Gate 2
+(`node_digest_service._gemma_pool`), структурные вызовы
+`knowledge_engine/llm.py` (`complete_structured_async/sync` с primary-моделью
+Gemma).
+
+**Логи:**
+- `GEMMA HTTP ▶/✓/✗ <label>` — каждая HTTP-попытка, у каждой свой
+  LLM-спан в Phoenix;
+- `BLOG_SPATIAL gemma circuit ⊘ | <model> open`;
+- `BLOG_SPATIAL gemma failover ✓ | using <model> (primary failed |
+  primary circuit open | primary limits exhausted)`.
+
+**Разбор JSON:** если перед JSON идёт текст рассуждений, всё до первого
+`{` или `[` отрезается. Голый список или одиночный объект заворачивается в
+единственное list-поле схемы (`_wrap_bare_list_for_schema`).
+
 ## ML Memory Guard (BGE-M3 / Cross-Encoder, MPS RAM)
 
 `services/ml_memory_guard.py` — eviction для локальных ML-моделей RAG-пайплайна

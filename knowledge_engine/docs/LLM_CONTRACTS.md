@@ -20,8 +20,8 @@ Runtime-реестр label → тип: `GEMINI_STRUCTURED_CONTRACTS` в `__init_
 | Контракт | Назначение | Ключевые поля | Labels (`GEMINI_STRUCTURED_CONTRACTS`) |
 |----------|------------|---------------|----------------------------------------|
 | `DeepDiveTutorContract` | Chat / verify dialogue + lecture_chat | `feedback_on_answer`, `technical_explanation`, `follow_up_question`, `question_sub_concept_id`, `referenced_diagram_id` (catalog id only; **нет** raw Mermaid / **нет** `tutor_message`) | `node_deep_dive/tutor` |
-| `DeepDiveExplainContract` | Chat/verify, когда Evaluator пропущен (host-owned skip — пустое сообщение / явный lecture request / нет pending) | Те же поля минус `audit`; `follow_up_question` опционален | `node_deep_dive/tutor` (тот же label, схема выбирается динамически в `_invoke_tutor` по `evaluator_skipped`) |
-| `TopicQnaTutorContract` / `TopicQnaExplainContract` | Аудированный / explain-ход для `interaction_axis="topic_qna"` | Те же поля, что у `DeepDiveTutorContract`/`DeepDiveExplainContract`, **МИНУС** `follow_up_question`/`question_sub_concept_id` — поля вопроса в схеме нет вовсе (не запрещено текстом, физически отсутствует) | `node_deep_dive/tutor` (выбор по оси + состоянию self-check — см. `engine.py::_resolve_tutor_response_schema`, [STEERING_AND_TOPIC_QNA_ROADMAP.md](STEERING_AND_TOPIC_QNA_ROADMAP.md)) |
+| `DeepDiveExplainContract` | Chat/verify, когда Evaluator пропущен (host-owned skip — пустое сообщение / явный lecture request / нет pending) | Те же поля минус `audit`; `follow_up_question` опционален, но `technical_explanation` и `follow_up_question` не могут быть пустыми одновременно (`_requires_learner_facing_text` → `EMPTY_EXPLAIN_TURN_ERROR`; см. ниже) | `node_deep_dive/tutor` (тот же label, схема выбирается динамически в `_invoke_tutor` по `evaluator_skipped`) |
+| `TopicQnaTutorContract` / `TopicQnaExplainContract` | Аудированный / explain-ход для `interaction_axis="topic_qna"` | Те же поля, что у `DeepDiveTutorContract`/`DeepDiveExplainContract`, **МИНУС** `follow_up_question`/`question_sub_concept_id` — поля вопроса в схеме нет вовсе (не запрещено текстом, физически отсутствует); у `TopicQnaExplainContract` `technical_explanation` обязателен (тот же валидатор) | `node_deep_dive/tutor` (выбор по оси + состоянию self-check — см. `engine.py::_resolve_tutor_response_schema`, [STEERING_AND_TOPIC_QNA_ROADMAP.md](STEERING_AND_TOPIC_QNA_ROADMAP.md)) |
 | `IntroAssessmentContract` | Intro / lazy intro | `tutor_message`, `node_status` | `node_deep_dive / intro_assessment` |
 | `StructuredLectureResponse` | Dense lecture | `lecture_body`, `extracted_concepts`, `used_sources`, `referenced_diagram_id` (catalog id only), … | `node_deep_dive / dense_material` |
 | `TopicQnaLectureResponse` | Dense lecture для `interaction_axis="topic_qna"` | Те же поля, что у `StructuredLectureResponse`, **МИНУС** `checkpoint_prompt` | `node_deep_dive / dense_material` (выбор по оси в `generate_dense_material`) |
@@ -37,6 +37,25 @@ Runtime-реестр label → тип: `GEMINI_STRUCTURED_CONTRACTS` в `__init_
 **Context-Bounded Evaluation:** допустимая глубина ответа = слой абстракции, явно запрошенный `last_tutor_question` (вопрос + ввод того же хода). `GAP_EVAL_SYSTEM` / overlay eval и Question Factory читают SSOT `context_bounded_eval.py` (универсальный Scope Ceiling, без доменного жаргона). Evaluator не ставит PARTIAL за незапрошенный более глубокий слой; опущение ≠ ошибка; фабрика обязана scope-lock каждый критерий в тексте вопроса.
 
 Helper: `structured_lecture_to_dense`, константа `STRUCTURED_LECTURE_FIELD_RULES`.
+
+**Пустой explain-ход (2026-11).** Ход без Evaluator, где модель заполнила
+только служебные поля (summary / quick replies), раньше доходил до ученика
+заглушкой «Продолжим по теме…». Теперь `model_validator`
+`_requires_learner_facing_text` у `DeepDiveExplainContract` /
+`TopicQnaExplainContract` отклоняет такой JSON с `EMPTY_EXPLAIN_TURN_ERROR`
+(`tutor.py`). `engine.py::_invoke_tutor` считает эту ошибку retryable для
+explain-схем: делает ещё одну попытку (всего `max_attempts=2`) и добавляет
+в динамический блок `### RETRY — previous JSON rejected (no learner-facing
+text)`. В лог пишется `PROMPT_FACTORY | explain contract retry`. Правило
+задаётся контрактом, текст ответа не фильтруется в Python.
+
+**Follow-up из текста.** Бывает, что модель кладёт вопрос в
+`technical_explanation`, а `follow_up_question` оставляет пустым. Тогда
+`commit_turn._ensure_follow_up_on_llm_out` переносит извлечённый вопрос в
+`follow_up_question` и вырезает его из `technical_explanation`. Если весь
+ответ — один абзац, вопросом считается только его последнее предложение
+с `?` (`tutor_dialogue.extract_follow_up_from_chat_text`). Так текст не
+выводится дважды.
 
 **Diagrams:** LLM contracts expose `referenced_diagram_id` (catalog asset id or null). Raw Mermaid is never accepted from the tutor/lecture model; the server resolves Mermaid from `article_diagrams` / `content.diagrams` into `NodeContentBlock.diagram` for the UI.
 

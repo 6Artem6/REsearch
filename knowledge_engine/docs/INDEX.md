@@ -14,11 +14,11 @@
 | [PRODUCT_OVERVIEW.md](PRODUCT_OVERVIEW.md) | Поверхностный обзор для пользователя: что это, что даёт, на чём основано | Актуальна (2026-09-13) |
 | [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) | Карта «зачем» ключевых решений всего проекта + mermaid-схемы, с явной пометкой задокументировано/восстановлено/не объяснено | Актуальна (2026-09-13); сама содержит раздел «Пробелы» |
 | [TUTOR_PIPELINES.md](TUTOR_PIPELINES.md) | Карта create / expand / тьютор | Актуальна (§8 = LangGraph) |
-| [NODE_DEEP_DIVE_MODULE_2.md](NODE_DEEP_DIVE_MODULE_2.md) | Модуль 2: DAG, MemorySaver, single-writer | Актуальна для оркестрации |
+| [NODE_DEEP_DIVE_MODULE_2.md](NODE_DEEP_DIVE_MODULE_2.md) | Модуль 2: DAG, MemorySaver, single-writer; Topic Q&A «следующая подтема без зачёта» | Актуальна для оркестрации (2026-11) |
 | [TUTOR_PROMPT_AND_UI_TEXT.md](TUTOR_PROMPT_AND_UI_TEXT.md) | Контракт тьютора, режимы, BLOCK 1–3 | Актуальна для dialogue/lecture |
-| [STEERING_AND_TOPIC_QNA_ROADMAP.md](STEERING_AND_TOPIC_QNA_ROADMAP.md) | Control Axis (Штурвал, 2-gate HITL) + Node Grounding Gate (per-node, Habr RSS/Exa/academic) + Interaction Axis (`lecture_self_check`/`topic_qna`) — журнал внедрения, add-only поверх Autopilot | Актуальна (2026-09) |
+| [STEERING_AND_TOPIC_QNA_ROADMAP.md](STEERING_AND_TOPIC_QNA_ROADMAP.md) | Control Axis (Штурвал, 2-gate HITL) + Node Grounding Gate (per-node, Habr RSS/Exa/academic) + Interaction Axis (`lecture_self_check`/`topic_qna`) — журнал внедрения, add-only поверх Autopilot; гейт ноды в worker, сохранение незавершённого гейта, `control_axis` курса | Актуальна (2026-11) |
 | [TUTOR_LANGGRAPH_MIGRATION.md](TUTOR_LANGGRAPH_MIGRATION.md) | ADR миграции | **Устарела как «Phase 0/1»** — граф уже полный |
-| [LLM_CONTRACTS.md](LLM_CONTRACTS.md) | Реестр Pydantic Gemini + регламент prompt/contract | Частично: нет `EvaluatorCritiqueContract`, `ArxivQueryParamsContract` |
+| [LLM_CONTRACTS.md](LLM_CONTRACTS.md) | Реестр Pydantic Gemini + регламент prompt/contract; правило непустого explain-хода | Частично: нет `EvaluatorCritiqueContract`, `ArxivQueryParamsContract` |
 | [PROMPT_SYSTEM_REFERENCE.md](PROMPT_SYSTEM_REFERENCE.md) | Матрица моделей/контуров, режимы `prompt_factory.py`, реестр prompt-переменных, DEEP MAP/REDUCE/Dedup контракты, Evaluator Bypass guardrails, чек-лист расширения | Актуальна (2026-09-01) |
 | [EXA_SEARCH.md](EXA_SEARCH.md) | Exa: plan, rank, domains, `EXA_*` | Актуальна |
 | [RAG_PIPELNES.md](RAG_PIPELNES.md) | Lecture vs DEEP: сквозное сравнение обоих RAG-контуров, Mermaid, backfill_margin dedup | Актуальна (2026-08-31) |
@@ -39,7 +39,7 @@
 | [ARCHITECTURE_DEDUP.md](ARCHITECTURE_DEDUP.md) | Единые точки сбора + Pre-MAP Dedup (source-level, code_deduplicator.py) | Актуальна |
 | [DEV_RUNBOOK.md](DEV_RUNBOOK.md) / [DOCKER_LAYOUT.md](DOCKER_LAYOUT.md) | Запуск | Актуальна |
 | [OBSERVABILITY.md](OBSERVABILITY.md) | OpenTelemetry-трейсы → локальный Phoenix: API → worker → LangGraph → LLM; оценки; ошибки → GlitchTip | Актуальна (2026-11-02) |
-| [PERFORMANCE.md](PERFORMANCE.md) | Perf | Узкая |
+| [PERFORMANCE.md](PERFORMANCE.md) | Perf: Governor, Gemma (параллельная попытка, circuit breaker, failover пула), ML Memory Guard | Узкая (Gemma — 2026-11) |
 | [FRUGAL_ROUTING.md](FRUGAL_ROUTING.md) | SLM + Gemini research | **Legacy research**, не Skill Tree |
 | [V0_3](V0_3_ARCHITECTURE.md) / [V0_6](V0_6_CURRENT_SOLUTION.md) / [V0_7](V0_7_ARCHITECTURE.md) | Исторические графы | Legacy |
 

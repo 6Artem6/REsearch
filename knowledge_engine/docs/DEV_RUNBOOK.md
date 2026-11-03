@@ -130,6 +130,21 @@ docker compose logs -f knowledge-api
 
 Ollama в контейнере **не используется** — `OLLAMA_BASE_URL=http://host.docker.internal:11434`.
 
+### Node Grounding Gate: worker и незавершённый гейт
+
+- Этапы гейта ноды (discover / digest / finalize) выполняются в worker.
+  Если после обновления кода вызов гейта висит или падает с неизвестным kind
+  `node_grounding`, перезапустите worker: `make dev` перезапускает его сам,
+  но откладывает рестарт, пока идёт задача; ручной `make worker` нужно
+  перезапустить вручную.
+- Незавершённый гейт хранится в `knowledge_engine/.runs/node_gate_state.json`
+  (ключ `<curriculum_id>::<node_id>`, статус `awaiting_gate_1` /
+  `awaiting_gate_2`). Файл читается на каждый запрос, рестарт не нужен.
+  Чтобы запустить поиск для ноды заново, удалите её ключ, когда по ней нет
+  активной задачи; сначала сделайте копию файла.
+- В логе ищите `WORKER node_grounding ▶/✓ <op>`, `NODE_GATE discover ▶`,
+  `NODE_GATE digest`, `WORK enqueue ⊘ duplicate node_grounding`.
+
 ## 7. Логи
 
 | Что | Где |
