@@ -90,13 +90,27 @@ RU (пояснение): правила полей StructuredLectureResponse д�
 """
 
 
+# Маркер ValidationError пустого хода без Evaluator — по нему engine.py
+# узнаёт retryable-ошибку и повторяет генерацию с подсказкой.
+EMPTY_EXPLAIN_TURN_ERROR = (
+    "learner-facing text is empty: fill technical_explanation "
+    "(and follow_up_question where the schema has it)"
+)
+
+
 class VerifiedSourceReference(BaseModel):
     title: str = Field(
-        ..., min_length=2, max_length=400, description="Title from the VERIFIED block"
+        ...,
+        min_length=2,
+        max_length=400,
+        description="Title from the VERIFIED block",
         # RU: title из блока VERIFIED.
     )
     url: str = Field(
-        ..., min_length=8, max_length=2000, description="URL from verified sources only"
+        ...,
+        min_length=8,
+        max_length=2000,
+        description="URL from verified sources only",
         # RU: URL только из verified.
     )
 
@@ -195,9 +209,7 @@ class _DenseLectureFieldsBase(BaseModel):
     introduced_terms: list[str] = Field(
         default_factory=list,
         max_length=24,
-        description=(
-            "Terms/acronyms first spelled out in lecture_body in this reply"
-        ),
+        description=("Terms/acronyms first spelled out in lecture_body in this reply"),
         # RU: термины/аббревиатуры, впервые расшифрованные в lecture_body
         # в этой реплике.
     )
@@ -343,9 +355,7 @@ class StructuredLectureResponse(BaseModel):
     introduced_terms: list[str] = Field(
         default_factory=list,
         max_length=24,
-        description=(
-            "Terms/acronyms first spelled out in lecture_body in this reply"
-        ),
+        description=("Terms/acronyms first spelled out in lecture_body in this reply"),
         # RU: термины/аббревиатуры, впервые расшифрованные в lecture_body
         # в этой реплике.
     )
@@ -529,9 +539,7 @@ class StructuredLectureResponseWithPlanContract(BaseModel):
     introduced_terms: list[str] = Field(
         default_factory=list,
         max_length=24,
-        description=(
-            "Terms/acronyms first spelled out in lecture_body in this reply"
-        ),
+        description=("Terms/acronyms first spelled out in lecture_body in this reply"),
         # RU: термины/аббревиатуры, впервые расшифрованные в lecture_body
         # в этой реплике.
     )
@@ -695,8 +703,7 @@ class _TutorFieldsBase(BaseModel):
         default_factory=list,
         max_length=16,
         description=(
-            "Terms/acronyms first spelled out in the dialogue fields of "
-            "this reply"
+            "Terms/acronyms first spelled out in the dialogue fields of " "this reply"
         ),
         # RU: термины/аббревиатуры, впервые расшифрованные в реплике
         # (dialogue поля) в этой реплике.
@@ -883,8 +890,7 @@ class DeepDiveTutorContract(BaseModel):
         default_factory=list,
         max_length=16,
         description=(
-            "Terms/acronyms first spelled out in the dialogue fields of "
-            "this reply"
+            "Terms/acronyms first spelled out in the dialogue fields of " "this reply"
         ),
         # RU: термины/аббревиатуры, впервые расшифрованные в реплике
         # (dialogue поля) в этой реплике.
@@ -1109,8 +1115,7 @@ class DeepDiveTutorWithPlanContract(BaseModel):
         default_factory=list,
         max_length=16,
         description=(
-            "Terms/acronyms first spelled out in the dialogue fields of "
-            "this reply"
+            "Terms/acronyms first spelled out in the dialogue fields of " "this reply"
         ),
         # RU: термины/аббревиатуры, впервые расшифрованные в реплике
         # (dialogue поля) в этой реплике.
@@ -1369,6 +1374,18 @@ class DeepDiveExplainContract(BaseModel):
 
     # RU: оценка пропущена — вердикта нет.
 
+    @model_validator(mode="after")
+    def _requires_learner_facing_text(self) -> "DeepDiveExplainContract":
+        """Ход без Evaluator — объяснение и/или вопрос обязательны: ответ из
+        одних служебных полей (summary/quick_replies) оставлял ученика с
+        пустым сообщением. ValidationError → contract retry в engine.py."""
+        if (
+            not (self.technical_explanation or "").strip()
+            and not (self.follow_up_question or "").strip()
+        ):
+            raise ValueError(EMPTY_EXPLAIN_TURN_ERROR)
+        return self
+
 
 class TopicQnaExplainContract(_ExplainFieldsBase):
     """Tutor chat turn for interaction_axis="topic_qna" (expert-consultant).
@@ -1376,6 +1393,14 @@ class TopicQnaExplainContract(_ExplainFieldsBase):
     No follow_up_question / question_sub_concept_id field — Gemini
     structured output cannot write a self-check/follow-up question, since
     there is no slot for it in this schema."""
+
+    @model_validator(mode="after")
+    def _requires_learner_facing_text(self) -> "TopicQnaExplainContract":
+        """Единственное поле для ученика — technical_explanation; пустое →
+        ValidationError → contract retry в engine.py (как DeepDiveExplainContract)."""
+        if not (self.technical_explanation or "").strip():
+            raise ValueError(EMPTY_EXPLAIN_TURN_ERROR)
+        return self
 
 
 class DeepDiveDeepAnalysisContract(DeepDiveTutorContract):

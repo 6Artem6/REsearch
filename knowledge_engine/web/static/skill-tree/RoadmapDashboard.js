@@ -17,6 +17,7 @@ import {
   rememberCurriculumControlAxis,
   readCurriculumControlAxis,
   hydrateSessionsFromServer,
+  rememberNodeInteractionAxis,
   buildMessagesAfterChatComplete,
   sortDialogMessages,
   userMessageMatches,
@@ -144,7 +145,7 @@ export function RoadmapDashboard() {
       setStatuses(
         mergeNodeStatuses(ws.curriculum, ws.statuses || {}),
       );
-      setSessions(hydrateSessionsFromServer(ws.sessions));
+      setSessions(hydrateSessionsFromServer(ws.sessions, curriculumId));
       setSelectedNode(null);
       setSelectedMaterialId(null);
       await setActiveCurriculum(curriculumId);
@@ -573,6 +574,7 @@ export function RoadmapDashboard() {
    * — отдельный, ещё не начатый шаг (см. roadmap, Этап 4 backend
    * scaffolding). */
   function setNodeInteractionAxis(nodeId, axis) {
+    rememberNodeInteractionAxis(curriculum?.curriculum_id, nodeId, axis);
     setSessions((prev) => ({
       ...prev,
       [nodeId]: { ...(prev[nodeId] || { messages: [] }), interactionAxis: axis },

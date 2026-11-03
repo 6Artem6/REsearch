@@ -1153,7 +1153,15 @@ def _invoke_tutor(
     )
     last_err: Exception | None = None
     raw = None
-    max_attempts = 2 if (star_guard or drill_schema is not None) else 1
+    from knowledge_engine.src.domains.grounding.tutor import EMPTY_EXPLAIN_TURN_ERROR
+
+    explain_schema = getattr(response_schema, "__name__", "") in (
+        "DeepDiveExplainContract",
+        "TopicQnaExplainContract",
+    )
+    max_attempts = (
+        2 if (star_guard or drill_schema is not None or explain_schema) else 1
+    )
     plaque = ""
     if not evaluator_skipped:
         if emit_stream_plaque:
@@ -1173,6 +1181,19 @@ def _invoke_tutor(
                 )
                 trace(
                     f"PROMPT_FACTORY | deep_analysis contract retry "
+                    f"attempt={attempt + 1} | {type(last_err).__name__}"
+                )
+            elif explain_schema:
+                attempt_dynamic = (
+                    f"{dynamic}\n\n"
+                    "### RETRY — previous JSON rejected (no learner-facing text)\n"
+                    f"{type(last_err).__name__}: {last_err}\n"
+                    "Write the reply to the learner in technical_explanation "
+                    "(non-empty engineering explanation responding to their "
+                    "message). Bookkeeping fields alone are not a reply."
+                )
+                trace(
+                    f"PROMPT_FACTORY | explain contract retry "
                     f"attempt={attempt + 1} | {type(last_err).__name__}"
                 )
             elif drill_schema is not None:
@@ -1230,7 +1251,10 @@ def _invoke_tutor(
         except Exception as exc:
             last_err = exc
             msg = str(exc).lower()
-            retryable = (star_guard and "follow_up_question" in msg) or (
+            retryable = (
+                (star_guard and "follow_up_question" in msg)
+                or (explain_schema and EMPTY_EXPLAIN_TURN_ERROR.lower() in msg)
+            ) or (
                 drill_schema is not None
                 and getattr(drill_schema, "__name__", "") == "ActiveDrillStepResponse"
                 and "theory_body" in msg

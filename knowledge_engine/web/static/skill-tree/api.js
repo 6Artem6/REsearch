@@ -414,9 +414,41 @@ export function buildMessagesAfterChatComplete(res, userMsg, oldMessages, stream
   );
 }
 
-export function hydrateSessionsFromServer(sessions) {
+const LS_NODE_AXIS_PREFIX = "skillTreeInteractionAxis:";
+const INTERACTION_AXES = new Set(["lecture_self_check", "topic_qna"]);
+
+/** Interaction Axis ноды переживает перезагрузку страницы: иначе следующий
+ * ответ уходит с дефолтным lecture_self_check, а самопроверка, заданная в
+ * topic_qna, сбрасывается как «axis switched» — ответ не оценивается. */
+export function rememberNodeInteractionAxis(curriculumId, nodeId, axis) {
+  try {
+    if (curriculumId && nodeId && INTERACTION_AXES.has(axis)) {
+      localStorage.setItem(`${LS_NODE_AXIS_PREFIX}${curriculumId}:${nodeId}`, axis);
+    }
+  } catch {
+    /* storage недоступен — режим просто не запомнится */
+  }
+}
+
+function readNodeInteractionAxis(curriculumId, nodeId) {
+  try {
+    const v = localStorage.getItem(`${LS_NODE_AXIS_PREFIX}${curriculumId}:${nodeId}`);
+    return INTERACTION_AXES.has(v) ? v : "";
+  } catch {
+    return "";
+  }
+}
+
+export function hydrateSessionsFromServer(sessions, curriculumId = "") {
   const out = {};
   for (const [nodeId, blob] of Object.entries(sessions || {})) {
+    // Режим открытой самопроверки (сервер) важнее последнего выбора в UI.
+    const pendingAxis = String(
+      blob.memory?.pending_evaluation_interaction_axis || "",
+    ).trim();
+    const interactionAxis = INTERACTION_AXES.has(pendingAxis)
+      ? pendingAxis
+      : readNodeInteractionAxis(curriculumId, nodeId);
     const history = blob.history || [];
     const content = blob.content || {};
     const hasMemory = Boolean(blob.memory_prepared || blob.memory);
@@ -439,6 +471,7 @@ export function hydrateSessionsFromServer(sessions) {
       readyForTransition: Boolean(blob.ready_for_transition),
       lastEvalDirective: String(blob.last_eval_directive || "").trim(),
       quickReplies: Array.isArray(blob.quick_replies) ? blob.quick_replies : [],
+      ...(interactionAxis ? { interactionAxis } : {}),
     };
   }
   return out;

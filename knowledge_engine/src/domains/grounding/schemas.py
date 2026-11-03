@@ -426,7 +426,9 @@ class DenseMaterialOutput(BaseModel):
     references: list[RichReferenceItem] = Field(default_factory=list, max_length=6)
     code_snippets: list[str] = Field(default_factory=list, max_length=4)
     bridge_to_next: str = Field(default="", max_length=SCHEMA_BRIDGE_TO_NEXT_MAX)
-    follow_up_question: str = Field(default="", max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX)
+    follow_up_question: str = Field(
+        default="", max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX
+    )
     extracted_concepts: list[LectureExtractedConcept] = Field(
         default_factory=list,
         max_length=5,
