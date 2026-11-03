@@ -51,6 +51,7 @@ ControlChip = Literal[
     "lecture",
     "begin",
     "skip",
+    "next_subtopic",
     "accept_deep",
     "practice",
     "check",

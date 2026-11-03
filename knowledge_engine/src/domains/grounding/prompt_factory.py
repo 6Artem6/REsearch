@@ -263,6 +263,9 @@ def parse_tutor_mode_prefix(user_message: str) -> tuple[str, TutorFactoryMode]:
     return body or raw, "default"
 
 
+_ACTION_TAG_PREFIX_RE = re.compile(r"^\[(?:action|intent):[^\]]+\]\s*", re.I)
+
+
 def display_user_after_mode_prefix(
     user_message: str,
 ) -> tuple[str, TutorFactoryMode]:
@@ -272,6 +275,9 @@ def display_user_after_mode_prefix(
     not stored as the raw tag (which the UI then strips to an empty bubble).
     """
     body, mode = parse_tutor_mode_prefix(user_message)
+    # Кнопки с явным ``[action:…]`` (напр. next_subtopic) — в истории только
+    # видимая подпись, без тега.
+    body = _ACTION_TAG_PREFIX_RE.sub("", body or "").strip() or body
     if body:
         return body, mode
     fallback = _MODE_VISIBLE_FALLBACK.get(mode, "")

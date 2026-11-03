@@ -25,6 +25,8 @@ CHIP_DEEP_ANALYSIS_LEGACY_ASCII = "Задачка со звездочкой"
 CHIP_PRACTICE = "практика"
 CHIP_CHECK = "проверка"
 CHIP_SKIP = "пропустить"
+# Topic Q&A: следующая подтема без зачёта текущей (кнопка → [action:next_subtopic]).
+CHIP_NEXT_SUBTOPIC = "Следующая подтема (без зачёта)"
 
 # FSM-слот ожидания ветки после fast-track intro.
 MODE_SELECTION_SLOT = "mode_selection"
@@ -296,6 +298,16 @@ INTENT_RULES: tuple[IntentRule, ...] = (
         ),
     ),
     IntentRule(
+        "next_subtopic",
+        # Маршрут — явный тег / точная метка кнопки (+ сама метка в векторном
+        # каталоге); reference_phrases не расширяем: свободный текст ученика
+        # не должен откладывать подтему («давай дальше» — это «next», нода).
+        # cues — только для offline-пробы эмбеддера.
+        cues=("следующая подтема без зачёта", "перейти к следующей подтеме"),
+        exact_labels=(CHIP_NEXT_SUBTOPIC,),
+        action_aliases=("next_subtopic",),
+    ),
+    IntentRule(
         "begin",
         cues=(
             "[begin]",
@@ -486,6 +498,7 @@ EVALUATOR_SKIP_INTENTS: frozenset[str] = frozenset(
         "practice",
         "check",
         "skip",
+        "next_subtopic",
         "begin",
         "lecture",
         "blitz",

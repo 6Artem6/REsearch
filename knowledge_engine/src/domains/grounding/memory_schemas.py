@@ -190,6 +190,17 @@ class SubConceptRecord(BaseModel):
         max_length=40,
         description="ISO-8601 UTC последнего изменения статуса",
     )
+    deferred: bool = Field(
+        default=False,
+        description=(
+            "User moved on from this sub-topic in Topic Q&A without credit "
+            "([action:next_subtopic]). status is NOT changed (no credit); "
+            "select_next_sub_concept prefers non-deferred sub-topics."
+        ),
+    )
+    """ RU: пользователь сам перешёл к следующей подтеме в Topic Q&A без
+    зачёта этой; status не меняется (зачёта нет), при выборе следующей
+    подтемы отложенные идут последними."""
 
     @property
     def is_verified(self) -> bool:

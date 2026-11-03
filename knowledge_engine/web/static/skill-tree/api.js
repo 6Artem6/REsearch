@@ -161,6 +161,7 @@ export function sortDialogMessages(messages) {
 function stripModePrefix(text) {
   return String(text || "")
     .replace(/^\[mode:\w+\]\s*/i, "")
+    .replace(/^\[(?:action|intent):[^\]]+\]\s*/i, "")
     .trim();
 }
 

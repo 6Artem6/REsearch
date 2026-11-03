@@ -35,6 +35,14 @@ const QUICK = [
   },
 ];
 
+/** Topic Q&A: уйти с текущей подтемы без зачёта — бэк ставит ей deferred
+ * (статус не меняется) и берёт следующую незачтённую. Точная подпись =
+ * CHIP_NEXT_SUBTOPIC в intent_definitions.py. */
+const NEXT_SUBTOPIC_CHIP = {
+  label: "Следующая подтема (без зачёта)",
+  text: "[action:next_subtopic] Следующая подтема (без зачёта)",
+};
+
 function lastTutorMsgId(messages) {
   const list = sortDialogMessages(messages || []);
   for (let i = list.length - 1; i >= 0; i -= 1) {
@@ -231,7 +239,10 @@ export function NodeTutorChat({
       React.createElement(
         "div",
         { className: "quick-chips" },
-        QUICK.map((q) =>
+        [
+          ...QUICK,
+          ...(session?.interactionAxis === "topic_qna" ? [NEXT_SUBTOPIC_CHIP] : []),
+        ].map((q) =>
           React.createElement(
             "button",
             {

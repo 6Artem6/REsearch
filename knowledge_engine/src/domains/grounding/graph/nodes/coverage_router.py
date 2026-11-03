@@ -110,7 +110,21 @@ def coverage_router_node(state: TutorGraphState) -> TutorGraphState:
     )
 
     chip = classify_control_chip(raw_user, memory=memory)
-    if chip in ("practice", "check", "skip"):
+    if chip == "next_subtopic":
+        # Topic Q&A: следующая подтема без зачёта текущей (status не трогаем).
+        if str(getattr(req, "interaction_axis", "") or "") == "topic_qna":
+            from knowledge_engine.src.domains.grounding.concept_map_state import (
+                defer_current_sub_concept,
+            )
+
+            deferred_id = defer_current_sub_concept(memory)
+            trace(
+                f"NODE_DIVE next_subtopic ⏭ | deferred={deferred_id or '—'} "
+                "(not credited)"
+            )
+        else:
+            trace("NODE_DIVE next_subtopic ⊘ | only in topic_qna — ignored")
+    elif chip in ("practice", "check", "skip"):
         apply_mode_selection_intent(memory, chip)
     elif chip == "blitz":
         # Free-text/vector-matched blitz request (tag case already handled
