@@ -16,6 +16,7 @@ from knowledge_engine.src.config.settings import (
     LECTURE_PASSAGE_MIN_CHARS,
     STEERING_DIGEST_FETCH_TIMEOUT_SEC,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.lite_search_pipeline import (
     _lite_structured,
@@ -88,6 +89,7 @@ async def _fetch_article(url: str) -> tuple[str, str] | None:
     return title, text
 
 
+@traced("steering.batch_digest")
 async def generate_surface_digests(
     approved_urls: list[str],
     *,

@@ -10,6 +10,7 @@ from knowledge_engine.src.config.settings import (
     CURRICULUM_MODEL_FIRST_MIN_NODES,
     CURRICULUM_TWO_PASS_MODEL_FIRST_ENABLED,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.curriculum_lancedb_persist import (
     persist_approved_curriculum_hits_to_lancedb_async,
@@ -217,6 +218,7 @@ def generate_curriculum_targeted_grounding(
     return graph
 
 
+@traced("grounding.lazy_deep_node")
 async def lazy_ground_deep_node_on_demand(
     graph: CurriculumGraph,
     node: CurriculumNode,

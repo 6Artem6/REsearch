@@ -39,6 +39,7 @@ from itertools import count
 from pydantic import BaseModel, Field
 
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.curriculum_lancedb_persist import (
     persist_approved_curriculum_hits_to_lancedb_async,
@@ -206,6 +207,7 @@ async def _generate_content(
     return out
 
 
+@traced("steering.topic_node")
 async def generate_standalone_topic_graph(
     target_goal: str,
     digests: SurfaceDigestResponse,

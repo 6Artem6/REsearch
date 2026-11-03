@@ -11,6 +11,7 @@ from knowledge_engine.src.config.settings import (
     CURRICULUM_PREFLIGHT_ENABLED,
     CURRICULUM_URL_VALIDATE_TIMEOUT_SEC,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.academic_url_canonicalizer import (
     academic_source_dedupe_key,
@@ -118,6 +119,7 @@ def _maybe_blocklist_domain(url: str, reason: str) -> None:
             trace(f"CURRICULUM replenish blocklist + | domain={dom} reason={reason}")
 
 
+@traced("select.replenish")
 async def replenish_valid_hits_until_cap(
     candidates: list[CurriculumSearchHit],
     cap: int,

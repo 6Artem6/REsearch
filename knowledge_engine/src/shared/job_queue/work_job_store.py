@@ -14,6 +14,7 @@ from knowledge_engine.src.config.settings import (
     KE_WORKER_STALE_RUNNING_SEC,
     PACKAGE_ROOT,
 )
+from knowledge_engine.src.core.observability import inject_trace_context, span
 from knowledge_engine.src.shared.job_queue.redis_client import get_redis, redis_enabled
 from knowledge_engine.src.shared.job_queue.redis_tasks import publish_work_job
 
@@ -68,6 +69,9 @@ class WorkJob:
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     result: Optional[dict[str, Any]] = None
     error: Optional[str] = None
+    # W3C traceparent постановщика (API) — worker продолжает тот же трейс.
+    # Отдельно от payload: payload валидируется доменными моделями.
+    trace_context: dict[str, str] = field(default_factory=dict)
 
 
 def _dt_parse(raw: str) -> datetime:
@@ -84,6 +88,7 @@ def _to_dict(job: WorkJob) -> dict[str, Any]:
         "updated_at": job.updated_at.isoformat(),
         "result": job.result,
         "error": job.error,
+        "trace_context": job.trace_context,
     }
 
 
@@ -97,6 +102,7 @@ def _from_dict(data: dict[str, Any]) -> WorkJob:
         updated_at=_dt_parse(data["updated_at"]),
         result=data.get("result"),
         error=data.get("error"),
+        trace_context=dict(data.get("trace_context") or {}),
     )
 
 
@@ -182,7 +188,15 @@ class WorkJobStore:
         try_claim(). Каждый существующий вызывающий код передаёт только
         (kind, payload) — поведение по умолчанию (publish=True) не меняется."""
         job_id = uuid.uuid4().hex[:12]
-        job = WorkJob(id=job_id, kind=kind, payload=dict(payload))
+        with span(
+            "work_job.enqueue", **{"ke.job.id": job_id, "ke.job.kind": kind.value}
+        ):
+            job = WorkJob(
+                id=job_id,
+                kind=kind,
+                payload=dict(payload),
+                trace_context=inject_trace_context(),
+            )
         if redis_enabled():
             self._redis_save(job)
             if publish:

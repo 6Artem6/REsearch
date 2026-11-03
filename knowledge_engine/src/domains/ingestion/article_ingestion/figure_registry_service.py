@@ -12,6 +12,7 @@ from sqlalchemy import delete, select
 from knowledge_engine.models.figure_registry import FigureRegistryRow
 from knowledge_engine.src.adapters.db.session import db_session, init_db
 from knowledge_engine.src.adapters.parsers.html_annotator import AnnotatedArticle
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.ingestion.article_diagram_store import (
     list_diagrams_for_article,
@@ -183,6 +184,7 @@ def delete_figure_registry_for_urls(urls: list[str]) -> int:
     return removed
 
 
+@traced("vlm.figure_registry")
 def run_vlm_on_registry(
     article_id: str,
     annotated: AnnotatedArticle,

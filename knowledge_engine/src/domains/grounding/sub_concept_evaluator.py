@@ -143,8 +143,12 @@ def _is_empty_answer(text: str) -> bool:
 
 
 def mark_evaluator_skipped(memory: SessionMemory, reason: str) -> None:
+    from knowledge_engine.src.core.observability import record_evaluation
+
     memory.evaluator_skipped = True
     trace(f"NODE_DIVE sub_concept evaluation skip | {reason}")
+    # Пропуск — тоже вердикт: "no pending" означает ход без зачёта.
+    record_evaluation("sub_concept_eval", label="skipped", explanation=reason)
 
 
 def mark_evaluator_ran(memory: SessionMemory) -> None:

@@ -7,7 +7,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from typing import Callable, TypeVar, get_origin
+from typing import Any, Callable, TypeVar, get_origin
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -34,6 +34,7 @@ from knowledge_engine.src.config.settings import (
     GEMMA_PRIMARY_MODEL,
     GEMMA_QUOTA_SHARED,
 )
+from knowledge_engine.src.core.observability import llm_span, record_llm_io
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.shared.rate_limiting.rate_limiter import (
     AsyncRateLimiter,
@@ -330,6 +331,25 @@ def _gemma_user_content(prompt: str) -> str:
     return f"{body}\n\n{_GEMMA_JSON_USER_TAIL}"
 
 
+def _record_gemma_usage(target: Any, payload: dict[str, Any], resp: Any) -> None:
+    """Токены и тексты ответа Gemma в LLM-спан. Fail-open: телеметрия не
+    должна ломать разбор ответа (тот же JSON ещё раз читает complete_structured)."""
+    try:
+        data = resp.json()
+        usage = data.get("usage") or {}
+        content = (data.get("choices") or [{}])[0].get("message", {}).get("content")
+        record_llm_io(
+            target,
+            messages=payload.get("messages"),
+            output=str(content) if content is not None else None,
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=usage.get("completion_tokens"),
+            total_tokens=usage.get("total_tokens"),
+        )
+    except Exception:
+        return
+
+
 class GemmaCloudClient:
     def __init__(
         self,
@@ -479,6 +499,18 @@ class GemmaCloudClient:
             reraise=True,
         )
         async def _post_once() -> httpx.Response:
+            # Спан на КАЖДУЮ HTTP-попытку (повторы видны отдельно).
+            with llm_span(
+                "gemma.chat_completions",
+                model=self._model,
+                provider="google",
+                label=label,
+            ) as llm_trace_span:
+                resp = await _post_once_raw()
+                _record_gemma_usage(llm_trace_span, payload, resp)
+                return resp
+
+        async def _post_once_raw() -> httpx.Response:
             t0 = time.monotonic()
             trace(f"GEMMA HTTP ▶ {label} | model={self._model}")
             try:

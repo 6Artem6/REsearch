@@ -25,6 +25,7 @@ from knowledge_engine.src.config.settings import (
     CURRICULUM_USE_V08_CONSENSUS,
     KE_INGEST_URL_CONCURRENCY,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.academic_gemma_ingest import (
     ingest_academic_body_gemma,
@@ -1492,6 +1493,7 @@ async def _ingest_blog_hit_async(hit: CurriculumSearchHit) -> CurriculumSearchHi
             return hit
 
 
+@traced("ingest.summarize_hits")
 async def summarize_whitelist_blog_hits_async(
     hits: list[CurriculumSearchHit],
     target_goal: str = "",

@@ -157,3 +157,5 @@ Ollama в контейнере **не используется** — `OLLAMA_BAS
 | `LECTURE_RAG_RERANK_TIMEOUT_SEC` | 60 |
 
 Требует `sentence_transformers` (`EMBED_MODEL=BAAI/bge-m3` + `RAG_CROSS_ENCODER_MODEL` для CE). Ollama остаётся для локальных LLM, не для эмбеддингов.
+
+Трейсы по сценарию (API → worker → LLM, токены и задержки): `docker compose --profile observability up -d phoenix`, `KE_OTEL_ENABLED=true`, UI на http://localhost:6006; ошибки — `docker compose --profile observability up -d glitchtip`, `KE_SENTRY_DSN=…`, UI на http://localhost:8800 — см. [OBSERVABILITY.md](OBSERVABILITY.md).

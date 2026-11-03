@@ -32,6 +32,7 @@ from knowledge_engine.src.config.settings import (
     EXA_RERANK_LITE_THRESHOLD,
     EXA_SEARCH_ENABLED,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.schemas import (
     CurriculumNode,
@@ -893,6 +894,7 @@ def _learning_context_for_node(node: CurriculumNode, course_goal: str) -> str:
     return text[:1200]
 
 
+@traced("search.exa")
 async def fetch_exa_curriculum_hits_for_node(
     node: CurriculumNode,
     course_goal: str,

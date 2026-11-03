@@ -73,6 +73,15 @@ Settings), не голый `os.getenv`; `src/config/settings.py` реэкспо�
 | `KE_TRACE_STDOUT` | `false` |
 | `KE_LOG_PLAIN` | `false` |
 | `KE_LLM_FULL_TRACE` | `false` |
+| `KE_OTEL_ENABLED` | `false` — OpenTelemetry → Phoenix, см. [OBSERVABILITY.md](OBSERVABILITY.md) |
+| `KE_OTEL_ENDPOINT` | `http://localhost:6006/v1/traces` |
+| `KE_OTEL_SERVICE_NAME` | `knowledge-engine` |
+| `KE_OTEL_CAPTURE_LLM_IO` | `true` — промпты/ответы LLM в спанах |
+| `KE_OTEL_ANNOTATIONS_ENABLED` | `true` — вердикты оценщика и решения гейтов как span annotations Phoenix |
+| `KE_SENTRY_DSN` | пусто — выключено; DSN проекта GlitchTip (`OBSERVABILITY.md` §«Ошибки») |
+| `KE_SENTRY_ENVIRONMENT` | `local` — environment события |
+| `KE_SENTRY_RELEASE` | пусто — release события (например, git sha) |
+| `KE_SENTRY_CAPTURE_FAILOPEN` | `true` — `trace()` внутри `except` → warning-событие |
 | `ENABLE_PROMPT_TRACE_LOGS` | `false` (если `KE_API_RELOAD=true`, по умолчанию `true`) |
 | `PROMPT_TRACE_DIR` | `logs/session_traces` (от корня репо) |
 | `PROMPT_TRACE_ALL_LLM` | `false` — при `true` логируются все Gemini in/out |

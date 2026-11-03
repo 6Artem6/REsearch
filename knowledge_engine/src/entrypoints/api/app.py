@@ -36,6 +36,11 @@ logger = get_logger(__name__)
 
 
 def create_app() -> FastAPI:
+    from knowledge_engine.src.core.error_tracking import init_error_tracking
+
+    # До FastAPI(): Starlette-интеграция sentry-sdk патчит классы до сборки
+    # middleware-стека (он строится уже на lifespan startup).
+    init_error_tracking("api")
     app = FastAPI(
         title="Knowledge Engine API",
         description="REST API для анализа, поиска и unraveling (LangGraph + Gemini + Ollama).",
@@ -48,6 +53,9 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     def _startup_log() -> None:
         import knowledge_engine.src.config.settings as cfg
+        from knowledge_engine.src.core.observability import init_observability
+
+        init_observability("api")
         from knowledge_engine.src.shared.job_queue.job_store import (
             _JOB_STORE_PATH,
             job_store,
@@ -76,11 +84,31 @@ def create_app() -> FastAPI:
 
         await shutdown_shared_consensus_session()
 
+    @app.on_event("shutdown")
+    def _shutdown_observability() -> None:
+        from knowledge_engine.src.core.error_tracking import shutdown_error_tracking
+        from knowledge_engine.src.core.observability import shutdown_observability
+
+        shutdown_error_tracking()
+        shutdown_observability()
+
     @app.exception_handler(HTTPException)
     async def http_exception_handler(
         _request: Request, exc: HTTPException
     ) -> JSONResponse:
         detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        if exc.status_code >= 500:
+            from knowledge_engine.src.core.error_tracking import capture_error
+
+            # 502 роутов «Штурвала» и т.п. — raise HTTPException(...) from exc:
+            # в GlitchTip важна исходная причина, не обёртка.
+            capture_error(
+                exc.__cause__ or exc,
+                tags={
+                    "ke.api.status": exc.status_code,
+                    "ke.api.path": _request.url.path,
+                },
+            )
         trace(f"API HTTP {exc.status_code} | {detail}")
         return JSONResponse(
             status_code=exc.status_code,
@@ -91,6 +119,11 @@ def create_app() -> FastAPI:
     async def unhandled_exception_handler(
         _request: Request, exc: Exception
     ) -> JSONResponse:
+        from knowledge_engine.src.core.error_tracking import capture_error
+
+        capture_error(
+            exc, tags={"ke.api.status": 500, "ke.api.path": _request.url.path}
+        )
         detail = format_any_error(exc)
         trace(f"API 500 | {detail}")
         return JSONResponse(status_code=500, content=api_error_payload(exc))

@@ -54,11 +54,26 @@ read timeouts (`ReadTimeout`, with the elapsed seconds actually hit),
 unhandled Python tracebacks (e.g. a Redis timeout surfacing as an API 500),
 and any other `[ERROR]`-level logging-module line not otherwise categorized.
 Counts a de-duplicated summary per category plus every occurrence in order.
+
+--phoenix switches the source from a log file to OpenTelemetry traces in the
+local Arize Phoenix (docs/OBSERVABILITY.md; read-only GET requests, stdlib
+only — see phoenix_traces.py). The same report families apply to spans:
+trace summary + per-span-name stage timing (always), --llm-audit (tokens,
+latency, peak concurrency per ke.llm.label/model), --errors (ERROR spans with
+exception text). --evals adds evaluator verdicts and gate decisions (span
+annotations). Window: --trace ID (repeatable) or --since/--until (default:
+last 60 minutes), narrowed to the --last-traces N most recent traces:
+
+    python knowledge_engine/scripts/legacy_research/log_profiler.py --phoenix \
+        --since "14:00:00" --llm-audit --errors --evals
+    python knowledge_engine/scripts/legacy_research/log_profiler.py --phoenix \
+        --trace 7e9971d490305b82b02e1f841696d4d9 --evals
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from collections import defaultdict
@@ -959,9 +974,38 @@ def print_error_report(events: list[ErrorEvent]) -> None:
         print(f"  {e.ts.strftime('%H:%M:%S')} | {e.category:<24} | {e.detail}{extra}")
 
 
+def _run_phoenix(
+    args: argparse.Namespace, *, since: datetime | None, until: datetime | None
+) -> int:
+    try:
+        from knowledge_engine.scripts.legacy_research import phoenix_traces
+    except ImportError:  # запуск файла напрямую без PYTHONPATH=.
+        import phoenix_traces  # type: ignore[no-redef]
+
+    if not args.trace and since is None:
+        since = datetime.now() - timedelta(minutes=60)
+    return phoenix_traces.run_report(
+        base_url=args.phoenix_url,
+        project=args.project,
+        since=None if args.trace else since,
+        until=None if args.trace else until,
+        trace_ids=list(args.trace),
+        last_traces=args.last_traces,
+        top=args.top,
+        llm_audit=args.llm_audit,
+        errors=args.errors,
+        evals=args.evals,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("log_file", help="Путь к лог-файлу прогона ноды")
+    parser.add_argument(
+        "log_file",
+        nargs="?",
+        default="",
+        help="Путь к лог-файлу прогона ноды (не нужен с --phoenix)",
+    )
     parser.add_argument(
         "--top", type=int, default=15, help="Сколько самых долгих событий показать"
     )
@@ -995,7 +1039,42 @@ def main() -> int:
         action="store_true",
         help="Отчёт по ошибкам/сбоям: schema validation, ReadTimeout, API 5xx, tracebacks, [ERROR]-строки",
     )
+    phoenix = parser.add_argument_group("Phoenix (OTel-трейсы вместо лог-файла)")
+    phoenix.add_argument(
+        "--phoenix",
+        action="store_true",
+        help="Читать трейсы из локального Phoenix (только GET), а не лог-файл",
+    )
+    phoenix.add_argument(
+        "--phoenix-url",
+        default=os.getenv("KE_PHOENIX_URL", "http://localhost:6006"),
+        help="Базовый URL Phoenix (env KE_PHOENIX_URL)",
+    )
+    phoenix.add_argument(
+        "--project",
+        default=os.getenv("KE_OTEL_SERVICE_NAME", "knowledge-engine"),
+        help="Проект Phoenix (= KE_OTEL_SERVICE_NAME)",
+    )
+    phoenix.add_argument(
+        "--trace",
+        action="append",
+        default=[],
+        help="trace_id (можно несколько); отключает окно --since/--last-traces",
+    )
+    phoenix.add_argument(
+        "--last-traces",
+        type=int,
+        default=5,
+        help="Сколько самых свежих трейсов окна разбирать (0 — все)",
+    )
+    phoenix.add_argument(
+        "--evals",
+        action="store_true",
+        help="Оценки: вердикты оценщика тьютора и решения гейтов «Штурвала»",
+    )
     args = parser.parse_args()
+    if not args.phoenix and not args.log_file:
+        parser.error("нужен log_file или --phoenix")
 
     since = (
         _parse_since(args.since, fallback_date=datetime.now()) if args.since else None
@@ -1003,6 +1082,9 @@ def main() -> int:
     until = (
         _parse_since(args.until, fallback_date=datetime.now()) if args.until else None
     )
+
+    if args.phoenix:
+        return _run_phoenix(args, since=since, until=until)
 
     if args.find_run:
         if args.since or args.until:

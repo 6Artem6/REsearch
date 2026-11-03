@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from knowledge_engine.src.core.error_tracking import capture_error
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.v07_run_service import run_v07_job
 from knowledge_engine.src.domains.curriculum.v07_run_store import (
@@ -57,6 +58,13 @@ def _handle_work_job(job_id: str) -> bool:
         trace(f"WORKER ✓ work_job id={job.id}")
     except Exception as exc:
         work_job_store.fail(job.id, format_work_error(exc))
+        # До trace(): иначе хук fail-open отправит то же исключение как
+        # warning, а Dedupe отбросит этот, более точный, error.
+        capture_error(
+            exc,
+            tags={"ke.job.kind": job.kind.value, "ke.job.id": job.id},
+            trace_context=job.trace_context,
+        )
         trace(f"WORKER ✗ work_job id={job.id} | {exc}")
     return True
 
