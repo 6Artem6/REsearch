@@ -130,6 +130,9 @@ def _run_curriculum_generate(payload: dict[str, Any]) -> dict[str, Any]:
         depth_level=depth,
         user_level=inp.user_level,
         source_policy=inp.source_policy,
+        # «Штурвал / по нодам» ставит тот же curriculum_generate; режим нужен
+        # init ноды, чтобы не запускать автопилотный lazy grounding.
+        control_axis=str(payload.get("control_axis") or "autopilot"),
     )
     out = graph.model_dump()
     meta = dict(out.get("meta") or {})
@@ -311,6 +314,7 @@ def _run_node_deep_dive(payload: dict[str, Any]) -> dict[str, Any]:
         user_action=str(payload.get("user_action") or "init"),
         user_message=str(payload.get("user_message") or ""),
         interaction_axis=str(payload.get("interaction_axis") or "lecture_self_check"),
+        control_axis=payload.get("control_axis") or None,
     )
     dive_async_timeout = (
         KE_NODE_DIVE_INIT_ASYNC_TIMEOUT_SEC
@@ -390,6 +394,7 @@ def _run_node_deep_dive_stream(job: WorkJob) -> dict[str, Any]:
         user_action=str(payload.get("user_action") or "chat"),
         user_message=str(payload.get("user_message") or ""),
         interaction_axis=str(payload.get("interaction_axis") or "lecture_self_check"),
+        control_axis=payload.get("control_axis") or None,
     )
 
     async def _run() -> dict[str, Any]:

@@ -52,6 +52,23 @@ def _save_doc(doc: dict[str, Any]) -> None:
     )
 
 
+_CONTROL_AXES = ("autopilot", "steering")
+
+
+def _control_axis_or(explicit: str | None, stored: Any) -> str:
+    for value in (explicit, stored):
+        axis = str(value or "").strip().lower()
+        if axis in _CONTROL_AXES:
+            return axis
+    return "autopilot"  # курсы до появления поля — создавались автопилотом
+
+
+def get_curriculum_control_axis(curriculum_id: str) -> str:
+    """Режим, с которым создан курс ("autopilot" по умолчанию)."""
+    meta = get_curriculum_meta(curriculum_id) or {}
+    return _control_axis_or(None, meta.get("control_axis"))
+
+
 def save_curriculum_record(
     graph: CurriculumGraph | dict[str, Any],
     *,
@@ -60,8 +77,13 @@ def save_curriculum_record(
     depth_level: str = "Standard",
     user_level: str = "Intermediate/Advanced",
     source_policy: str | None = None,
+    control_axis: str | None = None,
 ) -> dict[str, Any]:
-    """Сохранить или обновить граф маршрута."""
+    """Сохранить или обновить граф маршрута.
+
+    ``control_axis`` ("autopilot" | "steering") задаётся при создании курса;
+    при ``None`` сохраняется прежнее значение записи (lazy grounding,
+    finalize гейта и т.п. не знают режим и не должны его сбрасывать)."""
     if isinstance(graph, CurriculumGraph):
         g_obj = graph
     else:
@@ -105,11 +127,15 @@ def save_curriculum_record(
         for i, item in enumerate(items):
             if item.get("curriculum_id") == cid:
                 record["created_at"] = item.get("created_at") or _now_iso()
+                record["control_axis"] = _control_axis_or(
+                    control_axis, item.get("control_axis")
+                )
                 items[i] = record
                 found = True
                 break
         if not found:
             record["created_at"] = _now_iso()
+            record["control_axis"] = _control_axis_or(control_axis, None)
             items.append(record)
         doc["curricula"] = items
         doc["active_curriculum_id"] = cid
@@ -468,6 +494,7 @@ def get_workspace_state(curriculum_id: str) -> dict[str, Any] | None:
         "meta": {
             "target_goal": meta.get("target_goal"),
             "generation_mode": meta.get("generation_mode"),
+            "control_axis": _control_axis_or(None, meta.get("control_axis")),
             "depth_level": meta.get("depth_level"),
             "title": meta.get("title") or graph.get("title"),
             "updated_at": meta.get("updated_at"),

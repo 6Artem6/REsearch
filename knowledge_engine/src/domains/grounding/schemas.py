@@ -311,6 +311,16 @@ class NodeDeepDiveRequest(BaseModel):
             "PROMPT поверх обычного dense-system в generate_dense_material)."
         ),
     )
+    control_axis: Literal["autopilot", "steering"] | None = Field(
+        default=None,
+        description=(
+            "Control Axis for this node open: steering forbids autopilot lazy "
+            "grounding (sources only via Node Grounding Gate). None — the "
+            "curriculum's stored control_axis."
+        ),
+    )
+    """ RU: режим управления для открытия ноды; None — режим, с которым курс
+    создан (skill_tree_store). В steering init не ищет источники сам."""
 
 
 class NodeDeepDiveResponse(BaseModel):

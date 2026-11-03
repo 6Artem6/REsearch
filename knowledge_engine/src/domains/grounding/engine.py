@@ -367,8 +367,28 @@ async def _apply_lazy_grounding_for_init(
         curriculum_node_to_data_input,
         refresh_node_session_diagrams_from_articles,
     )
+    from knowledge_engine.src.shared.skill_tree_store import (
+        get_curriculum_control_axis,
+    )
 
     status = (node.grounding_status or "").strip()
+    # Штурвал: источники DEEP-ноды выбирает пользователь (Node Grounding
+    # Gate), автопилотный поиск/re-ground здесь запрещён. Режим — из запроса
+    # (текущий переключатель UI), иначе тот, с которым создан курс.
+    control_axis = req.control_axis or get_curriculum_control_axis(req.curriculum_id)
+    if control_axis == "steering":
+        if status == "grounded" and node.source_ref:
+            refresh_node_session_diagrams_from_articles(
+                req.curriculum_id,
+                curriculum_node_to_data_input(node),
+                rebuild=True,
+            )
+        trace(
+            f"NODE_DIVE lazy grounding ⊘ | node={node.node_id} status={status} "
+            "control_axis=steering — sources only via Node Grounding Gate"
+        )
+        return _merge_node_data_from_graph(req, node)
+
     reground_academic = False
     if status == "grounded" and node.source_ref:
         from knowledge_engine.src.domains.curriculum.source_registry import (

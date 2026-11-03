@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
@@ -58,6 +58,10 @@ class NodeSessionBody(BaseModel):
         default="lecture_self_check",
         max_length=32,
         description="lecture_self_check | topic_qna — см. NodeDeepDiveRequest.",
+    )
+    control_axis: Literal["autopilot", "steering"] | None = Field(
+        default=None,
+        description="Current UI Control Axis; None — curriculum's stored axis.",
     )
 
 
@@ -150,6 +154,7 @@ def _enqueue_and_maybe_inline(
         "user_action": action,
         "user_message": user_message,
         "interaction_axis": body.interaction_axis,
+        "control_axis": body.control_axis,
     }
     job_id = enqueue_node_deep_dive(payload)
     job = work_job_store.get(job_id)
@@ -205,6 +210,7 @@ async def post_node_init_stream(body: NodeSessionBody) -> StreamingResponse:
             "user_action": "init",
             "user_message": "",
             "interaction_axis": body.interaction_axis,
+            "control_axis": body.control_axis,
             "stream": True,
         }
         job_id = enqueue_node_deep_dive(payload)
@@ -273,6 +279,7 @@ async def post_node_chat_stream(body: NodeChatBody) -> StreamingResponse:
         "user_message": body.user_message.strip(),
         "stream": True,
         "interaction_axis": body.interaction_axis,
+        "control_axis": body.control_axis,
     }
     job_id = enqueue_node_deep_dive(payload)
 

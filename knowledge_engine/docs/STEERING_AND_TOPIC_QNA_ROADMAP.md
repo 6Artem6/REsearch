@@ -138,6 +138,25 @@ Cross-Encoder молча уходили в fail-open (`PRE_MAP_DEDUP pool_vector
   хабов Habr (`/kek/v2/hubs/search`), но только при совпадении alias или
   названия как идентификатора: поиск нечёткий (`development` → devrel).
 
+### Штурвал без автопилотного поиска на init (2026-11)
+
+Раньше режим курса хранился только в `localStorage` браузера: любой обход
+гейта (0 кандидатов, сбой discover, закешированный старый бандл) уводил
+init DEEP-ноды в полный автопилотный lazy grounding
+(`targeted_node_grounding.lazy_ground_deep_node_on_demand`). Теперь:
+
+- `skill_tree_store.save_curriculum_record(..., control_axis=)` хранит режим
+  в записи курса; `None` сохраняет прежнее значение (lazy grounding/finalize
+  его не сбрасывают); записи без поля — `autopilot`.
+- `/curriculum/steering/generate` (per_node) передаёт `control_axis="steering"`
+  в payload `curriculum_generate`.
+- `NodeDeepDiveRequest.control_axis` / `NodeSessionBody.control_axis` —
+  текущий переключатель UI (`nodeInitStream`); `None` → режим курса.
+- `engine._apply_lazy_grounding_for_init`: при `steering` поиск и academic
+  re-ground не запускаются (лог `NODE_DIVE lazy grounding ⊘ … control_axis=steering`),
+  источники — только через Node Grounding Gate.
+- Workspace отдаёт `meta.control_axis`; UI берёт режим курса с сервера.
+
 ## Перевод введений на Gate 1 (общий для обоих гейтов)
 
 Пользователь прогнал реальный Gate 1 Штурвала и увидел непереведённые

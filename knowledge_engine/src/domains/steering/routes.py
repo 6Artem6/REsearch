@@ -234,6 +234,9 @@ async def _post_steering_generate_per_node(
         "depth_level": body.depth_level,
         "generation_mode": body.generation_mode,
         "source_policy": body.source_policy,
+        # Режим курса: init DEEP-нод не запускает автопилотный поиск,
+        # источники — только через Node Grounding Gate.
+        "control_axis": "steering",
     }
     trace(
         f"API ▶ POST /curriculum/steering/generate | mode=per_node "

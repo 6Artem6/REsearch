@@ -151,7 +151,12 @@ export function RoadmapDashboard() {
       rememberActiveCurriculumId(curriculumId);
       // Режим, с которым курс был создан, становится дефолтом переключателя;
       // пользователь может сменить его для следующей открываемой ноды.
-      const savedAxis = readCurriculumControlAxis(curriculumId);
+      // Сервер — источник истины (control_axis курса); localStorage — для
+      // курсов, созданных до появления поля.
+      const savedAxis =
+        ws.meta?.control_axis === "steering"
+          ? "steering"
+          : readCurriculumControlAxis(curriculumId);
       if (savedAxis) setControlAxis(savedAxis);
       setSourcePolicy("practical_only");
       replaceSkillTreeSearchParams({ curriculum: curriculumId });
@@ -870,6 +875,9 @@ export function RoadmapDashboard() {
             }
           },
           sessions[sid]?.interactionAxis || "lecture_self_check",
+          // Штурвал → сервер не запускает автопилотный поиск источников,
+          // даже если гейт выше был пропущен (0 кандидатов / сбой discover).
+          controlAxis,
         );
         applyNodeResponse(sid, finalRes || {});
         const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);

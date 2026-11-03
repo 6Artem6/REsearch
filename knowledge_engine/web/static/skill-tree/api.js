@@ -809,6 +809,7 @@ export async function nodeInitStream(
   nodeData,
   onEvent,
   interactionAxis = "lecture_self_check",
+  controlAxis = null,
 ) {
   return readNodeSsePost(
     `${API}/node/init-stream`,
@@ -816,6 +817,7 @@ export async function nodeInitStream(
       curriculum_id: curriculumId,
       node_data: nodeData,
       interaction_axis: interactionAxis,
+      control_axis: controlAxis || null,
     },
     onEvent,
   );
