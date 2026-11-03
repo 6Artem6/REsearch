@@ -177,6 +177,10 @@ Settings), не голый `os.getenv`; `src/config/settings.py` реэкспо�
 | `GEMINI_GOVERNOR_TARGET_TPM` | `240000` | Рабочий TPM-таргет Governor для Gemini 3.5 Flash Lite (лимит провайдера 250K) |
 | `GEMMA_GOVERNOR_TARGET_RPM` | `27` | Рабочий RPM-таргет для Gemma 4 (26B/31B); лимит провайдера 30. Применяется к `AsyncRateLimiter` через `GEMMA_BUDGET_MAX_RPM` (см. ниже), не через новый Governor-класс — у Gemma уже был корректный sliding-window limiter |
 | `GEMMA_GOVERNOR_TARGET_TPM` | `15200` | Рабочий TPM-таргет для Gemma 4; лимит провайдера 16K. Применяется через `GEMMA_BUDGET_MAX_TPM` |
+| `GEMMA_HEDGE_AFTER_SEC` | `45` | Попытка Gemma без ответа дольше этого — «зависла»: запускается параллельная новая (если у модели есть свободный слот RPM/TPM), первый ответ побеждает. Только при вызове с `limiter` (пул `RateLimitedLLMClient`); preacquired MAP-волны — без параллельных попыток |
+| `GEMMA_HEDGE_SLOT_WAIT_SEC` | `60` | Сколько ждать свободный слот лимитера для новой попытки (до новой минуты окна); нет слота — ждём текущие попытки / сдаёмся |
+| `GEMMA_MAX_ATTEMPTS` | `3` | Всего HTTP-попыток на запрос Gemma (повторы после 5xx/429 и параллельные при зависании) |
+| `GEMMA_CIRCUIT_OPEN_SEC` | `180` | Все попытки к модели провалились 5xx/таймаутом → модель «открыта»: пул сначала шлёт в исправные (`GEMMA_FALLBACK_MODEL`); первый успешный ответ закрывает. Процесс-локально (API и worker раздельно) |
 
 Прежний `_rpm_pause_for_model()` (безусловный `time.sleep(60/RPM)` перед
 каждым Gemini-запросом) полностью удалён из `gemini_stateless.py` и

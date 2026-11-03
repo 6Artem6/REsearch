@@ -374,6 +374,16 @@ GEMMA_EST_OUTPUT_TOKENS: int = int(
     os.getenv("GEMMA_EST_OUTPUT_TOKENS", str(GEMMA_MAP_MAX_OUTPUT_TOKENS))
 )
 GEMMA_API_TIMEOUT_SEC: float = float(os.getenv("GEMMA_API_TIMEOUT_SEC", "120"))
+# Зависшая попытка Gemma: нет ответа за GEMMA_HEDGE_AFTER_SEC → параллельная
+# новая попытка (если у модели есть свободный слот RPM/TPM; ждём его не
+# дольше GEMMA_HEDGE_SLOT_WAIT_SEC — до новой минуты окна). Первый ответ
+# побеждает. Всего попыток на запрос (с повторами после 5xx/429) —
+# GEMMA_MAX_ATTEMPTS. Все провалились (5xx/таймаут) → модель «открыта»
+# (circuit breaker) на GEMMA_CIRCUIT_OPEN_SEC: пул сразу идёт в fallback.
+GEMMA_HEDGE_AFTER_SEC: float = float(os.getenv("GEMMA_HEDGE_AFTER_SEC", "45"))
+GEMMA_HEDGE_SLOT_WAIT_SEC: float = float(os.getenv("GEMMA_HEDGE_SLOT_WAIT_SEC", "60"))
+GEMMA_MAX_ATTEMPTS: int = max(1, int(os.getenv("GEMMA_MAX_ATTEMPTS", "3")))
+GEMMA_CIRCUIT_OPEN_SEC: float = float(os.getenv("GEMMA_CIRCUIT_OPEN_SEC", "180"))
 GEMMA_FALLBACK_MAX_WAIT_SEC: float = float(
     os.getenv("GEMMA_FALLBACK_MAX_WAIT_SEC", "180")
 )
