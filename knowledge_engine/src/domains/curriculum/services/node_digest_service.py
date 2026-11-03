@@ -1,6 +1,6 @@
 """NodeDigestService — Node Grounding Gate, Этап 2: BGE-M3 + Cross-Encoder
 
-top-K смысловых блоков из полного текста ≤NODE_GATE1_MAX_APPROVED
+top-K смысловых блоков из полного текста Gate-1-утверждённых
 Gate-1-одобренных статей → один батч-вызов Gemma cloud, точечный дайджест
 (Архитектура / Практический кейс / Ограничения) на статью — для Gate 2.
 Add-only, параллельно ``batch_digest_service.py`` (тот — Штурвал, целый
@@ -33,12 +33,15 @@ import numpy as np
 from pydantic import BaseModel, Field
 
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
-from knowledge_engine.src.adapters.llm_providers.gemma_client import GemmaCloudClient
+from knowledge_engine.src.adapters.llm_providers.gemma_client import (
+    RateLimitedLLMClient,
+)
 from knowledge_engine.src.config.settings import (
     LECTURE_PASSAGE_FETCH_CONCURRENCY,
     LECTURE_PASSAGE_MIN_CHARS,
     STEERING_DIGEST_FETCH_TIMEOUT_SEC,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.pre_flight_triage import (
     _extract_paragraphs,
@@ -57,6 +60,7 @@ from knowledge_engine.src.shared.node_grounding.node_gate_contracts import (
 )
 
 _MAX_CHARS_PER_CHUNK = 900
+_DIGEST_BATCH_SIZE = 4  # статей на один вызов Gemma (max_tokens ответа)
 _MAX_CHARS_PER_ARTICLE_PROMPT = 5400  # NODE_GATE2_TOP_K_CHUNKS * _MAX_CHARS_PER_CHUNK
 
 _DIGEST_SYSTEM = (
@@ -83,7 +87,14 @@ _DIGEST_SYSTEM = (
 
 
 class _NodeDigestBatch(BaseModel):
-    items: list[NodeDigestItem] = Field(default_factory=list)
+    items: list[NodeDigestItem] = Field(
+        ...,
+        min_length=1,
+        description="One digest per provided article (never empty).",
+    )
+    """ RU: обязательный непустой список — объект без items (например, один
+    дайджест без обёртки) больше не проходит как «пустой пакет», а идёт в
+    штатный schema-retry / обёртку голого ответа."""
 
 
 def _anchor_digest(urls: list[str]) -> str:
@@ -160,6 +171,13 @@ async def _top_k_chunks(
         return pool[:top_k]
 
 
+@traced("node_gate.digest")
+def _gemma_pool() -> RateLimitedLLMClient:
+    """Пул Gemma primary → fallback (тот же, что MAP/REDUCE ingest): при 5xx/
+    перегрузке primary (gemma-4-31b-it) пакет уходит на fallback-модель."""
+    return RateLimitedLLMClient()
+
+
 async def generate_node_digests(
     approved_urls: list[str],
     *,
@@ -170,7 +188,7 @@ async def generate_node_digests(
     concurrency: int | None = None,
     anchor: str | None = None,
 ) -> NodeGate2DigestResponse:
-    """Gate 1 ``approved_urls`` (≤NODE_GATE1_MAX_APPROVED) → ``NodeGate2DigestResponse``.
+    """Gate 1 ``approved_urls`` (до всего пула) → ``NodeGate2DigestResponse``.
 
     Fail-open на каждом уровне: URL, которые не удалось скачать/распарсить,
     просто выпадают из батча; сбой самого Gemma-вызова — пустой ответ (без
@@ -217,30 +235,45 @@ async def generate_node_digests(
     if not articles:
         return NodeGate2DigestResponse(curriculum_id=curriculum_id, node_id=node_id)
 
-    client = GemmaCloudClient()
-    prompt = json.dumps(
-        {"node_topic": criterion, "articles": articles}, ensure_ascii=False
-    )
-    try:
-        out = await client.complete_structured(
-            _DIGEST_SYSTEM,
-            prompt,
-            _NodeDigestBatch,
-            label="curriculum/node_gate_digest",
+    client = _gemma_pool()
+
+    async def _digest_batch(batch: list[dict[str, str]]) -> list[NodeDigestItem]:
+        prompt = json.dumps(
+            {"node_topic": criterion, "articles": batch}, ensure_ascii=False
         )
-    except Exception as exc:
-        trace(f"NODE_GATE digest ✗ | Gemma call raised | {exc}")
-        out = None
+        try:
+            out = await client.complete_structured(
+                _DIGEST_SYSTEM,
+                prompt,
+                _NodeDigestBatch,
+                label="curriculum/node_gate_digest",
+            )
+        except Exception as exc:
+            trace(f"NODE_GATE digest ✗ | Gemma call raised | {exc}")
+            return []
+        if out is None:
+            trace("NODE_GATE digest ✗ | Gemma returned None (fail-open, batch skipped)")
+            return []
+        # Защита от URL-галлюцинаций: только статьи, отданные в ЭТОТ батч.
+        known_urls = {a["url"] for a in batch}
+        return [item for item in out.items if item.url in known_urls]
 
-    if out is None:
-        trace("NODE_GATE digest ✗ | Gemma returned None (fail-open, empty digests)")
-        return NodeGate2DigestResponse(curriculum_id=curriculum_id, node_id=node_id)
-
-    known_urls = {a["url"] for a in articles}
-    digests = [item for item in out.items if item.url in known_urls]
+    # На Gate 1 можно отметить весь пул (до 10 статей): один вызов на все
+    # не влезает в max_tokens ответа — пакеты по _DIGEST_BATCH_SIZE, параллельно
+    # (пул Gemma сам держит rate limit). Сбой пакета теряет только его.
+    batches = [
+        articles[i : i + _DIGEST_BATCH_SIZE]
+        for i in range(0, len(articles), _DIGEST_BATCH_SIZE)
+    ]
+    results = await asyncio.gather(*(_digest_batch(b) for b in batches))
+    order = {a["url"]: i for i, a in enumerate(articles)}
+    digests = sorted(
+        (item for batch in results for item in batch),
+        key=lambda item: order.get(item.url, len(order)),
+    )
     trace(
         f"NODE_GATE digest ✓ | node={node_id} articles={len(articles)} "
-        f"digests={len(digests)}"
+        f"batches={len(batches)} digests={len(digests)}"
     )
     return NodeGate2DigestResponse(
         curriculum_id=curriculum_id, node_id=node_id, digests=digests

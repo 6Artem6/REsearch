@@ -58,6 +58,12 @@ def _dispatch_work_job(job: WorkJob) -> dict[str, Any]:
         return _run_node_deep_dive(job.payload)
     if job.kind == WorkJobKind.RAG_GATEWAY:
         return _run_rag_gateway(job.payload)
+    if job.kind == WorkJobKind.NODE_GROUNDING:
+        from knowledge_engine.src.shared.node_grounding.node_grounding_jobs import (
+            run_node_grounding_job,
+        )
+
+        return run_node_grounding_job(job.payload)
     if job.kind == WorkJobKind.DIALOG_SUMMARIZE:
         from knowledge_engine.src.shared.job_queue.context_compressor_worker import (
             run_dialog_summarize_job,

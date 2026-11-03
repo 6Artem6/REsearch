@@ -15,13 +15,17 @@ Gemma точечный дайджест). Этап 3 (полный Map-Reduce и
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 NODE_GATE1_POOL_MIN = 5
 NODE_GATE1_POOL_MAX = 10
-NODE_GATE1_MAX_APPROVED = 4
-# RU: после Gate 1 в Этап 2 проходит не больше NODE_GATE1_MAX_APPROVED
-# статей — жёсткая экономия времени перед BGE+Reranker+Gemma.
+NODE_GATE1_MAX_APPROVED = NODE_GATE1_POOL_MAX
+# RU: на Gate 1 в дайджест можно отправить хоть весь пул кандидатов.
+NODE_GATE2_MAX_APPROVED = 4
+# RU: из дайджестов Gate 2 в полный пайплайн (Map-Reduce ingest) проходит
+# не больше NODE_GATE2_MAX_APPROVED статей — он тяжёлый (минуты на статью).
 
 
 class NodeSearchProfile(BaseModel):
@@ -29,8 +33,13 @@ class NodeSearchProfile(BaseModel):
 
     habr_hubs: list[str] = Field(
         default_factory=list,
-        description="Habr company-hub slugs plausibly covering this node.",
+        description=(
+            "Habr topic-hub slugs (habr.com/ru/hubs/<slug>/) plausibly "
+            "covering this node, e.g. machine_learning, postgresql."
+        ),
     )
+    """ RU: slug-и тематических хабов Habr; лента хаба — RSS
+    /ru/rss/hubs/<slug>/articles/ (slug компании принимается как запасной)."""
     habr_tags: list[str] = Field(
         default_factory=list, description="Habr tags to seed search."
     )
@@ -80,7 +89,8 @@ class NodeGate1DiscoveryResponse(BaseModel):
 
 
 class NodeGate1ApprovePayload(BaseModel):
-    """Решение пользователя на Gate 1 для одной ноды — не более NODE_GATE1_MAX_APPROVED URL."""
+    """Решение пользователя на Gate 1 для одной ноды: статьи для дайджеста
+    (до всего пула кандидатов)."""
 
     curriculum_id: str = Field(..., min_length=3, max_length=80)
     node_id: str = Field(..., min_length=2, max_length=80)
@@ -89,6 +99,8 @@ class NodeGate1ApprovePayload(BaseModel):
         max_length=NODE_GATE1_MAX_APPROVED,
         description=f"Subset of candidates[].url, at most {NODE_GATE1_MAX_APPROVED}.",
     )
+    """ RU: сколько угодно кандидатов из пула — лимит полного пайплайна
+    стоит на Gate 2 (NODE_GATE2_MAX_APPROVED)."""
 
 
 NODE_GATE2_COARSE_K = 16
@@ -129,20 +141,49 @@ class NodeGate2ApprovePayload(BaseModel):
     node_id: str = Field(..., min_length=2, max_length=80)
     approved_urls: list[str] = Field(
         ...,
-        max_length=NODE_GATE1_MAX_APPROVED,
-        description="Subset of digests[].url the user gives final ingest consent to.",
+        max_length=NODE_GATE2_MAX_APPROVED,
+        description=(
+            "Subset of digests[].url the user gives final ingest consent to, "
+            f"at most {NODE_GATE2_MAX_APPROVED}."
+        ),
     )
+
+
+class NodeGateState(BaseModel):
+    """Незавершённый гейт ноды — переживает перезагрузку страницы.
+
+    Пишет worker после discover (Gate 1) и digest (Gate 2), удаляет
+    finalize. ``/node/grounding-discover`` отдаёт сохранённое состояние
+    вместо повторного поиска; поля Gate 1 совпадают с
+    ``NodeGate1DiscoveryResponse``."""
+
+    curriculum_id: str
+    node_id: str
+    status: Literal["awaiting_gate_1", "awaiting_gate_2"] = Field(
+        ..., description="Which gate the user has to pass next."
+    )
+    profile: NodeSearchProfile = Field(default_factory=NodeSearchProfile)
+    candidates: list[NodeCandidatePassport] = Field(default_factory=list)
+    digests: list[NodeDigestItem] = Field(
+        default_factory=list, description="Gate 2 digests (awaiting_gate_2 only)."
+    )
+    approved_urls: list[str] = Field(
+        default_factory=list, description="URLs approved on Gate 1."
+    )
+    updated_at: str = ""
 
 
 __all__ = [
     "NODE_GATE1_POOL_MIN",
     "NODE_GATE1_POOL_MAX",
     "NODE_GATE1_MAX_APPROVED",
+    "NODE_GATE2_MAX_APPROVED",
     "NODE_GATE2_COARSE_K",
     "NODE_GATE2_TOP_K_CHUNKS",
     "NodeSearchProfile",
     "NodeCandidatePassport",
     "NodeGate1DiscoveryResponse",
+    "NodeGateState",
     "NodeGate1ApprovePayload",
     "NodeDigestItem",
     "NodeGate2DigestResponse",

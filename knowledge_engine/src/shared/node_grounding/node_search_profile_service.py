@@ -44,8 +44,10 @@ _PROFILE_SYSTEM = (
     "project's existing Academic Query Architect.\n\n"
     "Return JSON matching NodeSearchProfile (leave academic_queries empty "
     "— it is filled in elsewhere):\n"
-    "- habr_hubs: 2-6 Habr company-hub slugs plausibly covering this "
-    'node (bare slugs, e.g. "yandex", "avito").\n'
+    "- habr_hubs: 2-6 existing Habr topic-hub slugs (the <slug> in "
+    "habr.com/ru/hubs/<slug>/) plausibly covering this node — bare slugs, "
+    'e.g. "machine_learning", "postgresql", "python". Not company slugs, '
+    "not invented generic words.\n"
     "- habr_tags: 2-5 Habr tags (Russian).\n"
     "- habr_keywords: 2-5 Russian search keywords for Habr full-text search.\n"
     "- exa_keywords: 2-5 English search keywords/phrases for general "

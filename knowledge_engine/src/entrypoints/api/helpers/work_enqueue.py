@@ -119,3 +119,21 @@ def enqueue_rag_gateway(payload: dict) -> str:
 
 def enqueue_node_explain(payload: dict) -> str:
     return _enqueue(WorkJobKind.NODE_EXPLAIN, payload)
+
+
+def enqueue_node_grounding(payload: dict) -> str:
+    """Node Grounding Gate (discover/digest/finalize) — BGE-M3, Cross-Encoder
+    и Map-Reduce ingest доступны только в worker. Активная задача того же
+    этапа для той же ноды переиспользуется (двойной клик по гейту)."""
+    require_worker()
+    cid = str(payload.get("curriculum_id") or "")
+    nid = str(payload.get("node_id") or "")
+    op = str(payload.get("op") or "")
+    existing = work_job_store.find_active_node_grounding(cid, nid, op=op)
+    if existing:
+        trace(
+            f"WORK enqueue ⊘ duplicate node_grounding {op} | {cid}/{nid} "
+            f"→ existing job={existing.id}"
+        )
+        return existing.id
+    return work_job_store.create(WorkJobKind.NODE_GROUNDING, payload).id

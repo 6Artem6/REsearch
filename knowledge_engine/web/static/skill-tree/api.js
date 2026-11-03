@@ -622,10 +622,22 @@ export async function nodeInit(curriculumId, nodeData, opts = {}) {
   return resolveMaybeJobResponse(await r.json(), opts);
 }
 
+// Этапы Node Grounding Gate идут в worker (BGE-M3/Cross-Encoder/Map-Reduce):
+// ответ — {job_id, status} (pending или running — повторный клик подцепляет
+// уже идущую задачу), результат этапа — job.result. Discover для BASE/уже
+// заземлённой ноды отвечает сразу, без job_id.
+async function resolveNodeGroundingJob(data, opts = {}) {
+  if (data && data.job_id) {
+    const job = await waitWorkJob(data.job_id, opts);
+    return job.result;
+  }
+  return data;
+}
+
 // Node Grounding Gate (per-node, независимо от Штурвала — см.
 // docs/STEERING_AND_TOPIC_QNA_ROADMAP.md). Этап 0+1: единый профиль + сбор
 // кандидатов для Gate 1.
-export async function nodeGroundingDiscover(curriculumId, nodeData) {
+export async function nodeGroundingDiscover(curriculumId, nodeData, opts = {}) {
   const r = await fetch(`${API}/node/grounding-discover`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -635,12 +647,12 @@ export async function nodeGroundingDiscover(curriculumId, nodeData) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return r.json();
+  return resolveNodeGroundingJob(await r.json(), opts);
 }
 
 // Этап 2: по ≤4 Gate-1-утверждённым URL — BGE-M3+Reranker+Gemma дайджест
 // для Gate 2.
-export async function nodeGroundingDigest(curriculumId, nodeId, approvedUrls) {
+export async function nodeGroundingDigest(curriculumId, nodeId, approvedUrls, opts = {}) {
   const r = await fetch(`${API}/node/grounding-digest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -654,12 +666,12 @@ export async function nodeGroundingDigest(curriculumId, nodeId, approvedUrls) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return r.json();
+  return resolveNodeGroundingJob(await r.json(), opts);
 }
 
 // Этап 3: финальное согласие на Gate 2 → реальный Map-Reduce инжест,
 // узел переходит в grounding_status="grounded".
-export async function nodeGroundingFinalize(curriculumId, nodeId, approvedUrls) {
+export async function nodeGroundingFinalize(curriculumId, nodeId, approvedUrls, opts = {}) {
   const r = await fetch(`${API}/node/grounding-finalize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -673,7 +685,7 @@ export async function nodeGroundingFinalize(curriculumId, nodeId, approvedUrls) 
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return r.json();
+  return resolveNodeGroundingJob(await r.json(), opts);
 }
 
 // Штурвал-ноды изначально несут только лёгкий Gate-2 дайджест — при первом

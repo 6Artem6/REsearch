@@ -47,6 +47,7 @@ from __future__ import annotations
 from typing import Callable
 from urllib.parse import urlparse
 
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.curriculum_lancedb_persist import (
     persist_approved_curriculum_hits_to_lancedb_async,
@@ -73,7 +74,7 @@ from knowledge_engine.src.domains.curriculum.targeted_node_search import (
     hit_to_registry_entry,
 )
 from knowledge_engine.src.shared.node_grounding.node_gate_contracts import (
-    NODE_GATE1_MAX_APPROVED,
+    NODE_GATE2_MAX_APPROVED,
 )
 
 # RU: у Gate 1/Gate 2 свой человекочитаемый source_tier ("habr") для
@@ -96,6 +97,7 @@ def _infer_source_tier(url: str) -> str:
     return "exa"
 
 
+@traced("node_gate.finalize")
 async def finalize_node_grounding(
     graph: CurriculumGraph,
     node: CurriculumNode,
@@ -111,7 +113,7 @@ async def finalize_node_grounding(
     (остаётся в прежнем ``grounding_status``, не переходит в "grounded"
     без реального источника)."""
     urls = [u.strip() for u in approved_urls if (u or "").strip()][
-        :NODE_GATE1_MAX_APPROVED
+        :NODE_GATE2_MAX_APPROVED
     ]
     if not urls:
         trace(f"NODE_GATE finalize ⊘ | node={node.node_id} | no approved urls")

@@ -32,6 +32,7 @@ from knowledge_engine.src.domains.grounding.session_store import (
 from knowledge_engine.src.entrypoints.api.helpers.work_enqueue import (
     enqueue_node_deep_dive,
     enqueue_node_explain,
+    enqueue_node_grounding,
     wait_job_result,
 )
 from knowledge_engine.src.processors.selection_prompts import (
@@ -403,240 +404,103 @@ async def post_node_explain_selection_stream(
     )
 
 
+def _node_grounding_job_or_404(op: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Поставить этап Node Grounding Gate в worker; ответ ``{job_id, status}``
+    UI ждёт через ``waitWorkJob`` (``resolveMaybeJobResponse`` в api.js)."""
+    from knowledge_engine.src.shared.node_grounding.node_grounding_jobs import (
+        NodeGroundingNotFoundError,
+        load_graph_and_node,
+    )
+
+    try:
+        load_graph_and_node(payload["curriculum_id"], payload["node_id"])
+    except NodeGroundingNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    job_id = enqueue_node_grounding({"op": op, **payload})
+    job = work_job_store.get(job_id)
+    trace(
+        f"API ▶ POST /node/grounding-{op} (queue) | {payload['curriculum_id']}/"
+        f"{payload['node_id']} job={job_id}"
+    )
+    return {
+        "job_id": job_id,
+        "status": job.status.value if job else WorkJobStatus.PENDING.value,
+    }
+
+
 @router.post("/grounding-discover")
-async def post_node_grounding_discover(body: NodeSessionBody) -> dict[str, Any]:
-    """Node Grounding Gate — Этап 0+1 (add-only, см.
+def post_node_grounding_discover(body: NodeSessionBody) -> dict[str, Any]:
+    """Node Grounding Gate — Этап 0+1 (профиль ноды + кандидаты для Gate 1).
 
-    docs/STEERING_AND_TOPIC_QNA_ROADMAP.md): единый поисковый профиль +
-    сбор/дедуп/паспорта кандидатов для Gate 1 ОДНОЙ ноды. НЕ вызывается из
-    ``/init``/``/init-stream`` и не меняет lazy-grounding в engine.py —
-    автоматическая сшивка в живой поток открытия ноды (плюс Gate 2 и сам
-    Map-Reduce инжест) — следующий шаг, не в этом эндпоинте. Safe/idempotent
-    для любой ноды: BASE или уже прогруженная DEEP — просто пустой ответ,
-    без Flash Lite вызовов."""
-    from knowledge_engine.src.domains.curriculum.academic_consensus import (
-        consensus_allowed_for_policy,
-        is_sota_rd_node,
-    )
-    from knowledge_engine.src.domains.curriculum.schemas import CurriculumGraph
-    from knowledge_engine.src.domains.curriculum.services.node_candidate_collection_service import (
-        collect_node_candidates,
-    )
-    from knowledge_engine.src.domains.curriculum.source_policy import (
-        resolve_source_policy,
-    )
-    from knowledge_engine.src.shared.node_grounding.node_gate_contracts import (
-        NodeGate1DiscoveryResponse,
-        NodeSearchProfile,
-    )
-    from knowledge_engine.src.shared.node_grounding.node_search_profile_service import (
-        build_node_academic_plan,
-        generate_node_search_profile,
-    )
-    from knowledge_engine.src.shared.skill_tree_store import (
-        get_curriculum_graph,
-        get_curriculum_meta,
+    BASE-нода или уже заземлённая DEEP — мгновенный пустой ответ без
+    worker. Иначе — задача ``node_grounding`` (op=discover) в worker:
+    дедуп кандидатов по BGE-M3 работает только там (см.
+    ``node_grounding_jobs.py``)."""
+    from knowledge_engine.src.shared.node_grounding.node_grounding_jobs import (
+        NodeGroundingNotFoundError,
+        empty_discovery,
+        load_graph_and_node,
+        node_needs_gate,
     )
 
-    raw = get_curriculum_graph(body.curriculum_id)
-    if not raw:
-        raise HTTPException(
-            status_code=404, detail=f"curriculum {body.curriculum_id} not found"
-        )
-    graph = CurriculumGraph.model_validate(raw)
-    node = next((n for n in graph.nodes if n.node_id == body.node_data.node_id), None)
-    if not node:
-        raise HTTPException(
-            status_code=404, detail=f"node {body.node_data.node_id} not found"
-        )
-
-    node_status = (node.grounding_status or "").strip()
-    if node.node_risk_kind != "DEEP" or (node_status == "grounded" and node.source_ref):
+    node_id = body.node_data.node_id
+    try:
+        _graph, node = load_graph_and_node(body.curriculum_id, node_id)
+    except NodeGroundingNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not node_needs_gate(node):
         trace(
             f"API ▶ POST /node/grounding-discover ⊘ | {body.curriculum_id}/"
-            f"{node.node_id} | risk={node.node_risk_kind} status={node_status} "
-            "— no gate needed"
+            f"{node.node_id} | risk={node.node_risk_kind} "
+            f"status={node.grounding_status} — no gate needed"
         )
-        return NodeGate1DiscoveryResponse(
-            curriculum_id=body.curriculum_id,
-            node_id=node.node_id,
-            profile=NodeSearchProfile(),
-            candidates=[],
-        ).model_dump()
-
-    meta = get_curriculum_meta(body.curriculum_id) or {}
-    policy = resolve_source_policy(
-        meta.get("source_policy"),
-        str(meta.get("generation_mode") or "fast"),
-        default="hybrid",
-    )
-    sota_override = policy == "practical_only" and is_sota_rd_node(node)
-    effective_policy = "hybrid" if sota_override else policy
-    include_academic = consensus_allowed_for_policy(effective_policy)
-
-    trace(
-        f"API ▶ POST /node/grounding-discover | {body.curriculum_id}/{node.node_id} "
-        f"policy={policy} sota_override={sota_override} include_academic={include_academic}"
+        return empty_discovery(body.curriculum_id, node.node_id)
+    from knowledge_engine.src.shared.node_grounding.node_gate_state_store import (
+        get_gate_state,
     )
 
-    profile = await generate_node_search_profile(
-        node_title=node.title,
-        node_summary=node.brief_summary,
-        core_concepts=node.core_concepts,
-        include_academic=include_academic,
-        curriculum_id=body.curriculum_id,
-        node_id=node.node_id,
-    )
-
-    academic_plan = None
-    if include_academic:
-        # Реюз существующего Academic Query Architect (см. docs/
-        # ACADEMIC_AND_CONSENSUS.md) — даёт academic_query_en + arxiv_params
-        # вместе; профиль получает query для отображения на Gate 1, сбор —
-        # оба поля для _primary_academic_hits/harvest_consensus_for_node.
-        academic_plan = await build_node_academic_plan(
-            node.title,
-            node.brief_summary,
-            anchor=f"node_gate_academic_plan:{body.curriculum_id}:{node.node_id}",
+    saved = get_gate_state(body.curriculum_id, node.node_id)
+    if saved is not None:
+        # Незавершённый гейт (перезагрузка страницы): Gate 1/2 из хранилища,
+        # без повторного поиска. Поля Gate 1 — как у discovery-ответа.
+        trace(
+            f"API ▶ POST /node/grounding-discover ↻ | {body.curriculum_id}/"
+            f"{node.node_id} | restore {saved.status} "
+            f"candidates={len(saved.candidates)} digests={len(saved.digests)}"
         )
-        if (academic_plan.academic_query_en or "").strip():
-            profile = profile.model_copy(
-                update={"academic_queries": [academic_plan.academic_query_en]}
-            )
-
-    candidates = await collect_node_candidates(
-        profile,
-        curriculum_id=body.curriculum_id,
-        node_id=node.node_id,
-        node=node,
-        academic_plan=academic_plan,
+        return saved.model_dump()
+    return _node_grounding_job_or_404(
+        "discover", {"curriculum_id": body.curriculum_id, "node_id": node_id}
     )
-    return NodeGate1DiscoveryResponse(
-        curriculum_id=body.curriculum_id,
-        node_id=node.node_id,
-        profile=profile,
-        candidates=candidates,
-    ).model_dump()
 
 
 @router.post("/grounding-digest")
-async def post_node_grounding_digest(body: NodeGate1ApprovePayload) -> dict[str, Any]:
-    """Node Grounding Gate — Этап 2 (add-only, см.
-
-    docs/STEERING_AND_TOPIC_QNA_ROADMAP.md): по ≤NODE_GATE1_MAX_APPROVED
-    URL, утверждённым на Gate 1 (``body.approved_urls``, схема переиспользует
-    ``NodeGate1ApprovePayload`` — та же форма запроса), качает полный текст,
-    BGE-M3+Cross-Encoder отбирают top-K смысловых блоков под тему ноды,
-    Gemma cloud делает точечный дайджест (Архитектура/Практический
-    кейс/Ограничения) — для показа на Gate 2. Не персистит ничего (ни в
-    LanceDB/pgvector, ни в registry ноды) — это Этап 3, после Gate 2."""
-    from knowledge_engine.src.domains.curriculum.schemas import CurriculumGraph
-    from knowledge_engine.src.domains.curriculum.services.node_digest_service import (
-        generate_node_digests,
+def post_node_grounding_digest(body: NodeGate1ApprovePayload) -> dict[str, Any]:
+    """Node Grounding Gate — Этап 2: Gate-1-утверждённые URL → дайджесты для
+    Gate 2 (BGE-M3 + Cross-Encoder + Gemma) в worker. Ничего не персистит."""
+    return _node_grounding_job_or_404(
+        "digest",
+        {
+            "curriculum_id": body.curriculum_id,
+            "node_id": body.node_id,
+            "approved_urls": list(body.approved_urls),
+        },
     )
-    from knowledge_engine.src.shared.skill_tree_store import get_curriculum_graph
-
-    raw = get_curriculum_graph(body.curriculum_id)
-    if not raw:
-        raise HTTPException(
-            status_code=404, detail=f"curriculum {body.curriculum_id} not found"
-        )
-    graph = CurriculumGraph.model_validate(raw)
-    node = next((n for n in graph.nodes if n.node_id == body.node_id), None)
-    if not node:
-        raise HTTPException(status_code=404, detail=f"node {body.node_id} not found")
-
-    trace(
-        f"API ▶ POST /node/grounding-digest | {body.curriculum_id}/{node.node_id} "
-        f"approved={len(body.approved_urls)}"
-    )
-    t_job = time.perf_counter()
-    digests = await generate_node_digests(
-        body.approved_urls,
-        node_title=node.title,
-        node_summary=node.brief_summary,
-        curriculum_id=body.curriculum_id,
-        node_id=node.node_id,
-        anchor=f"node_gate_digest:{body.curriculum_id}:{node.node_id}",
-    )
-    trace(
-        f"API ▶ POST /node/grounding-digest ✓ | {body.curriculum_id}/"
-        f"{node.node_id} | {time.perf_counter() - t_job:.1f}s"
-    )
-    return digests.model_dump()
 
 
 @router.post("/grounding-finalize")
-async def post_node_grounding_finalize(body: NodeGate2ApprovePayload) -> dict[str, Any]:
-    """Node Grounding Gate — Этап 3 (add-only, см.
-
-    docs/STEERING_AND_TOPIC_QNA_ROADMAP.md): финальное согласие пользователя
-    на Gate 2 (``body.approved_urls``) → реальный тяжёлый Map-Reduce инжест
-    (ТОТ ЖЕ, что уже используется обычным lazy-grounding —
-    ``summarize_whitelist_blog_hits_async``, ничего нового не изобретается)
-    → узел помечается ``grounding_status="grounded"`` с реальными
-    ``source_ref``/``mapped_source_ids``. После этого штатный
-    ``POST /node/init`` для этой ноды НЕ запускает поиск повторно —
-    существующая проверка в ``_apply_lazy_grounding_for_init`` (engine.py,
-    не изменялась) видит ``grounded``+``source_ref`` и делает только
-    refresh диаграмм."""
-    from knowledge_engine.src.domains.curriculum.schemas import CurriculumGraph
-    from knowledge_engine.src.domains.curriculum.source_policy import (
-        resolve_source_policy,
+def post_node_grounding_finalize(body: NodeGate2ApprovePayload) -> dict[str, Any]:
+    """Node Grounding Gate — Этап 3: Gate 2 согласие → Map-Reduce ingest в
+    worker → нода ``grounded`` (``_apply_lazy_grounding_for_init`` в
+    engine.py потом не ищет повторно)."""
+    return _node_grounding_job_or_404(
+        "finalize",
+        {
+            "curriculum_id": body.curriculum_id,
+            "node_id": body.node_id,
+            "approved_urls": list(body.approved_urls),
+        },
     )
-    from knowledge_engine.src.shared.node_grounding.node_grounding_finalize_service import (
-        finalize_node_grounding,
-    )
-    from knowledge_engine.src.shared.skill_tree_store import (
-        get_curriculum_graph,
-        get_curriculum_meta,
-        save_curriculum_record,
-    )
-
-    raw = get_curriculum_graph(body.curriculum_id)
-    if not raw:
-        raise HTTPException(
-            status_code=404, detail=f"curriculum {body.curriculum_id} not found"
-        )
-    graph = CurriculumGraph.model_validate(raw)
-    node = next((n for n in graph.nodes if n.node_id == body.node_id), None)
-    if not node:
-        raise HTTPException(status_code=404, detail=f"node {body.node_id} not found")
-
-    meta = get_curriculum_meta(body.curriculum_id) or {}
-    target_goal = str(meta.get("target_goal") or graph.description or "").strip()
-    generation_mode = str(meta.get("generation_mode") or "fast")
-    source_policy = resolve_source_policy(
-        meta.get("source_policy"), generation_mode, default="hybrid"
-    )
-
-    trace(
-        f"API ▶ POST /node/grounding-finalize | {body.curriculum_id}/{body.node_id} "
-        f"approved={len(body.approved_urls)}"
-    )
-    t_job = time.perf_counter()
-    graph, updated_node = await finalize_node_grounding(
-        graph, node, body.approved_urls, target_goal=target_goal
-    )
-    trace(
-        f"API ▶ POST /node/grounding-finalize ✓ | {body.curriculum_id}/"
-        f"{body.node_id} | {time.perf_counter() - t_job:.1f}s"
-    )
-    save_curriculum_record(
-        graph,
-        target_goal=target_goal,
-        generation_mode=generation_mode,
-        depth_level=str(meta.get("depth_level") or "Standard"),
-        user_level=str(meta.get("user_level") or "Intermediate/Advanced"),
-        source_policy=source_policy,
-    )
-    return {
-        "curriculum_id": body.curriculum_id,
-        "node_id": updated_node.node_id,
-        "grounding_status": updated_node.grounding_status,
-        "mapped_source_ids": list(updated_node.mapped_source_ids or []),
-        "resource_urls": list(updated_node.resource_urls or []),
-    }
 
 
 @router.post("/ensure-steering-sources")

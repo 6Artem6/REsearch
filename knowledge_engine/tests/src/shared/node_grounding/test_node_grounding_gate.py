@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -35,6 +36,7 @@ from knowledge_engine.src.entrypoints.api.routes.node_skill import (
 from knowledge_engine.src.shared.node_grounding import (
     node_grounding_finalize_service as ngf,
 )
+from knowledge_engine.src.shared.node_grounding import node_grounding_jobs as ngj
 from knowledge_engine.src.shared.node_grounding.node_gate_contracts import (
     NodeCandidatePassport,
     NodeDigestItem,
@@ -58,15 +60,19 @@ def anyio_backend() -> str:
 # --- Контракты ---------------------------------------------------------
 
 
-def test_gate1_approve_payload_caps_at_four() -> None:
-    ok = NodeGate1ApprovePayload(
-        curriculum_id="cur1", node_id="n1", approved_urls=["a", "b", "c", "d"]
+def test_gate1_approve_payload_allows_whole_pool() -> None:
+    """В дайджест (Gate 1) — хоть весь пул; лимит 4 только на Gate 2."""
+    from knowledge_engine.src.shared.node_grounding.node_gate_contracts import (
+        NODE_GATE1_POOL_MAX,
     )
-    assert len(ok.approved_urls) == 4
+
+    pool = [f"u{i}" for i in range(NODE_GATE1_POOL_MAX)]
+    ok = NodeGate1ApprovePayload(curriculum_id="cur1", node_id="n1", approved_urls=pool)
+    assert len(ok.approved_urls) == NODE_GATE1_POOL_MAX
 
     with pytest.raises(ValidationError):
         NodeGate1ApprovePayload(
-            curriculum_id="cur1", node_id="n1", approved_urls=["a", "b", "c", "d", "e"]
+            curriculum_id="cur1", node_id="n1", approved_urls=[*pool, "extra"]
         )
 
 
@@ -168,12 +174,12 @@ def test_rss_item_matches_keywords() -> None:
 
 
 @pytest.mark.anyio
-async def test_fetch_habr_company_rss_items_parses_guid_over_link() -> None:
+async def test_fetch_habr_rss_items_parses_guid_over_link() -> None:
     """guid (без utm_*) предпочитается ссылке с utm_* — прямая ссылка для
 
     Trafilatura должна быть канонической."""
     with patch.object(ncs, "fetch_html", AsyncMock(return_value=_SAMPLE_HABR_RSS)):
-        items = await ncs._fetch_habr_company_rss_items("acme")
+        items = await ncs._fetch_habr_rss_items("acme")
     assert items == [
         (
             "https://habr.com/ru/companies/acme/articles/111/",
@@ -189,9 +195,56 @@ async def test_fetch_habr_company_rss_items_parses_guid_over_link() -> None:
 
 
 @pytest.mark.anyio
-async def test_fetch_habr_company_rss_items_bad_xml_fails_open() -> None:
+async def test_fetch_habr_rss_items_hub_first_then_company_fallback() -> None:
+    """Slug хаба → лента /rss/hubs/; 404 хаба (пустой ответ fetch_html) →
+    запасной /rss/companies/; ни того ни другого → пустой список."""
+    requested: list[str] = []
+
+    async def hub_missing(url, *, timeout_sec):
+        requested.append(url)
+        return _SAMPLE_HABR_RSS if "rss/companies/acme" in url else ""
+
+    with patch.object(ncs, "fetch_html", hub_missing):
+        items = await ncs._fetch_habr_rss_items("acme")
+    assert len(items) == 2
+    assert "rss/hubs/acme" in requested[0]
+    assert "kek/v2/hubs/search?q=acme" in requested[1]  # alias не нашёлся
+    assert "rss/companies/acme" in requested[2]
+
+    with patch.object(ncs, "fetch_html", AsyncMock(return_value=_SAMPLE_HABR_RSS)):
+        assert len(await ncs._fetch_habr_rss_items("machine_learning")) == 2
+
+    with patch.object(ncs, "fetch_html", AsyncMock(return_value="")):
+        assert await ncs._fetch_habr_rss_items("development") == []
+
+
+@pytest.mark.anyio
+async def test_fetch_habr_rss_items_resolves_display_name_via_hub_search() -> None:
+    """Модель отдала название ("Big Data"), а не slug: лента по названию —
+    404, поиск хабов Habr даёт alias "bigdata", читаем его ленту."""
+    requested: list[str] = []
+
+    async def fake_fetch(url, *, timeout_sec):
+        requested.append(url)
+        if "kek/v2/hubs/search" in url:
+            return '{"pagesCount": 1, "hubIds": ["bigdata", "data_engineering"]}'
+        if "rss/hubs/bigdata/" in url:
+            return _SAMPLE_HABR_RSS
+        return ""
+
+    with patch.object(ncs, "fetch_html", fake_fetch):
+        items = await ncs._fetch_habr_rss_items("Big Data")
+    assert len(items) == 2
+    assert "rss/hubs/Big%20Data/" in requested[0]
+    assert "q=Big%20Data" in requested[1]
+    assert "rss/hubs/bigdata/" in requested[2]
+    assert not any("rss/companies" in u for u in requested)
+
+
+@pytest.mark.anyio
+async def test_fetch_habr_rss_items_bad_xml_fails_open() -> None:
     with patch.object(ncs, "fetch_html", AsyncMock(return_value="not xml at all <<<")):
-        items = await ncs._fetch_habr_company_rss_items("acme")
+        items = await ncs._fetch_habr_rss_items("acme")
     assert items == []
 
 
@@ -208,7 +261,7 @@ async def test_collect_habr_filters_by_keyword_then_extracts_lead() -> None:
 
     async def fake_fetch_html(url, *, timeout_sec):
         fetched_urls.append(url)
-        if "rss/companies" in url:
+        if "rss/hubs" in url:
             return _SAMPLE_HABR_RSS
         return (
             "<html><body><p>"
@@ -574,9 +627,11 @@ async def test_generate_node_digests_builds_batch_from_top_chunks() -> None:
             nds, "_top_k_chunks", AsyncMock(return_value=["релевантный абзац"])
         ),
         patch.object(
-            nds.GemmaCloudClient,
-            "complete_structured",
-            AsyncMock(return_value=_FakeBatch()),
+            nds,
+            "_gemma_pool",
+            return_value=SimpleNamespace(
+                complete_structured=AsyncMock(return_value=_FakeBatch())
+            ),
         ) as mock_gemma,
     ):
         result = await nds.generate_node_digests(
@@ -586,7 +641,7 @@ async def test_generate_node_digests_builds_batch_from_top_chunks() -> None:
             node_id="n1",
         )
 
-    mock_gemma.assert_awaited_once()
+    mock_gemma.return_value.complete_structured.assert_awaited_once()
     assert result.curriculum_id == "cur1"
     assert result.node_id == "n1"
     assert len(result.digests) == 1
@@ -617,9 +672,11 @@ async def test_generate_node_digests_drops_hallucinated_urls() -> None:
             nds, "_top_k_chunks", AsyncMock(return_value=["релевантный абзац"])
         ),
         patch.object(
-            nds.GemmaCloudClient,
-            "complete_structured",
-            AsyncMock(return_value=_FakeBatch()),
+            nds,
+            "_gemma_pool",
+            return_value=SimpleNamespace(
+                complete_structured=AsyncMock(return_value=_FakeBatch())
+            ),
         ),
     ):
         result = await nds.generate_node_digests(
@@ -643,9 +700,11 @@ async def test_generate_node_digests_fail_open_when_gemma_returns_none() -> None
             nds, "_top_k_chunks", AsyncMock(return_value=["релевантный абзац"])
         ),
         patch.object(
-            nds.GemmaCloudClient,
-            "complete_structured",
-            AsyncMock(return_value=None),
+            nds,
+            "_gemma_pool",
+            return_value=SimpleNamespace(
+                complete_structured=AsyncMock(return_value=None)
+            ),
         ),
     ):
         result = await nds.generate_node_digests(
@@ -867,8 +926,7 @@ def _require_dev_curriculum() -> None:
         )
 
 
-@pytest.mark.anyio
-async def test_endpoint_base_node_skips_gate_entirely() -> None:
+def test_endpoint_base_node_skips_gate_entirely() -> None:
     _require_dev_curriculum()
     body = NodeSessionBody(
         curriculum_id=_DEV_CURRICULUM_ID,
@@ -876,8 +934,9 @@ async def test_endpoint_base_node_skips_gate_entirely() -> None:
             node_id=_DEV_BASE_NODE_ID, title="XX", layer="advanced", core_concepts=["c"]
         ),
     )
-    result = await post_node_grounding_discover(body)
+    result = post_node_grounding_discover(body)
     assert result["candidates"] == []
+    assert "job_id" not in result  # без worker-задачи
     assert result["profile"]["habr_hubs"] == []
 
 
@@ -932,7 +991,7 @@ async def test_endpoint_sota_node_triggers_gate_with_academic() -> None:
         ),
         patch.object(ncs, "collect_node_candidates", fake_collect),
     ):
-        result = await post_node_grounding_discover(body)
+        result = await ngj.run_discover(body.curriculum_id, body.node_data.node_id)
     assert result["profile"]["academic_queries"] == [
         "cost based query optimization index selection"
     ]
@@ -945,9 +1004,6 @@ async def test_endpoint_sota_node_triggers_gate_with_academic() -> None:
 
 @pytest.mark.anyio
 async def test_endpoint_digest_calls_service_with_node_context() -> None:
-    from knowledge_engine.src.entrypoints.api.routes.node_skill import (
-        post_node_grounding_digest,
-    )
     from knowledge_engine.src.shared.node_grounding.node_gate_contracts import (
         NodeDigestItem,
         NodeGate1ApprovePayload,
@@ -984,7 +1040,9 @@ async def test_endpoint_digest_calls_service_with_node_context() -> None:
         "knowledge_engine.src.domains.curriculum.services.node_digest_service.generate_node_digests",
         fake_generate_node_digests,
     ):
-        result = await post_node_grounding_digest(payload)
+        result = await ngj.run_digest(
+            payload.curriculum_id, payload.node_id, list(payload.approved_urls)
+        )
 
     assert result["digests"][0]["url"] == "https://habr.com/x"
     assert captured["approved_urls"] == ["https://habr.com/x"]
@@ -996,8 +1054,7 @@ async def test_endpoint_digest_calls_service_with_node_context() -> None:
     assert captured["kwargs"]["node_id"] == _DEV_SOTA_NODE_ID
 
 
-@pytest.mark.anyio
-async def test_endpoint_digest_404_on_unknown_node() -> None:
+def test_endpoint_digest_404_on_unknown_node() -> None:
     from fastapi import HTTPException
 
     from knowledge_engine.src.entrypoints.api.routes.node_skill import (
@@ -1014,12 +1071,11 @@ async def test_endpoint_digest_404_on_unknown_node() -> None:
         approved_urls=["https://habr.com/x"],
     )
     with pytest.raises(HTTPException) as exc_info:
-        await post_node_grounding_digest(payload)
+        post_node_grounding_digest(payload)
     assert exc_info.value.status_code == 404
 
 
-@pytest.mark.anyio
-async def test_endpoint_finalize_404_on_unknown_node() -> None:
+def test_endpoint_finalize_404_on_unknown_node() -> None:
     from fastapi import HTTPException
 
     from knowledge_engine.src.entrypoints.api.routes.node_skill import (
@@ -1036,7 +1092,7 @@ async def test_endpoint_finalize_404_on_unknown_node() -> None:
         approved_urls=["https://habr.com/x"],
     )
     with pytest.raises(HTTPException) as exc_info:
-        await post_node_grounding_finalize(payload)
+        post_node_grounding_finalize(payload)
     assert exc_info.value.status_code == 404
 
 
@@ -1046,9 +1102,6 @@ async def test_endpoint_finalize_calls_service_and_persists_once() -> None:
 
     реальный локальный skill_tree_store (см. docstring файла про прошлый
     инцидент с замусориванием local-хранилища тестовыми данными)."""
-    from knowledge_engine.src.entrypoints.api.routes.node_skill import (
-        post_node_grounding_finalize,
-    )
     from knowledge_engine.src.shared.node_grounding.node_gate_contracts import (
         NodeGate2ApprovePayload,
     )
@@ -1083,10 +1136,294 @@ async def test_endpoint_finalize_calls_service_and_persists_once() -> None:
             "knowledge_engine.src.shared.skill_tree_store.save_curriculum_record"
         ) as mock_save,
     ):
-        result = await post_node_grounding_finalize(payload)
+        result = await ngj.run_finalize(
+            payload.curriculum_id, payload.node_id, list(payload.approved_urls)
+        )
 
     mock_save.assert_called_once()
     assert captured["approved_urls"] == ["https://habr.com/x"]
     assert captured["node_id"] == _DEV_SOTA_NODE_ID
     assert result["grounding_status"] == "grounded"
     assert result["node_id"] == _DEV_SOTA_NODE_ID
+
+
+# --- Этапы гейта — задачи worker (ML-веса только там) --------------------
+
+
+def test_endpoint_deep_node_enqueues_worker_job(monkeypatch) -> None:
+    """DEEP-нода без источников: роут не считает ничего сам, а ставит
+    node_grounding (op=discover) и отдаёт job_id — UI ждёт job.result."""
+    from knowledge_engine.src.entrypoints.api.routes import node_skill
+
+    _require_dev_curriculum()
+    captured: dict = {}
+
+    def fake_enqueue(payload):
+        captured.update(payload)
+        return "job-1"
+
+    monkeypatch.setattr(node_skill, "enqueue_node_grounding", fake_enqueue)
+    body = NodeSessionBody(
+        curriculum_id=_DEV_CURRICULUM_ID,
+        node_data=NodeDataInput(
+            node_id=_DEV_SOTA_NODE_ID, title="XX", layer="sota", core_concepts=["c"]
+        ),
+    )
+    result = node_skill.post_node_grounding_discover(body)
+    assert result["job_id"] == "job-1"
+    assert captured == {
+        "op": "discover",
+        "curriculum_id": _DEV_CURRICULUM_ID,
+        "node_id": _DEV_SOTA_NODE_ID,
+    }
+
+
+def test_worker_dispatches_node_grounding_job() -> None:
+    from knowledge_engine.src.shared.job_queue import work_handlers
+    from knowledge_engine.src.shared.job_queue.work_job_store import (
+        WorkJob,
+        WorkJobKind,
+    )
+
+    payload = {
+        "op": "digest",
+        "curriculum_id": "cur",
+        "node_id": "n",
+        "approved_urls": ["https://habr.com/x"],
+    }
+    job = WorkJob(id="j", kind=WorkJobKind.NODE_GROUNDING, payload=payload)
+    fake_digest = AsyncMock(return_value={"digests": []})
+    with patch.object(ngj, "run_digest", fake_digest):
+        assert work_handlers.run_work_job(job) == {"digests": []}
+    fake_digest.assert_awaited_once_with("cur", "n", ["https://habr.com/x"])
+
+
+def test_worker_rejects_unknown_node_grounding_op() -> None:
+    with pytest.raises(ValueError, match="Unknown node_grounding op"):
+        ngj.run_node_grounding_job({"op": "nope", "curriculum_id": "c", "node_id": "n"})
+
+
+def test_enqueue_node_grounding_reuses_active_job(monkeypatch) -> None:
+    """Повторный клик по Gate 2 — та же задача, второго ingest нет; другой
+    этап или нода — новая задача."""
+    from knowledge_engine.src.entrypoints.api.helpers import work_enqueue
+    from knowledge_engine.src.shared.job_queue import work_job_store as wjs
+
+    monkeypatch.setattr(wjs, "redis_enabled", lambda: False)
+    monkeypatch.setattr(wjs, "publish_work_job", lambda job_id: None)
+    monkeypatch.setattr(work_enqueue, "require_worker", lambda: None)
+    monkeypatch.setattr(wjs.work_job_store, "_persist", lambda: None)
+    monkeypatch.setattr(wjs.work_job_store, "_reload_from_disk", lambda: None)
+    monkeypatch.setattr(wjs.work_job_store, "_jobs", {})
+
+    base = {"curriculum_id": "cur", "node_id": "n", "approved_urls": ["u"]}
+    first = work_enqueue.enqueue_node_grounding({"op": "finalize", **base})
+    again = work_enqueue.enqueue_node_grounding({"op": "finalize", **base})
+    other_op = work_enqueue.enqueue_node_grounding({"op": "digest", **base})
+    assert again == first
+    assert other_op != first
+
+    wjs.work_job_store.complete(first, {"ok": True})
+    assert work_enqueue.enqueue_node_grounding({"op": "finalize", **base}) != first
+
+
+# --- Habr: точный alias, параллельный сбор ---------------------------------
+
+
+@pytest.mark.anyio
+async def test_hub_search_rejects_fuzzy_top_hit() -> None:
+    """Поиск Habr нечёткий: "development" → devrel ("Developer Relations").
+    Такой alias не берём — только совпадение идентификатора."""
+    search = (
+        '{"hubIds": ["devrel", "webdev"], "hubRefs": {'
+        '"devrel": {"titleHtml": "<em class=\\"searched-item\\">Developer</em> Relations"},'
+        '"webdev": {"titleHtml": "Веб-разработка"}}}'
+    )
+    with patch.object(ncs, "fetch_html", AsyncMock(return_value=search)):
+        assert await ncs._search_habr_hub_alias("development") == ""
+    big = '{"hubIds": ["bigdata"], "hubRefs": {"bigdata": {"titleHtml": "<em>Big Data</em>"}}}'
+    with patch.object(ncs, "fetch_html", AsyncMock(return_value=big)):
+        assert await ncs._search_habr_hub_alias("Big Data") == "bigdata"
+
+
+@pytest.mark.anyio
+async def test_collect_habr_fetches_shared_article_once() -> None:
+    """Одна статья в лентах двух хабов — полный текст качается один раз."""
+    profile = NodeSearchProfile(
+        habr_hubs=["acme", "acme_two"], habr_tags=[], habr_keywords=["индекс"]
+    )
+    article_fetches: list[str] = []
+
+    async def fake_fetch_html(url, *, timeout_sec):
+        if "rss/hubs/" in url:
+            return _SAMPLE_HABR_RSS
+        article_fetches.append(url)
+        return "<html><body><p>" + "x" * 100 + " про индексы</p></body></html>"
+
+    with patch.object(ncs, "fetch_html", fake_fetch_html):
+        hits = await ncs._collect_habr(profile)
+    assert [h.url for h in hits] == ["https://habr.com/ru/companies/acme/articles/111/"]
+    assert article_fetches == ["https://habr.com/ru/companies/acme/articles/111/"]
+
+
+# --- Незавершённый гейт переживает перезагрузку ---------------------------
+
+
+@pytest.fixture
+def gate_store(tmp_path, monkeypatch):
+    from knowledge_engine.src.shared.node_grounding import node_gate_state_store
+
+    monkeypatch.setattr(node_gate_state_store, "_STORE_PATH", tmp_path / "gate.json")
+    return node_gate_state_store
+
+
+@pytest.mark.anyio
+async def test_gate_state_saved_restored_and_cleared(gate_store, monkeypatch) -> None:
+    from knowledge_engine.src.entrypoints.api.routes import node_skill
+
+    _require_dev_curriculum()
+    passport = NodeCandidatePassport(
+        url="https://habr.com/x",
+        title="Habr X",
+        source_tier="habr",
+        topic="t",
+        gist="g",
+    )
+
+    async def fake_collect(profile, **kwargs):
+        return [passport]
+
+    with (
+        patch(
+            "knowledge_engine.src.shared.node_grounding.node_search_profile_service._lite_structured",
+            AsyncMock(return_value=NodeSearchProfile(habr_hubs=["x"])),
+        ),
+        patch(
+            "knowledge_engine.src.shared.node_grounding.node_search_profile_service.build_academic_search_plan",
+            AsyncMock(
+                return_value=AcademicSearchPlan(
+                    academic_query_en="", arxiv_params=ArxivQueryParams()
+                )
+            ),
+        ),
+        patch.object(ncs, "collect_node_candidates", fake_collect),
+    ):
+        await ngj.run_discover(_DEV_CURRICULUM_ID, _DEV_SOTA_NODE_ID)
+    saved = gate_store.get_gate_state(_DEV_CURRICULUM_ID, _DEV_SOTA_NODE_ID)
+    assert saved.status == "awaiting_gate_1"
+    assert [c.url for c in saved.candidates] == ["https://habr.com/x"]
+
+    # Перезагрузка страницы: роут отдаёт сохранённое, задачу не ставит.
+    def no_enqueue(payload):
+        raise AssertionError("discover не должен ставить задачу повторно")
+
+    monkeypatch.setattr(node_skill, "enqueue_node_grounding", no_enqueue)
+    body = NodeSessionBody(
+        curriculum_id=_DEV_CURRICULUM_ID,
+        node_data=NodeDataInput(
+            node_id=_DEV_SOTA_NODE_ID, title="XX", layer="sota", core_concepts=["c"]
+        ),
+    )
+    restored = node_skill.post_node_grounding_discover(body)
+    assert restored["status"] == "awaiting_gate_1"
+    assert restored["candidates"][0]["url"] == "https://habr.com/x"
+
+    from knowledge_engine.src.shared.node_grounding.node_gate_contracts import (
+        NodeGate2DigestResponse,
+    )
+
+    digest = NodeDigestItem(
+        url="https://habr.com/x",
+        title="Habr X",
+        architecture="a",
+        practical_case="p",
+        limitations="l",
+    )
+    with patch(
+        "knowledge_engine.src.domains.curriculum.services.node_digest_service.generate_node_digests",
+        AsyncMock(
+            return_value=NodeGate2DigestResponse(
+                curriculum_id=_DEV_CURRICULUM_ID,
+                node_id=_DEV_SOTA_NODE_ID,
+                digests=[digest],
+            )
+        ),
+    ):
+        await ngj.run_digest(
+            _DEV_CURRICULUM_ID, _DEV_SOTA_NODE_ID, ["https://habr.com/x"]
+        )
+    saved = gate_store.get_gate_state(_DEV_CURRICULUM_ID, _DEV_SOTA_NODE_ID)
+    assert saved.status == "awaiting_gate_2"
+    assert saved.approved_urls == ["https://habr.com/x"]
+    assert len(saved.candidates) == 1  # Gate 1 сохранён для возврата
+
+    raw = get_curriculum_graph(_DEV_CURRICULUM_ID)
+    from knowledge_engine.src.domains.curriculum.schemas import CurriculumGraph
+
+    graph = CurriculumGraph.model_validate(raw)
+    node = next(n for n in graph.nodes if n.node_id == _DEV_SOTA_NODE_ID)
+
+    async def fake_finalize(graph_arg, node_arg, approved_urls, *, target_goal=""):
+        return graph_arg, node_arg
+
+    with (
+        patch(
+            "knowledge_engine.src.shared.node_grounding."
+            "node_grounding_finalize_service.finalize_node_grounding",
+            fake_finalize,
+        ),
+        patch("knowledge_engine.src.shared.skill_tree_store.save_curriculum_record"),
+    ):
+        await ngj.run_finalize(_DEV_CURRICULUM_ID, node.node_id, ["https://habr.com/x"])
+    assert gate_store.get_gate_state(_DEV_CURRICULUM_ID, _DEV_SOTA_NODE_ID) is None
+
+
+@pytest.mark.anyio
+async def test_generate_node_digests_batches_whole_pool() -> None:
+    """9 статей из Gate 1 → 3 вызова Gemma по ≤4 статьи (иначе ответ не
+    влезает в max_tokens); дайджесты в порядке статей, сбой одного пакета
+    теряет только его."""
+    import json as _json
+
+    urls = [f"https://habr.com/art{i}" for i in range(9)]
+    seen_batches: list[list[str]] = []
+
+    async def fake_structured(self, system, prompt, schema, *, label="gemma"):
+        batch = [a["url"] for a in _json.loads(prompt)["articles"]]
+        seen_batches.append(batch)
+        if "https://habr.com/art8" in batch:
+            return None  # сбой последнего пакета
+
+        class _Batch:
+            items = [
+                NodeDigestItem(
+                    url=u,
+                    title=u,
+                    architecture="a",
+                    practical_case="p",
+                    limitations="l",
+                )
+                for u in reversed(batch)
+            ]
+
+        return _Batch()
+
+    with (
+        patch.object(
+            nds, "fetch_html", AsyncMock(return_value="<html><p>x</p></html>")
+        ),
+        patch.object(nds, "_extract_paragraphs", return_value=["абзац " * 20]),
+        patch.object(nds, "_title_from_html", return_value="T"),
+        patch.object(nds, "_top_k_chunks", AsyncMock(return_value=["абзац"])),
+        patch.object(
+            nds,
+            "_gemma_pool",
+            return_value=SimpleNamespace(
+                complete_structured=lambda *a, **kw: fake_structured(None, *a, **kw)
+            ),
+        ),
+    ):
+        result = await nds.generate_node_digests(urls, node_title="Тема")
+
+    assert sorted(len(b) for b in seen_batches) == [1, 4, 4]
+    assert [d.url for d in result.digests] == urls[:8]
