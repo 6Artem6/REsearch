@@ -28,6 +28,7 @@ import json
 from pydantic import BaseModel, Field
 
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.lite_search_pipeline import (
     _lite_structured,
@@ -135,6 +136,7 @@ def _heuristic_taxonomy_seed(target_goal: str) -> TaxonomySeed:
     return TaxonomySeed(tags=words[:5], company_hubs=[], keywords=words[:5])
 
 
+@traced("steering.taxonomy")
 async def generate_taxonomy_seed(
     target_goal: str,
     *,

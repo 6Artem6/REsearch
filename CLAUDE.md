@@ -7,6 +7,7 @@
 - **Test:** `PYTHONPATH=. ./.venv/bin/python -m pytest knowledge_engine/tests`
 - **Lint:** `make check`
 - **Config source of truth:** `knowledge_engine/src/config/settings.py`
+- **Traces (Phoenix, read-only):** `./.venv/bin/python knowledge_engine/scripts/legacy_research/log_profiler.py --phoenix [--llm-audit] [--errors] [--evals]` — см. `knowledge_engine/docs/OBSERVABILITY.md`
 
 Перед изменениями сначала прочитай документацию в указанном порядке. Не пытайся
 загружать все документы сразу: начни с обзорного маршрута, затем открой только

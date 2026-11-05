@@ -47,16 +47,34 @@ def _messages_to_system_user(messages: list[BaseMessage]) -> tuple[str, str]:
     return "\n\n".join(system_parts).strip(), "\n\n".join(user_parts).strip()
 
 
+def _resolve_model(model: str | None) -> str:
+    chosen = (model or "").strip()
+    low = chosen.lower()
+    if not chosen or "qwen" in low or "ollama" in low or ":1.5b" in low or ":7b" in low:
+        chosen = GEMMA_PRIMARY_MODEL
+    return chosen
+
+
 def _client(model: str | None = None):
     from knowledge_engine.src.adapters.llm_providers.gemma_client import (
         GemmaCloudClient,
     )
 
-    chosen = (model or "").strip()
-    low = chosen.lower()
-    if not chosen or "qwen" in low or "ollama" in low or ":1.5b" in low or ":7b" in low:
-        chosen = GEMMA_PRIMARY_MODEL
-    return GemmaCloudClient(model=chosen)
+    return GemmaCloudClient(model=_resolve_model(model))
+
+
+def _structured_client(model: str | None = None):
+    """Primary-модель — через пул primary → fallback (circuit breaker,
+    параллельная попытка при зависании, переход на GEMMA_FALLBACK_MODEL при
+    5xx); явно запрошенная другая модель — одиночный клиент, как раньше."""
+    from knowledge_engine.src.adapters.llm_providers.gemma_client import (
+        RateLimitedLLMClient,
+    )
+
+    chosen = _resolve_model(model)
+    if chosen == GEMMA_PRIMARY_MODEL:
+        return RateLimitedLLMClient()
+    return _client(chosen)
 
 
 async def complete_structured_async(
@@ -71,7 +89,9 @@ async def complete_structured_async(
         raise RuntimeError(
             "Gemma Cloud API key missing (GEMINI_API_KEY / GEMMA_API_KEY)"
         )
-    return await _client(model).complete_structured(system, user, schema, label=label)
+    return await _structured_client(model).complete_structured(
+        system, user, schema, label=label
+    )
 
 
 def complete_structured_sync(

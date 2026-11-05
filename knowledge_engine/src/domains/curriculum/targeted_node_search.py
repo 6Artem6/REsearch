@@ -20,6 +20,7 @@ from knowledge_engine.src.config.settings import (
     CURRICULUM_USE_V08_CONSENSUS,
     DEEP_INGEST_BACKFILL_MARGIN,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.academic_consensus import (
     consensus_allowed_for_policy,
@@ -927,6 +928,7 @@ async def _gather_practical_and_academic(
     return practical_hits, academic_hits
 
 
+@traced("search.deep_node")
 async def search_sources_for_deep_node_async(
     node: CurriculumNode,
     course_goal: str,

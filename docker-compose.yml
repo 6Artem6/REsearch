@@ -132,6 +132,82 @@ services:
       retries: 10
       start_period: 30s
 
+  # Трейсы OpenTelemetry (UI + OTLP/HTTP на :6006, OTLP/gRPC на :4317).
+  # Только по профилю: `docker compose --profile observability up -d phoenix`.
+  # Данные — SQLite в отдельном volume, не в основном Postgres.
+  phoenix:
+    image: arizephoenix/phoenix:version-20.25.0
+    container_name: ke-phoenix
+    restart: unless-stopped
+    ports:
+      - "6006:6006"
+      - "4317:4317"
+    environment:
+      PHOENIX_WORKING_DIR: /mnt/data
+    volumes:
+      - ke_phoenix_data:/mnt/data
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    profiles:
+      - observability
+
+  # Ошибки (Sentry-совместимый GlitchTip 6, UI на http://localhost:8800).
+  # `docker compose --profile observability up -d glitchtip`. Один контейнер
+  # (SERVER_ROLE=all_in_one), без Valkey: очередь/кэш — в своём Postgres,
+  # основной pgvector-Postgres не трогается. Порты — только на localhost.
+  glitchtip-postgres:
+    image: postgres:18-alpine
+    container_name: ke-glitchtip-postgres
+    restart: unless-stopped
+    # Партиционированным таблицам GlitchTip нужно больше блокировок.
+    command: -c max_locks_per_transaction=512
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust  # порт наружу не опубликован
+    volumes:
+      - ke_glitchtip_pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    profiles:
+      - observability
+
+  glitchtip:
+    image: glitchtip/glitchtip:6.2.6
+    container_name: ke-glitchtip
+    restart: unless-stopped
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8800:8000"
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@glitchtip-postgres:5432/postgres
+      VALKEY_URL: ""
+      SERVER_ROLE: all_in_one
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-local-dev-only-change-me}
+      GLITCHTIP_DOMAIN: http://localhost:8800
+      EMAIL_URL: consolemail://
+      DEFAULT_FROM_EMAIL: glitchtip@localhost
+      ENABLE_OPENAPI: "True"
+      GLITCHTIP_ENABLE_LOGS: "False"
+      GLITCHTIP_ENABLE_UPTIME: "False"
+    volumes:
+      - ke_glitchtip_uploads:/code/uploads
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    profiles:
+      - observability
+
   knowledge-api:
     <<: *ke-python-image
     container_name: ke-api
@@ -169,3 +245,6 @@ volumes:
   ke_python_venv:
   ke_playwright_cache:
   ke_postgres_data:
+  ke_phoenix_data:
+  ke_glitchtip_pg:
+  ke_glitchtip_uploads:

@@ -161,6 +161,7 @@ export function sortDialogMessages(messages) {
 function stripModePrefix(text) {
   return String(text || "")
     .replace(/^\[mode:\w+\]\s*/i, "")
+    .replace(/^\[(?:action|intent):[^\]]+\]\s*/i, "")
     .trim();
 }
 
@@ -414,9 +415,41 @@ export function buildMessagesAfterChatComplete(res, userMsg, oldMessages, stream
   );
 }
 
-export function hydrateSessionsFromServer(sessions) {
+const LS_NODE_AXIS_PREFIX = "skillTreeInteractionAxis:";
+const INTERACTION_AXES = new Set(["lecture_self_check", "topic_qna"]);
+
+/** Interaction Axis ноды переживает перезагрузку страницы: иначе следующий
+ * ответ уходит с дефолтным lecture_self_check, а самопроверка, заданная в
+ * topic_qna, сбрасывается как «axis switched» — ответ не оценивается. */
+export function rememberNodeInteractionAxis(curriculumId, nodeId, axis) {
+  try {
+    if (curriculumId && nodeId && INTERACTION_AXES.has(axis)) {
+      localStorage.setItem(`${LS_NODE_AXIS_PREFIX}${curriculumId}:${nodeId}`, axis);
+    }
+  } catch {
+    /* storage недоступен — режим просто не запомнится */
+  }
+}
+
+function readNodeInteractionAxis(curriculumId, nodeId) {
+  try {
+    const v = localStorage.getItem(`${LS_NODE_AXIS_PREFIX}${curriculumId}:${nodeId}`);
+    return INTERACTION_AXES.has(v) ? v : "";
+  } catch {
+    return "";
+  }
+}
+
+export function hydrateSessionsFromServer(sessions, curriculumId = "") {
   const out = {};
   for (const [nodeId, blob] of Object.entries(sessions || {})) {
+    // Режим открытой самопроверки (сервер) важнее последнего выбора в UI.
+    const pendingAxis = String(
+      blob.memory?.pending_evaluation_interaction_axis || "",
+    ).trim();
+    const interactionAxis = INTERACTION_AXES.has(pendingAxis)
+      ? pendingAxis
+      : readNodeInteractionAxis(curriculumId, nodeId);
     const history = blob.history || [];
     const content = blob.content || {};
     const hasMemory = Boolean(blob.memory_prepared || blob.memory);
@@ -439,6 +472,7 @@ export function hydrateSessionsFromServer(sessions) {
       readyForTransition: Boolean(blob.ready_for_transition),
       lastEvalDirective: String(blob.last_eval_directive || "").trim(),
       quickReplies: Array.isArray(blob.quick_replies) ? blob.quick_replies : [],
+      ...(interactionAxis ? { interactionAxis } : {}),
     };
   }
   return out;
@@ -622,10 +656,22 @@ export async function nodeInit(curriculumId, nodeData, opts = {}) {
   return resolveMaybeJobResponse(await r.json(), opts);
 }
 
+// Этапы Node Grounding Gate идут в worker (BGE-M3/Cross-Encoder/Map-Reduce):
+// ответ — {job_id, status} (pending или running — повторный клик подцепляет
+// уже идущую задачу), результат этапа — job.result. Discover для BASE/уже
+// заземлённой ноды отвечает сразу, без job_id.
+async function resolveNodeGroundingJob(data, opts = {}) {
+  if (data && data.job_id) {
+    const job = await waitWorkJob(data.job_id, opts);
+    return job.result;
+  }
+  return data;
+}
+
 // Node Grounding Gate (per-node, независимо от Штурвала — см.
 // docs/STEERING_AND_TOPIC_QNA_ROADMAP.md). Этап 0+1: единый профиль + сбор
 // кандидатов для Gate 1.
-export async function nodeGroundingDiscover(curriculumId, nodeData) {
+export async function nodeGroundingDiscover(curriculumId, nodeData, opts = {}) {
   const r = await fetch(`${API}/node/grounding-discover`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -635,12 +681,12 @@ export async function nodeGroundingDiscover(curriculumId, nodeData) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return r.json();
+  return resolveNodeGroundingJob(await r.json(), opts);
 }
 
 // Этап 2: по ≤4 Gate-1-утверждённым URL — BGE-M3+Reranker+Gemma дайджест
 // для Gate 2.
-export async function nodeGroundingDigest(curriculumId, nodeId, approvedUrls) {
+export async function nodeGroundingDigest(curriculumId, nodeId, approvedUrls, opts = {}) {
   const r = await fetch(`${API}/node/grounding-digest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -654,12 +700,12 @@ export async function nodeGroundingDigest(curriculumId, nodeId, approvedUrls) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return r.json();
+  return resolveNodeGroundingJob(await r.json(), opts);
 }
 
 // Этап 3: финальное согласие на Gate 2 → реальный Map-Reduce инжест,
 // узел переходит в grounding_status="grounded".
-export async function nodeGroundingFinalize(curriculumId, nodeId, approvedUrls) {
+export async function nodeGroundingFinalize(curriculumId, nodeId, approvedUrls, opts = {}) {
   const r = await fetch(`${API}/node/grounding-finalize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -673,7 +719,7 @@ export async function nodeGroundingFinalize(curriculumId, nodeId, approvedUrls) 
     const err = await r.json().catch(() => ({}));
     throw new Error(err.detail || r.statusText);
   }
-  return r.json();
+  return resolveNodeGroundingJob(await r.json(), opts);
 }
 
 // Штурвал-ноды изначально несут только лёгкий Gate-2 дайджест — при первом
@@ -797,6 +843,7 @@ export async function nodeInitStream(
   nodeData,
   onEvent,
   interactionAxis = "lecture_self_check",
+  controlAxis = null,
 ) {
   return readNodeSsePost(
     `${API}/node/init-stream`,
@@ -804,6 +851,7 @@ export async function nodeInitStream(
       curriculum_id: curriculumId,
       node_data: nodeData,
       interaction_axis: interactionAxis,
+      control_axis: controlAxis || null,
     },
     onEvent,
   );

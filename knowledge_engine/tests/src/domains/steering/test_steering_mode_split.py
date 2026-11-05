@@ -93,10 +93,10 @@ async def test_generate_per_node_never_touches_steering_graph(cleanup_jobs) -> N
 
 @pytest.mark.anyio
 async def test_generate_per_node_forwards_only_curriculum_fields(cleanup_jobs) -> None:
-    """payload, переданный в enqueue_curriculum_generate, не должен тащить
+    """payload, переданный в enqueue_curriculum_generate: поля курса +
 
-    control_axis/steering_mode — worker (_run_curriculum_generate) их не
-    ждёт, это лишний, потенциально запутывающий шум в .runs/work_jobs.json."""
+    control_axis="steering" (worker сохраняет режим в запись курса);
+    steering_mode worker'у не нужен."""
     captured: dict = {}
 
     def _capture(payload):
@@ -116,7 +116,9 @@ async def test_generate_per_node_forwards_only_curriculum_fields(cleanup_jobs) -
 
     assert captured.get("target_goal") == "Изучить распределённые системы"
     assert captured.get("source_policy") == "hybrid"
-    assert "control_axis" not in captured
+    # control_axis нужен worker'у: курс запоминает режим, и init DEEP-нод в
+    # Штурвале не запускает автопилотный поиск (только Node Grounding Gate).
+    assert captured.get("control_axis") == "steering"
     assert "steering_mode" not in captured
 
 

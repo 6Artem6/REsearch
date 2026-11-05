@@ -90,7 +90,18 @@ def _ensure_follow_up_on_llm_out(llm_out, tutor: str):
     _tech, extracted = extract_follow_up_from_chat_text(raw)
     if not extracted:
         return llm_out
-    return llm_out.model_copy(update={"follow_up_question": extracted})
+    update = {"follow_up_question": extracted}
+    # Вопрос извлечён из того же текста, что уже лежит в technical_explanation
+    # (модель отдала всё одним полем): вырезаем его оттуда — иначе
+    # compose_tutor_dialogue_message выводит технику + вопрос, и текст
+    # повторяется дважды.
+    technical = llm_out.technical_explanation or ""
+    idx = technical.rfind(extracted)
+    if idx >= 0:
+        update["technical_explanation"] = (
+            technical[:idx] + technical[idx + len(extracted) :]
+        ).strip()
+    return llm_out.model_copy(update=update)
 
 
 def _bind_pending_for_follow_up(

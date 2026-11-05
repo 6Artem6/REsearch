@@ -311,6 +311,16 @@ class NodeDeepDiveRequest(BaseModel):
             "PROMPT поверх обычного dense-system в generate_dense_material)."
         ),
     )
+    control_axis: Literal["autopilot", "steering"] | None = Field(
+        default=None,
+        description=(
+            "Control Axis for this node open: steering forbids autopilot lazy "
+            "grounding (sources only via Node Grounding Gate). None — the "
+            "curriculum's stored control_axis."
+        ),
+    )
+    """ RU: режим управления для открытия ноды; None — режим, с которым курс
+    создан (skill_tree_store). В steering init не ищет источники сам."""
 
 
 class NodeDeepDiveResponse(BaseModel):
@@ -416,7 +426,9 @@ class DenseMaterialOutput(BaseModel):
     references: list[RichReferenceItem] = Field(default_factory=list, max_length=6)
     code_snippets: list[str] = Field(default_factory=list, max_length=4)
     bridge_to_next: str = Field(default="", max_length=SCHEMA_BRIDGE_TO_NEXT_MAX)
-    follow_up_question: str = Field(default="", max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX)
+    follow_up_question: str = Field(
+        default="", max_length=SCHEMA_FOLLOW_UP_QUESTION_MAX
+    )
     extracted_concepts: list[LectureExtractedConcept] = Field(
         default_factory=list,
         max_length=5,

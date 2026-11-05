@@ -202,3 +202,36 @@ def test_commit_turn_binds_pending_when_llm_out_missed_follow_up():
         "детерминированные_защитные_барьеры"
     )
     assert (out["llm_out"].follow_up_question or "").endswith("?")
+
+
+def test_single_paragraph_answer_is_not_duplicated_by_follow_up_fill() -> None:
+    """Живой случай: модель отдала ответ одним абзацем в technical_explanation
+    (follow_up_question пуст). Экстрактор объявлял вопросом весь абзац, а
+    commit_turn оставлял его и в technical_explanation → абзац дважды."""
+    from knowledge_engine.src.domains.grounding.graph.nodes.commit_turn import (
+        _ensure_follow_up_on_llm_out,
+    )
+    from knowledge_engine.src.domains.grounding.schemas import DeepDiveLLMOutput
+    from knowledge_engine.src.domains.grounding.tutor_dialogue import (
+        compose_tutor_dialogue_from_output,
+    )
+
+    text = (
+        "Когда векторный индекс превышает объём RAM, ОС вытесняет страницы на диск. "
+        "Могут ли запросы обрабатываться за стабильное время? Нет: каждый шаг "
+        "обхода HNSW требует случайного чтения. Почему это раздувает хвост "
+        "распределения задержек при пиковой нагрузке [S1]?"
+    )
+    out = _ensure_follow_up_on_llm_out(
+        DeepDiveLLMOutput(technical_explanation=text), text
+    )
+    assert out.follow_up_question.startswith("Почему это раздувает хвост")
+    assert "Почему это раздувает" not in out.technical_explanation
+    composed = compose_tutor_dialogue_from_output(out)
+    assert composed.count("Когда векторный индекс превышает") == 1
+    assert composed.count("Почему это раздувает хвост") == 1
+
+
+def test_single_question_sentence_stays_whole_follow_up() -> None:
+    q = "Почему HNSW деградирует при нехватке RAM в пике нагрузки?"
+    assert extract_follow_up_from_chat_text(q) == ("", q)

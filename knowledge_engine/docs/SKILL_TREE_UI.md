@@ -30,6 +30,16 @@ make worker       # только worker (если API уже запущен)
 
 Опционально: `KE_WORKER_INLINE_FALLBACK=true` больше **не** выполняет ML в процессе API.
 
+Node Grounding Gate (`/node/grounding-discover|-digest|-finalize`) тоже
+работает в worker (`WorkJobKind.NODE_GROUNDING`). Роут отвечает
+`{job_id, status}`, а `api.js::resolveNodeGroundingJob` ждёт результат
+через `waitWorkJob`. Пока идёт finalize, в чате видно, сколько секунд прошло.
+Незавершённый Gate 1 или Gate 2 переживает перезагрузку страницы: бэк
+отдаёт сохранённое состояние, поиск не повторяется. Кнопки гейта
+блокируются только флагом `tutorBusy` (запрос тьютора/гейта в работе), а не
+`composeLocked`: гейт показывается до init ноды. Подробности —
+[STEERING_AND_TOPIC_QNA_ROADMAP.md](STEERING_AND_TOPIC_QNA_ROADMAP.md).
+
 ### Redis (очередь + логи)
 
 При `REDIS_URL` (по умолчанию в `make dev`: `redis://127.0.0.1:6379/0`):
@@ -140,3 +150,27 @@ Dialogue tutor использует тот же стек, но `TutorDialogueFie
 
 - **Fast** → `depth_level: Standard`
 - **Consensus** → `depth_level: Deep Mechanics`
+
+## Режимы ноды и быстрые кнопки
+
+- **Control Axis (Автопилот / Штурвал).** Режим курса берётся с сервера
+  (`GET` workspace → `meta.control_axis`). `localStorage` нужен только для
+  курсов, созданных до появления поля. Текущий переключатель уходит в
+  `nodeInitStream(..., controlAxis)` → `NodeSessionBody.control_axis`. В
+  Штурвале init DEEP-ноды не запускает автопилотный поиск источников.
+- **Interaction Axis (лекция с самопроверкой / Topic Q&A)** запоминается для
+  каждой ноды: `localStorage` `skillTreeInteractionAxis:<curriculum>:<node>`.
+  После перезагрузки `hydrateSessionsFromServer(sessions, curriculumId)`
+  сначала берёт ось открытого вопроса с сервера
+  (`memory.pending_evaluation_interaction_axis`), потом `localStorage`.
+  Иначе перезагрузка молча возвращала Topic Q&A в лекцию.
+- **«Следующая подтема (без зачёта)»** показывается только при
+  `session.interactionAxis === "topic_qna"`
+  (`NodeTutorChat.js::NEXT_SUBTOPIC_CHIP`). Кнопка отправляет
+  `[action:next_subtopic] Следующая подтема (без зачёта)`. Подпись совпадает
+  с `CHIP_NEXT_SUBTOPIC` в `intent_definitions.py`. Бэк ставит текущей
+  подтеме `deferred` (статус не меняется, зачёта нет) и переходит к следующей
+  незачтённой. Тег `[action:…]` вырезается из пузыря (`stripModePrefix`) и из
+  истории диалога. Логика описана в
+  [NODE_DEEP_DIVE_MODULE_2.md](NODE_DEEP_DIVE_MODULE_2.md) §«Topic Q&A:
+  следующая подтема без зачёта».

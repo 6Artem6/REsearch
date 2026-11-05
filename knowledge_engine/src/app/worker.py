@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 import knowledge_engine.src.config.settings as cfg
+from knowledge_engine.src.core.error_tracking import (
+    init_error_tracking,
+    shutdown_error_tracking,
+)
+from knowledge_engine.src.core.observability import (
+    init_observability,
+    shutdown_observability,
+)
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.shared.job_queue.redis_client import (
     get_redis_pubsub_client,
@@ -212,6 +221,11 @@ def _run_redis_pubsub_loop() -> None:
 
 def main() -> None:
     mark_worker_process()
+    init_observability("worker")
+    init_error_tracking("worker")
+    # atexit — LIFO: сначала события GlitchTip, затем спаны Phoenix.
+    atexit.register(shutdown_observability)
+    atexit.register(shutdown_error_tracking)
     cleared = clear_stale_quota_blocks()
     if cleared:
         trace(f"WORKER ▶ quota store cleared {cleared} stale block(s)")

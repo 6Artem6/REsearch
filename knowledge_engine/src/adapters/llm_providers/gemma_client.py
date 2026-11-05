@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 import time
 from dataclasses import dataclass
-from typing import Callable, TypeVar, get_origin
+from typing import Any, Awaitable, Callable, TypeVar, get_origin
 
 import httpx
 from pydantic import BaseModel, ValidationError
-from tenacity import retry, retry_if_exception_type, stop_after_attempt
-from tenacity.wait import wait_base
 
 from knowledge_engine.src.config.settings import (
     GEMMA_API_BASE,
@@ -20,11 +19,15 @@ from knowledge_engine.src.config.settings import (
     GEMMA_API_TIMEOUT_SEC,
     GEMMA_BUDGET_MAX_RPM,
     GEMMA_BUDGET_MAX_TPM,
+    GEMMA_CIRCUIT_OPEN_SEC,
     GEMMA_FALLBACK_MAX_RPD,
     GEMMA_FALLBACK_MAX_RPM,
     GEMMA_FALLBACK_MAX_TPM,
     GEMMA_FALLBACK_MAX_WAIT_SEC,
     GEMMA_FALLBACK_MODEL,
+    GEMMA_HEDGE_AFTER_SEC,
+    GEMMA_HEDGE_SLOT_WAIT_SEC,
+    GEMMA_MAX_ATTEMPTS,
     GEMMA_MAX_RPD,
     GEMMA_MAX_RPM,
     GEMMA_MAX_TPM,
@@ -34,6 +37,7 @@ from knowledge_engine.src.config.settings import (
     GEMMA_PRIMARY_MODEL,
     GEMMA_QUOTA_SHARED,
 )
+from knowledge_engine.src.core.observability import llm_span, record_llm_io
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.shared.rate_limiting.rate_limiter import (
     AsyncRateLimiter,
@@ -133,9 +137,13 @@ def _strip_gemma_thought_wrapper(text: str) -> str:
             t = t[brace:]
         else:
             t = _THOUGHT_UNCLOSED_RE.sub("", t).strip()
-    brace = t.find("{")
-    if brace > 0:
-        t = t[brace:]
+    # Мусор перед JSON — до первого `{` ИЛИ `[` (что раньше): Gemma иногда
+    # отдаёт голый массив `[{…}]`; срез до `{` терял `[`, и массив из одного
+    # элемента превращался в объект этого элемента.
+    starts = [i for i in (t.find("{"), t.find("[")) if i >= 0]
+    start = min(starts) if starts else -1
+    if start > 0:
+        t = t[start:]
     return t.strip()
 
 
@@ -185,17 +193,21 @@ def loads_json_lenient(raw: str) -> object:
 
 
 def _wrap_bare_list_for_schema(data: object, schema: type[T]) -> object:
-    """Gemma sometimes emits a bare JSON array instead of the wrapper object the
-    schema expects; if the schema has exactly one list-typed field, wrap into it."""
-    if not isinstance(data, list):
-        return data
+    """Gemma sometimes emits a bare JSON array (or a single item object)
+    instead of the wrapper object the schema expects; if the schema has
+    exactly one list-typed field, wrap into it."""
     list_fields = [
         name
         for name, info in schema.model_fields.items()
         if get_origin(info.annotation) is list
     ]
-    if len(list_fields) == 1:
-        return {list_fields[0]: data}
+    if len(list_fields) != 1:
+        return data
+    field = list_fields[0]
+    if isinstance(data, list):
+        return {field: data}
+    if isinstance(data, dict) and field not in data:
+        return {field: [data]}  # один элемент без обёртки
     return data
 
 
@@ -304,14 +316,155 @@ def _parse_structured(raw: str, schema: type[T]) -> T | None:
         return None
 
 
-class _GemmaRetryWait(wait_base):
-    def __call__(self, retry_state: object) -> float:
-        outcome = getattr(retry_state, "outcome", None)
-        exc = outcome.exception() if outcome else None
-        if isinstance(exc, GemmaRateLimitError) and exc.retry_after is not None:
-            return min(float(exc.retry_after), 120.0)
-        attempt = int(getattr(retry_state, "attempt_number", 1))
-        return min(2**attempt, 60.0)
+def _retry_backoff_sec(exc: BaseException | None, attempt: int) -> float:
+    """Пауза перед повтором после отказа: Retry-After у 429 (≤120 с), иначе 2^n (≤60 с)."""
+    if isinstance(exc, GemmaRateLimitError) and exc.retry_after is not None:
+        return min(float(exc.retry_after), 120.0)
+    return min(2**attempt, 60.0)
+
+
+# --- Circuit breaker по модели ------------------------------------------------
+# model → monotonic-время, до которого модель считается неисправной. Пишет
+# GemmaCloudClient (все попытки запроса провалились 5xx/таймаутом), читает
+# RateLimitedLLMClient._pick_slot (сначала здоровые слоты). Процесс-локально:
+# у API и worker своя статистика.
+_circuit_open_until: dict[str, float] = {}
+
+
+def gemma_circuit_open(model: str) -> bool:
+    return time.monotonic() < _circuit_open_until.get(model, 0.0)
+
+
+def _open_circuit(model: str, reason: str) -> None:
+    _circuit_open_until[model] = time.monotonic() + GEMMA_CIRCUIT_OPEN_SEC
+    trace(
+        f"GEMMA circuit ⛔ open | {model} | {reason} — "
+        f"{GEMMA_CIRCUIT_OPEN_SEC:.0f}s в обход (fallback, если есть)"
+    )
+
+
+def _close_circuit(model: str) -> None:
+    if _circuit_open_until.pop(model, None) is not None:
+        trace(f"GEMMA circuit ✓ closed | {model} | ответил")
+
+
+async def post_with_hedging(
+    attempt: Callable[[], Awaitable[httpx.Response]],
+    *,
+    model: str,
+    label: str,
+    limiter: AsyncRateLimiter | None,
+    est_tokens: int,
+    max_attempts: int | None = None,
+    hedge_after_sec: float | None = None,
+    slot_wait_sec: float | None = None,
+    retry_slot_wait_sec: float | None = None,
+) -> httpx.Response:
+    """До ``max_attempts`` HTTP-попыток одного запроса; первый успех побеждает.
+
+    - Попытка без ответа дольше ``hedge_after_sec`` — «зависла»: ещё одна
+      запускается ПАРАЛЛЕЛЬНО (прежняя не отменяется — медленный живой
+      ответ тоже годится), когда у модели освободится слот RPM/TPM
+      (``limiter.try_acquire`` ждёт не дольше ``slot_wait_sec`` — новая
+      минута окна; ожидание идёт параллельно с попытками, ответ любой из них
+      его отменяет). Без ``limiter`` (preacquired MAP-волны: слоты уже
+      распределены) параллельных попыток нет — только повтор после отказа.
+    - Отказ (429 / 5xx / транспорт), других попыток в работе нет — повтор
+      после паузы ``_retry_backoff_sec`` через слот, ожидаемый не дольше
+      ``retry_slot_wait_sec``. Пул с запасной моделью передаёт 0: ждать
+      минуту ради уже отказавшей модели незачем, лучше сразу fallback.
+    - Запрос закончился отказом 5xx/таймаутом — модель «открывается»
+      (circuit breaker), исключение пробрасывается (429 — как раньше, для
+      flash/fallback-логики вызывающего).
+    """
+    limit = max(1, max_attempts if max_attempts is not None else GEMMA_MAX_ATTEMPTS)
+    hedge_after = (
+        hedge_after_sec if hedge_after_sec is not None else GEMMA_HEDGE_AFTER_SEC
+    )
+    slot_wait = (
+        slot_wait_sec if slot_wait_sec is not None else GEMMA_HEDGE_SLOT_WAIT_SEC
+    )
+    retry_wait = retry_slot_wait_sec if retry_slot_wait_sec is not None else slot_wait
+    pending: set[asyncio.Task[httpx.Response]] = set()
+    slot_task: asyncio.Task[bool] | None = None
+    launched = 0
+    last_exc: BaseException | None = None
+
+    def launch() -> None:
+        nonlocal launched
+        launched += 1
+        pending.add(asyncio.create_task(attempt()))
+
+    async def slot_free(max_wait: float) -> bool:
+        if limiter is None:
+            return True
+        return await limiter.try_acquire(est_tokens, max_wait=max_wait, model=model)
+
+    launch()
+    try:
+        while pending:
+            can_hedge = limiter is not None and launched < limit
+            waiting_on: set[asyncio.Task] = set(pending)
+            if slot_task is not None:
+                waiting_on.add(slot_task)
+            done, _ = await asyncio.wait(
+                waiting_on,
+                timeout=hedge_after if can_hedge and slot_task is None else None,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if not done:
+                # Ни одна попытка не ответила за hedge_after — не держим запрос
+                # на зависшей: ждём свободный слот параллельно с попытками.
+                slot_task = asyncio.create_task(slot_free(slot_wait))
+                continue
+            if slot_task is not None and slot_task in done:
+                got_slot = slot_task.result()
+                slot_task = None
+                if got_slot and launched < limit:
+                    trace(
+                        f"GEMMA hedge ▶ {label} | {model} | нет ответа "
+                        f">{hedge_after:.0f}s — попытка {launched + 1}/{limit} параллельно"
+                    )
+                    launch()
+                elif not got_slot:
+                    trace(
+                        f"GEMMA hedge ⊘ {label} | {model} | нет свободного слота "
+                        f"за {slot_wait:.0f}s — ждём текущие попытки"
+                    )
+            for task in done & pending:
+                pending.discard(task)
+                exc = task.exception()
+                if exc is None:
+                    _close_circuit(model)
+                    return task.result()
+                if not isinstance(exc, (GemmaRateLimitError, GemmaTransientError)):
+                    raise exc
+                last_exc = exc
+            if not pending and launched < limit:
+                if slot_task is not None:
+                    slot_task.cancel()
+                    slot_task = None
+                await asyncio.sleep(_retry_backoff_sec(last_exc, launched))
+                if await slot_free(retry_wait):
+                    trace(
+                        f"GEMMA retry ▶ {label} | {model} | попытка "
+                        f"{launched + 1}/{limit} после {type(last_exc).__name__}"
+                    )
+                    launch()
+                else:
+                    trace(
+                        f"GEMMA retry ⊘ {label} | {model} | нет свободного слота "
+                        f"за {retry_wait:.0f}s — сдаёмся после {launched} попыток"
+                    )
+    finally:
+        for task in pending:
+            task.cancel()
+        if slot_task is not None:
+            slot_task.cancel()
+    if isinstance(last_exc, GemmaTransientError):
+        _open_circuit(model, f"{launched} попыток без ответа: {last_exc}")
+    assert last_exc is not None
+    raise last_exc
 
 
 _GEMMA_JSON_USER_TAIL = (
@@ -328,6 +481,25 @@ def _gemma_user_content(prompt: str) -> str:
     if not body:
         return _GEMMA_JSON_USER_TAIL
     return f"{body}\n\n{_GEMMA_JSON_USER_TAIL}"
+
+
+def _record_gemma_usage(target: Any, payload: dict[str, Any], resp: Any) -> None:
+    """Токены и тексты ответа Gemma в LLM-спан. Fail-open: телеметрия не
+    должна ломать разбор ответа (тот же JSON ещё раз читает complete_structured)."""
+    try:
+        data = resp.json()
+        usage = data.get("usage") or {}
+        content = (data.get("choices") or [{}])[0].get("message", {}).get("content")
+        record_llm_io(
+            target,
+            messages=payload.get("messages"),
+            output=str(content) if content is not None else None,
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=usage.get("completion_tokens"),
+            total_tokens=usage.get("total_tokens"),
+        )
+    except Exception:
+        return
 
 
 class GemmaCloudClient:
@@ -398,8 +570,12 @@ class GemmaCloudClient:
         use_token_budget: bool = True,
         on_usage: Callable[[int], None] | None = None,
         on_schema_retry: Callable[[], tuple[str, str]] | None = None,
+        retry_slot_wait_sec: float | None = None,
     ) -> T | None:
-        """``on_usage`` — вызывается с РЕАЛЬНЫМ ``usage_total`` из ответа API
+        """``retry_slot_wait_sec`` — сколько ждать слот для повтора после
+        отказа (см. ``post_with_hedging``); пул с запасной моделью передаёт 0.
+
+        ``on_usage`` — вызывается с РЕАЛЬНЫМ ``usage_total`` из ответа API
         (не оценкой) прямо перед возвратом, если он есть. Нужен вызывающим,
         которые не передают ``limiter`` (preacquired-путь — реконсиляция
         нескольких элементов волны на один слот должна суммировать их
@@ -472,13 +648,31 @@ class GemmaCloudClient:
             "Content-Type": "application/json",
         }
 
-        @retry(
-            retry=retry_if_exception_type((GemmaRateLimitError, GemmaTransientError)),
-            stop=stop_after_attempt(3),
-            wait=_GemmaRetryWait(),
-            reraise=True,
-        )
         async def _post_once() -> httpx.Response:
+            # До GEMMA_MAX_ATTEMPTS попыток: повтор после отказа и параллельная
+            # попытка при зависании (через свободный слот limiter'а).
+            return await post_with_hedging(
+                _attempt,
+                model=self._model,
+                label=label,
+                limiter=limiter,
+                est_tokens=est_total or (inp_est + out_tokens),
+                retry_slot_wait_sec=retry_slot_wait_sec,
+            )
+
+        async def _attempt() -> httpx.Response:
+            # Спан на КАЖДУЮ HTTP-попытку (повторы/параллельные видны отдельно).
+            with llm_span(
+                "gemma.chat_completions",
+                model=self._model,
+                provider="google",
+                label=label,
+            ) as llm_trace_span:
+                resp = await _post_once_raw()
+                _record_gemma_usage(llm_trace_span, payload, resp)
+                return resp
+
+        async def _post_once_raw() -> httpx.Response:
             t0 = time.monotonic()
             trace(f"GEMMA HTTP ▶ {label} | model={self._model}")
             try:
@@ -977,9 +1171,29 @@ class RateLimitedLLMClient:
             await slot.limiter.reconcile_batch_total(reserved_tpm, event=event)
 
     async def _pick_slot(
-        self, estimated_tokens: int, *, priority: bool = False
+        self,
+        estimated_tokens: int,
+        *,
+        priority: bool = False,
+        exclude: frozenset[str] = frozenset(),
     ) -> GemmaModelSlot | None:
-        for slot in self._slots:
+        """Первый слот с запасом лимитов. ``exclude`` — модели, уже
+        отказавшие в этом запросе (5xx/таймаут после своих ретраев): без
+        него перебор снова начинался с primary, и fallback не включался."""
+        # Circuit breaker: модели, у которых недавно провалились все попытки,
+        # — в конец очереди (не исключаем совсем: если fallback занят/нет,
+        # лучше попробовать primary, чем не отправить запрос вовсе).
+        healthy = [x for x in self._slots if not gemma_circuit_open(x.model)]
+        tripped = [x for x in self._slots if gemma_circuit_open(x.model)]
+        if tripped and healthy:
+            trace(
+                "BLOG_SPATIAL gemma circuit ⊘ | "
+                f"{','.join(x.model for x in tripped)} open — сначала "
+                f"{','.join(x.model for x in healthy)}"
+            )
+        for slot in [*healthy, *tripped]:
+            if slot.model in exclude:
+                continue
             ok = await slot.limiter.try_acquire(
                 estimated_tokens,
                 max_wait=slot.failover_max_wait_sec,
@@ -988,9 +1202,16 @@ class RateLimitedLLMClient:
             )
             if ok:
                 if slot.label == "fallback":
+                    primary_model = self._slots[0].model
+                    if primary_model in exclude:
+                        reason = "primary failed"
+                    elif gemma_circuit_open(primary_model):
+                        reason = "primary circuit open"
+                    else:
+                        reason = "primary limits exhausted"
                     trace(
                         f"BLOG_SPATIAL gemma failover ✓ | using {slot.model} "
-                        "(primary limits exhausted)"
+                        f"({reason})"
                     )
                 return slot
             trace(
@@ -998,6 +1219,13 @@ class RateLimitedLLMClient:
                 "busy — try next slot"
             )
         return None
+
+    def _retry_slot_wait(self, model: str, tried: set[str]) -> float | None:
+        """0 — у пула есть ещё не опробованная модель: повтор отказавшей
+        только при свободном прямо сейчас слоте, иначе сразу fallback. None —
+        альтернатив нет, повтор ждёт слот как обычно (до новой минуты)."""
+        others = [x for x in self._slots if x.model != model and x.model not in tried]
+        return 0.0 if others else None
 
     async def post_structured(
         self,
@@ -1025,6 +1253,7 @@ class RateLimitedLLMClient:
                     reconcile_tpm=reconcile_tpm,
                     max_tokens=max_tokens,
                     on_schema_retry=on_schema_retry,
+                    retry_slot_wait_sec=self._retry_slot_wait(slot.model, set()),
                     # BUG FIXED: same double-gate as post_structured_preacquired
                     # (see its docstring) — this slot was already acquired via
                     # a real per-model check (prefer_slot's own admission, or
@@ -1048,13 +1277,12 @@ class RateLimitedLLMClient:
             schema=schema,
             max_output_tokens=max_tokens,
         )
-        for s in self._slots:
-            if slot is not None and s.model == slot.model:
-                continue
-            picked = await self._pick_slot(est, priority=priority)
-            if picked is None:
-                continue
-            s = picked
+        tried: set[str] = {slot.model} if slot is not None else set()
+        for _ in range(len(self._slots)):
+            s = await self._pick_slot(est, priority=priority, exclude=frozenset(tried))
+            if s is None:
+                break
+            tried.add(s.model)
             try:
                 out = await s.client.complete_structured(
                     system,
@@ -1065,6 +1293,7 @@ class RateLimitedLLMClient:
                     limiter=s.limiter,
                     max_tokens=max_tokens,
                     on_schema_retry=on_schema_retry,
+                    retry_slot_wait_sec=self._retry_slot_wait(s.model, tried),
                     # BUG FIXED: _pick_slot() above already ran the real
                     # per-model admission check (slot.limiter.try_acquire) —
                     # see the note on the prefer_slot branch above for why a

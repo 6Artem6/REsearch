@@ -333,6 +333,7 @@ export function NodeDrawer({
   onRestart,
   composeLocked,
   nodeGenerating,
+  tutorBusy,
   sessions,
   selectedMaterialId,
   materialViewMode,
@@ -395,7 +396,7 @@ export function NodeDrawer({
             status: session.steeringStatus,
             candidates: session.steeringCandidates,
             digests: session.steeringDigests,
-            busy: composeLocked || nodeGenerating,
+            busy: Boolean(tutorBusy),
             approvedCount: session.steeringApprovedCount,
             onApprove: onGateApprove,
           }),
@@ -405,8 +406,11 @@ export function NodeDrawer({
             status: session.nodeGateStatus,
             candidates: session.nodeGateCandidates,
             digests: session.nodeGateDigests,
-            busy: composeLocked || nodeGenerating,
-            maxApproved: 4,
+            busy: Boolean(tutorBusy),
+            // Gate 1 — в дайджест сколько угодно статей; Gate 2 — в полный
+            // пайплайн (Map-Reduce) не больше NODE_GATE2_MAX_APPROVED = 4.
+            maxApproved:
+              session.nodeGateStatus === "awaiting_gate_2" ? 4 : undefined,
             approvedCount: session.nodeGateApprovedCount,
             onApprove: onNodeGateApprove,
           }),

@@ -70,6 +70,7 @@ from knowledge_engine.src.config.settings import (
     PRE_MAP_DEDUP_TOP_K,
     PRE_MAP_DEDUP_TRIAGE_MAX_TPM,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.pre_flight_triage import (
     _ast_semantic_extracts,
@@ -636,6 +637,7 @@ async def _run_step3b_code_dedup(
     return result
 
 
+@traced("dedup.pre_map")
 async def deduplicate_before_map_reduce(
     candidates: list[PreMapCandidate],
     *,

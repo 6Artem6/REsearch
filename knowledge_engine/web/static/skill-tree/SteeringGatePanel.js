@@ -199,15 +199,19 @@ export function SteeringGatePanel({
   // ("снять то, что по дайджесту оказалось нерелевантным"), а не отбор с
   // нуля заново.
   const hasCap = typeof maxApproved === "number" && maxApproved > 0;
-  const [selected, setSelected] = useState(() =>
-    isGate2 ? new Set(itemUrls) : new Set(),
-  );
+  // Gate 2 с лимитом (нода: ≤4 в полный пайплайн): предвыбор всех, только
+  // если они влезают в лимит — иначе пусто, пользователь выбирает сам.
+  const defaultSelection = () =>
+    isGate2 && (!hasCap || itemUrls.length <= maxApproved)
+      ? new Set(itemUrls)
+      : new Set();
+  const [selected, setSelected] = useState(defaultSelection);
 
   useEffect(() => {
     // Новый набор элементов (переход Gate 1 -> Gate 2, или новый список
     // кандидатов) — пересчитываем выбор к тому же дефолту, что при
     // монтировании (все отмечены на Gate 2, пусто на Gate 1).
-    setSelected(isGate2 ? new Set(itemUrls) : new Set());
+    setSelected(defaultSelection());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemUrls.join("|"), isGate2]);
 
@@ -242,10 +246,10 @@ export function SteeringGatePanel({
       { className: "muted small drawer-hint" },
       isGate1
         ? kind === "node"
-          ? "Отметьте статьи, которые войдут в дайджест (шаг 2 — точечный разбор)."
+          ? "Отметьте статьи для дайджеста — сколько угодно; в полный разбор на Gate 2 пройдут до 4."
           : "Отметьте статьи, которые войдут в дайджест (шаг 2 — Batch Digest)."
         : kind === "node"
-          ? "Отметьте статьи, дайджест которых войдёт в базу знаний ноды."
+          ? "Отметьте до 4 статей — они пройдут полный разбор (Map-Reduce) в базу знаний ноды."
           : "Отметьте статьи, которые войдут в финальную генерацию курса.",
     ),
     hasCap &&

@@ -13,6 +13,7 @@ from knowledge_engine.src.config.settings import (
     RAG_LATENCY_WARN_MS,
     RAG_RETRIEVAL_PER_DIRECTION,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.locks import run_under_uma_lock
 from knowledge_engine.src.memory.light_rag import LightRAG
@@ -59,6 +60,7 @@ def _deduplicate_facts(
     return kept
 
 
+@traced("rag.gateway")
 async def query_directional_rag(req: DirectionalRAGQuery) -> DirectionalRAGResponse:
     """
     Модуль 3: векторный поиск → cross-encoder → cutoff → дедуп → сжатие → top-N.

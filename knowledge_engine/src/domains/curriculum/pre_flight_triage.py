@@ -70,6 +70,7 @@ from knowledge_engine.src.config.settings import (
     CURRICULUM_PREFLIGHT_STAGE2_TOP_K,
     CURRICULUM_PREFLIGHT_WHITELIST_HARD_GATE_THRESHOLD,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.schemas import CurriculumSearchHit
 
@@ -1055,6 +1056,7 @@ def stage4_quality_gate(
     return scores[0] if scores else 0.0
 
 
+@traced("select.pre_flight_triage")
 async def run_pre_flight_triage(
     hits: list[CurriculumSearchHit],
     *,

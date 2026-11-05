@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from knowledge_engine.src.core.observability import record_evaluation, span
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.grounding.concept_map import (
+    find_sub_concept,
     process_sub_concept_user_answer,
     stored_pending_evaluation_id,
 )
@@ -15,6 +17,10 @@ from knowledge_engine.src.domains.grounding.graph.stage_events import stage_scop
 from knowledge_engine.src.domains.grounding.graph.state import TutorGraphState
 
 logger = logging.getLogger(__name__)
+
+# Числовая шкала для Phoenix (сортировка/средние по сессии); unchecked — без
+# score: оценщик отработал, но статус подтемы не сдвинул.
+_STATUS_SCORE: dict[str, float] = {"verified": 1.0, "partial": 0.5, "gap": 0.0}
 
 
 def _with_memory(state: TutorGraphState, memory) -> TutorGraphState:
@@ -36,8 +42,53 @@ def sub_concept_eval_node(
     _sub_concept_eval_node_impl), не вокруг всего узла: если оценивать
     нечего (пустое сообщение / нет pending / lecture request / quick-reply),
     узел молча пропускает шаг, и первым видимым статусом хода становится
-    LLM_GENERATE ("Генерация нового сообщения…") на tutor_generate_node."""
-    return _sub_concept_eval_node_impl(state, config)
+    LLM_GENERATE ("Генерация нового сообщения…") на tutor_generate_node.
+
+    Спан ``eval.sub_concept`` несёт вердикт как оценку Phoenix (см.
+    docs/OBSERVABILITY.md); пропуски оценки пишет ``mark_evaluator_skipped``."""
+    req = state["request"]
+    node_id = getattr(req.node_data, "node_id", "")
+    with span(
+        "eval.sub_concept",
+        **{
+            "ke.tutor.curriculum_id": req.curriculum_id,
+            "ke.tutor.node_id": node_id,
+            "ke.tutor.interaction_axis": req.interaction_axis,
+        },
+    ):
+        pending_before = stored_pending_evaluation_id(state["memory"])
+        result = _sub_concept_eval_node_impl(state, config)
+        _record_sub_concept_verdict(result["memory"], pending_before, req)
+        return result
+
+
+def _record_sub_concept_verdict(memory, concept_id: str, req) -> None:
+    """Вердикт по подтеме после оценки; при пропуске — ничего (уже записан)."""
+    if not concept_id or getattr(memory, "evaluator_skipped", False):
+        return
+    row = find_sub_concept(memory, concept_id)
+    if row is None:
+        return
+    record_evaluation(
+        "sub_concept_eval",
+        label=row.status,
+        score=_STATUS_SCORE.get(row.status),
+        explanation=memory.last_evaluator_feedback or None,
+        annotator_kind="LLM",
+        metadata={
+            "concept_id": row.id,
+            "concept_label": row.label,
+            "directive": memory.last_eval_directive or "",
+            "accuracy_grade": row.last_accuracy_grade,
+            "failed_attempts": row.failed_attempts,
+            "why_passed": row.why_passed,
+            "how_passed": row.how_passed,
+            "mechanic_passed": row.mechanic_passed,
+            "is_extension": row.is_extension,
+            "layer": str(getattr(req.node_data, "layer", "") or "foundation"),
+            "interaction_axis": req.interaction_axis or "",
+        },
+    )
 
 
 def _sub_concept_eval_node_impl(

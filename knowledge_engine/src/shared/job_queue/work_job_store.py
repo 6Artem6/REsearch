@@ -14,6 +14,7 @@ from knowledge_engine.src.config.settings import (
     KE_WORKER_STALE_RUNNING_SEC,
     PACKAGE_ROOT,
 )
+from knowledge_engine.src.core.observability import inject_trace_context, span
 from knowledge_engine.src.shared.job_queue.redis_client import get_redis, redis_enabled
 from knowledge_engine.src.shared.job_queue.redis_tasks import publish_work_job
 
@@ -43,6 +44,8 @@ class WorkJobKind(str, Enum):
     STEERING_FUNNEL = "steering_funnel"
     STEERING_MAP_REDUCE = "steering_map_reduce"
     STEERING_TOPIC_DIGEST = "steering_topic_digest"
+    # Node Grounding Gate (discover/digest/finalize) — ML-веса только в worker.
+    NODE_GROUNDING = "node_grounding"
 
 
 class WorkJobStatus(str, Enum):
@@ -68,6 +71,9 @@ class WorkJob:
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     result: Optional[dict[str, Any]] = None
     error: Optional[str] = None
+    # W3C traceparent постановщика (API) — worker продолжает тот же трейс.
+    # Отдельно от payload: payload валидируется доменными моделями.
+    trace_context: dict[str, str] = field(default_factory=dict)
 
 
 def _dt_parse(raw: str) -> datetime:
@@ -84,6 +90,7 @@ def _to_dict(job: WorkJob) -> dict[str, Any]:
         "updated_at": job.updated_at.isoformat(),
         "result": job.result,
         "error": job.error,
+        "trace_context": job.trace_context,
     }
 
 
@@ -97,6 +104,7 @@ def _from_dict(data: dict[str, Any]) -> WorkJob:
         updated_at=_dt_parse(data["updated_at"]),
         result=data.get("result"),
         error=data.get("error"),
+        trace_context=dict(data.get("trace_context") or {}),
     )
 
 
@@ -182,7 +190,15 @@ class WorkJobStore:
         try_claim(). Каждый существующий вызывающий код передаёт только
         (kind, payload) — поведение по умолчанию (publish=True) не меняется."""
         job_id = uuid.uuid4().hex[:12]
-        job = WorkJob(id=job_id, kind=kind, payload=dict(payload))
+        with span(
+            "work_job.enqueue", **{"ke.job.id": job_id, "ke.job.kind": kind.value}
+        ):
+            job = WorkJob(
+                id=job_id,
+                kind=kind,
+                payload=dict(payload),
+                trace_context=inject_trace_context(),
+            )
         if redis_enabled():
             self._redis_save(job)
             if publish:
@@ -263,6 +279,50 @@ class WorkJobStore:
             if not candidates:
                 return None
             return min(candidates, key=lambda j: j.created_at)
+
+    def find_active_node_grounding(
+        self, curriculum_id: str, node_id: str, *, op: str
+    ) -> Optional[WorkJob]:
+        """PENDING/RUNNING node_grounding той же ноды и этапа (повторный клик
+        по Gate 2 не должен запустить второй Map-Reduce ingest)."""
+        cid = str(curriculum_id or "").strip()
+        nid = str(node_id or "").strip()
+        if not cid or not nid:
+            return None
+        stale_sec = KE_WORKER_STALE_RUNNING_SEC
+        now = datetime.now(timezone.utc)
+
+        def _matches(job: WorkJob) -> bool:
+            if job.kind != WorkJobKind.NODE_GROUNDING:
+                return False
+            if job.status not in (WorkJobStatus.PENDING, WorkJobStatus.RUNNING):
+                return False
+            if job.status == WorkJobStatus.RUNNING:
+                if (now - job.updated_at).total_seconds() > stale_sec:
+                    return False
+            p = job.payload or {}
+            return (
+                str(p.get("op") or "") == op
+                and str(p.get("curriculum_id") or "").strip() == cid
+                and str(p.get("node_id") or "").strip() == nid
+            )
+
+        if redis_enabled():
+            r = get_redis()
+            for key in r.scan_iter(match=f"{_RKEY_JOB}*"):
+                raw = r.get(key)
+                if not raw:
+                    continue
+                try:
+                    job = _from_dict(json.loads(raw))
+                except (ValueError, TypeError, AttributeError, KeyError):
+                    continue  # битая запись, не проблема соединения
+                if _matches(job):
+                    return job
+            return None
+        self._reload_from_disk()
+        with self._lock:
+            return next((j for j in self._jobs.values() if _matches(j)), None)
 
     def find_latest_completed_node_deep_dive(
         self,

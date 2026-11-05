@@ -57,6 +57,11 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from knowledge_engine.src.core.observability import (
+    attached_trace_context,
+    record_evaluation,
+    span,
+)
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.steering.graph import steering_graph_session
 from knowledge_engine.src.domains.steering.graph.state import SteeringState
@@ -104,6 +109,59 @@ def _require_job(work_job_id: str) -> Any:
     if not job:
         raise HTTPException(status_code=404, detail=f"work job {work_job_id} not found")
     return job
+
+
+def _record_gate_decision(
+    name: str,
+    *,
+    offered: list[Any],
+    approved_urls: list[str],
+    target_goal: str,
+) -> None:
+    """Решение человека на гейте → оценка Phoenix (annotator HUMAN).
+
+    score — доля одобренных: низкая доля на Gate 1 означает шумный Discovery,
+    а отклонённые статьи в metadata — материал для разбора, какой шум
+    пропустили правила (см. docs/OBSERVABILITY.md)."""
+    approved = set(approved_urls)
+    rejected = [item for item in offered if item.url not in approved]
+    total = len(offered)
+    kept = total - len(rejected)
+    if total == 0:
+        label = "empty"
+    elif not rejected:
+        label = "all_approved"
+    elif kept == 0:
+        label = "none_approved"
+    else:
+        label = "partial"
+    record_evaluation(
+        name,
+        label=label,
+        score=(kept / total) if total else None,
+        explanation=(
+            f"approved {kept} of {total}"
+            + (
+                "; rejected: " + "; ".join(item.title for item in rejected[:10])
+                if rejected
+                else ""
+            )
+        ),
+        annotator_kind="HUMAN",
+        metadata={
+            "target_goal": target_goal,
+            "approved_urls": list(approved_urls),
+            "rejected": [
+                {
+                    "url": item.url,
+                    "title": item.title,
+                    "source": getattr(item, "source_hub", "")
+                    or getattr(item, "company_or_author", ""),
+                }
+                for item in rejected
+            ],
+        },
+    )
 
 
 def _require_status(job: Any, expected: WorkJobStatus) -> None:
@@ -176,6 +234,9 @@ async def _post_steering_generate_per_node(
         "depth_level": body.depth_level,
         "generation_mode": body.generation_mode,
         "source_policy": body.source_policy,
+        # Режим курса: init DEEP-нод не запускает автопилотный поиск,
+        # источники — только через Node Grounding Gate.
+        "control_axis": "steering",
     }
     trace(
         f"API ▶ POST /curriculum/steering/generate | mode=per_node "
@@ -231,15 +292,20 @@ async def _post_steering_generate_standalone_digest(
         "final_approved_urls": [],
     }
     config = _graph_config(job.id)
-    try:
-        async with steering_graph_session() as (svc, graph):
-            await svc.run_or_resume(graph, config, initial)
-            snapshot = await graph.aget_state(config)
-    except Exception as exc:
-        work_job_store.fail(job.id, str(exc))
-        raise HTTPException(
-            status_code=502, detail=f"steering generate failed: {exc}"
-        ) from exc
+    # Generate и оба гейта — один трейс: продолжаем контекст постановки джобы.
+    with (
+        attached_trace_context(job.trace_context),
+        span("steering.generate", **{"ke.job.id": job.id}),
+    ):
+        try:
+            async with steering_graph_session() as (svc, graph):
+                await svc.run_or_resume(graph, config, initial)
+                snapshot = await graph.aget_state(config)
+        except Exception as exc:
+            work_job_store.fail(job.id, str(exc))
+            raise HTTPException(
+                status_code=502, detail=f"steering generate failed: {exc}"
+            ) from exc
 
     taxonomy = _coerce_taxonomy(snapshot.values.get("taxonomy"))
     job = work_job_store.get(job.id)
@@ -264,15 +330,28 @@ async def post_steering_approve_gate1(body: Gate1ApprovePayload) -> dict[str, An
     )
 
     config = _graph_config(job.id)
-    try:
-        async with steering_graph_session() as (svc, graph):
-            await svc.run_or_resume(graph, config, resume=body.model_dump())
-            snapshot = await graph.aget_state(config)
-    except Exception as exc:
-        work_job_store.fail(job.id, str(exc))
-        raise HTTPException(
-            status_code=502, detail=f"approve-gate1 failed: {exc}"
-        ) from exc
+    with (
+        attached_trace_context(job.trace_context),
+        span("steering.gate1", **{"ke.job.id": job.id}),
+    ):
+        try:
+            async with steering_graph_session() as (svc, graph):
+                before = await graph.aget_state(config)
+                _record_gate_decision(
+                    "steering_gate1",
+                    offered=_coerce_taxonomy(
+                        before.values.get("taxonomy")
+                    ).candidate_articles,
+                    approved_urls=body.approved_urls,
+                    target_goal=str(before.values.get("target_goal") or ""),
+                )
+                await svc.run_or_resume(graph, config, resume=body.model_dump())
+                snapshot = await graph.aget_state(config)
+        except Exception as exc:
+            work_job_store.fail(job.id, str(exc))
+            raise HTTPException(
+                status_code=502, detail=f"approve-gate1 failed: {exc}"
+            ) from exc
 
     digests = _coerce_digests(snapshot.values.get("surface_digests"))
     job = work_job_store.get(job.id)
@@ -303,25 +382,39 @@ async def post_steering_approve_gate2(body: Gate2ApprovePayload) -> dict[str, An
     )
 
     config = _graph_config(job.id)
-    try:
-        async with steering_graph_session() as (svc, graph):
-            await svc.run_or_resume(graph, config, resume=body.model_dump())
-            snapshot = await graph.aget_state(config)
-    except Exception as exc:
-        work_job_store.fail(job.id, str(exc))
-        raise HTTPException(
-            status_code=502, detail=f"approve-gate2 failed: {exc}"
-        ) from exc
-
-    digests = _coerce_digests(snapshot.values.get("surface_digests"))
     original = job.payload or {}
-    gen_payload = {
-        "target_goal": original.get("target_goal", ""),
-        "surface_digests": digests.model_dump(),
-        "final_approved_urls": list(body.final_approved_urls),
-        "funnel_job_id": job.id,
-    }
-    gen_job = work_job_store.create(WorkJobKind.STEERING_TOPIC_DIGEST, gen_payload)
+    with (
+        attached_trace_context(job.trace_context),
+        span("steering.gate2", **{"ke.job.id": job.id}),
+    ):
+        try:
+            async with steering_graph_session() as (svc, graph):
+                before = await graph.aget_state(config)
+                _record_gate_decision(
+                    "steering_gate2",
+                    offered=_coerce_digests(
+                        before.values.get("surface_digests")
+                    ).digests,
+                    approved_urls=body.final_approved_urls,
+                    target_goal=str(original.get("target_goal", "")),
+                )
+                await svc.run_or_resume(graph, config, resume=body.model_dump())
+                snapshot = await graph.aget_state(config)
+        except Exception as exc:
+            work_job_store.fail(job.id, str(exc))
+            raise HTTPException(
+                status_code=502, detail=f"approve-gate2 failed: {exc}"
+            ) from exc
+
+        digests = _coerce_digests(snapshot.values.get("surface_digests"))
+        gen_payload = {
+            "target_goal": original.get("target_goal", ""),
+            "surface_digests": digests.model_dump(),
+            "final_approved_urls": list(body.final_approved_urls),
+            "funnel_job_id": job.id,
+        }
+        # Внутри спана гейта: Map-Reduce в worker продолжит этот же трейс.
+        gen_job = work_job_store.create(WorkJobKind.STEERING_TOPIC_DIGEST, gen_payload)
     # Дописываем generation_job_id в РЕЗУЛЬТАТ уже COMPLETED funnel-джобы
     # (node_finalize_steering сохранил туда только final_approved_urls) —
     # иначе после обновления страницы GET .../status не сможет сказать,

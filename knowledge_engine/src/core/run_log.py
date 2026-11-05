@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Any, Callable
 
 from knowledge_engine.src.config.settings import PACKAGE_ROOT
 
@@ -27,6 +27,8 @@ _trace_q: queue.SimpleQueue[_TraceJob | None] = queue.SimpleQueue()
 _redis_q: queue.SimpleQueue[tuple[str, str] | None] = queue.SimpleQueue()
 _trace_worker_lock = threading.Lock()
 _trace_worker_started = False
+# Хук для trace() внутри except (error_tracking.capture_failopen): None — выкл.
+_exception_hook: Callable[[BaseException, str], Any] | None = None
 _redis_worker_started = False
 _trace_stdout: bool | None = None
 
@@ -237,6 +239,24 @@ def trace(message: str) -> None:
             caller_func=caller.f_code.co_name,
         )
     )
+    hook = _exception_hook
+    if hook is not None:
+        # trace() внутри except — fail-open: исключение проглочено, а
+        # единственный след — эта строка. Вне except exc_info() пуст.
+        handled = sys.exc_info()[1]
+        if handled is not None:
+            try:
+                hook(handled, message)
+            except Exception:
+                pass
+
+
+def set_trace_exception_hook(
+    hook: Callable[[BaseException, str], Any] | None,
+) -> None:
+    """Подключить обработчик проглоченных исключений (см. error_tracking.py)."""
+    global _exception_hook
+    _exception_hook = hook
 
 
 def node_start(node_id: str) -> None:

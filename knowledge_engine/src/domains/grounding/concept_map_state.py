@@ -587,7 +587,9 @@ def set_pending_evaluation_for_tutor_turn(
             return ""
     memory.asked_question_sub_concept_id = cid
     memory.pending_evaluation_concept_id = cid
-    memory.pending_evaluation_interaction_axis = (interaction_axis or "").strip().lower()
+    memory.pending_evaluation_interaction_axis = (
+        (interaction_axis or "").strip().lower()
+    )
     memory.last_tutor_sub_concept_id = cid
     # Generation focus stays on the asked id until VERIFIED
     memory.next_question_concept_id = cid
@@ -607,6 +609,32 @@ def clear_pending_evaluation_state(memory: SessionMemory) -> None:
     memory.next_question_concept_id = ""
     memory.last_tutor_sub_concept_id = ""
     memory.asked_question_sub_concept_id = ""
+
+
+def defer_current_sub_concept(memory: SessionMemory) -> str:
+    """Topic Q&A ``[action:next_subtopic]``: уйти с текущей подтемы БЕЗ зачёта.
+
+    Текущая — открытый вопрос (pending/asked), иначе фокус генерации.
+    Статус подтемы не меняется (partial/gap/unchecked — зачёта нет),
+    ставится только ``deferred``; pending снимается, чтобы следующий ответ
+    не оценивался по брошенному вопросу. Возвращает id отложенной подтемы
+    ("" если откладывать нечего)."""
+    current = ""
+    for candidate in (
+        memory.pending_evaluation_concept_id,
+        memory.asked_question_sub_concept_id,
+        memory.next_question_concept_id,
+        memory.last_tutor_sub_concept_id,
+    ):
+        if (candidate or "").strip():
+            current = candidate.strip()
+            break
+    clear_pending_evaluation_state(memory)
+    row = find_sub_concept(memory, current) if current else None
+    if row is None or row.status == "verified":
+        return ""
+    row.deferred = True
+    return row.id
 
 
 def select_next_sub_concept(
@@ -680,12 +708,12 @@ def select_next_sub_concept(
     ).strip()
     if asked and asked.lower() not in verified_ids:
         row = find_sub_concept(memory, asked)
-        if row is not None and row.status != "verified":
+        if row is not None and row.status != "verified" and not row.deferred:
             return row
     pending = (memory.pending_evaluation_concept_id or "").strip()
     if pending and pending.lower() not in verified_ids:
         row = find_sub_concept(memory, pending)
-        if row is not None and row.status != "verified":
+        if row is not None and row.status != "verified" and not row.deferred:
             return row
     candidates = [
         sc
@@ -697,7 +725,7 @@ def select_next_sub_concept(
     if not candidates:
         return None
 
-    def sort_key(sc: SubConceptRecord) -> tuple[int, int]:
+    def sort_key(sc: SubConceptRecord) -> tuple[int, int, int]:
         pri = {"gap": 0, "unchecked": 1, "partial": 2}.get(sc.status, 3)
         grade = (sc.last_accuracy_grade or "").strip()
         attract = (
@@ -706,7 +734,9 @@ def select_next_sub_concept(
         )
         if attract:
             pri = max(0, pri - 1)
-        return (pri, memory.sub_concepts.index(sc))
+        # Отложенные пользователем (Topic Q&A, без зачёта) — в конец очереди:
+        # к ним вернёмся, только когда другие незачтённые подтемы кончатся.
+        return (1 if sc.deferred else 0, pri, memory.sub_concepts.index(sc))
 
     return sorted(candidates, key=sort_key)[0]
 
@@ -844,6 +874,8 @@ def _layer_progress(
 
 def _status_hint_for_sub_concept(sc: SubConceptRecord) -> str:
     """Short UI line — never repeats the subtopic label."""
+    if sc.deferred and sc.status != "verified":
+        return "Пропущена без зачёта — вернёмся после остальных подтем"
     why = bool(sc.why_passed)
     how = bool(sc.how_passed)
     mech = bool(sc.mechanic_passed)

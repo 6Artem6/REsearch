@@ -80,21 +80,86 @@ REDUCE Phase 2) + `socratic_focus`-фаза тьютора, роутинг че�
 
 | Этап | Файлы | Комментарий |
 |---|---|---|
-| 0 | `src/curriculum/node_gate_contracts.py` | `NodeSearchProfile`, `NodeCandidatePassport`, `NodeGate1DiscoveryResponse`, `NodeGate1ApprovePayload` (Pydantic `max_length` кап на `NODE_GATE1_MAX_APPROVED=4`, без кастомного валидатора) |
+| 0 | `src/curriculum/node_gate_contracts.py` | `NodeSearchProfile`, `NodeCandidatePassport`, `NodeGate1DiscoveryResponse`, `NodeGate1ApprovePayload` (Pydantic `max_length`, без кастомного валидатора). **2026-11:** `NODE_GATE1_MAX_APPROVED = NODE_GATE1_POOL_MAX` (10) — в дайджест можно отправить весь пул; кап 4 перенесён на `NodeGate2ApprovePayload` (`NODE_GATE2_MAX_APPROVED`); `NodeGateState` — сохранённый незавершённый гейт |
 | 0 | `src/curriculum/services/node_search_profile_service.py` | Единый Flash Lite вызов → Habr hubs/tags/keywords + Exa keywords. Academic-часть НЕ генерируется здесь — после док-аудита (`docs/SOURCE_POOL.md`/`ACADEMIC_AND_CONSENSUS.md`) выяснилось, что это дублировало уже существующий Academic Query Architect; `build_node_academic_plan()` — тонкая обёртка над `lite_search_pipeline.build_academic_search_plan` (реюз как есть, даёт и query, и структурированные `arxiv_params`) |
 | 1 | `src/curriculum/services/node_candidate_collection_service.py` | Сбор (Habr/Exa/academic, параллельно `asyncio.gather(..., return_exceptions=True)` — fail-open по каналам) → дедуп по URL + по эмбеддингам (BGE-M3, Union-Find) → сбалансированный пул 5-10 → батч Flash Lite паспортов. Academic-канал переиспользует `academic_source_fetch._primary_academic_hits` (SS→SearXNG-science→arXiv) и `academic_consensus.harvest_consensus_for_node(..., defer_ingest=True)` — существующий флаг, останавливающийся на метаданных БЕЗ полного харвеста/Gemma-ingest (ключевая находка док-аудита: закрывает и дублирование, и риск повторного 43-минутного харвеста одним и тем же механизмом) |
-| 1 | Habr-канал (`_collect_habr` в том же файле) | ИСПРАВЛЕНО: изначально был Exa-поиск с доменным ограничением на Habr — по итогам не соответствовал заданию ("для Хабра — API/прямые ссылки для Trafilatura и RSS для XML"). Переписано на genuine RSS-обнаружение: `_fetch_habr_company_rss_items()` тянет `https://habr.com/ru/rss/companies/{slug}/articles/?fl=ru` (URL-паттерн подтверждён живым `curl` по `<link type="application/rss+xml">` реальных страниц Habr, не угадан), парсит `xml.etree.ElementTree`, предпочитает `<guid>` (чистый URL) над `<link>` (с `utm_*`, обрезается по `?`). `_rss_item_matches_keywords()` — фильтр по `habr_tags`/`habr_keywords` на title+description ДО дорогого полнотекстового fetch (RSS даёт только хронологию, не релевантность). Дальше — тот же существующий `fetch_html`+`_extract_paragraphs` (Trafilatura), что и раньше — "остальные шаги такие же" |
-| Gate 1 | `api/routes/node_skill.py` (`POST /node/grounding-discover`) | Add-only (+114, затем +157 с Gate 2 — 0 удалений). Instant empty response для BASE-нод и уже прогруженных DEEP (без сетевых/LLM вызовов). SOTA-override пересчитывается так же, как в `targeted_node_search.py` (`is_sota_rd_node`+`consensus_allowed_for_policy` из `academic_consensus.py`, НЕ `source_policy.py`) — чтобы решение "нужен ли academic" совпадало с боевым путём |
-| 2 | `src/curriculum/services/node_digest_service.py` | По ≤4 Gate-1-одобренным URL: полный текст (тот же `fetch_html`+`_extract_paragraphs`) → `_top_k_chunks()` — BGE-M3 (`embed_texts_bge_m3`, косинус, векторы уже L2-нормированы) грубо отбирает `NODE_GATE2_COARSE_K=16` абзацев по теме ноды, затем локальный Cross-Encoder (`src/rag_gateway/cross_encoder.py::score_relevance_pairs` — тот же примитив, что Directional RAG Gateway, `docs/RAG_GATEWAY_MODULE_3.md`, детерминированный, без LLM) уточняет до `NODE_GATE2_TOP_K_CHUNKS=6` → ОДИН батч-вызов `GemmaCloudClient.complete_structured` (не Flash Lite — Gate 2 по заданию требует именно Gemma cloud; `services/llm/gemma_client.py`, тот же клиент, что MAP/REDUCE в `blog_spatial_summarizer.py`, но здесь без Map-Reduce и без записи в LanceDB/registry — это Этап 3) → дайджест на статью (Архитектура/Практический кейс/Ограничения). Fail-open на каждом уровне (embed/rerank/Gemma) — см. docstring файла. Защита от URL-галлюцинаций Gemma: ответ фильтруется по фактически переданным в промпт `url` |
-| Gate 2 | `api/routes/node_skill.py` (`POST /node/grounding-digest`) | Add-only. Тело запроса переиспользует `NodeGate1ApprovePayload` (та же форма: `curriculum_id`/`node_id`/`approved_urls`, уже капнута на 4) — не заведён отдельный payload-класс, раз форма идентична. 404 на неизвестный curriculum/node |
+| 1 | Habr-канал (`_collect_habr` в том же файле) | ИСПРАВЛЕНО: изначально был Exa-поиск с доменным ограничением на Habr — по итогам не соответствовал заданию ("для Хабра — API/прямые ссылки для Trafilatura и RSS для XML"). Переписано на genuine RSS-обнаружение: `_fetch_habr_company_rss_items()` тянет ленту хаба `https://habr.com/ru/rss/hubs/{slug}/articles/?fl=ru` (запасной — блог компании `/ru/rss/companies/{slug}/articles/?fl=ru`; `_fetch_habr_rss_items`, 2026-11: модель отдаёт slug-и хабов, а не компаний — RSS компании по ним давал 404) (URL-паттерн подтверждён живым `curl` по `<link type="application/rss+xml">` реальных страниц Habr, не угадан), парсит `xml.etree.ElementTree`, предпочитает `<guid>` (чистый URL) над `<link>` (с `utm_*`, обрезается по `?`). `_rss_item_matches_keywords()` — фильтр по `habr_tags`/`habr_keywords` на title+description ДО дорогого полнотекстового fetch (RSS даёт только хронологию, не релевантность). Дальше — тот же существующий `fetch_html`+`_extract_paragraphs` (Trafilatura), что и раньше — "остальные шаги такие же" |
+| Gate 1 | `api/routes/node_skill.py` (`POST /node/grounding-discover`) | **2026-11:** логика перенесена в worker (`node_grounding_jobs.run_discover`), роут проверяет курс/ноду и ставит `WorkJobKind.NODE_GROUNDING` → `{job_id, status}`; при сохранённом гейте сразу отдаёт его без поиска (см. «Этапы гейта — в worker»). Исходная реализация: Add-only (+114, затем +157 с Gate 2 — 0 удалений). Instant empty response для BASE-нод и уже прогруженных DEEP (без сетевых/LLM вызовов). SOTA-override пересчитывается так же, как в `targeted_node_search.py` (`is_sota_rd_node`+`consensus_allowed_for_policy` из `academic_consensus.py`, НЕ `source_policy.py`) — чтобы решение "нужен ли academic" совпадало с боевым путём |
+| 2 | `src/curriculum/services/node_digest_service.py` | По всем Gate-1-одобренным URL (2026-11; было ≤4): полный текст (тот же `fetch_html`+`_extract_paragraphs`) → `_top_k_chunks()` — BGE-M3 (`embed_texts_bge_m3`, косинус, векторы уже L2-нормированы) грубо отбирает `NODE_GATE2_COARSE_K=16` абзацев по теме ноды, затем локальный Cross-Encoder (`src/rag_gateway/cross_encoder.py::score_relevance_pairs` — тот же примитив, что Directional RAG Gateway, `docs/RAG_GATEWAY_MODULE_3.md`, детерминированный, без LLM) уточняет до `NODE_GATE2_TOP_K_CHUNKS=6` → **2026-11:** пакеты по `_DIGEST_BATCH_SIZE=4` статьи параллельно через пул `RateLimitedLLMClient` (primary → fallback; сбой пакета теряет только его). Было: ОДИН батч-вызов `GemmaCloudClient.complete_structured` (не Flash Lite — Gate 2 по заданию требует именно Gemma cloud; `services/llm/gemma_client.py`, тот же клиент, что MAP/REDUCE в `blog_spatial_summarizer.py`, но здесь без Map-Reduce и без записи в LanceDB/registry — это Этап 3) → дайджест на статью (Архитектура/Практический кейс/Ограничения). Fail-open на каждом уровне (embed/rerank/Gemma) — см. docstring файла. Защита от URL-галлюцинаций Gemma: ответ фильтруется по фактически переданным в промпт `url` |
+| Gate 2 | `api/routes/node_skill.py` (`POST /node/grounding-digest`) | **2026-11:** задача worker (`run_digest`), результат сохраняется как Gate 2 (`awaiting_gate_2`). Исходно: Add-only. Тело запроса переиспользует `NodeGate1ApprovePayload` (та же форма: `curriculum_id`/`node_id`/`approved_urls`; с 2026-11 без капа 4 — кап только у `NodeGate2ApprovePayload`) — не заведён отдельный payload-класс, раз форма идентична. 404 на неизвестный curriculum/node |
 | — | **Проверено** | `knowledge_engine/tests/test_node_grounding_gate.py` — 23 теста (контракты, Этап 0 профиль+академия, Habr RSS парсинг/фильтр-до-fetch, Этап 1 дедуп/выбор/оркестрация fail-open, Этап 2 coarse-filter→rerank порядок и fail-open на обеих ML-моделях, батч-дайджест + защита от галлюцинаций + fail-open на пустой Gemma-ответ, оба эндпоинта). `_collect_habr`/`_fetch_habr_company_rss_items` также провалидированы вручную против ЖИВОГО Habr RSS (не только моками) |
 | 3 | `src/curriculum/services/node_grounding_finalize_service.py` | ``finalize_node_grounding(graph, node, approved_urls, target_goal="")`` — Gate 2 финальное согласие → ``summarize_whitelist_blog_hits_async`` (ТОТ ЖЕ унифицированный Map-Reduce ingest, что уже используется ``search_sources_for_deep_node_async`` — ничего нового не изобреталось, как и указал пользователь) → тот же persist-хвост, что ``targeted_node_grounding.lazy_ground_deep_node_on_demand`` (``hit_to_registry_entry``/``_attach_hits_to_node``/``cap_curriculum_sources_registry``/``sync_route_sources_from_registry``/``refresh_node_session_diagrams_from_articles``, импортированы как есть). Единственный новый кусок — ``_infer_source_tier(url)``: у Gate 1/Gate 2 человекочитаемый тир ("habr"), а ``summarize_whitelist_blog_hits_async`` нужен канонический (``whitelist_blog``/``arxiv``/``semantic_scholar``/``consensus``/``exa``) — иначе хит молча пропускался бы без ingest. ``save_curriculum_record`` НЕ вызывается внутри сервиса — как и в ``lazy_ground_deep_node_on_demand``, это ответственность вызывающего эндпоинта |
-| 3 | `api/routes/node_skill.py` (`POST /node/grounding-finalize`) | Add-only. **Ключевое: ``targeted_node_search.py``/``engine.py`` по-прежнему НЕ изменены.** Корректность цепочки обеспечена по конструкции: ``_apply_lazy_grounding_for_init`` (engine.py) запускает поиск ТОЛЬКО когда ``grounding_status == "pending_grounding"``; раз ``finalize_node_grounding`` выставляет ``grounded``+``source_ref`` ДО того, как фронтенд вообще позовёт ``POST /node/init``, — штатная проверка `if status == "grounded" and node.source_ref: skip search` срабатывает сама, без единой правки в hot-path |
-| Frontend | `web/static/skill-tree/api.js` | Add-only: ``nodeGroundingDiscover``/``nodeGroundingDigest``/``nodeGroundingFinalize`` — тот же fetch-паттерн, что ``steeringApproveGate1``/``steeringApproveGate2`` |
+| 3 | `api/routes/node_skill.py` (`POST /node/grounding-finalize`) | **2026-11:** задача worker (`run_finalize`: ≤`NODE_GATE2_MAX_APPROVED` URL, сохраняет курс, удаляет сохранённый гейт); повторный клик переиспользует активную задачу (`find_active_node_grounding`). Исходно: Add-only. **Ключевое: ``targeted_node_search.py``/``engine.py`` по-прежнему НЕ изменены.** Корректность цепочки обеспечена по конструкции: ``_apply_lazy_grounding_for_init`` (engine.py) запускает поиск ТОЛЬКО когда ``grounding_status == "pending_grounding"``; раз ``finalize_node_grounding`` выставляет ``grounded``+``source_ref`` ДО того, как фронтенд вообще позовёт ``POST /node/init``, — штатная проверка `if status == "grounded" and node.source_ref: skip search` срабатывает сама, без единой правки в hot-path |
+| Frontend | `web/static/skill-tree/api.js` | Add-only: ``nodeGroundingDiscover``/``nodeGroundingDigest``/``nodeGroundingFinalize`` — тот же fetch-паттерн, что ``steeringApproveGate1``/``steeringApproveGate2``. **2026-11:** ответ ``{job_id, status}`` дожидается ``resolveNodeGroundingJob`` (``waitWorkJob``) |
 | Frontend | `web/static/skill-tree/SteeringGatePanel.js` | Расширен (не переписан): новый опциональный проп ``kind: "node"`` — Gate 1/2 подписи и кнопка меняют текст под контекст одной ноды (без ``kind`` — прежнее поведение Штурвала, 0 изменений для существующих вызовов). ``Gate2Digest`` теперь рендерит ЛИБО ``NodeDigestItem`` (architecture/practical_case/limitations), ЛИБО прежний ``SurfaceDigestItem`` Штурвала — определяется по наличию поля ``architecture`` |
 | Frontend | `web/static/skill-tree/NodeDrawer.js` | Add-only: второй, независимый блок рендера ``SteeringGatePanel`` по ``session?.nodeGateStatus`` (Штурвал остаётся на ``session?.steeringStatus``, оба блока не пересекаются для одной сессии) + проброс нового пропа ``onNodeGateApprove`` |
 | Frontend | `web/static/skill-tree/RoadmapDashboard.js` | Живая сшивка (в отличие от Topic Q&A, где сшивка сознательно отложена — здесь пользователь явно попросил "соединить пайплайн"): ``openNode`` перед запуском ``nodeInitStream`` проверяет ``node.node_risk_kind === "DEEP" && node.grounding_status !== "grounded"`` — если да, сперва ``nodeGroundingDiscover``; пустой список кандидатов (BASE-нода/уже готово/фейл-опен бэкенда) — молча идёт прежним путём (0 лишних кликов, 0 изменений поведения для большинства нод); непустой — рисует Gate 1 и НЕ вызывает ``nodeInitStream``, пока пользователь не пройдёт Gate 1→Gate 2 (``handleNodeGateApprove``). После ``nodeGroundingFinalize`` — сброс gate-состояния сессии и рекурсивный вызов ``openNode`` для того же (уже ``grounded``) узла — штатный ``nodeInitStream`` идёт по быстрому пути. Повторный клик по ноде с незавершённым гейтом (``awaiting_gate_1``/``awaiting_gate_2``) НЕ перезапускает discovery — не роняет прогресс с Gate 2 обратно на Gate 1 |
 | — | **Проверено** | Backend: 30/30 тестов (`test_node_grounding_gate.py`), включая fail-open по всем сервисам Этапа 3 и защиту от повторного persist уже обработанных тиров. Frontend: `npm run build` (esbuild) проходит чисто. **НЕ проверено** живым браузером — в этой фоновой сессии нет поднятого dev-сервера/Postgres/Redis; логика Gate 1→2→finalize→re-open прослежена вручную построчно, но не прокликана глазами — нужен ручной прогон перед тем, как полагаться на неё в проде |
+
+### Этапы гейта — в worker (2026-11)
+
+Discover/digest/finalize раньше выполнялись прямо в процессе API, где
+ML-веса запрещены (`ml_runtime.assert_ml_weights_allowed`): дедуп
+кандидатов по BGE-M3, грубый отбор абзацев BGE-M3 и реранжировка
+Cross-Encoder молча уходили в fail-open (`PRE_MAP_DEDUP pool_vector ✗ |
+… must run in the KE worker`). Теперь:
+
+| Где | Что |
+|---|---|
+| `shared/node_grounding/node_grounding_jobs.py` | `run_discover` / `run_digest` / `run_finalize` (логика бывших роутов) + `run_node_grounding_job(payload)` — точка входа worker |
+| `WorkJobKind.NODE_GROUNDING` | payload `{op, curriculum_id, node_id, approved_urls}`; `work_handlers._dispatch_work_job` |
+| `routes/node_skill.py` | `/node/grounding-*` только проверяют курс/ноду (404) и ставят задачу → `{job_id, status}`; discover для BASE/уже заземлённой ноды отвечает сразу, без задачи |
+| `work_enqueue.enqueue_node_grounding` | активная задача того же `op` для той же ноды переиспользуется (`work_job_store.find_active_node_grounding`) — двойной клик по Gate 2 не запускает второй ingest |
+| `api.js::resolveNodeGroundingJob` | ждёт `waitWorkJob` при любом `job_id` (pending или running) |
+
+Весь этап — один ML-запрос для `ML_MEMORY_GUARD` (`rag_request_started` /
+`rag_request_finished`): BGE-M3/Cross-Encoder не выгружаются между статьями,
+после этапа — обычный `RAG_MPS_REQUEST_COOLDOWN_SEC`.
+
+После обновления кода worker нужно перезапустить: старый worker не знает
+`node_grounding`.
+
+### Лимиты гейта ноды (2026-11)
+
+- Gate 1 → дайджест: сколько угодно кандидатов из пула
+  (`NODE_GATE1_MAX_APPROVED = NODE_GATE1_POOL_MAX`).
+- Gate 2 → полный пайплайн (Map-Reduce ingest): не больше
+  `NODE_GATE2_MAX_APPROVED = 4` (`NodeGate2ApprovePayload`,
+  `finalize_node_grounding`, UI `maxApproved` только на Gate 2).
+- `generate_node_digests` зовёт Gemma пакетами по `_DIGEST_BATCH_SIZE = 4`
+  статьи параллельно (весь пул в один ответ не влезает в `max_tokens`).
+
+### Незавершённый гейт и Habr-канал (2026-11)
+
+- `shared/node_grounding/node_gate_state_store.py` (`.runs/node_gate_state.json`,
+  контракт `NodeGateState`): worker сохраняет Gate 1 после discover и Gate 2
+  после digest, finalize удаляет. `/node/grounding-discover` при сохранённом
+  состоянии отдаёт его (`status`, `candidates`, `digests`, `approved_urls`)
+  без повторного поиска — перезагрузка страницы возвращает тот же гейт.
+- Habr: ленты хабов и полные тексты статей качаются параллельно
+  (`asyncio.gather`, полные тексты — `_HABR_ARTICLE_FETCH_CONCURRENCY`),
+  статья из нескольких хабов — один раз. Название хаба → slug через поиск
+  хабов Habr (`/kek/v2/hubs/search`), но только при совпадении alias или
+  названия как идентификатора: поиск нечёткий (`development` → devrel).
+
+### Штурвал без автопилотного поиска на init (2026-11)
+
+Раньше режим курса хранился только в `localStorage` браузера: любой обход
+гейта (0 кандидатов, сбой discover, закешированный старый бандл) уводил
+init DEEP-ноды в полный автопилотный lazy grounding
+(`targeted_node_grounding.lazy_ground_deep_node_on_demand`). Теперь:
+
+- `skill_tree_store.save_curriculum_record(..., control_axis=)` хранит режим
+  в записи курса; `None` сохраняет прежнее значение (lazy grounding/finalize
+  его не сбрасывают); записи без поля — `autopilot`.
+- `/curriculum/steering/generate` (per_node) передаёт `control_axis="steering"`
+  в payload `curriculum_generate`.
+- `NodeDeepDiveRequest.control_axis` / `NodeSessionBody.control_axis` —
+  текущий переключатель UI (`nodeInitStream`); `None` → режим курса.
+- `engine._apply_lazy_grounding_for_init`: при `steering` поиск и academic
+  re-ground не запускаются (лог `NODE_DIVE lazy grounding ⊘ … control_axis=steering`),
+  источники — только через Node Grounding Gate.
+- Workspace отдаёт `meta.control_axis`; UI берёт режим курса с сервера.
 
 ## Перевод введений на Gate 1 (общий для обоих гейтов)
 
@@ -270,11 +335,13 @@ contracts.py`):
   что и обычный `/curriculum/generate`). Заземление остаётся точечным и
   ленивым — при открытии DEEP-ноды её перехватывает уже существующий Node
   Grounding Gate (`node/grounding-discover/-digest/-finalize`), который сам
-  даёт до `NODE_GATE1_MAX_APPROVED=4` источников на ноду через настоящий
+  даёт до `NODE_GATE2_MAX_APPROVED=4` источников на ноду (2026-11; раньше кап стоял на Gate 1) через настоящий
   Map-Reduce (`finalize_node_grounding`) — ровно то "3-4 источника через
   Map-Reduce на ноду", что требовалось, безо всякого нового кода: этот
   механизм уже существовал и уже работает одинаково для Autopilot и
-  Штурвала (он не завязан на `control_axis`).
+  Штурвала (сам гейт не завязан на `control_axis`; с 2026-11 `control_axis`
+  курса хранится и в Штурвале запрещает автопилотный поиск на init — см.
+  «Штурвал без автопилотного поиска на init»).
 - **Mode 2 (`standalone_digest`)** — прежний путь TaxonomyService + Light
   Discovery → Gate 1 → Batch Digest → Gate 2 не тронут ни на строчку. Но
   ИТОГ теперь — не `CurriculumGraph`, а один объединённый

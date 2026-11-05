@@ -129,6 +129,21 @@ flowchart LR
 
 ---
 
+## Topic Q&A: следующая подтема без зачёта
+
+Кнопка «Следующая подтема (без зачёта)» (видна только при `interaction_axis=topic_qna`,
+`NodeTutorChat.js`) шлёт `[action:next_subtopic] …` — явный тег, intent
+`next_subtopic` (`intent_definitions.py`, только тег/точная метка, без
+`reference_phrases`). Ход не оценивается (`EVALUATOR_SKIP_INTENTS`).
+
+`coverage_router` → `concept_map_state.defer_current_sub_concept`: текущая
+подтема (pending → asked → focus) получает `SubConceptRecord.deferred=True`,
+**status не меняется** (partial/gap/unchecked — зачёта нет, mastery/coverage не
+затронуты), pending снимается. `select_next_sub_concept` ставит отложенные в
+конец очереди: к ним возвращаемся, когда неотложенные незачтённые кончились.
+UI-подсказка подтемы: «Пропущена без зачёта — вернёмся после остальных подтем»
+(`_status_hint_for_sub_concept`). Вне Topic Q&A тег игнорируется (trace).
+
 ## Tiered Memory (4 слоя в промпте тьютора)
 
 1. **Compressed RAG Profile** — срез фактов Модуля 3; фиксируется на init.

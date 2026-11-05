@@ -33,6 +33,7 @@ from knowledge_engine.src.config.settings import (
     LECTURE_PASSAGE_FETCH_TIMEOUT_SEC,
     LECTURE_PASSAGE_MIN_CHARS,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.pre_flight_triage import (
     _extract_paragraphs,
@@ -186,6 +187,7 @@ def _dedupe_candidates_by_url(
     return out
 
 
+@traced("steering.discovery")
 async def discover_candidates(
     seed: TaxonomySeed,
     *,

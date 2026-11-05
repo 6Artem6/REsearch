@@ -27,10 +27,9 @@
   ИСПРАВЛЕНО ЕЩЁ РАЗ (по прямому указанию): раньше здесь был Exa-поиск с
   ``include_domains=["habr.com"]`` — рабочий, но не то, что просил Habr per
   se. Правильный путь для Habr — его собственный публичный RSS
-  (``https://habr.com/ru/rss/companies/{slug}/articles/?fl=ru`` — формат
-  подтверждён вручную через реальный HTTP-запрос и разбор
-  ``<link type="application/rss+xml">`` на живой странице компании, не
-  выдуман) для ОБНАРУЖЕНИЯ статей + уже существующие ``fetch_html``/
+  (лента тематического хаба ``/ru/rss/hubs/{slug}/articles/?fl=ru``,
+  запасной — блог компании ``/ru/rss/companies/{slug}/articles/?fl=ru``;
+  оба формата сверены живым запросом) для ОБНАРУЖЕНИЯ статей + уже существующие ``fetch_html``/
   ``_extract_paragraphs`` (Trafilatura) для прямых ссылок из RSS — та же
   пара примитивов, что уже используется для Exa/академии в этом файле,
   просто без самого Exa-поиска для этого канала. RSS отдаёт только
@@ -75,6 +74,7 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from knowledge_engine.llm_locale import RUSSIAN_OUTPUT_RULE
 from knowledge_engine.src.adapters.search_providers.exa_client import ExaSearchClient
@@ -82,6 +82,7 @@ from knowledge_engine.src.config.settings import (
     LECTURE_PASSAGE_FETCH_TIMEOUT_SEC,
     LECTURE_PASSAGE_MIN_CHARS,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.lite_search_pipeline import (
     AcademicSearchPlan,
@@ -105,6 +106,7 @@ _MAX_PER_CHANNEL = 6
 _HABR_RSS_TIMEOUT_SEC = 3.0
 _HABR_RSS_MAX_ITEMS = 30
 _HABR_RSS_MAX_MATCHED_PER_HUB = 3
+_HABR_ARTICLE_FETCH_CONCURRENCY = 6
 
 
 @dataclass
@@ -143,25 +145,84 @@ def _rss_item_matches_keywords(
     return any(kw in text for kw in kws)
 
 
-async def _fetch_habr_company_rss_items(
-    company_slug: str,
-) -> list[tuple[str, str, str]]:
-    """company_slug → [(url, title, description_text), ...] из RSS хаба
+_HABR_HUB_RSS = "https://habr.com/ru/rss/hubs/{slug}/articles/?fl=ru"
+_HABR_COMPANY_RSS = "https://habr.com/ru/rss/companies/{slug}/articles/?fl=ru"
+# Поиск хабов самого Habr (тот же, что в его веб-интерфейсе): название хаба
+# ("Big Data") → настоящий alias ("bigdata"). JSON: {"hubIds": [...], ...}.
+_HABR_HUB_SEARCH = "https://habr.com/kek/v2/hubs/search?q={query}&fl=ru&hl=ru"
 
-    компании — https://habr.com/ru/rss/companies/{slug}/articles/?fl=ru.
-    Формат подтверждён вручную (не выдуман): реальный HTTP-запрос к живой
-    странице компании на Habr, разбор <link type="application/rss+xml">,
-    затем разбор самого RSS. ``<guid isPermaLink="true">`` — канонический
-    URL без ``utm_*``; ``<link>`` — тот же URL, но с ``utm_*`` (fallback,
-    если guid вдруг не permalink)."""
-    url = f"https://habr.com/ru/rss/companies/{company_slug}/articles/?fl=ru"
-    xml_text = await fetch_html(url, timeout_sec=_HABR_RSS_TIMEOUT_SEC)
+
+def _identifier_key(text: str) -> str:
+    """Сравнение идентификаторов хаба: регистр, пробелы, ``_``/``-`` и
+    HTML-разметка подсветки поиска не важны ("Big Data" == "bigdata")."""
+    plain = re.sub(r"<[^>]+>", "", text or "")
+    return re.sub(r"[\s_\-]+", "", plain).lower()
+
+
+async def _search_habr_hub_alias(name: str) -> str:
+    """Название или неточный slug хаба → alias хаба ("" если нет).
+
+    Модель часто отдаёт отображаемое имя ("Machine Learning", "Big Data")
+    вместо slug, а схема slug-ов Habr нерегулярна (machine_learning, но
+    bigdata) — спрашиваем поиск хабов Habr. Он нечёткий ("development" →
+    devrel, "RAG" → wiki), поэтому берём только хаб, чей alias или название
+    совпадает с запросом как идентификатор, а не первый результат."""
+    raw = await fetch_html(
+        _HABR_HUB_SEARCH.format(query=quote(name)), timeout_sec=_HABR_RSS_TIMEOUT_SEC
+    )
+    if not raw:
+        return ""
+    try:
+        data = json.loads(raw)
+        hub_ids = [str(h) for h in data.get("hubIds") or []]
+        refs = data.get("hubRefs") or {}
+    except (ValueError, AttributeError):
+        return ""
+    wanted = _identifier_key(name)
+    for hub_id in hub_ids:
+        title = str((refs.get(hub_id) or {}).get("titleHtml") or "")
+        if wanted in (_identifier_key(hub_id), _identifier_key(title)):
+            return hub_id
+    return ""
+
+
+async def _fetch_habr_feed(slug: str) -> tuple[str, str]:
+    """slug → (xml, откуда). Порядок: лента хаба по slug как есть → лента
+    хаба по alias из поиска Habr → блог компании с тем же slug."""
+    xml_text = await fetch_html(
+        _HABR_HUB_RSS.format(slug=quote(slug)), timeout_sec=_HABR_RSS_TIMEOUT_SEC
+    )
+    if xml_text:
+        return xml_text, f"hub:{slug}"
+    alias = await _search_habr_hub_alias(slug)
+    if alias and alias.lower() != slug.lower():
+        xml_text = await fetch_html(
+            _HABR_HUB_RSS.format(slug=quote(alias)),
+            timeout_sec=_HABR_RSS_TIMEOUT_SEC,
+        )
+        if xml_text:
+            return xml_text, f"hub:{alias}"
+    xml_text = await fetch_html(
+        _HABR_COMPANY_RSS.format(slug=quote(slug)), timeout_sec=_HABR_RSS_TIMEOUT_SEC
+    )
+    return xml_text, f"company:{slug}" if xml_text else ""
+
+
+async def _fetch_habr_rss_items(slug: str) -> list[tuple[str, str, str]]:
+    """slug или название хаба → [(url, title, description_text), ...] из RSS.
+
+    Ленты хаба и блога компании имеют одинаковые ``<item>`` (сверено живым
+    запросом); ``<guid isPermaLink="true">`` — канонический URL без
+    ``utm_*``, ``<link>`` — тот же URL с ``utm_*`` (fallback)."""
+    xml_text, source = await _fetch_habr_feed(slug)
     if not xml_text:
+        trace(f"NODE_GATE habr rss ⊘ | {slug} | no hub/company feed (404/empty)")
         return []
+    trace(f"NODE_GATE habr rss ✓ | {slug} → {source}")
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
-        trace(f"NODE_GATE habr rss parse ✗ | {company_slug} | {exc}")
+        trace(f"NODE_GATE habr rss parse ✗ | {slug} | {exc}")
         return []
 
     out: list[tuple[str, str, str]] = []
@@ -186,7 +247,7 @@ async def _fetch_habr_company_rss_items(
 
 
 async def _collect_habr(profile: NodeSearchProfile) -> list[_RawHit]:
-    """Habr — через его собственный RSS (обнаружение статей компании) +
+    """Habr — через его собственный RSS (лента хаба, запасной — блог компании) +
 
     уже существующие ``fetch_html``/``_extract_paragraphs`` (Trafilatura,
     прямые ссылки из RSS) — НЕ через Exa с доменным ограничением, как было
@@ -195,35 +256,54 @@ async def _collect_habr(profile: NodeSearchProfile) -> list[_RawHit]:
     if not profile.habr_hubs:
         return []
     keywords = [*profile.habr_tags, *profile.habr_keywords]
-    out: list[_RawHit] = []
-    for hub in profile.habr_hubs[:4]:
-        slug = (hub or "").strip().strip("/").split("/")[0]
-        if not slug:
-            continue
+    slugs = [
+        slug
+        for slug in (
+            (h or "").strip().strip("/").split("/")[0] for h in profile.habr_hubs[:4]
+        )
+        if slug
+    ]
+
+    async def _hub_items(slug: str) -> list[tuple[str, str, str]]:
         try:
-            items = await _fetch_habr_company_rss_items(slug)
+            return await _fetch_habr_rss_items(slug)
         except Exception as exc:
             trace(f"NODE_GATE collect habr rss ✗ | hub={slug} | {exc}")
-            continue
-        matched = [
+            return []
+
+    # Ленты хабов — параллельно (раньше по очереди, ~5 с на хаб).
+    feeds = await asyncio.gather(*(_hub_items(slug) for slug in slugs))
+    matched: dict[str, str] = {}  # url → title; статья из нескольких хабов — один раз
+    for slug, items in zip(slugs, feeds):
+        if not items:
+            continue  # причина уже в trace _fetch_habr_rss_items
+        hub_matched = [
             (url, title)
             for url, title, description in items
             if _rss_item_matches_keywords(title, description, keywords)
         ][:_HABR_RSS_MAX_MATCHED_PER_HUB]
-        if not matched:
+        if not hub_matched:
             trace(f"NODE_GATE collect habr rss ⊘ | hub={slug} | no keyword match")
-            continue
-        for url, title in matched:
+        for url, title in hub_matched:
+            matched.setdefault(url, title)
+
+    sem = asyncio.Semaphore(_HABR_ARTICLE_FETCH_CONCURRENCY)
+
+    async def _lead(url: str, title: str) -> _RawHit | None:
+        async with sem:
             html = await fetch_html(url, timeout_sec=LECTURE_PASSAGE_FETCH_TIMEOUT_SEC)
-            if not html:
-                continue
-            paragraphs = await asyncio.to_thread(
-                _extract_paragraphs, html, url, min_chars=LECTURE_PASSAGE_MIN_CHARS
-            )
-            if not paragraphs:
-                continue
-            lead = " ".join(paragraphs[:2])
-            out.append(_RawHit(url, title or url, lead, "habr"))
+        if not html:
+            return None
+        paragraphs = await asyncio.to_thread(
+            _extract_paragraphs, html, url, min_chars=LECTURE_PASSAGE_MIN_CHARS
+        )
+        if not paragraphs:
+            return None
+        return _RawHit(url, title or url, " ".join(paragraphs[:2]), "habr")
+
+    # Полные тексты отобранных статей — тоже параллельно, порядок сохраняется.
+    leads = await asyncio.gather(*(_lead(u, t) for u, t in matched.items()))
+    out = [hit for hit in leads if hit is not None]
     return out[:_MAX_PER_CHANNEL]
 
 
@@ -486,6 +566,7 @@ async def _generate_passports(
     return passports
 
 
+@traced("node_gate.collect")
 async def collect_node_candidates(
     profile: NodeSearchProfile,
     *,

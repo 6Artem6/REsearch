@@ -367,8 +367,28 @@ async def _apply_lazy_grounding_for_init(
         curriculum_node_to_data_input,
         refresh_node_session_diagrams_from_articles,
     )
+    from knowledge_engine.src.shared.skill_tree_store import (
+        get_curriculum_control_axis,
+    )
 
     status = (node.grounding_status or "").strip()
+    # Штурвал: источники DEEP-ноды выбирает пользователь (Node Grounding
+    # Gate), автопилотный поиск/re-ground здесь запрещён. Режим — из запроса
+    # (текущий переключатель UI), иначе тот, с которым создан курс.
+    control_axis = req.control_axis or get_curriculum_control_axis(req.curriculum_id)
+    if control_axis == "steering":
+        if status == "grounded" and node.source_ref:
+            refresh_node_session_diagrams_from_articles(
+                req.curriculum_id,
+                curriculum_node_to_data_input(node),
+                rebuild=True,
+            )
+        trace(
+            f"NODE_DIVE lazy grounding ⊘ | node={node.node_id} status={status} "
+            "control_axis=steering — sources only via Node Grounding Gate"
+        )
+        return _merge_node_data_from_graph(req, node)
+
     reground_academic = False
     if status == "grounded" and node.source_ref:
         from knowledge_engine.src.domains.curriculum.source_registry import (
@@ -1133,7 +1153,15 @@ def _invoke_tutor(
     )
     last_err: Exception | None = None
     raw = None
-    max_attempts = 2 if (star_guard or drill_schema is not None) else 1
+    from knowledge_engine.src.domains.grounding.tutor import EMPTY_EXPLAIN_TURN_ERROR
+
+    explain_schema = getattr(response_schema, "__name__", "") in (
+        "DeepDiveExplainContract",
+        "TopicQnaExplainContract",
+    )
+    max_attempts = (
+        2 if (star_guard or drill_schema is not None or explain_schema) else 1
+    )
     plaque = ""
     if not evaluator_skipped:
         if emit_stream_plaque:
@@ -1153,6 +1181,19 @@ def _invoke_tutor(
                 )
                 trace(
                     f"PROMPT_FACTORY | deep_analysis contract retry "
+                    f"attempt={attempt + 1} | {type(last_err).__name__}"
+                )
+            elif explain_schema:
+                attempt_dynamic = (
+                    f"{dynamic}\n\n"
+                    "### RETRY — previous JSON rejected (no learner-facing text)\n"
+                    f"{type(last_err).__name__}: {last_err}\n"
+                    "Write the reply to the learner in technical_explanation "
+                    "(non-empty engineering explanation responding to their "
+                    "message). Bookkeeping fields alone are not a reply."
+                )
+                trace(
+                    f"PROMPT_FACTORY | explain contract retry "
                     f"attempt={attempt + 1} | {type(last_err).__name__}"
                 )
             elif drill_schema is not None:
@@ -1210,7 +1251,10 @@ def _invoke_tutor(
         except Exception as exc:
             last_err = exc
             msg = str(exc).lower()
-            retryable = (star_guard and "follow_up_question" in msg) or (
+            retryable = (
+                (star_guard and "follow_up_question" in msg)
+                or (explain_schema and EMPTY_EXPLAIN_TURN_ERROR.lower() in msg)
+            ) or (
                 drill_schema is not None
                 and getattr(drill_schema, "__name__", "") == "ActiveDrillStepResponse"
                 and "theory_body" in msg

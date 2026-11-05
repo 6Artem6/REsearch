@@ -137,7 +137,9 @@ def extract_follow_up_from_chat_text(text: str) -> tuple[str, str]:
 
     last = paras[-1]
     if _ends_with_question(last):
-        if len(last) > _MAX_FOLLOW_UP_PARAGRAPH_LEN:
+        # Один абзац (весь ответ) — вопрос только его последнее ?-предложение,
+        # а не абзац целиком; длинный последний абзац — так же.
+        if len(last) > _MAX_FOLLOW_UP_PARAGRAPH_LEN or not paras[:-1]:
             follow = _extract_trailing_question_sentence(last)
             if follow:
                 idx = last.rfind(follow)

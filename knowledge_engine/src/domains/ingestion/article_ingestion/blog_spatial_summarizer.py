@@ -42,6 +42,7 @@ from knowledge_engine.src.config.settings import (
     gemma_cloud_api_key_available,
     map_pipeline_concurrency,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.ingestion.article_ingestion.anchor_relevance import (
     AtomAnchorFilterService,
@@ -881,6 +882,7 @@ async def _run_two_phase_reduce(
     return final
 
 
+@traced("map_reduce.reduce")
 async def run_reduce(
     job: MapReduceArticleJob,
     map_results: list[MapWindowResponse | None],
@@ -1019,6 +1021,7 @@ async def _reduce_final_from_maps(
     return final
 
 
+@traced("map_reduce.pool")
 async def map_reduce_jobs_pooled_async(
     jobs: list[MapReduceArticleJob],
     *,

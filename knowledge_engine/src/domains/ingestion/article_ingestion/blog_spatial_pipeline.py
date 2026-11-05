@@ -30,6 +30,7 @@ from knowledge_engine.src.adapters.parsers.smart_fetcher import (
 from knowledge_engine.src.adapters.parsers.toc_extractor import UniversalTOCExtractor
 from knowledge_engine.src.adapters.parsers.web_extract import smart_fetch_page_html
 from knowledge_engine.src.config.settings import BLOG_SPATIAL_VLM_FALLBACK_ALL_FIGURES
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.ingestion.article_diagram_context import (
     canonical_article_id,
@@ -761,6 +762,7 @@ class _BlogSpatialContext:
     source_kind: str
 
 
+@traced("ingest.prepare_article")
 def _prepare_blog_spatial_context(
     title: str,
     url: str,
@@ -912,6 +914,7 @@ async def _finalize_blog_spatial_result(
     return ctx.annotated, summary, saved
 
 
+@traced("ingest.spatial_article")
 async def ingest_blog_with_spatial_mapping(
     title: str,
     url: str,
@@ -951,6 +954,7 @@ async def ingest_blog_with_spatial_mapping(
     )
 
 
+@traced("ingest.spatial_batch")
 async def ingest_blog_spatial_mapping_batch_async(
     items: list[tuple[str, str, str, str | None]],
     *,

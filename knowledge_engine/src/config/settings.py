@@ -374,6 +374,16 @@ GEMMA_EST_OUTPUT_TOKENS: int = int(
     os.getenv("GEMMA_EST_OUTPUT_TOKENS", str(GEMMA_MAP_MAX_OUTPUT_TOKENS))
 )
 GEMMA_API_TIMEOUT_SEC: float = float(os.getenv("GEMMA_API_TIMEOUT_SEC", "120"))
+# Зависшая попытка Gemma: нет ответа за GEMMA_HEDGE_AFTER_SEC → параллельная
+# новая попытка (если у модели есть свободный слот RPM/TPM; ждём его не
+# дольше GEMMA_HEDGE_SLOT_WAIT_SEC — до новой минуты окна). Первый ответ
+# побеждает. Всего попыток на запрос (с повторами после 5xx/429) —
+# GEMMA_MAX_ATTEMPTS. Все провалились (5xx/таймаут) → модель «открыта»
+# (circuit breaker) на GEMMA_CIRCUIT_OPEN_SEC: пул сразу идёт в fallback.
+GEMMA_HEDGE_AFTER_SEC: float = float(os.getenv("GEMMA_HEDGE_AFTER_SEC", "45"))
+GEMMA_HEDGE_SLOT_WAIT_SEC: float = float(os.getenv("GEMMA_HEDGE_SLOT_WAIT_SEC", "60"))
+GEMMA_MAX_ATTEMPTS: int = max(1, int(os.getenv("GEMMA_MAX_ATTEMPTS", "3")))
+GEMMA_CIRCUIT_OPEN_SEC: float = float(os.getenv("GEMMA_CIRCUIT_OPEN_SEC", "180"))
 GEMMA_FALLBACK_MAX_WAIT_SEC: float = float(
     os.getenv("GEMMA_FALLBACK_MAX_WAIT_SEC", "180")
 )
@@ -632,6 +642,31 @@ KE_TRACE_STDOUT: bool = _env_bool("KE_TRACE_STDOUT", False)
 KE_LOG_PLAIN: bool = _env_bool("KE_LOG_PLAIN", False)
 # Полные промпты и сырые ответы каждого LLM-вызова в run log
 KE_LLM_FULL_TRACE: bool = _env_bool("KE_LLM_FULL_TRACE", False)
+# OpenTelemetry → локальный Arize Phoenix (docker compose --profile observability).
+# Выключено по умолчанию: без флага трейсер no-op, сетевых вызовов нет.
+KE_OTEL_ENABLED: bool = _env_bool("KE_OTEL_ENABLED", False)
+KE_OTEL_ENDPOINT: str = (
+    os.getenv("KE_OTEL_ENDPOINT", "http://localhost:6006/v1/traces") or ""
+).strip()
+KE_OTEL_SERVICE_NAME: str = (
+    os.getenv("KE_OTEL_SERVICE_NAME", "knowledge-engine") or "knowledge-engine"
+).strip()
+# Писать ли промпты/ответы LLM в спаны (локально — да; для внешнего бэкенда
+# выключить, тексты статей и диалогов уйдут в хранилище трейсов).
+KE_OTEL_CAPTURE_LLM_IO: bool = _env_bool("KE_OTEL_CAPTURE_LLM_IO", True)
+# Вердикты оценщика и решения гейтов → span annotations Phoenix (REST
+# /v1/span_annotations рядом с OTLP endpoint). Без KE_OTEL_ENABLED не действует.
+KE_OTEL_ANNOTATIONS_ENABLED: bool = _env_bool("KE_OTEL_ANNOTATIONS_ENABLED", True)
+# Ошибки → GlitchTip (Sentry-совместимый, локально в docker-compose). Пустой
+# DSN — sentry-sdk не инициализируется. DSN берётся в UI GlitchTip:
+# Project → Settings → Client Keys (DSN).
+KE_SENTRY_DSN: str = (os.getenv("KE_SENTRY_DSN", "") or "").strip()
+KE_SENTRY_ENVIRONMENT: str = (
+    os.getenv("KE_SENTRY_ENVIRONMENT", "local") or "local"
+).strip()
+KE_SENTRY_RELEASE: str = (os.getenv("KE_SENTRY_RELEASE", "") or "").strip()
+# trace() внутри except → warning-событие (fail-open: ошибка проглочена).
+KE_SENTRY_CAPTURE_FAILOPEN: bool = _env_bool("KE_SENTRY_CAPTURE_FAILOPEN", True)
 # Файловые Markdown-дампы промптов node_deep_dive (logs/session_traces/)
 ENABLE_PROMPT_TRACE_LOGS: bool = _env_bool(
     "ENABLE_PROMPT_TRACE_LOGS",

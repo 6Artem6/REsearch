@@ -17,6 +17,7 @@ import {
   rememberCurriculumControlAxis,
   readCurriculumControlAxis,
   hydrateSessionsFromServer,
+  rememberNodeInteractionAxis,
   buildMessagesAfterChatComplete,
   sortDialogMessages,
   userMessageMatches,
@@ -144,14 +145,19 @@ export function RoadmapDashboard() {
       setStatuses(
         mergeNodeStatuses(ws.curriculum, ws.statuses || {}),
       );
-      setSessions(hydrateSessionsFromServer(ws.sessions));
+      setSessions(hydrateSessionsFromServer(ws.sessions, curriculumId));
       setSelectedNode(null);
       setSelectedMaterialId(null);
       await setActiveCurriculum(curriculumId);
       rememberActiveCurriculumId(curriculumId);
       // Режим, с которым курс был создан, становится дефолтом переключателя;
       // пользователь может сменить его для следующей открываемой ноды.
-      const savedAxis = readCurriculumControlAxis(curriculumId);
+      // Сервер — источник истины (control_axis курса); localStorage — для
+      // курсов, созданных до появления поля.
+      const savedAxis =
+        ws.meta?.control_axis === "steering"
+          ? "steering"
+          : readCurriculumControlAxis(curriculumId);
       if (savedAxis) setControlAxis(savedAxis);
       setSourcePolicy("practical_only");
       replaceSkillTreeSearchParams({ curriculum: curriculumId });
@@ -568,6 +574,7 @@ export function RoadmapDashboard() {
    * — отдельный, ещё не начатый шаг (см. roadmap, Этап 4 backend
    * scaffolding). */
   function setNodeInteractionAxis(nodeId, axis) {
+    rememberNodeInteractionAxis(curriculum?.curriculum_id, nodeId, axis);
     setSessions((prev) => ({
       ...prev,
       [nodeId]: { ...(prev[nodeId] || { messages: [] }), interactionAxis: axis },
@@ -714,12 +721,16 @@ export function RoadmapDashboard() {
   }, []);
 
   const openNode = useCallback(
-    async (node) => {
+    // afterGate: вызов из handleNodeGateApprove сразу после finalize. Его
+    // замыкание видит состояние ДО setTutorBusyNodeId(null)/удаления сессии
+    // гейта (React применит их только к следующему рендеру) — без флага
+    // проверки «занято» и «гейт уже идёт» ниже выходили, init не стартовал.
+    async (node, { afterGate = false } = {}) => {
       if (!curriculum || !node?.node_id) return;
       const sid = node.node_id;
-      const initialized = Boolean(sessions[sid]?.initialized);
+      const initialized = afterGate ? false : Boolean(sessions[sid]?.initialized);
 
-      if (tutorBusyNodeId !== null && !initialized) return;
+      if (!afterGate && tutorBusyNodeId !== null && !initialized) return;
 
       setSelectedNode(node);
       setSelectedMaterialId(null);
@@ -749,7 +760,7 @@ export function RoadmapDashboard() {
       // пользователь ещё не одобрил и снова кликнул по той же ноде на
       // канвасе) — просто показываем текущее состояние гейта, НЕ запускаем
       // discover заново (иначе слетел бы прогресс с Gate 2 обратно на Gate 1).
-      const existingGateStatus = sessions[sid]?.nodeGateStatus;
+      const existingGateStatus = afterGate ? null : sessions[sid]?.nodeGateStatus;
       if (
         existingGateStatus === "awaiting_gate_1" ||
         existingGateStatus === "awaiting_gate_2"
@@ -776,15 +787,22 @@ export function RoadmapDashboard() {
             curriculum.curriculum_id,
             toNodeDataInput(node),
           );
-          if ((disc.candidates || []).length > 0) {
+          // disc.status — сохранённый незавершённый гейт (после перезагрузки
+          // страницы бэк отдаёт его из хранилища, без повторного поиска).
+          const resumeGate2 =
+            disc.status === "awaiting_gate_2" && (disc.digests || []).length > 0;
+          if (resumeGate2 || (disc.candidates || []).length > 0) {
             setSessions((prev) => ({
               ...prev,
               [sid]: {
                 ...(prev[sid] || { messages: [] }),
                 initialized: false,
-                nodeGateStatus: "awaiting_gate_1",
-                nodeGateCandidates: disc.candidates,
-                nodeGateDigests: [],
+                nodeGateStatus: resumeGate2 ? "awaiting_gate_2" : "awaiting_gate_1",
+                nodeGateCandidates: disc.candidates || [],
+                nodeGateDigests: resumeGate2 ? disc.digests : [],
+                nodeGateApprovedCount: resumeGate2
+                  ? (disc.approved_urls || []).length
+                  : undefined,
               },
             }));
             return; // ждём Gate 1 — nodeInitStream ниже пока не вызывается
@@ -859,6 +877,9 @@ export function RoadmapDashboard() {
             }
           },
           sessions[sid]?.interactionAxis || "lecture_self_check",
+          // Штурвал → сервер не запускает автопилотный поиск источников,
+          // даже если гейт выше был пропущен (0 кандидатов / сбой discover).
+          controlAxis,
         );
         applyNodeResponse(sid, finalRes || {});
         const freshGraph = await refreshCurriculumGraph(curriculum.curriculum_id);
@@ -922,6 +943,12 @@ export function RoadmapDashboard() {
           curriculum.curriculum_id,
           node.node_id,
           selectedUrls,
+          {
+            onPoll: (info) =>
+              setTutorStageMessage(
+                `Загружаем материалы в ноду (Map-Reduce)… ${info.elapsedSec} с`,
+              ),
+          },
         );
         setSessions((prev) => {
           const next = { ...prev };
@@ -935,7 +962,7 @@ export function RoadmapDashboard() {
         setSelectedNode(freshNode);
         setTutorBusyNodeId(null);
         setTutorStageMessage("");
-        await openNode(freshNode);
+        await openNode(freshNode, { afterGate: true });
         return;
       }
     } catch (err) {
@@ -1356,6 +1383,10 @@ export function RoadmapDashboard() {
             onRestart: restartSelectedNode,
             composeLocked,
             nodeGenerating,
+            // Гейт показывается ДО init ноды (сессия ещё не initialized),
+            // поэтому composeLocked его блокировал бы всегда — гейту нужен
+            // только флаг «идёт запрос тьютора/гейта».
+            tutorBusy,
             sessions,
             selectedMaterialId,
             materialViewMode,

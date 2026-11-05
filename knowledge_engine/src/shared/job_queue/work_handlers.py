@@ -15,6 +15,7 @@ from knowledge_engine.src.config.settings import (
     KE_NODE_DIVE_TIMEOUT_SEC,
 )
 from knowledge_engine.src.core.errors import format_error_with_cause
+from knowledge_engine.src.core.observability import attached_trace_context, span
 from knowledge_engine.src.domains.curriculum.generator import generate_curriculum_graph
 from knowledge_engine.src.domains.curriculum.schemas import CurriculumGenerateInput
 from knowledge_engine.src.domains.curriculum.v07_run_service import run_v07_job
@@ -33,6 +34,16 @@ from knowledge_engine.src.shared.job_queue.work_job_store import WorkJob, WorkJo
 
 
 def run_work_job(job: WorkJob) -> dict[str, Any]:
+    """Спан задачи — продолжение трейса постановщика (``job.trace_context``)."""
+    with attached_trace_context(job.trace_context):
+        with span(
+            f"work_job.{job.kind.value}",
+            **{"ke.job.id": job.id, "ke.job.kind": job.kind.value},
+        ):
+            return _dispatch_work_job(job)
+
+
+def _dispatch_work_job(job: WorkJob) -> dict[str, Any]:
     if job.kind == WorkJobKind.CURRICULUM_GENERATE:
         return _run_curriculum_generate(job.payload)
     if job.kind == WorkJobKind.CURRICULUM_EXPAND:
@@ -47,6 +58,12 @@ def run_work_job(job: WorkJob) -> dict[str, Any]:
         return _run_node_deep_dive(job.payload)
     if job.kind == WorkJobKind.RAG_GATEWAY:
         return _run_rag_gateway(job.payload)
+    if job.kind == WorkJobKind.NODE_GROUNDING:
+        from knowledge_engine.src.shared.node_grounding.node_grounding_jobs import (
+            run_node_grounding_job,
+        )
+
+        return run_node_grounding_job(job.payload)
     if job.kind == WorkJobKind.DIALOG_SUMMARIZE:
         from knowledge_engine.src.shared.job_queue.context_compressor_worker import (
             run_dialog_summarize_job,
@@ -69,13 +86,13 @@ def run_work_job(job: WorkJob) -> dict[str, Any]:
 
 
 def _run_curriculum_generate(payload: dict[str, Any]) -> dict[str, Any]:
+    import time
+
     from knowledge_engine.src.core.run_log import get_run_log_path, init_run_log, trace
     from knowledge_engine.src.domains.curriculum.source_policy import (
         depth_for_source_policy,
         resolve_source_policy,
     )
-
-    import time
 
     goal_preview = str(payload.get("target_goal") or "")[:56]
     init_run_log(f"curriculum generate | {goal_preview}")
@@ -113,6 +130,9 @@ def _run_curriculum_generate(payload: dict[str, Any]) -> dict[str, Any]:
         depth_level=depth,
         user_level=inp.user_level,
         source_policy=inp.source_policy,
+        # «Штурвал / по нодам» ставит тот же curriculum_generate; режим нужен
+        # init ноды, чтобы не запускать автопилотный lazy grounding.
+        control_axis=str(payload.get("control_axis") or "autopilot"),
     )
     out = graph.model_dump()
     meta = dict(out.get("meta") or {})
@@ -294,6 +314,7 @@ def _run_node_deep_dive(payload: dict[str, Any]) -> dict[str, Any]:
         user_action=str(payload.get("user_action") or "init"),
         user_message=str(payload.get("user_message") or ""),
         interaction_axis=str(payload.get("interaction_axis") or "lecture_self_check"),
+        control_axis=payload.get("control_axis") or None,
     )
     dive_async_timeout = (
         KE_NODE_DIVE_INIT_ASYNC_TIMEOUT_SEC
@@ -373,6 +394,7 @@ def _run_node_deep_dive_stream(job: WorkJob) -> dict[str, Any]:
         user_action=str(payload.get("user_action") or "chat"),
         user_message=str(payload.get("user_message") or ""),
         interaction_axis=str(payload.get("interaction_axis") or "lecture_self_check"),
+        control_axis=payload.get("control_axis") or None,
     )
 
     async def _run() -> dict[str, Any]:

@@ -20,6 +20,7 @@ from knowledge_engine.src.config.settings import (
     LECTURE_RAG_TOP_K,
     LIGHT_RAG_MIN_COSINE_SIM,
 )
+from knowledge_engine.src.core.observability import traced
 from knowledge_engine.src.core.run_log import trace
 from knowledge_engine.src.domains.curriculum.curriculum_whitelist_prompt import (
     enrich_node_learning_materials_from_graph,
@@ -1330,6 +1331,7 @@ def _collect_route_link_candidates(
     return out[:16]
 
 
+@traced("rag.lecture_context")
 async def retrieve_lecture_rag_context(
     node: NodeDataInput,
     user_query: str,
